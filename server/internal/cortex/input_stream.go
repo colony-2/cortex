@@ -1,18 +1,18 @@
 package cortex
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
-	jobworkflow "github.com/colony-2/jobdb/pkg/workflow"
 	"github.com/gorilla/mux"
 )
 
-// Track the waiting task, not just the job: a recipe can ask for input more than
-// once. Read JobDB so transitions made by other processes (including expiry)
-// reach every browser, even when no local input API broadcast was sent.
+// Poll compact summaries, including payload revisions, so changed requests and
+// expiry reach browsers without reading task handles or forms. Send one snapshot
+// per change rather than triggering a new list request for every pending job.
 func (s *Server) handleInputStream(w http.ResponseWriter, r *http.Request) {
 	projectID := mux.Vars(r)["projectId"]
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -33,15 +33,13 @@ func (s *Server) handleInputStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	previous := map[string]int64{}
+	var previous []byte
 	poll := time.NewTicker(time.Second)
 	defer poll.Stop()
 	heartbeat := time.NewTicker(30 * time.Second)
 	defer heartbeat.Stop()
 	for {
-		tasks, err := s.engine.FindTasksWaiting(r.Context(), jobworkflow.FindTasksWaitingRequest{
-			JobType: "recipe", TaskType: "input:collect_user_input", TenantIds: []string{projectID},
-		})
+		inputs, err := s.pendingInputSummaries(r.Context(), projectID)
 		if err != nil {
 			if r.Context().Err() != nil {
 				return
@@ -51,26 +49,16 @@ func (s *Server) handleInputStream(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		} else {
-			current := make(map[string]int64, len(tasks))
-			for _, task := range tasks {
-				current[task.JobKey().JobId] = task.TaskOrdinalToComplete()
+			current, err := json.Marshal(inputs)
+			if err != nil {
+				return
 			}
-			for id := range previous {
-				if _, pending := current[id]; !pending {
-					// The request has ended, whether answered, cancelled, or expired.
-					if err := send("input_completed", map[string]string{"jobId": id}); err != nil {
-						return
-					}
+			if !bytes.Equal(previous, current) {
+				if err := send("inputs_changed", map[string]any{"inputs": inputs}); err != nil {
+					return
 				}
+				previous = current
 			}
-			for id, ordinal := range current {
-				if old, seen := previous[id]; !seen || old != ordinal {
-					if err := send("input_pending", map[string]any{"id": id, "task_ordinal": ordinal}); err != nil {
-						return
-					}
-				}
-			}
-			previous = current
 		}
 		select {
 		case <-r.Context().Done():

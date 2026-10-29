@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -122,8 +123,8 @@ func TestChapterDownloadRuntimeIntegration(t *testing.T) {
 				token = l.LeaseToken()
 			}
 			records := []json.RawMessage{
-				json.RawMessage(`{"version":1,"kind":"header","versions":{"execution_pattern_version":1,"jobdb_version":"test"}}`),
-				json.RawMessage(`{"version":1,"kind":"restart","id":"retained","descriptor":[{"version":1,"kind":"scope","id":"old"}]}`),
+				json.RawMessage(fmt.Sprintf(`{"version":%d,"kind":"header","versions":{"execution_pattern_version":%d,"jobdb_version":"test"}}`, jobdb.ExecutionPatternVersion, jobdb.ExecutionPatternVersion)),
+				json.RawMessage(fmt.Sprintf(`{"version":%d,"kind":"restart","id":"retained","source":{"tenantId":"a","jobId":"same"},"descriptor":[{"version":%d,"kind":"scope","id":"old","descriptor":{"restart":true}}]}`, jobdb.ExecutionPatternVersion, jobdb.ExecutionPatternVersion)),
 			}
 			for i, record := range records {
 				ordinal := int64(i + 1)

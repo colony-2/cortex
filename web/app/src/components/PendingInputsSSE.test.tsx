@@ -54,7 +54,7 @@ describe('PendingInputsListPage - Real-time SSE Updates', () => {
     // Verify empty state
     await waitFor(
       () => {
-      expect(screen.getByText('No pending inputs')).toBeInTheDocument();
+      expect(screen.getByText('No pending reviews')).toBeInTheDocument();
     },
       { timeout: 3000 }
     );
@@ -102,7 +102,7 @@ describe('PendingInputsListPage - Real-time SSE Updates', () => {
     // Should refresh and show empty state
     await waitFor(
       () => {
-        expect(screen.getByText('No pending inputs')).toBeInTheDocument();
+        expect(screen.getByText('No pending reviews')).toBeInTheDocument();
       },
       { timeout: 2000 }
     );
@@ -117,7 +117,7 @@ describe('PendingInputsListPage - Real-time SSE Updates', () => {
 
     await waitFor(
       () => {
-      expect(screen.getByText('No pending inputs')).toBeInTheDocument();
+      expect(screen.getByText('No pending reviews')).toBeInTheDocument();
     },
       { timeout: 3000 }
     );
@@ -164,7 +164,7 @@ describe('PendingInputsListPage - Real-time SSE Updates', () => {
 
     await waitFor(
       () => {
-      expect(screen.getByText('No pending inputs')).toBeInTheDocument();
+      expect(screen.getByText('No pending reviews')).toBeInTheDocument();
     },
       { timeout: 3000 }
     );
@@ -175,7 +175,7 @@ describe('PendingInputsListPage - Real-time SSE Updates', () => {
     sse.emitHeartbeat();
 
     // Page should still be functional
-    expect(screen.getByText('No pending inputs')).toBeInTheDocument();
+    expect(screen.getByText('No pending reviews')).toBeInTheDocument();
   });
 
   it('should connect to correct SSE endpoint for project', async () => {

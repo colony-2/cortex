@@ -4,8 +4,6 @@ import { inputActivityService, type PendingInput } from '../services/inputActivi
 interface InputActivityContextValue {
   pendingInputs: PendingInput[];
   pendingCount: number;
-  pendingReviews: PendingInput[];
-  reviewCount: number;
   isConnected: boolean;
   connectionError: boolean;
   currentProjectId: string | null;
@@ -93,6 +91,12 @@ export function InputActivityProvider({ children }: InputActivityProviderProps) 
       loadPendingInputs(currentProjectId);
     };
 
+    const handleSnapshot = ({ projectId, inputs }: { projectId: string; inputs: PendingInput[] }) => {
+      if (projectRef.current !== projectId) return;
+      loadVersion.current++;
+      setPendingInputs(inputs, projectId);
+    };
+    inputActivityService.on('inputs_changed', handleSnapshot);
     inputActivityService.on('connected', handleConnected);
     inputActivityService.on('disconnected', handleDisconnected);
     inputActivityService.on('connection_failed', handleConnectionFailed);
@@ -107,6 +111,7 @@ export function InputActivityProvider({ children }: InputActivityProviderProps) 
     }
 
     return () => {
+      inputActivityService.off('inputs_changed', handleSnapshot);
       inputActivityService.off('connected', handleConnected);
       inputActivityService.off('disconnected', handleDisconnected);
       inputActivityService.off('connection_failed', handleConnectionFailed);
@@ -116,16 +121,13 @@ export function InputActivityProvider({ children }: InputActivityProviderProps) 
     };
   }, [currentProjectId]);
 
-  const pendingReviews = pendingInputs.filter(input => input.kind === 'review');
-  const pendingCount = pendingInputs.length - pendingReviews.length;
+  const pendingCount = pendingInputs.length;
 
   return (
     <InputActivityContext.Provider
       value={{
         pendingInputs,
         pendingCount,
-        pendingReviews,
-        reviewCount: pendingReviews.length,
         isConnected,
         connectionError,
         currentProjectId,

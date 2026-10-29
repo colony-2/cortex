@@ -26,6 +26,10 @@ export type RecipeJobStatus =
   | 'COMPLETED';
 
 export interface RecipeJob {
+  title?: string;
+  metadata?: Record<string, unknown>;
+  schema_hash?: string;
+  blocking_wait_summary?: { waitId: string; deadline?: string };
   goal_id?: string;
   other_goal_ids?: string[];
   prompt?: string;
@@ -98,8 +102,13 @@ export interface DependencyWait {
   }[];
 }
 
+// Deprecated compatibility values in list responses are never inspection data.
+export type RecipeJobSummary = Omit<RecipeJob,
+  'other_goal_ids' | 'blocking_wait' | 'completion_detail' | 'task_wait' |
+  'client_payload' | 'execution' | 'wait_for'>;
+
 export interface ListRecipeJobsResponse {
-  jobs: RecipeJob[];
+  jobs: RecipeJobSummary[];
   next_page_token?: string;
 }
 

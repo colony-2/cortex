@@ -69,6 +69,38 @@ describe('InputActivityService', () => {
   });
 
   describe('SSE Connection', () => {
+    it('uses one compact snapshot for all pending rows and invalidates changed forms', async () => {
+      inputActivityService.connect(projectId);
+      const source = EventSourceMock.mock.results[0].value;
+      const snapshot = source.addEventListener.mock.calls.find(([name]: [string]) => name === 'inputs_changed')[1];
+      const inputs = Array.from({ length: 200 }, (_, i) => ({ id: String(i), client_payload_revision: 1 }));
+      snapshot({ data: JSON.stringify({ inputs }) });
+      expect(await inputActivityService.getPendingInputs(projectId)).toEqual(inputs);
+      expect(fetch).not.toHaveBeenCalled();
+      vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => ({ form: { question: 'First?' } }) } as Response);
+      await inputActivityService.getInputDetails(projectId, '0');
+      snapshot({ data: JSON.stringify({ inputs: inputs.map(input => input.id === '0' ? { ...input, client_payload_revision: 2 } : input) }) });
+      vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => ({ form: { question: 'Next?' } }) } as Response);
+      expect((await inputActivityService.getInputDetails(projectId, '0')).form.question).toBe('Next?');
+      expect(fetch).toHaveBeenCalledTimes(2);
+      inputActivityService.connect('other');
+      snapshot({ data: JSON.stringify({ inputs: [{ id: 'wrong-tenant' }] }) });
+      expect((inputActivityService as any).pendingInputsCache.has('other')).toBe(false);
+    });
+
+    it('does not let a late pending-list response overwrite a newer streamed snapshot', async () => {
+      inputActivityService.connect(projectId);
+      let resolve!: (response: Response) => void;
+      vi.mocked(fetch).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+      const pending = inputActivityService.getPendingInputs(projectId, true);
+      const source = EventSourceMock.mock.results[0].value;
+      const snapshot = source.addEventListener.mock.calls.find(([name]: [string]) => name === 'inputs_changed')[1];
+      snapshot({ data: JSON.stringify({ inputs: [{ id: 'new' }] }) });
+      resolve({ ok: true, json: async () => [{ id: 'old' }] } as Response);
+      expect(await pending).toEqual([{ id: 'new' }]);
+      expect(await inputActivityService.getPendingInputs(projectId)).toEqual([{ id: 'new' }]);
+    });
+
     it('refreshes cached requests and details when another tab completes an input', async () => {
       inputActivityService.connect(projectId);
       const completed = vi.fn();

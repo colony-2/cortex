@@ -1,4 +1,4 @@
-import type { RecipeJob, RecipeJobStatus } from '@colony2/shared/types';
+import type { RecipeJobSummary, RecipeJobStatus } from '@colony2/shared/types';
 
 export const schedulingStatuses: Record<RecipeJobStatus, { label: string; color: string }> = {
   READY: { label: 'Ready', color: 'blue' },
@@ -19,7 +19,7 @@ const completionStatuses: Record<string, { label: string; color: string }> = {
   cancelled: { label: 'Cancelled', color: 'default' },
 };
 
-export function jobStatus(job: RecipeJob): { label: string; color: string } {
+export function jobStatus(job: RecipeJobSummary): { label: string; color: string } {
   // A previous failed attempt must never override a job that is still retrying.
   if (job.store === 'ARCHIVED' || job.status === 'COMPLETED') {
     if (job.completion_status) {

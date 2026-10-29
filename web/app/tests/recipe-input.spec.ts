@@ -92,8 +92,8 @@ const test = base.extend<{
 
       // This second tab must update through SSE, without refresh or navigation.
       const observer = await context.newPage();
-      await observer.goto(`/project/${tenant}/${review ? 'reviews' : 'inputs'}`);
-      await expect(observer.getByText(review ? 'No pending reviews' : 'No pending inputs')).toBeVisible();
+      await observer.goto(`/project/${tenant}/reviews`);
+      await expect(observer.getByText('No pending reviews')).toBeVisible();
 
       const submitted = await request.post(`/api/projects/${tenant}/jobs`, {
         data: { job_id: jobID, recipe, repo: pathToFileURL(repo).href, ...(review ? { inputs: { prompt: reviewGoalPrompt } } : {}) },
@@ -119,7 +119,7 @@ const test = base.extend<{
         status: 200,
         body: expect.arrayContaining([expect.objectContaining({ id: jobID })]),
       });
-      await expect(observer.getByText(review ? `Job ID: ${jobID} · 2 documents` : `Job ID: ${jobID}`, { exact: true })).toBeVisible({ timeout: 30_000 });
+      await expect(observer.getByText(`Job ID: ${jobID}`, { exact: true })).toBeVisible({ timeout: 30_000 });
       const otherTenant = await request.get(`/api/projects/other-${tenant}/user-inputs/pending`);
       expect(await otherTenant.json()).toEqual([]);
 
@@ -213,12 +213,25 @@ for (const multiField of [false, true]) {
       // Kill the worker while the request is pending: the answer must survive
       // in JobDB and be picked up by a fresh worker, not an in-process promise.
       await stopWorker();
-      await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
-      await page.getByRole('tab', { name: 'Pending Input', exact: true }).click();
+      if (multiField) {
+        await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
+        await page.getByRole('tab', { name: 'Pending Input', exact: true }).click();
+      } else {
+        const inspections: string[] = [];
+        page.on('request', req => {
+          if (req.url().endsWith(`/user-inputs/${jobID}`) || req.url().endsWith(`/jobs/${jobID}`)) inspections.push(req.url());
+        });
+        await page.getByRole('link', { name: 'Reviews', exact: true }).click();
+        await expect(page.getByText(`Job ID: ${jobID}`, { exact: true })).toBeVisible();
+        expect(inspections).toEqual([]);
+        await expect(page.getByRole('link', { name: 'Pending Inputs', exact: true })).toHaveCount(0);
+        await page.getByRole('button', { name: 'Open Review', exact: true }).click();
+        await expect(page).toHaveURL(new RegExp(`/reviews/${jobID}$`));
+      }
       const question = multiField ? 'Release note' : 'What should the recipe publish?';
       await expect(page.getByLabel(question)).toBeVisible();
       await page.reload();
-      await page.getByRole('tab', { name: 'Pending Input', exact: true }).click();
+      if (multiField) await page.getByRole('tab', { name: 'Pending Input', exact: true }).click();
       // Required-field validation must keep the real request pending.
       await page.getByRole('button', { name: 'Submit', exact: true }).click();
       await expect(page.getByText(`${question} is required`, { exact: true })).toBeVisible();
@@ -231,7 +244,7 @@ for (const multiField of [false, true]) {
       await page.getByRole('button', { name: 'Submit', exact: true }).click();
       const response = await responded;
       expect(response.status(), await response.text()).toBe(200);
-      await expect(observer.getByText('No pending inputs')).toBeVisible();
+      await expect(observer.getByText('No pending reviews')).toBeVisible();
       expect(await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).toEqual([]);
 
       startWorker();
@@ -242,6 +255,7 @@ for (const multiField of [false, true]) {
         status: 'completed',
         output: multiField ? { answer, decision: 'approve' } : { answer },
       });
+      if (!multiField) await page.goto(`/project/${tenant}/jobs/${jobID}/story`);
       await expect(page.getByRole('cell', { name: 'COMPLETED', exact: true }).first()).toBeVisible();
       await page.goto(`/project/${tenant}/jobs`);
       await expect(page.getByRole('heading', { name: 'Goals', exact: true })).toBeVisible();
@@ -328,7 +342,7 @@ test('cancellation removes a pending prompt in open tabs and rejects late answer
     data: { reason: 'Browser integration cancellation' },
   });
   expect(cancelled.status(), await cancelled.text()).toBe(200);
-  await expect(observer.getByText('No pending inputs')).toBeVisible();
+  await expect(observer.getByText('No pending reviews')).toBeVisible();
   await expect(page.getByLabel('What should the recipe publish?')).not.toBeVisible();
   expect(await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).toEqual([]);
 
@@ -360,7 +374,7 @@ test.describe('sequential prompts', () => {
       const responded = page.waitForResponse(r => r.url().endsWith(`/user-inputs/${jobID}/respond`) && r.request().method() === 'POST');
       await page.getByRole('button', { name: 'Submit', exact: true }).click();
       expect((await responded).status()).toBe(200);
-      await expect(observer.getByText('No pending inputs')).toBeVisible();
+      await expect(observer.getByText('No pending reviews')).toBeVisible();
       await expect(page.getByLabel(question)).not.toBeVisible();
       startWorker();
     }
@@ -369,7 +383,7 @@ test.describe('sequential prompts', () => {
       timeout: 30_000,
     }).toMatchObject({ status: 'completed', output: { answer, reviewer } });
     await expect(page.getByRole('cell', { name: 'COMPLETED', exact: true }).first()).toBeVisible();
-    await expect(observer.getByText('No pending inputs')).toBeVisible();
+    await expect(observer.getByText('No pending reviews')).toBeVisible();
   });
 });
 
@@ -389,7 +403,7 @@ test.describe('input timeout', () => {
     }, { timeout: 45_000 }).toMatchObject({ status: 'failed', error: expect.anything() });
     const outcome = await (await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`)).json();
     expect(JSON.stringify(outcome.error)).toMatch(/timeout|timed out|deadline/i);
-    await expect(observer.getByText('No pending inputs')).toBeVisible();
+    await expect(observer.getByText('No pending reviews')).toBeVisible();
     await expect(page.getByLabel('What should the recipe publish?')).not.toBeVisible();
     expect(await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).toEqual([]);
     const lateAnswer = await request.post(`/api/projects/${tenant}/user-inputs/${jobID}/respond`, {
@@ -407,12 +421,10 @@ for (const clarification of [false, true]) {
       const { tenant, jobID, observer, stopWorker, startWorker } = recipeRun;
       expect(await page.evaluate(() => typeof globalThis.crypto.randomUUID)).toBe('undefined');
       await stopWorker();
-      await page.getByRole('link', { name: 'Pending Inputs', exact: true }).click();
-      await expect(page.getByText('No pending inputs')).toBeVisible();
       const job = await (await request.get(`/api/projects/${tenant}/jobs/${jobID}`)).json();
       expect(job.prompt).toBe(reviewGoalPrompt);
       await page.getByRole('link', { name: 'Reviews', exact: true }).click();
-      await expect(page.getByText(`Goal: ${abbreviatePrompt(job.prompt)}`, { exact: true })).toBeVisible();
+      await expect(page.getByText(abbreviatePrompt(job.title || job.prompt), { exact: true })).toBeVisible();
       await expect(page.getByText(`Cell: ${job.cell_name?.trim() ? job.cell_name : 'Unknown cell'}`, { exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Open Review', exact: true }).click();
       const goalPrompt = page.getByRole('region', { name: 'Goal prompt', exact: true });
@@ -522,7 +534,7 @@ test.describe('review job metadata', () => {
       });
       await page.goto(`/project/${tenant}/reviews`);
       const label = cellName?.trim() ? cellName : 'Unknown cell';
-      await expect(page.getByText(`Cell: ${label}`, { exact: true })).toBeVisible();
+      await expect(page.getByText(`Job ID: ${jobID}`, { exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Open Review' }).click();
       await expect(page.getByText(label, { exact: true })).toBeVisible();
       await expect(page.getByRole('region', { name: 'Goal prompt' })).toContainText(reviewGoalPrompt);
@@ -540,7 +552,7 @@ test.describe('review job metadata', () => {
     });
     try {
       await page.goto(`/project/${tenant}/reviews`);
-      await expect(page.getByText('Cell: Loading job context...', { exact: true })).toBeVisible();
+      await expect(page.getByText(`Job ID: ${jobID}`, { exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Open Review' }).click();
       await expect(page.getByText('Loading job context...', { exact: true })).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
@@ -556,7 +568,7 @@ test.describe('review job metadata', () => {
     await page.route(`**/api/projects/${tenant}/jobs/${jobID}`, route => failMetadata
       ? route.fulfill({ status: 503, json: { error: 'Metadata temporarily unavailable' } }) : route.continue());
     await page.goto(`/project/${tenant}/reviews`);
-    await expect(page.getByText('Cell: Cell unavailable', { exact: true })).toBeVisible();
+    await expect(page.getByText(`Job ID: ${jobID}`, { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Open Review' }).click();
     await expect(page.getByText('Job context unavailable', { exact: true })).toBeVisible();
     await expect(page.getByText('Cell unavailable', { exact: true })).toBeVisible();
@@ -600,7 +612,7 @@ test.describe('review job metadata', () => {
       const content = document.querySelector('.ant-layout-content')!;
       return document.documentElement.scrollWidth <= window.innerWidth && content.scrollWidth <= content.clientWidth;
     });
-    await expect(page.getByText(`Goal: ${abbreviatePrompt(prompt)}`, { exact: true })).toBeVisible();
+    await expect(page.getByText(`Job ID: ${jobID}`, { exact: true })).toBeVisible();
     expect(await fits()).toBe(true);
     await page.getByRole('button', { name: 'Open Review' }).click();
     const region = page.getByRole('region', { name: 'Goal prompt' });

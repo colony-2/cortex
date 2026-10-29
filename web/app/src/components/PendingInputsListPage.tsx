@@ -1,109 +1,35 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Empty, List, Button, Space, Typography, Spin } from 'antd';
-import { ReloadOutlined, FormOutlined } from '@ant-design/icons';
-import { useReviewJobMetadata } from '../hooks/useReviewJobMetadata';
+import { Card, Empty, List, Button, Space, Typography } from 'antd';
+import { ReloadOutlined, FileSearchOutlined } from '@ant-design/icons';
 import { cellLabel } from '../utils/cellPresentation';
 import { abbreviatePrompt } from '../utils/goalPresentation';
 import { useInputActivity } from '@colony2/shared';
 
-const { Title, Text } = Typography;
-
-interface PendingInputsListPageProps {
-  projectId: string;
-  reviews?: boolean;
-}
-
-export default function PendingInputsListPage({ projectId, reviews = false }: PendingInputsListPageProps) {
+export default function PendingInputsListPage({ projectId }: { projectId: string }) {
   const navigate = useNavigate();
-  const { pendingInputs, isConnected, refresh, setCurrentProjectId, currentProjectId } = useInputActivity();
-
-  const items = currentProjectId === projectId ? pendingInputs.filter(input => (input.kind === 'review') === reviews) : [];
-  const { metadata, refresh: refreshMetadata } = useReviewJobMetadata(projectId, reviews && isConnected ? items.map(input => input.id) : []);
-
-  useEffect(() => {
-    // Set current project for SSE connection
-    setCurrentProjectId(projectId);
-  }, [projectId, setCurrentProjectId]);
-
-  const handleRefresh = async () => {
-    refreshMetadata();
-    await refresh();
-  };
-
-  const handleViewInput = (jobId: string) => {
-    navigate(reviews ? `/project/${projectId}/reviews/${jobId}` : `/project/${projectId}/jobs/${jobId}/story?input=1`);
-  };
-
-  if (!isConnected) {
-    return (
-      <div style={{ padding: 24, textAlign: 'center' }}>
-        <Spin size="large" />
-        <div style={{ marginTop: 16 }}>
-          <Text type="secondary">Connecting to input stream...</Text>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className={reviews ? 'review-page' : undefined} style={{ padding: 24 }}>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-          <Title level={3} style={{ margin: 0 }}>
-            {reviews ? 'Reviews' : 'Pending Inputs'}
-          </Title>
-          <Button icon={<ReloadOutlined />} onClick={handleRefresh}>
-            Refresh
-          </Button>
-        </div>
-
-        {items.length === 0 ? (
-          <Card>
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={reviews ? 'No pending reviews' : 'No pending inputs'}
-              style={{ padding: '48px 0' }}
-            >
-              <Text type="secondary">
-                {reviews ? 'Document reviews from jobs will appear here' : 'Pending input requests from jobs will appear here'}
-              </Text>
-            </Empty>
-          </Card>
-        ) : (
-          <List
-            dataSource={items}
-            renderItem={(input) => (
-              <Card
-                key={input.id}
-                style={{ marginBottom: 16, overflowWrap: 'anywhere' }}
-                hoverable
-                onClick={() => handleViewInput(input.id)}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-                    <Space direction="vertical" size="small" style={{ minWidth: 0, flex: 1 }}>
-                      <Space>
-                        <FormOutlined style={{ fontSize: 20, color: '#1890ff' }} />
-                      <Text strong>{reviews ? input.title || 'Review' : 'Input Request'}</Text>
-                    </Space>
-                    <Text type="secondary" style={{ fontSize: 13 }}>
-                      Job ID: {input.id}{reviews ? ` · ${input.document_count || 0} documents` : ''}
-                    </Text>
-                    {reviews && <>
-                      <Text>Cell: {metadata.get(input.id)?.status === 'ready' ? cellLabel(metadata.get(input.id)?.job?.cell_name)
-                        : metadata.get(input.id)?.status === 'error' ? 'Cell unavailable' : 'Loading job context...'}</Text>
-                      <Text>Goal: {abbreviatePrompt(metadata.get(input.id)?.job?.prompt?.trim() || input.title?.trim() || 'Untitled goal')}</Text>
-                    </>}
-                  </Space>
-                  <Button type="primary" onClick={event => { event.stopPropagation(); handleViewInput(input.id); }}>
-                    {reviews ? 'Open Review' : 'Open Job'}
-                  </Button>
-                </div>
-              </Card>
-            )}
-          />
-        )}
+  const { pendingInputs, refresh, setCurrentProjectId, currentProjectId, connectionError } = useInputActivity();
+  const items = currentProjectId === projectId ? pendingInputs : [];
+  useEffect(() => { setCurrentProjectId(projectId); }, [projectId, setCurrentProjectId]);
+  const open = (id: string) => navigate(`/project/${encodeURIComponent(projectId)}/reviews/${encodeURIComponent(id)}`);
+  return <div className="review-page" style={{ padding: 24 }}>
+    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+        <Typography.Title level={3}>Reviews</Typography.Title>
+        <Button icon={<ReloadOutlined />} onClick={() => void refresh()}>Refresh</Button>
       </Space>
-    </div>
-  );
+      {connectionError && <Typography.Text type="warning">Live updates unavailable. Refresh to check for requests.</Typography.Text>}
+      {!items.length ? <Card><Empty description="No pending reviews"><Typography.Text type="secondary">Reviews and input requests from jobs will appear here</Typography.Text></Empty></Card>
+        : <List dataSource={items} renderItem={input => <Card key={input.id} style={{ marginBottom: 16, overflowWrap: 'anywhere' }}>
+          <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+            <Space direction="vertical">
+              <Space><FileSearchOutlined /><Typography.Text strong>{abbreviatePrompt(input.title || input.prompt || 'Review')}</Typography.Text></Space>
+              <Typography.Text type="secondary">Job ID: {input.id}</Typography.Text>
+              <Typography.Text>Cell: {cellLabel(input.cell_name)}</Typography.Text>
+            </Space>
+            <Button type="primary" onClick={() => open(input.id)}>Open Review</Button>
+          </Space>
+        </Card>} />}
+    </Space>
+  </div>;
 }

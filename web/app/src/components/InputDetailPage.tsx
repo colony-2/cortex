@@ -1,6 +1,6 @@
 import ReviewJobContext from './ReviewJobContext';
-import { useEffect, useState } from 'react';
-import { useParams, useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Button, Space, Typography, message, Spin, Alert } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { inputActivityService, type UserInputDetails, type FormResponse } from '@colony2/shared';
@@ -14,18 +14,19 @@ const { Title, Text } = Typography;
 
 interface InputDetailPageProps {
   projectId: string;
-  reviews?: boolean;
 }
 
-export default function InputDetailPage({ projectId, reviews = false }: InputDetailPageProps) {
+export default function InputDetailPage({ projectId }: InputDetailPageProps) {
   const { jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
-  const location = useLocation();
   const [details, setDetails] = useState<UserInputDetails | null>(null);
+  const reviews = details?.form.kind === 'review';
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const formRequest = useRef<{ key: string; promise: Promise<UserInputDetails> }>();
 
   useEffect(() => {
     if (!jobId) {
@@ -38,13 +39,15 @@ export default function InputDetailPage({ projectId, reviews = false }: InputDet
     setLoading(true);
     setDetails(null);
     setError(null);
-    inputActivityService.getInputDetails(projectId, jobId).then(data => {
+    const key = JSON.stringify([projectId, jobId]);
+    if (formRequest.current?.key !== key) formRequest.current = { key, promise: inputActivityService.getInputDetails(projectId, jobId, true) };
+    formRequest.current.promise.then(data => {
       if (active) setDetails(data);
     }).catch(() => {
-      if (active) setError(`Failed to load ${reviews ? 'review' : 'input'} details. The request may no longer exist.`);
+      if (active) setError('Failed to load request details. The request may no longer exist.');
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [projectId, jobId, reviews]);
+  }, [projectId, jobId]);
 
   const handleSubmit = async (response: FormResponse) => {
     if (!jobId) return;
@@ -59,7 +62,7 @@ export default function InputDetailPage({ projectId, reviews = false }: InputDet
         await inputActivityService.submitResponse(projectId, jobId, response);
       }
       message.success('Response submitted successfully');
-      navigate(reviews ? `/project/${projectId}/reviews` : `/project/${projectId}/jobs/${jobId}/story`);
+      navigate(`/project/${projectId}/reviews`);
     } catch (err) {
       console.error('Failed to submit response:', err);
       if (reviews) setError(err instanceof Error ? err.message : 'Failed to submit review.');
@@ -70,7 +73,7 @@ export default function InputDetailPage({ projectId, reviews = false }: InputDet
   };
 
   const handleCancel = () => {
-    navigate(`/project/${projectId}/${reviews ? 'reviews' : 'inputs'}`);
+    navigate(`/project/${projectId}/reviews`);
   };
 
   if (loading) {
@@ -78,7 +81,7 @@ export default function InputDetailPage({ projectId, reviews = false }: InputDet
       <div style={{ padding: 24, textAlign: 'center' }}>
         <Spin size="large" />
         <div style={{ marginTop: 16 }}>
-          <Text type="secondary">{reviews ? 'Loading review...' : 'Loading input request...'}</Text>
+          <Text type="secondary">Loading request...</Text>
         </div>
       </div>
     );
@@ -89,7 +92,7 @@ export default function InputDetailPage({ projectId, reviews = false }: InputDet
       <div className={reviews ? 'review-page' : undefined} style={{ padding: 24 }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <Button icon={<ArrowLeftOutlined />} onClick={handleCancel}>
-            {reviews ? 'Back to Reviews' : 'Back to Inputs'}
+            Back to Reviews
           </Button>
           <Alert message="Error" description={error || 'Input request not found'} type="error" showIcon />
         </Space>
@@ -97,8 +100,6 @@ export default function InputDetailPage({ projectId, reviews = false }: InputDet
     );
   }
 
-  const isReview = details.form.kind === 'review';
-  if (isReview !== reviews) return <Navigate to={`/project/${projectId}/${isReview ? 'reviews' : 'inputs'}/${jobId}${location.search}`} state={location.state} replace />;
   const form = adaptInputFormConfig(details.form, jobId);
   const reviewPrompt = reviewActionField(form)?.label;
 
@@ -107,7 +108,7 @@ export default function InputDetailPage({ projectId, reviews = false }: InputDet
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
           <Button icon={<ArrowLeftOutlined />} onClick={handleCancel}>
-            {reviews ? 'Back to Reviews' : 'Back to Inputs'}
+            Back to Reviews
           </Button>
           {reviews && <CancelJobButton key={`${projectId}/${jobId}`} projectId={projectId} jobId={jobId}
             disabled={submitting} onBusyChange={setCancelling} onCancelled={handleCancel} />}

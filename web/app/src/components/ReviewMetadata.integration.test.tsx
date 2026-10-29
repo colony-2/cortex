@@ -15,77 +15,36 @@ const server = setupServer(...inputApiHandlers);
 let events: ReturnType<typeof mockEventSource>;
 beforeEach(() => { server.listen({ onUnhandledRequest: 'error' }); resetMockInputStore(); events = mockEventSource(); });
 afterEach(() => { inputActivityService.disconnect(); inputActivityService.clearCaches(); server.resetHandlers(); server.close(); events.restore(); vi.clearAllMocks(); });
-const view = (projectId = 'tenant', reviews = true) => <MemoryRouter><InputActivityProvider><PendingInputsListPage projectId={projectId} reviews={reviews} /></InputActivityProvider></MemoryRouter>;
+const view = (projectId = 'tenant') => <MemoryRouter><InputActivityProvider><PendingInputsListPage projectId={projectId} /></InputActivityProvider></MemoryRouter>;
 
-it('uses the shared job GET, keeps headings, and refreshes metadata while preserving failed cards', async () => {
-  setupMockInputs('tenant', [{ id: 'a', kind: 'review', title: 'Review phase', document_count: 2 }], []);
-  const prompt = '  Build\n' + '🌱'.repeat(80);
-  let reads = 0;
-  server.use(http.get('http://localhost:8080/api/projects/:tenant/jobs/:job', () => {
-    reads++; return reads === 1 ? HttpResponse.json({ cell_name: 'platform', prompt }) : new HttpResponse(null, { status: 503 });
-  }));
+it('refreshes compact labels without job detail requests', async () => {
+  const prompt = 'Build ' + '🌱'.repeat(80);
+  setupMockInputs('tenant', [{ id: 'a', prompt, cell_name: 'platform', client_payload_revision: 1 }], []);
+  const reads = vi.fn();
+  server.use(http.get('http://localhost:8080/api/projects/:tenant/jobs/:job', () => { reads(); return HttpResponse.error(); }));
   render(view()); (await waitForSSEConnection()).emitConnected();
-  await screen.findByText('Cell: platform');
-  expect(screen.getByText(`Goal: ${abbreviatePrompt(prompt)}`)).toBeVisible();
-  expect(screen.getByText('Review phase')).toBeVisible();
-  expect(screen.getByText('Job ID: a · 2 documents')).toBeVisible();
+  expect(await screen.findByText('Cell: platform')).toBeVisible();
+  expect(screen.getByText(abbreviatePrompt(prompt))).toBeVisible();
+  setupMockInputs('tenant', [{ id: 'a', title: 'Updated title', cell_name: 'other', client_payload_revision: 2 }], []);
   fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
-  await screen.findByText('Cell: Cell unavailable');
-  expect(screen.getByText('Goal: Review phase')).toBeVisible();
-  expect(screen.getByRole('button', { name: 'Open Review' })).toBeEnabled();
-  expect(reads).toBe(2);
+  expect(await screen.findByText('Updated title')).toBeVisible();
+  expect(screen.getByText('Cell: other')).toBeVisible();
+  expect(reads).not.toHaveBeenCalled();
 });
 
-it.each([undefined, '', ' \n '])('uses title fallback and unknown cell for successful missing metadata %j', async cell_name => {
-  setupMockInputs('tenant', [{ id: 'a', kind: 'review', title: '   Review\n phase ' }, { id: 'b', kind: 'review' }], []);
-  server.use(http.get('http://localhost:8080/api/projects/:tenant/jobs/:job', () => HttpResponse.json({ cell_name, prompt: '  \n' })));
-  render(view()); (await waitForSSEConnection()).emitConnected();
-  await waitFor(() => expect(screen.getAllByText('Cell: Unknown cell')).toHaveLength(2));
-  expect(screen.getByText('Goal: Review phase')).toBeVisible();
-  expect(screen.getByText('Goal: Untitled goal')).toBeVisible();
-});
-
-it('reconciles SSE additions and removals without refetching unchanged IDs', async () => {
-  setupMockInputs('tenant', [{ id: 'a', kind: 'review' }], []);
-  const ids: string[] = [];
-  server.use(http.get('http://localhost:8080/api/projects/:tenant/jobs/:job', ({ params }) => { ids.push(String(params.job)); return HttpResponse.json({ cell_name: params.job }); }));
-  render(view()); const sse = await waitForSSEConnection(); sse.emitConnected();
-  await screen.findByText('Cell: a');
-  setupMockInputs('tenant', [{ id: 'a', kind: 'review' }, { id: 'b', kind: 'review' }], []);
-  sse.emitInputPending('b');
-  await screen.findByText('Cell: b');
-  expect(ids).toEqual(['a', 'b']);
-  setupMockInputs('tenant', [{ id: 'b', kind: 'review' }], []);
-  sse.emitInputCancelled('a');
-  await waitFor(() => expect(screen.queryByText('Cell: a')).toBeNull());
-});
-
-it('does not schedule stale activity under a new tenant even before its connection settles', async () => {
-  setupMockInputs('first', [{ id: 'old-id', kind: 'review' }], []);
-  setupMockInputs('second', [{ id: 'new-id', kind: 'review' }], []);
-  const reads: string[] = [];
-  let release!: () => void;
-  const gate = new Promise<void>(done => { release = done; });
-  server.use(http.get('http://localhost:8080/api/projects/:tenant/jobs/:job', async ({ params }) => {
-    reads.push(`${params.tenant}/${params.job}`);
-    if (params.tenant === 'first') await gate;
-    return HttpResponse.json({ cell_name: params.tenant });
-  }));
-  const { rerender } = render(view('first')); (await waitForSSEConnection()).emitConnected();
-  await waitFor(() => expect(reads).toContain('first/old-id'));
+it('applies streamed summaries without per-entry requests and isolates tenants', async () => {
+  setupMockInputs('first', [], []); setupMockInputs('second', [], []);
+  const { rerender } = render(view('first'));
+  (await waitForSSEConnection()).emitConnected();
+  const fetch = vi.spyOn(globalThis, 'fetch');
+  inputActivityService.emit('inputs_changed', { projectId: 'first', inputs: Array.from({ length: 200 }, (_, i) => ({ id: String(i), title: `Request ${i}` })) });
+  expect(await screen.findByText('Request 199')).toBeVisible();
+  expect(fetch.mock.calls.filter(([url]) => String(url).includes('/jobs/'))).toHaveLength(0);
   rerender(view('second'));
-  const sse = await waitForSSEConnection(); sse.emitConnected();
-  await screen.findByText('Cell: second'); release();
-  await waitFor(() => expect(reads).toEqual(['first/old-id', 'second/new-id']));
-  expect(screen.queryByText('Cell: first')).toBeNull();
-});
-
-it('never fetches metadata for ordinary inputs', async () => {
-  setupMockInputs('tenant', [{ id: 'ordinary' }], []);
-  render(view('tenant', false)); (await waitForSSEConnection()).emitConnected();
-  await screen.findByText('Input Request');
-  // Strict MSW handling makes any unexpected job GET fail this test.
-  expect(screen.queryByText(/Cell:/)).toBeNull();
+  inputActivityService.emit('inputs_changed', { projectId: 'first', inputs: [{ id: 'old', title: 'Stale tenant' }] });
+  expect(screen.queryByText('Request 199')).toBeNull();
+  expect(screen.queryByText('Stale tenant')).toBeNull();
+  fetch.mockRestore();
 });
 
 it.each([404, 503, 'network'] as const)('preserves review draft and submission through metadata failure %s and retry', async failure => {
@@ -107,7 +66,7 @@ it.each([404, 503, 'network'] as const)('preserves review draft and submission t
       await request.text(); received = true; return HttpResponse.json({ ok: true });
     }),
   );
-  render(<MemoryRouter initialEntries={['/reviews/a']}><Routes><Route path="/reviews/:jobId" element={<InputDetailPage projectId="tenant" reviews />} /></Routes></MemoryRouter>);
+  render(<MemoryRouter initialEntries={['/reviews/a']}><Routes><Route path="/reviews/:jobId" element={<InputDetailPage projectId="tenant" />} /></Routes></MemoryRouter>);
   await screen.findByText('Job context unavailable');
   expect(screen.getByText('No documents attached')).toBeVisible();
   expect(screen.getByRole('region', { name: 'Review context' })).toHaveTextContent('Response question');

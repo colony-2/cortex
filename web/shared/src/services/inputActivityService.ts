@@ -1,3 +1,4 @@
+import type { RecipeJobSummary } from '../types';
 import { API_BASE } from '../apiBase';
 
 function createSubmissionId(): string {
@@ -155,12 +156,8 @@ export interface FormResponse {
 }
 
 // API response types
-export interface PendingInput {
-  id: string;  // jobId
-  kind?: string;
-  title?: string;
-  request_id?: string;
-  document_count?: number;
+export interface PendingInput extends Partial<RecipeJobSummary> {
+  id: string;
 }
 
 export interface UserInputDetails {
@@ -176,6 +173,7 @@ export interface UserInputDetails {
 // SSE event types based on OpenAPI InputSSEEvent
 export type InputSSEEventType =
   | 'connected'
+  | 'inputs_changed'
   | 'input_pending'
   | 'input_cancelled'
   | 'input_completed'
@@ -194,6 +192,7 @@ class InputActivityService extends EventEmitter {
   private maxReconnectAttempts = 3;
   private reconnectDelay = 1000;
   private currentProjectId: string | null = null;
+  private pendingVersions = new Map<string, number>();
   private pendingInputsCache = new Map<string, PendingInput[]>();
   private formDetailsCache = new Map<string, UserInputDetails>();
 
@@ -224,6 +223,7 @@ class InputActivityService extends EventEmitter {
       return;
     }
 
+    const streamTenant = this.currentProjectId;
     try {
       this.eventSource = new EventSource(
         `${API_BASE}/projects/${this.currentProjectId}/user-inputs/stream`
@@ -242,6 +242,24 @@ class InputActivityService extends EventEmitter {
         } catch (error) {
           console.error('Failed to parse connected event:', error);
         }
+      });
+
+      this.eventSource.addEventListener('inputs_changed', (event) => {
+        try {
+          const { inputs } = JSON.parse((event as MessageEvent).data) as { inputs: PendingInput[] };
+          const projectId = streamTenant;
+          if (this.currentProjectId !== projectId) return;
+          this.pendingVersions.set(projectId, (this.pendingVersions.get(projectId) || 0) + 1);
+          // A compact revision change may denote a new form on the same job.
+          const previous = this.pendingInputsCache.get(projectId) || [];
+          const byId = new Map(inputs.map(input => [input.id, input]));
+          for (const input of previous) {
+            const next = byId.get(input.id);
+            if (JSON.stringify(next) !== JSON.stringify(input)) this.formDetailsCache.delete(JSON.stringify([projectId, input.id]));
+          }
+          this.pendingInputsCache.set(projectId, inputs);
+          this.emit('inputs_changed', { projectId, inputs });
+        } catch (error) { console.error('Failed to parse pending input summaries:', error); }
       });
 
       this.eventSource.addEventListener('input_pending', (event) => {
@@ -267,7 +285,7 @@ class InputActivityService extends EventEmitter {
           const data = JSON.parse((event as MessageEvent).data);
           if (this.currentProjectId) {
             this.invalidatePendingInputsCache();
-            this.formDetailsCache.delete(`${this.currentProjectId}:${data.jobId}`);
+            this.formDetailsCache.delete(JSON.stringify([this.currentProjectId, data.jobId]));
           }
           this.emit('input_completed', data);
         } catch (error) {
@@ -325,7 +343,7 @@ class InputActivityService extends EventEmitter {
     // Invalidate cache BEFORE emitting event so listeners get fresh data
     if (this.currentProjectId) {
       this.invalidatePendingInputsCache();
-      this.formDetailsCache.delete(`${this.currentProjectId}:${data.id}`);
+      this.formDetailsCache.delete(JSON.stringify([this.currentProjectId, data.id]));
     }
     this.emit('input_pending', data);
   }
@@ -334,7 +352,7 @@ class InputActivityService extends EventEmitter {
     // Invalidate cache BEFORE emitting event so listeners get fresh data
     if (this.currentProjectId) {
       this.invalidatePendingInputsCache();
-      this.formDetailsCache.delete(`${this.currentProjectId}:${data.jobId}`);
+      this.formDetailsCache.delete(JSON.stringify([this.currentProjectId, data.jobId]));
     }
     this.emit('input_cancelled', data);
   }
@@ -358,6 +376,7 @@ class InputActivityService extends EventEmitter {
 
   private invalidatePendingInputsCache(): void {
     if (this.currentProjectId) {
+      this.pendingVersions.set(this.currentProjectId, (this.pendingVersions.get(this.currentProjectId) || 0) + 1);
       this.pendingInputsCache.delete(this.currentProjectId);
     }
   }
@@ -368,8 +387,9 @@ class InputActivityService extends EventEmitter {
       return this.pendingInputsCache.get(projectId)!;
     }
 
+    const version = this.pendingVersions.get(projectId) || 0;
     try {
-      const url = `${API_BASE}/projects/${projectId}/user-inputs/pending`;
+      const url = `${API_BASE}/projects/${encodeURIComponent(projectId)}/user-inputs/pending`;
 
       const response = await fetch(url);
       if (!response.ok) {
@@ -377,6 +397,7 @@ class InputActivityService extends EventEmitter {
       }
 
       const inputs = await response.json();
+      if ((this.pendingVersions.get(projectId) || 0) !== version) return this.pendingInputsCache.get(projectId) || inputs;
       this.pendingInputsCache.set(projectId, inputs);
       return inputs;
     } catch (error) {
@@ -385,11 +406,11 @@ class InputActivityService extends EventEmitter {
     }
   }
 
-  async getInputDetails(projectId: string, jobId: string): Promise<UserInputDetails> {
-    const cacheKey = `${projectId}:${jobId}`;
+  async getInputDetails(projectId: string, jobId: string, force = false): Promise<UserInputDetails> {
+    const cacheKey = JSON.stringify([projectId, jobId]);
 
     // Check cache first
-    if (this.formDetailsCache.has(cacheKey)) {
+    if (!force && this.formDetailsCache.has(cacheKey)) {
       return this.formDetailsCache.get(cacheKey)!;
     }
 
@@ -423,7 +444,7 @@ class InputActivityService extends EventEmitter {
       }
 
       // Clear caches
-      const cacheKey = `${projectId}:${jobId}`;
+      const cacheKey = JSON.stringify([projectId, jobId]);
       this.formDetailsCache.delete(cacheKey);
       this.pendingInputsCache.delete(projectId);
     } catch (error) {
@@ -454,7 +475,7 @@ class InputActivityService extends EventEmitter {
       const error = await result.json().catch(() => null);
       throw new Error(error?.error || 'Failed to submit review. Reload if this review has changed.');
     }
-    this.formDetailsCache.delete(`${projectId}:${jobId}`);
+    this.formDetailsCache.delete(JSON.stringify([projectId, jobId]));
     this.pendingInputsCache.delete(projectId);
     this.emit('input_completed', { jobId });
   }
@@ -474,7 +495,7 @@ class InputActivityService extends EventEmitter {
       }
 
       // Clear caches
-      const cacheKey = `${projectId}:${jobId}`;
+      const cacheKey = JSON.stringify([projectId, jobId]);
       this.formDetailsCache.delete(cacheKey);
       this.pendingInputsCache.delete(projectId);
     } catch (error) {

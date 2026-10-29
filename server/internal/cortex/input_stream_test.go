@@ -11,45 +11,39 @@ import (
 	"testing"
 	"time"
 
+	"github.com/colony-2/jobdb/pkg/jobdb"
 	jobworkflow "github.com/colony-2/jobdb/pkg/workflow"
 	"github.com/gorilla/mux"
 )
 
 type inputStreamEngine struct {
 	jobworkflow.Engine
-	snapshots chan []jobworkflow.TaskHandle
-	requests  chan jobworkflow.FindTasksWaitingRequest
+	snapshots chan []jobdb.JobSummary
+	requests  chan jobdb.ListJobsRequest
 }
 
-func (e *inputStreamEngine) FindTasksWaiting(ctx context.Context, req jobworkflow.FindTasksWaitingRequest) ([]jobworkflow.TaskHandle, error) {
+func (e *inputStreamEngine) ListJobs(ctx context.Context, req jobdb.ListJobsRequest) (jobdb.ListJobsResponse, error) {
 	e.requests <- req
 	select {
 	case snapshot := <-e.snapshots:
-		return snapshot, nil
+		return jobdb.ListJobsResponse{Jobs: snapshot}, nil
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return jobdb.ListJobsResponse{}, ctx.Err()
 	}
 }
-
-type inputStreamTask struct {
-	jobworkflow.TaskHandle
-	ordinal int64
+func streamSummary(revision int64) []jobdb.JobSummary {
+	return []jobdb.JobSummary{{JobKey: jobdb.JobKey{TenantId: "tenant-a", JobId: "same-job"}, JobType: "recipe", Status: jobdb.JobStatusReady, ClientPayloadRevision: revision}}
 }
-
-func (t inputStreamTask) JobKey() jobworkflow.JobKey {
-	return jobworkflow.JobKey{TenantId: "tenant-a", JobId: "same-job"}
-}
-func (t inputStreamTask) TaskOrdinalToComplete() int64 { return t.ordinal }
 
 func TestInputStreamTracksSequentialTasksAndRemoval(t *testing.T) {
 	engine := &inputStreamEngine{
-		snapshots: make(chan []jobworkflow.TaskHandle, 4),
-		requests:  make(chan jobworkflow.FindTasksWaitingRequest, 10),
+		snapshots: make(chan []jobdb.JobSummary, 4),
+		requests:  make(chan jobdb.ListJobsRequest, 10),
 	}
-	engine.snapshots <- []jobworkflow.TaskHandle{inputStreamTask{ordinal: 7}}
-	engine.snapshots <- []jobworkflow.TaskHandle{inputStreamTask{ordinal: 7}} // no duplicate event
-	engine.snapshots <- []jobworkflow.TaskHandle{inputStreamTask{ordinal: 9}} // no empty snapshot between prompts
-	engine.snapshots <- nil                                                   // expiry/cancellation by another process
+	engine.snapshots <- streamSummary(7)
+	engine.snapshots <- streamSummary(7) // no duplicate event
+	engine.snapshots <- streamSummary(9) // no empty snapshot between prompts
+	engine.snapshots <- nil              // expiry/cancellation by another process
 	s := &Server{engine: engine}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.handleInputStream(w, mux.SetURLVars(r, map[string]string{"projectId": "tenant-a"}))
@@ -93,16 +87,16 @@ func TestInputStreamTracksSequentialTasksAndRemoval(t *testing.T) {
 	}
 	for _, ordinal := range []float64{7, 9} {
 		event, data := next()
-		if event != "input_pending" || data["id"] != "same-job" || data["task_ordinal"] != ordinal {
+		if event != "inputs_changed" || len(data["inputs"].([]any)) != 1 || data["inputs"].([]any)[0].(map[string]any)["client_payload_revision"] != ordinal {
 			t.Fatalf("expected pending task %v, got %s %v", ordinal, event, data)
 		}
 	}
-	if event, data := next(); event != "input_completed" || data["jobId"] != "same-job" {
+	if event, data := next(); event != "inputs_changed" || len(data["inputs"].([]any)) != 0 {
 		t.Fatalf("expected removed input, got %s %v", event, data)
 	}
 	for range 4 {
 		req := <-engine.requests
-		if !reflect.DeepEqual(req.TenantIds, []string{"tenant-a"}) || req.JobType != "recipe" || req.TaskType != "input:collect_user_input" {
+		if !reflect.DeepEqual(req.TenantIds, []string{"tenant-a"}) || !reflect.DeepEqual(req.JobTasks, []jobdb.JobTaskFilter{{JobType: "recipe", TaskType: "input:collect_user_input"}}) {
 			t.Fatalf("incorrect task filter: %+v", req)
 		}
 	}

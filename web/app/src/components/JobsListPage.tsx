@@ -5,7 +5,7 @@ import { Alert, Button, Form, Input, Modal, Select, Space, Spin, Table, Typograp
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { listCells, listJobs, submitJob } from '@colony2/shared/api';
-import type { CortexCell, RecipeJob } from '@colony2/shared/types';
+import type { CortexCell, RecipeJobSummary } from '@colony2/shared/types';
 import { jobStatus, schedulingStatuses } from '../utils/jobStatus';
 import { jobTime } from './JobListDetails';
 import GoalJobOverview, { AttemptStatus } from './GoalJobOverview';
@@ -17,8 +17,8 @@ import './JobsListPage.css';
 
 const { Text, Title } = Typography;
 type Props = { projectId: string; goalId?: string };
-type JobGroup = { key: string; goalId?: string; jobs: RecipeJob[] };
-type Row = { key: string; group: JobGroup; job: RecipeJob };
+type JobGroup = { key: string; goalId?: string; jobs: RecipeJobSummary[] };
+type Row = { key: string; group: JobGroup; job: RecipeJobSummary };
 export default function JobsListPage(props: Props) {
   return <JobsList key={`${props.projectId}/${props.goalId || ''}`} {...props} />;
 }
@@ -33,7 +33,7 @@ function JobsList({ projectId, goalId }: Props) {
     : location.pathname + location.search;
   const navigationState = (id?: string) => ({ goalsReturnTo, goalId: id,
     ...(goalId ? { goalReturnTo: location.pathname + location.search } : {}) });
-  const [jobs, setJobs] = useState<RecipeJob[]>([]);
+  const [jobs, setJobs] = useState<RecipeJobSummary[]>([]);
   const [cells, setCells] = useState<CortexCell[]>([]);
   const [nextPage, setNextPage] = useState<string>();
   const [loading, setLoading] = useState(false);
@@ -44,6 +44,7 @@ function JobsList({ projectId, goalId }: Props) {
   const [operation, setOperation] = useState<{ action: JobAction; jobIds: string[] } | null>(null);
   const [refresh, setRefresh] = useState(0);
   const loadVersion = useRef(0);
+  const listRequest = useRef<{ key: string; promise: Promise<[CortexCell[], Awaited<ReturnType<typeof listJobs>>]> }>();
   const [params, setParams] = useSearchParams();
   const filters = readJobFilters(params);
   const pageToken = params.get('pageToken') || undefined;
@@ -58,9 +59,11 @@ function JobsList({ projectId, goalId }: Props) {
     const version = ++loadVersion.current;
     setLoading(true); setError(undefined);
     (async () => {
-      const [cellData, page] = await Promise.all([
+      const key = JSON.stringify([projectId, goalId, statusesKey, filters.cell, pageToken, refresh]);
+      if (listRequest.current?.key !== key) listRequest.current = { key, promise: Promise.all([
         listCells(projectId), listJobs(projectId, { goal: goalId, status: goalId ? [] : JSON.parse(statusesKey), cell: goalId ? undefined : filters.cell, pageToken }),
-      ]);
+      ]) };
+      const [cellData, page] = await listRequest.current.promise;
       if (version !== loadVersion.current) return;
       setCells(cellData); setJobs(page.jobs); setNextPage(page.next_page_token);
       setSelectedIds(previous => previous.filter(id => page.jobs.some(job => job.job_id === id)));
@@ -75,7 +78,7 @@ function JobsList({ projectId, goalId }: Props) {
   const groups = useMemo(() => {
     const grouped = new Map<string, JobGroup>();
     for (const job of jobs) {
-      const goals = goalId ? [goalId] : [...new Set([job.goal_id, ...(job.other_goal_ids || [])].filter((id): id is string => !!id))];
+      const goals = goalId ? [goalId] : job.goal_id ? [job.goal_id] : [];
       for (const id of goals.length ? goals : [undefined]) {
         const key = id ? `goal:${id}` : `job:${job.job_id}`;
         const group = grouped.get(key) || { key, goalId: id, jobs: [] };
@@ -93,7 +96,7 @@ function JobsList({ projectId, goalId }: Props) {
       statuses.forEach(status => query.append('status', status));
     });
   };
-  const fullPrompt = (group: JobGroup) => latestActiveJob(group.jobs).prompt || group.jobs.find(job => job.prompt?.trim())?.prompt;
+  const fullPrompt = (group: JobGroup) => latestActiveJob(group.jobs).title || latestActiveJob(group.jobs).prompt || group.jobs.find(job => job.prompt?.trim())?.prompt;
   const setSelection = (ids: string[], selected: boolean) => setSelectedIds(previous => selected
     ? [...new Set([...previous, ...ids])] : previous.filter(id => !ids.includes(id)));
   const columns: ColumnsType<Row> = [
@@ -103,7 +106,6 @@ function JobsList({ projectId, goalId }: Props) {
       </Link>
       {group.jobs.length > 1 && <Text type="secondary" className="goal-attempt-count">{group.jobs.length} attempts on this page</Text>}
       <JobWaitLinks job={job} projectId={projectId} />
-      {job.completion_detail && <Text type={job.completion_status?.startsWith('failed_') ? 'danger' : 'secondary'} className="job-completion">{job.completion_detail}</Text>}
     </Space> },
     { title: 'Status', width: 160, render: (_, { job, group }) => <Link to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)} aria-label={`Job ${job.job_id}: ${jobStatus(job).label}`}><AttemptStatus job={job} /></Link> },
     { title: 'Cell', width: 120, render: (_, { job }) => cellLabel(job.cell_name) },
@@ -146,7 +148,7 @@ function JobsList({ projectId, goalId }: Props) {
       {error && <Alert type="error" showIcon message={error} />}
       {goalId ? <Spin spinning={loading}>
         <section aria-label="Goal overview">
-          <GoalJobOverview jobs={jobs} projectId={projectId} navigationState={navigationState(goalId)} />
+          <GoalJobOverview jobs={jobs} projectId={projectId} refresh={refresh} navigationState={navigationState(goalId)} />
         </section>
       </Spin> : <>
         <Space wrap>
@@ -171,8 +173,8 @@ function JobsList({ projectId, goalId }: Props) {
               if (open) ids.add(row.key); else ids.delete(row.key);
               query.delete('expanded'); ids.forEach(id => query.append('expanded', id));
             }, true),
-            expandedRowRender: row => <GoalJobOverview jobs={row.group.jobs} projectId={projectId} navigationState={navigationState(row.group.goalId)}
-              selectedIds={selectedIds} onSelect={setSelection} />,
+            expandedRowRender: row => (expanded.includes(row.key) || row.group.jobs.some(job => expanded.includes(job.job_id))) ? <GoalJobOverview jobs={row.group.jobs} projectId={projectId} refresh={refresh} navigationState={navigationState(row.group.goalId)}
+              selectedIds={selectedIds} onSelect={setSelection} /> : null,
             columnWidth: 40,
           }} />
       </>}

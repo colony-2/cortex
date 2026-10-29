@@ -11,47 +11,58 @@ import (
 	"strings"
 
 	"github.com/colony-2/c2j/pkg/input"
+	"github.com/colony-2/c2j/pkg/recipejob"
 	"github.com/colony-2/jobdb/pkg/jobdb"
 	"github.com/gorilla/mux"
 )
 
 // Keep review validation, request identity, and persistence in c2j.
 type inputRuntime interface {
-	ListPendingInputs(context.Context, string) ([]input.PendingInput, error)
 	GetForm(context.Context, string, string) (input.InputForm, error)
 	SubmitFormResponse(context.Context, string, string, input.FormSubmission, input.Actor) (input.Output, error)
 }
 
+// Pending rows intentionally contain only compact job metadata. Form kind,
+// documents and request identity belong to selected-item inspection.
 type pendingInputSummary struct {
-	ID            string `json:"id"`
-	Kind          string `json:"kind,omitempty"`
-	Title         string `json:"title,omitempty"`
-	RequestID     string `json:"request_id,omitempty"`
-	DocumentCount int    `json:"document_count,omitempty"`
+	ID string `json:"id"`
+	recipejob.RecipeJob
+}
+
+func (s *Server) pendingInputSummaries(ctx context.Context, tenant string) ([]pendingInputSummary, error) {
+	inputs := []pendingInputSummary{}
+	token := ""
+	for {
+		page, err := s.engine.ListJobs(ctx, jobdb.ListJobsRequest{
+			TenantIds: []string{tenant}, Stores: []jobdb.JobStore{jobdb.JobStoreActive},
+			Statuses: []jobdb.JobStatus{jobdb.JobStatusReady},
+			JobTasks: []jobdb.JobTaskFilter{{JobType: "recipe", TaskType: "input:collect_user_input"}},
+			PageSize: jobdb.MaxListJobsPageSize, PageToken: token,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, summary := range page.Jobs {
+			job, ok, err := recipejob.RecipeJobFromSummary(summary)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				inputs = append(inputs, pendingInputSummary{ID: job.JobID, RecipeJob: job})
+			}
+		}
+		if page.NextPageToken == "" {
+			return inputs, nil
+		}
+		token = page.NextPageToken
+	}
 }
 
 func (s *Server) handlePendingInputs(w http.ResponseWriter, r *http.Request) {
-	tenant := s.tenantID(r)
-	pending, err := s.inputs.ListPendingInputs(r.Context(), tenant)
+	summaries, err := s.pendingInputSummaries(r.Context(), s.tenantID(r))
 	if err != nil {
 		writeError(w, err)
 		return
-	}
-	summaries := make([]pendingInputSummary, 0, len(pending))
-	for _, item := range pending {
-		form, err := s.inputs.GetForm(r.Context(), tenant, item.Id)
-		if errors.Is(err, input.ErrInputNotPending) {
-			continue
-		}
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		title := form.Title
-		if title == "" {
-			title = form.Question
-		}
-		summaries = append(summaries, pendingInputSummary{ID: item.Id, Kind: form.Kind, Title: title, RequestID: form.RequestID, DocumentCount: len(form.Documents)})
 	}
 	writeJSON(w, http.StatusOK, summaries)
 }

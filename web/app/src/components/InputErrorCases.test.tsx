@@ -51,10 +51,10 @@ describe('Input Pages - Error Cases', () => {
       setupMockInputs(projectId, [], []); // No inputs available
 
       render(
-        <MemoryRouter initialEntries={[`/project/test-project-123/inputs/job-error-test`]}>
+        <MemoryRouter initialEntries={[`/project/test-project-123/reviews/job-error-test`]}>
           <Routes>
             <Route
-              path="/project/:projectId/inputs/:jobId"
+              path="/project/:projectId/reviews/:jobId"
               element={
                 <InputActivityProvider>
                   <InputDetailPage projectId={projectId} />
@@ -67,7 +67,7 @@ describe('Input Pages - Error Cases', () => {
 
       await waitFor(
       () => {
-        expect(screen.getByText(/Failed to load input details/i)).toBeInTheDocument();
+        expect(screen.getByText(/Failed to load request details/i)).toBeInTheDocument();
       },
       { timeout: 3000 }
     );
@@ -98,7 +98,7 @@ describe('Input Pages - Error Cases', () => {
       // Should show empty state (graceful degradation)
       await waitFor(
       () => {
-        expect(screen.getByText('No pending inputs')).toBeInTheDocument();
+        expect(screen.getByText('No pending reviews')).toBeInTheDocument();
       },
       { timeout: 3000 }
     );
@@ -116,10 +116,10 @@ describe('Input Pages - Error Cases', () => {
       );
 
       render(
-        <MemoryRouter initialEntries={[`/project/test-project-123/inputs/job-error-test`]}>
+        <MemoryRouter initialEntries={[`/project/test-project-123/reviews/job-error-test`]}>
           <Routes>
             <Route
-              path="/project/:projectId/inputs/:jobId"
+              path="/project/:projectId/reviews/:jobId"
               element={
                 <InputActivityProvider>
                   <InputDetailPage projectId={projectId} />
@@ -191,7 +191,7 @@ describe('Input Pages - Error Cases', () => {
 
       // Should handle gracefully without crashing
       // The page should still be rendered (either showing connecting or empty state)
-      const elements = screen.queryAllByText(/Pending Inputs|Connecting to input stream/i);
+      const elements = screen.queryAllByText(/Reviews|Connecting to input stream/i);
       expect(elements.length).toBeGreaterThan(0);
     });
 
@@ -211,7 +211,7 @@ describe('Input Pages - Error Cases', () => {
 
       await waitFor(
       () => {
-        expect(screen.getByText('No pending inputs')).toBeInTheDocument();
+        expect(screen.getByText('No pending reviews')).toBeInTheDocument();
       },
       { timeout: 3000 }
     );
@@ -220,17 +220,17 @@ describe('Input Pages - Error Cases', () => {
       sse.emitError('Test error message');
 
       // Should continue working (error should be logged but not crash)
-      expect(screen.getByText('No pending inputs')).toBeInTheDocument();
+      expect(screen.getByText('No pending reviews')).toBeInTheDocument();
     });
   });
 
   describe('Edge Cases', () => {
     it('should handle missing jobId parameter', async () => {
       render(
-        <MemoryRouter initialEntries={[`/project/test-project-123/inputs/`]}>
+        <MemoryRouter initialEntries={[`/project/test-project-123/reviews/`]}>
           <Routes>
             <Route
-              path="/project/:projectId/inputs/"
+              path="/project/:projectId/reviews/"
               element={
                 <InputActivityProvider>
                   <InputDetailPage projectId={projectId} />
@@ -262,10 +262,10 @@ describe('Input Pages - Error Cases', () => {
       setupMockInputs(projectId, [createMockPendingInput(jobId)], [emptyFormDetails]);
 
       render(
-        <MemoryRouter initialEntries={[`/project/test-project-123/inputs/job-error-test`]}>
+        <MemoryRouter initialEntries={[`/project/test-project-123/reviews/job-error-test`]}>
           <Routes>
             <Route
-              path="/project/:projectId/inputs/:jobId"
+              path="/project/:projectId/reviews/:jobId"
               element={
                 <InputActivityProvider>
                   <InputDetailPage projectId={projectId} />

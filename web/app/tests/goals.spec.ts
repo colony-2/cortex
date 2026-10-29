@@ -6,29 +6,40 @@ test('renders a single compact row or grouped attempts with metadata and waiting
   const first = { tenant_id: 'goal-layout', job_id: 'first', goal_id: 'shared-goal', prompt: 'Build a reliable release dashboard', recipe: 'build', job_type: 'recipe', cell_name: 'platform', repo: 'https://github.com/example/platform.git', git_ref: 'main', submitted_at: created, created_at: created, store: 'ACTIVE', status: 'READY', next_route: { jobType: 'recipe', taskType: 'input:collect_user_input' }, parent: { job_id: 'coordinator', tenant_id: 'goal-layout' }, execution: { status: 'published', source: 'metadata', published: true, demand: { memory: '4Gi' } } };
   const second = { ...first, job_id: 'second', store: 'ARCHIVED', status: 'COMPLETED', completion_status: 'failed_app', completion_detail: 'sequence node 0 failed: sequence node 2 failed: The deployment check failed' };
   const solo = { ...first, job_id: 'solo', goal_id: 'solo-goal', prompt: 'Wait for deployment approval', status: 'PENDING_JOBS', next_route: undefined, parent: undefined, blocking_wait: { waitId: 'wait', state: 'PENDING', dependencies: [{ target: { goalId: 'dependency' }, condition: 'success', state: 'PENDING' }, { target: { jobId: 'job-dependency' }, condition: 'complete', state: 'PENDING' }] } };
+  const compact = (job: any) => {
+    const { execution, completion_detail, blocking_wait, ...summary } = job;
+    return { ...summary, client_payload_revision: 8, ...(blocking_wait ? { blocking_wait_summary: { waitId: blocking_wait.waitId } } : {}) };
+  };
+  const detailsRead: string[] = [];
+  await page.route('**/api/projects/goal-layout/jobs/*', route => {
+    const id = new URL(route.request().url()).pathname.split('/').pop()!;
+    detailsRead.push(id);
+    return route.fulfill({ json: [first, second, solo].find(job => job.job_id === id) });
+  });
   let reads = 0;
   await page.route('**/api/projects/goal-layout/jobs?*', route => {
     reads++;
     const goal = new URL(route.request().url()).searchParams.get('goal');
-    return route.fulfill({ json: { jobs: goal === 'shared-goal' ? [first, second] : [first, second, solo] } });
+    return route.fulfill({ json: { jobs: goal === 'shared-goal' ? [first, second].map(compact) : [first, second, solo].map(compact) } });
   });
   await page.goto('/project/goal-layout/goals');
   await expect(page.getByRole('link', { name: first.prompt, exact: true })).toHaveCount(1);
   await expect(page.getByRole('link', { name: 'Wait for deployment approval', exact: true })).toBeVisible();
   const row = page.getByRole('link', { name: first.prompt, exact: true }).locator('xpath=ancestor::tr');
-  await expect(row.getByRole('link', { name: 'Open input/review' })).toHaveAttribute('href', '/project/goal-layout/inputs/first');
+  await expect(row.getByRole('link', { name: 'Open input/review' })).toHaveAttribute('href', '/project/goal-layout/reviews/first');
   await expect(row.getByRole('link', { name: 'Parent' })).toHaveAttribute('href', '/project/goal-layout/jobs/coordinator/story');
   await expect(row.getByRole('link', { name: 'platform' })).toHaveAttribute('href', first.repo);
-  await expect(page.getByRole('link', { name: 'Goal 1' })).toHaveAttribute('href', '/project/goal-layout/goals/dependency');
-  await expect(page.getByRole('link', { name: 'Execution 2' })).toHaveAttribute('href', '/project/goal-layout/jobs/job-dependency/story');
+  await expect(page.getByText('Waiting for dependencies')).toBeVisible();
+  expect(detailsRead).toEqual([]);
   const initialReads = reads;
   await row.getByRole('button', { name: 'Expand row', exact: true }).click();
   await page.getByText('Execution requirements', { exact: true }).click();
   await expect(page.getByText('Execution requirements', { exact: true }).locator('..')).toContainText('4Gi');
   expect(reads).toBe(initialReads);
+  expect(detailsRead).toEqual(['first']);
   const attempts = page.getByRole('region', { name: 'Attempts', exact: true }).getByRole('table');
   await expect(attempts).toHaveCount(1);
-  await expect(attempts.getByText(second.completion_detail, { exact: true })).toBeVisible();
+  await expect(attempts.getByText(second.completion_detail, { exact: true })).toHaveCount(0);
   await expect(page.getByText('shared-goal', { exact: true })).toHaveCount(0);
   await page.screenshot({ path: '/tmp/cortex-goals-list.png', fullPage: true });
   await row.getByRole('link', { name: 'Goal overview' }).click();
@@ -104,12 +115,13 @@ for (const cellName of [undefined, '', '  \n ', 'self', 'platform']) {
       tenant_id: 'cell-label', job_id, goal_id: 'goal', prompt: 'Cell identity goal', cell_name: cellName,
       status: 'READY', store: 'ACTIVE', recipe: 'build', job_type: 'recipe', created_at: '2026-10-25T10:00:00Z',
     })) } }));
+    await page.route('**/api/projects/cell-label/jobs/first', route => route.fulfill({ json: { job_id: 'first', cell_name: cellName, status: 'READY', store: 'ACTIVE' } }));
     await page.goto('/project/cell-label/goals');
     const label = cellName?.trim() ? cellName : 'Unknown cell';
     const row = page.getByRole('link', { name: 'Cell identity goal', exact: true }).locator('xpath=ancestor::tr');
     await expect(row.getByText(label, { exact: true })).toBeVisible();
     await row.getByRole('link', { name: 'Goal overview' }).click();
     await expect(page.getByRole('region', { name: 'Attempts' }).getByText(label, { exact: true })).toHaveCount(2);
-    expect(detailReads).toBe(0);
+    await expect.poll(() => detailReads).toBe(1);
   });
 }

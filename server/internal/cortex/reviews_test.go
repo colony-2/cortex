@@ -3,7 +3,6 @@ package cortex
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"mime/multipart"
 	"net/http/httptest"
@@ -66,17 +65,6 @@ func TestReviewHTTPAdapters(t *testing.T) {
 	router.HandleFunc("/{projectId}/pending", s.handlePendingInputs)
 	router.HandleFunc("/{projectId}/reviews/{jobId}/documents", s.handleReviewDocument)
 	router.HandleFunc("/{projectId}/reviews/{jobId}/respond", s.handleReviewResponse)
-	t.Run("summaries classify forms and skip completed inputs", func(t *testing.T) {
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, httptest.NewRequest("GET", "/tenant-a/pending", nil))
-		var items []pendingInputSummary
-		if err := json.Unmarshal(w.Body.Bytes(), &items); err != nil {
-			t.Fatal(err)
-		}
-		if w.Code != 200 || len(items) != 2 || items[0].Kind != "" || items[1].Kind != "review" || items[1].DocumentCount != 1 || items[1].RequestID != "request-2" {
-			t.Fatalf("%d %s", w.Code, w.Body.String())
-		}
-	})
 	t.Run("reads original producer in current tenant", func(t *testing.T) {
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, httptest.NewRequest("GET", "/tenant-a/reviews/review/documents?request_id=request-2&document_id=design%2Fid", nil))

@@ -154,11 +154,11 @@ describe('Input Flow - Complete E2E Integration', () => {
     });
 
     // Step 4: User clicks Open Job button
-    const openButton = screen.getByRole('button', { name: /open job/i });
+    const openButton = screen.getByRole('button', { name: /open review/i });
     await user.click(openButton);
 
     // Should navigate to job story with prompt open
-    expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/jobs/${jobId}/story?input=1`);
+    expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/reviews/${jobId}`);
 
     // Cleanup and render job story page
     unmount();
@@ -281,10 +281,10 @@ describe('Input Flow - Complete E2E Integration', () => {
     expect(screen.getByText(`Job ID: ${jobId}`)).toBeInTheDocument();
 
     // Click open should still work
-    const openButton = screen.getByRole('button', { name: /open job/i });
+    const openButton = screen.getByRole('button', { name: /open review/i });
     await user.click(openButton);
 
-    expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/jobs/${jobId}/story?input=1`);
+    expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/reviews/${jobId}`);
     unmount();
   });
 
@@ -306,7 +306,7 @@ describe('Input Flow - Complete E2E Integration', () => {
 
     await waitFor(
       () => {
-      expect(screen.getByText('No pending inputs')).toBeInTheDocument();
+      expect(screen.getByText('No pending reviews')).toBeInTheDocument();
     },
       { timeout: 3000 }
     );

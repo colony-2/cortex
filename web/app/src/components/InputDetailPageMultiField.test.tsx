@@ -47,10 +47,10 @@ describe('InputDetailPage - Multi-field Forms', () => {
 
   const renderComponent = () => {
     return render(
-      <MemoryRouter initialEntries={[`/project/${projectId}/inputs/${jobId}`]}>
+      <MemoryRouter initialEntries={[`/project/${projectId}/reviews/${jobId}`]}>
         <Routes>
           <Route
-            path="/project/:projectId/inputs/:jobId"
+            path="/project/:projectId/reviews/:jobId"
             element={
               <InputActivityProvider>
                 <InputDetailPage projectId={projectId} />
@@ -183,7 +183,7 @@ describe('InputDetailPage - Multi-field Forms', () => {
     // Should navigate to job details
     await waitFor(
       () => {
-      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/jobs/${jobId}/story`);
+      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/reviews`);
     });
   });
 
@@ -254,7 +254,7 @@ describe('InputDetailPage - Multi-field Forms', () => {
 
     await waitFor(
       () => {
-      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/jobs/${jobId}/story`);
+      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/reviews`);
     });
   });
 

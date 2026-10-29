@@ -53,7 +53,7 @@ export default function JobListDetails({ job, projectId, showPrompt = true, navi
 
   return <Space direction="vertical" size="middle" style={{ width: '100%', overflowWrap: 'anywhere' }}>
     {showPrompt && job.prompt && <div style={{ whiteSpace: 'pre-wrap' }}>{job.prompt}</div>}
-    <JobWaitLinks job={job} projectId={projectId} />
+    <JobWaitLinks job={job} projectId={projectId} details={job} />
     {job.blocking_wait?.dependencies.map((dependency, index) => <div key={index}>
       {dependency.target.goalId ? <Link to={goalPath(projectId, dependency.target.goalId)}>View goal</Link> : dependency.target.jobId ? jobLink(dependency.target.jobId) : null}
       {` · ${dependency.condition} · ${dependency.state}`}

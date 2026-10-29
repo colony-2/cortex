@@ -36,7 +36,7 @@ Primary routes:
 
 - `/project/:projectId/jobs`
 - `/project/:projectId/jobs/:jobId/story`
-- `/project/:projectId/inputs`
+- `/project/:projectId/reviews`
 - `/project/:projectId/cells`
 
 Use `@colony2/shared` for API calls and input activity state.

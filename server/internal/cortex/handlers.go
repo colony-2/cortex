@@ -212,10 +212,15 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 // return an empty story for a missing job instead of a typed not-found error.
 func (s *Server) requireJob(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		_, err := recipejob.GetRecipeJob(r.Context(), s.engine, recipejob.GetRecipeJobRequest{
+		page, err := recipejob.ListRecipeJobs(r.Context(), s.engine, recipejob.ListRecipeJobsRequest{
 			TenantID: s.tenantID(r),
-			JobID:    mux.Vars(r)["jobId"],
+			JobIDs:   []string{mux.Vars(r)["jobId"]},
+			Stores:   []jobdb.JobStore{jobdb.JobStoreActive, jobdb.JobStoreArchived},
+			PageSize: 1,
 		})
+		if err == nil && len(page.Jobs) == 0 {
+			err = recipejob.ErrJobNotFound
+		}
 		if err != nil {
 			writeError(w, err)
 			return

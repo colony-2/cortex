@@ -35,32 +35,26 @@ describe('PendingInputsListPage', () => {
     vi.clearAllMocks();
   });
 
-  const renderComponent = (reviews = false) => {
+  const renderComponent = () => {
     return render(
       <BrowserRouter>
         <InputActivityProvider>
-          <PendingInputsListPage projectId={projectId} reviews={reviews} />
+          <PendingInputsListPage projectId={projectId} />
         </InputActivityProvider>
       </BrowserRouter>
     );
   };
 
-  it.each([false, true])('separates reviews from ordinary inputs (reviews: %s)', async (reviews) => {
-    setupMockInputs(projectId, [
-      { id: 'ordinary' },
-      { id: 'review', kind: 'review', title: 'Review the design', document_count: 2 },
-    ], []);
-    renderComponent(reviews);
-    const sse = await waitForSSEConnection();
-    sse.emitConnected();
-    await screen.findByText(reviews ? 'Review the design' : 'Input Request');
-    expect(screen.queryByText(reviews ? 'Input Request' : 'Review the design')).not.toBeInTheDocument();
-    expect(screen.queryByText(reviews ? 'Job ID: ordinary' : 'Job ID: review · 2 documents')).not.toBeInTheDocument();
-  });
-
-  it('should show loading state initially', () => {
+  it('shows all requests together without fetching job details', async () => {
+    setupMockInputs(projectId, [{ id: 'ordinary' }, { id: 'review', title: 'Review the design', cell_name: 'platform' }], []);
+    const reads = vi.fn();
+    server.use(http.get('http://localhost:8080/api/projects/:projectId/jobs/:jobId', () => { reads(); return HttpResponse.error(); }));
     renderComponent();
-    expect(screen.getByText('Connecting to input stream...')).toBeInTheDocument();
+    (await waitForSSEConnection()).emitConnected();
+    expect(await screen.findByText('Job ID: ordinary')).toBeVisible();
+    expect(screen.getByText('Job ID: review')).toBeVisible();
+    expect(screen.getAllByRole('button', { name: 'Open Review' })).toHaveLength(2);
+    expect(reads).not.toHaveBeenCalled();
   });
 
   it('should show empty state when no pending inputs', async () => {
@@ -72,10 +66,10 @@ describe('PendingInputsListPage', () => {
     sse.emitConnected();
 
     await waitFor(() => {
-      expect(screen.getByText('No pending inputs')).toBeInTheDocument();
+      expect(screen.getByText('No pending reviews')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Pending input requests from jobs will appear here')).toBeInTheDocument();
+    expect(screen.getByText('Reviews and input requests from jobs will appear here')).toBeInTheDocument();
   });
 
   it('should display list of pending inputs', async () => {
@@ -102,7 +96,7 @@ describe('PendingInputsListPage', () => {
       { timeout: 3000 }
     );
 
-    expect(screen.getAllByText('Input Request').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText('Review').length).toBeGreaterThanOrEqual(2);
   });
 
   it('should show refresh button', async () => {
@@ -129,7 +123,7 @@ describe('PendingInputsListPage', () => {
 
     await waitFor(
       () => {
-        const viewButtons = screen.getAllByRole('button', { name: /open job/i });
+        const viewButtons = screen.getAllByRole('button', { name: /open review/i });
         expect(viewButtons).toHaveLength(1);
       },
       { timeout: 3000 }
@@ -144,7 +138,7 @@ describe('PendingInputsListPage', () => {
     sse.emitConnected();
 
     await waitFor(() => {
-      expect(screen.getByText('Pending Inputs')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Reviews' })).toBeInTheDocument();
     });
   });
 });

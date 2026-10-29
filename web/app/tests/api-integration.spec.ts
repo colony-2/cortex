@@ -129,9 +129,9 @@ test('keeps deep-linked tenant, navigation, and live input activity in sync', as
   await expect(rows).toHaveCount(2);
   await page.getByPlaceholder('Search cells').fill('platform');
   await expect(rows).toHaveCount(1);
-  await page.getByRole('link', { name: 'Pending Inputs' }).click();
-  await expect(page).toHaveURL(new RegExp(`/project/${tenant}/inputs$`));
-  await expect(page.getByText('No pending inputs')).toBeVisible();
+  await page.getByRole('link', { name: 'Reviews' }).click();
+  await expect(page).toHaveURL(new RegExp(`/project/${tenant}/reviews$`));
+  await expect(page.getByText('No pending reviews')).toBeVisible();
 
   await page.getByLabel('Tenant ID').fill('browser-other');
   await page.getByRole('button', { name: 'Use', exact: true }).click();
@@ -155,8 +155,8 @@ test('opens the tenant from the server connection config without a URL override'
   await expect(page).toHaveURL(new RegExp(`/project/${tenant}/jobs$`));
   await expect(page.getByLabel('Tenant ID')).toHaveValue(tenant);
   await expect(page.getByRole('heading', { name: 'Goals', exact: true })).toBeVisible();
-  await page.getByRole('link', { name: 'Pending Inputs' }).click();
-  await expect(page.getByText('No pending inputs')).toBeVisible();
+  await page.getByRole('link', { name: 'Reviews' }).click();
+  await expect(page.getByText('No pending reviews')).toBeVisible();
 });
 
 // Real downloads in both projects; production additionally crosses HTTP JobDB and SQLite.
@@ -183,8 +183,8 @@ test('downloads persisted job chapters as JSON without changing the story route'
     const leasePath = `${backend}/leases/${lease.leaseId}`;
     const headers = { 'X-JobDB-Lease-Token': lease.leaseToken };
     for (const [index, record] of [
-      { version: 1, kind: 'header', versions: { execution_pattern_version: 1, jobdb_version: 'test' } },
-      { version: 1, kind: 'restart', id: 'retained-attempt', descriptor: [{ version: 1, kind: 'scope', id: 'past-scope' }] },
+      { version: 4, kind: 'header', versions: { execution_pattern_version: 4, jobdb_version: 'test' } },
+      { version: 4, kind: 'restart', id: 'retained-attempt', source: { tenantId: tenant, jobId }, descriptor: [{ version: 4, kind: 'scope', id: 'past-scope', descriptor: { restart: true } }] },
     ].entries()) {
       const response = await request.post(`${leasePath}/add_chapter`, {
         headers,

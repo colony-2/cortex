@@ -47,10 +47,10 @@ describe('InputDetailPage - Single Question Flow', () => {
 
   const renderComponent = () => {
     return render(
-      <MemoryRouter initialEntries={[`/project/${projectId}/inputs/${jobId}`]}>
+      <MemoryRouter initialEntries={[`/project/${projectId}/reviews/${jobId}`]}>
         <Routes>
           <Route
-            path="/project/:projectId/inputs/:jobId"
+            path="/project/:projectId/reviews/:jobId"
             element={
               <InputActivityProvider>
                 <InputDetailPage projectId={projectId} />
@@ -66,7 +66,7 @@ describe('InputDetailPage - Single Question Flow', () => {
     setupMockInputs(projectId, [createMockPendingInput(jobId)], [createMockSingleQuestionDetails(jobId)]);
     renderComponent();
 
-    expect(screen.getByText('Loading input request...')).toBeInTheDocument();
+    expect(screen.getByText('Loading request...')).toBeInTheDocument();
   });
 
   it('should display input details for single question', async () => {
@@ -124,7 +124,7 @@ describe('InputDetailPage - Single Question Flow', () => {
     // Should navigate to job details
     await waitFor(
       () => {
-      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/jobs/${jobId}/story`);
+      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/reviews`);
     });
 
     // Verify input was removed from store
@@ -138,7 +138,7 @@ describe('InputDetailPage - Single Question Flow', () => {
 
     await waitFor(
       () => {
-      expect(screen.getByRole('button', { name: /back to inputs/i },
+      expect(screen.getByRole('button', { name: /back to reviews/i },
       { timeout: 3000 }
     )).toBeInTheDocument();
     });
@@ -151,16 +151,16 @@ describe('InputDetailPage - Single Question Flow', () => {
 
     await waitFor(
       () => {
-      const backButton = screen.getByRole('button', { name: /back to inputs/i },
+      const backButton = screen.getByRole('button', { name: /back to reviews/i },
       { timeout: 3000 }
     );
       expect(backButton).toBeInTheDocument();
     });
 
-    const backButton = screen.getByRole('button', { name: /back to inputs/i });
+    const backButton = screen.getByRole('button', { name: /back to reviews/i });
     await user.click(backButton);
 
-    expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/inputs`);
+    expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/reviews`);
   });
 
   it('should show cancel button in form', async () => {
@@ -191,7 +191,7 @@ describe('InputDetailPage - Single Question Flow', () => {
     const cancelButton = screen.getByRole('button', { name: /cancel/i });
     await user.click(cancelButton);
 
-    expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/inputs`);
+    expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/reviews`);
   });
 
   it('should show error when input not found', async () => {
@@ -200,7 +200,7 @@ describe('InputDetailPage - Single Question Flow', () => {
 
     await waitFor(
       () => {
-      expect(screen.getByText(/Failed to load input details/i)).toBeInTheDocument();
+      expect(screen.getByText(/Failed to load request details/i)).toBeInTheDocument();
     },
       { timeout: 3000 }
     );
