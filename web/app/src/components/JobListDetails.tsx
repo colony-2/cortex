@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react';
 import { Alert, Descriptions, Space, Typography } from 'antd';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
-import type { RecipeJob } from '@colony2/shared/types';
+import type { RecipeJob, RecipeJobSummary } from '@colony2/shared/types';
+import { stringifyJobJSON } from '@colony2/shared/jobJSON';
 import dayjs from 'dayjs';
 import { jobFilterSearch } from '../utils/jobFilters';
 import JobWaitLinks, { goalPath } from './JobWaitLinks';
+import JobExecutionRequirements from './JobExecutionRequirements';
 
 const { Text } = Typography;
 
@@ -13,7 +15,7 @@ export function jobTime(value?: string) {
   return dayjs(value).format('YYYY-MM-DD HH:mm:ss Z');
 }
 
-export default function JobListDetails({ job, projectId, showPrompt = true, navigationState }: { job: RecipeJob; projectId: string; showPrompt?: boolean; navigationState?: Record<string, unknown> }) {
+export default function JobListDetails({ job, inspection, projectId, showPrompt = true, navigationState }: { job: RecipeJobSummary; inspection?: RecipeJob; projectId: string; showPrompt?: boolean; navigationState?: Record<string, unknown> }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const detailKey = (section: string) => JSON.stringify([job.job_id, section]);
@@ -48,13 +50,14 @@ export default function JobListDetails({ job, projectId, showPrompt = true, navi
   add('Parent job', job.parent?.job_id ? jobLink(job.parent.job_id, job.parent.tenant_id || projectId, 'View parent execution') : undefined);
   add('Parent step', job.parent?.op_step);
   add('Cancellation', job.cancel_requested ? 'Requested' : undefined);
-  add('Wait state', job.blocking_wait?.state);
-  add('Wait deadline', jobTime(job.blocking_wait?.deadline));
+  add('Wait state', inspection?.blocking_wait?.state);
+  add('Wait deadline', jobTime(job.blocking_wait_summary?.deadline || inspection?.blocking_wait?.deadline));
+  add('Other goals', inspection?.other_goal_ids?.length ? <Space wrap>{inspection.other_goal_ids.map(id => <Link key={id} to={goalPath(projectId, id)}>{id}</Link>)}</Space> : undefined);
 
   return <Space direction="vertical" size="middle" style={{ width: '100%', overflowWrap: 'anywhere' }}>
     {showPrompt && job.prompt && <div style={{ whiteSpace: 'pre-wrap' }}>{job.prompt}</div>}
-    <JobWaitLinks job={job} projectId={projectId} details={job} />
-    {job.blocking_wait?.dependencies.map((dependency, index) => <div key={index}>
+    <JobWaitLinks job={job} projectId={projectId} details={inspection} />
+    {inspection?.blocking_wait?.dependencies.map((dependency, index) => <div key={index}>
       {dependency.target.goalId ? <Link to={goalPath(projectId, dependency.target.goalId)}>View goal</Link> : dependency.target.jobId ? jobLink(dependency.target.jobId) : null}
       {` · ${dependency.condition} · ${dependency.state}`}
       {dependency.blockedReason && ` · ${dependency.blockedReason}`}
@@ -70,11 +73,11 @@ export default function JobListDetails({ job, projectId, showPrompt = true, navi
     {job.execution && <details open={isOpen('execution')}>
       <summary onClick={event => { event.preventDefault(); toggle('execution'); }}>Execution requirements</summary>
       <Space direction="vertical" style={{ width: '100%', marginTop: 8 }}>
+        <JobExecutionRequirements execution={job.execution} />
         <Text>Status: {job.execution.status.replace(/_/g, ' ')}</Text>
         <Text type="secondary">Source: {job.execution.source.replace(/_/g, ' ')}</Text>
-        {job.execution.diagnostic && <Alert type="warning" message={job.execution.diagnostic} />}
-        {(job.execution.demand || job.execution.initial) && <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
-          {JSON.stringify({ current: job.execution.demand, initial: job.execution.initial }, null, 2)}
+        {!['in_flight', 'not_waiting'].includes(job.execution.status) && job.execution.initial && <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
+          {stringifyJobJSON({ initial: job.execution.initial }, 2)}
         </pre>}
       </Space>
     </details>}
@@ -83,9 +86,11 @@ export default function JobListDetails({ job, projectId, showPrompt = true, navi
       <Descriptions size="small" column={1} items={[
         { key: 'id', label: 'Job ID', children: <Text code>{job.job_id}</Text> },
         { key: 'route', label: 'Task route', children: job.next_route?.taskType || job.next_route?.jobType || '—' },
+        ...(job.blocking_wait_summary ? [{ key: 'wait', label: 'Wait ID', children: job.blocking_wait_summary.waitId }] : []),
         ...(job.task_wait ? [
-          { key: 'input', label: 'Task input ordinal', children: job.task_wait.inputOrdinal },
-          { key: 'output', label: 'Task output ordinal', children: job.task_wait.outputOrdinal },
+          { key: 'input', label: 'Task input ordinal', children: String(job.task_wait.inputOrdinal) },
+          { key: 'output', label: 'Task output ordinal', children: String(job.task_wait.outputOrdinal) },
+          { key: 'hash', label: 'Task input hash', children: job.task_wait.inputHash },
           { key: 'resume', label: 'Resume job type', children: job.task_wait.resumeJobType },
         ] : []),
       ]} />
@@ -93,7 +98,7 @@ export default function JobListDetails({ job, projectId, showPrompt = true, navi
     </details>
     <details open={isOpen('data')}>
       <summary onClick={event => { event.preventDefault(); toggle('data'); }}>All job data</summary>
-      <pre style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>{JSON.stringify(job, null, 2)}</pre>
+      <pre style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>{stringifyJobJSON({ ...job, other_goal_ids: inspection?.other_goal_ids, blocking_wait: inspection?.blocking_wait }, 2)}</pre>
     </details>
   </Space>;
 }

@@ -9,6 +9,7 @@ import type {
 } from './types';
 
 import { API_BASE } from './apiBase';
+import { parseJobJSON } from './jobJSON';
 
 async function handleResponse(response: Response, operation: string) {
   if (!response.ok) {
@@ -56,7 +57,7 @@ export async function listJobs(
     `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs${query ? `?${query}` : ''}`,
   );
   await handleResponse(response, 'List jobs');
-  return response.json();
+  return parseJobJSON(await response.text()) as ListRecipeJobsResponse;
 }
 
 export async function getJob(projectId: string, jobId: string): Promise<RecipeJob> {
@@ -64,7 +65,7 @@ export async function getJob(projectId: string, jobId: string): Promise<RecipeJo
     `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}`,
   );
   await handleResponse(response, 'Get job');
-  return response.json();
+  return parseJobJSON(await response.text()) as RecipeJob;
 }
 
 export async function getRestartContext(projectId: string, jobId: string, boundary: number | string, signal?: AbortSignal): Promise<RestartContext> {
@@ -104,7 +105,7 @@ export async function submitJob(projectId: string, input: SubmitRecipeJobRequest
     body: JSON.stringify(input),
   });
   await handleResponse(response, 'Submit job');
-  return response.json();
+  return parseJobJSON(await response.text()) as RecipeJob;
 }
 
 /** Keep export bytes opaque: JSON parsing here can round persisted 64-bit integers. */

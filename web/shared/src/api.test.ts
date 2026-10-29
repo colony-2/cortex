@@ -1,10 +1,25 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { listJobs } from './api';
+import { getJob, listJobs } from './api';
+import { stringifyJobJSON } from './jobJSON';
 
 afterEach(() => vi.unstubAllGlobals());
 
+it.each([undefined, 'null', '[1,"雪",9007199254740993]', '{"other":{"n":9007199254740993},"c2j":[]}', JSON.stringify('x'.repeat(65534))])(
+  'retains opaque payloads and their revisions in list and detail responses: case %#', async payload => {
+    const raw = `{"job_id":"job","client_payload_revision":9${payload === undefined ? '' : `,"client_payload":${payload}`}}`;
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(url.endsWith('/job') ? raw : `{"jobs":[${raw}],"next_page_token":"untouched"}`)));
+    const page = await listJobs('tenant');
+    expect(page.next_page_token).toBe('untouched');
+    for (const job of [page.jobs[0], await getJob('tenant', 'job')]) {
+      expect(job.client_payload_revision).toBe(9);
+      expect(Object.hasOwn(job, 'client_payload')).toBe(payload !== undefined);
+      expect(stringifyJobJSON(job.client_payload)).toBe(payload);
+    }
+  },
+);
+
 it('requests all statuses when the status filter is explicitly cleared', async () => {
-  const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ jobs: [] }) });
+  const fetch = vi.fn().mockImplementation(async () => new Response(JSON.stringify(({ jobs: [] }))));
   vi.stubGlobal('fetch', fetch);
   await listJobs('tenant', { status: [], cell: 'app' });
   const query = new URL(fetch.mock.calls[0][0]).searchParams;

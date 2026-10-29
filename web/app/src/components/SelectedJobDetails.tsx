@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Spin } from 'antd';
 import { getJob } from '@colony2/shared/api';
-import type { RecipeJob } from '@colony2/shared/types';
+import type { RecipeJob, RecipeJobSummary } from '@colony2/shared/types';
 import JobListDetails from './JobListDetails';
 
 // Mounted only for a visible selection, keyed by tenant and job by the parent.
 // List responses never enter this state. Reopening remounts and revalidates.
-export default function SelectedJobDetails({ projectId, jobId, refresh, prompt, navigationState }: {
-  projectId: string; jobId: string; refresh: number; prompt?: string; navigationState: Record<string, unknown>;
+export default function SelectedJobDetails({ projectId, jobId, summary, refresh, prompt, navigationState }: {
+  projectId: string; jobId: string; summary: RecipeJobSummary; refresh: number; prompt?: string; navigationState: Record<string, unknown>;
 }) {
   const [job, setJob] = useState<RecipeJob>();
   const [error, setError] = useState<string>();
@@ -30,9 +30,7 @@ export default function SelectedJobDetails({ projectId, jobId, refresh, prompt, 
   return <>
     {error && <Alert type="error" showIcon message="Could not load job details" description={error}
       action={<Button onClick={() => setRetry(value => value + 1)}>Retry details</Button>} />}
-    <Spin spinning={loading} tip="Loading job details">
-      {job ? <JobListDetails job={job} projectId={projectId} showPrompt={!!job.prompt && job.prompt !== prompt} navigationState={navigationState} />
-        : <div role="status" style={{ minHeight: 48 }}>{loading ? 'Loading job details…' : 'Job details unavailable'}</div>}
-    </Spin>
+    {loading && <Spin size="small" aria-label="Loading dependency and membership details" />}
+    <JobListDetails job={summary} inspection={job} projectId={projectId} showPrompt={!!summary.prompt && summary.prompt !== prompt} navigationState={navigationState} />
   </>;
 }

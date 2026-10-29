@@ -1,5 +1,13 @@
 # Cortex: render compact job lists and inspect selected attempts
 
+> 2026-10-29 update: c2j and JobDB restored stored completion detail, execution
+> requirements, full client payloads, task coordinates, and prerequisite IDs.
+> Cortex now renders these directly from list responses. The field exclusions
+> below describe the original migration and are superseded by
+> [the restored-fields guide](GUIDE-Cortex-Restored-Job-List-Fields.md).
+> Additional goal memberships and evaluated dependency explanations still
+> require explicit selected-job inspection; the one-list-call boundary remains.
+
 ## Problem and required outcome
 
 JobDB and c2j ordinary job lists now omit payloads, task coordinates, dependency

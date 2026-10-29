@@ -1,3 +1,8 @@
+import type { LosslessNumber } from 'lossless-json';
+
+// Stored int64 values outside JavaScript's safe range stay exact.
+export type StoredInteger = number | LosslessNumber;
+
 export interface Project {
   id: string;
   name: string;
@@ -59,7 +64,7 @@ export interface RecipeJob {
     repo?: string;
     git_ref?: string;
     invocation_path?: string;
-    invocation_seq?: number;
+    invocation_seq?: StoredInteger;
     invocation_hash?: string;
   };
   submitted_at?: string;
@@ -70,13 +75,13 @@ export interface RecipeJob {
   expires_at?: string;
   next_route?: { jobType: string; taskType?: string };
   task_wait?: {
-    inputOrdinal: number;
-    outputOrdinal: number;
+    inputOrdinal: StoredInteger;
+    outputOrdinal: StoredInteger;
     inputHash: string;
     resumeJobType: string;
   };
   client_payload?: unknown;
-  client_payload_revision?: number;
+  client_payload_revision?: StoredInteger;
   execution?: {
     status: string;
     source: string;
@@ -102,10 +107,8 @@ export interface DependencyWait {
   }[];
 }
 
-// Deprecated compatibility values in list responses are never inspection data.
-export type RecipeJobSummary = Omit<RecipeJob,
-  'other_goal_ids' | 'blocking_wait' | 'completion_detail' | 'task_wait' |
-  'client_payload' | 'execution' | 'wait_for'>;
+// Stored fields are available in lists; memberships and wait explanations need inspection.
+export type RecipeJobSummary = Omit<RecipeJob, 'other_goal_ids' | 'blocking_wait'>;
 
 export interface ListRecipeJobsResponse {
   jobs: RecipeJobSummary[];

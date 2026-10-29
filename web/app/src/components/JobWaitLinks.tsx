@@ -18,12 +18,14 @@ export default function JobWaitLinks({ job, projectId, details }: { job: RecipeJ
       ? <Link key={`goal:${target.goalId}`} to={goalPath(projectId, target.goalId)}>Goal{dependencies.length > 1 ? ` ${index + 1}` : ''}</Link>
       : target.jobId ? <Link key={`job:${target.jobId}`} to={jobPath(projectId, target.jobId)}>Execution{dependencies.length > 1 ? ` ${index + 1}` : ''}</Link> : null)}
   </Space>;
-  if (!details?.blocking_wait && job.status === 'PENDING_JOBS' && details?.wait_for?.length) return <Space wrap>
+  if (!details?.blocking_wait && job.status === 'PENDING_JOBS' && job.wait_for?.length) return <Space wrap>
     <Typography.Text type="secondary">Waiting for</Typography.Text>
-    {details?.wait_for.map((id, index) => <Link key={id} to={jobPath(projectId, id)}>Execution{details?.wait_for!.length > 1 ? ` ${index + 1}` : ''}</Link>)}
+    {job.wait_for.map((id, index) => <Link key={`${index}:${id}`} to={jobPath(projectId, id)}>Execution{job.wait_for!.length > 1 ? ` ${index + 1}` : ''}</Link>)}
   </Space>;
   if (job.blocking_wait_summary || job.status === 'PENDING_JOBS') {
-    return <Typography.Text type="secondary">Waiting for dependencies</Typography.Text>;
+    return <Typography.Text type="secondary" title={job.blocking_wait_summary?.waitId}>Waiting for dependencies
+      {job.blocking_wait_summary?.deadline && <> · Deadline: {job.blocking_wait_summary.deadline}</>}
+    </Typography.Text>;
   }
   return null;
 }

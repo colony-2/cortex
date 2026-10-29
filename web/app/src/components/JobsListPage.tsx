@@ -13,6 +13,8 @@ import { abbreviatePrompt, latestActiveJob } from '../utils/goalPresentation';
 import { jobFilterSearch, readJobFilters } from '../utils/jobFilters';
 import JobActionDialog, { type JobAction } from './JobActionDialog';
 import JobWaitLinks, { goalPath, jobPath } from './JobWaitLinks';
+import JobCompletionMessage from './JobCompletionMessage';
+import JobExecutionRequirements from './JobExecutionRequirements';
 import './JobsListPage.css';
 
 const { Text, Title } = Typography;
@@ -106,6 +108,8 @@ function JobsList({ projectId, goalId }: Props) {
       </Link>
       {group.jobs.length > 1 && <Text type="secondary" className="goal-attempt-count">{group.jobs.length} attempts on this page</Text>}
       <JobWaitLinks job={job} projectId={projectId} />
+      <JobCompletionMessage job={job} />
+      <JobExecutionRequirements execution={job.execution} />
     </Space> },
     { title: 'Status', width: 160, render: (_, { job, group }) => <Link to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)} aria-label={`Job ${job.job_id}: ${jobStatus(job).label}`}><AttemptStatus job={job} /></Link> },
     { title: 'Cell', width: 120, render: (_, { job }) => cellLabel(job.cell_name) },

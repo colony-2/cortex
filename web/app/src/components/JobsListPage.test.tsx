@@ -31,7 +31,7 @@ it.each(['cancel', 'delete'] as const)('confirms selected jobs and keeps failed 
       if (path.includes('/second') && failSecond) return { ok: false, status: 503, statusText: 'Unavailable', text: async () => 'Please retry' };
       return { ok: true, status: 204 };
     }
-    return { ok: true, json: async () => path.endsWith('/cells') ? [] : { jobs } };
+    return new Response(JSON.stringify(path.endsWith('/cells') ? [] : { jobs }));
   }));
   render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Select job first' }));
@@ -60,9 +60,7 @@ it.each(['cancel', 'delete'] as const)('confirms selected jobs and keeps failed 
 });
 
 it('clears job selections when switching tenants', async () => {
-  vi.stubGlobal('fetch', vi.fn(async (input: string) => ({ ok: true, json: async () =>
-    input.includes('/cells') ? [] : { jobs: [{ job_id: 'same-id', status: 'READY', store: 'ACTIVE' }] },
-  })));
+  vi.stubGlobal('fetch', vi.fn(async (input: string) => (new Response(JSON.stringify(input.includes('/cells') ? [] : { jobs: [{ job_id: 'same-id', status: 'READY', store: 'ACTIVE' }] })))));
   const { rerender } = render(<MemoryRouter><JobsListPage projectId="first-tenant" /></MemoryRouter>);
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Select job same-id' }));
   expect(screen.getByText('1 selected')).toBeVisible();
@@ -71,7 +69,7 @@ it('clears job selections when switching tenants', async () => {
   expect(screen.getByRole('button', { name: 'Delete selected' })).toBeDisabled();
 });
 
-it('shows compact status and loads detail only after expansion', async () => {
+it('shows restored fields immediately and inspects only after expansion', async () => {
   const job: RecipeJob = {
     tenant_id: 'tenant', job_id: 'failed-job', job_type: 'recipe', recipe: 'build',
     status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'failed_system',
@@ -86,15 +84,15 @@ it('shows compact status and loads detail only after expansion', async () => {
   };
   const fetch = vi.fn(async (input: string) => {
     const url = new URL(input, 'http://localhost');
-    if (url.pathname.endsWith('/cells')) return { ok: true, json: async () => [] };
-    if (url.pathname.endsWith('/jobs')) return { ok: true, json: async () => ({ jobs: [compact(job)] }) };
+    if (url.pathname.endsWith('/cells')) return new Response(JSON.stringify([]));
+    if (url.pathname.endsWith('/jobs')) return new Response(JSON.stringify(({ jobs: [compact(job)] })));
     throw new Error(`Unexpected extra request: ${url}`);
   });
   vi.stubGlobal('fetch', fetch);
   render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
   vi.mocked(getJob).mockResolvedValue(job);
   expect(await screen.findByText('Failed (system)')).toBeVisible();
-  expect(screen.queryByText(job.completion_detail!)).not.toBeInTheDocument();
+  expect(screen.getByText(job.completion_detail!)).toBeVisible();
   expect(getJob).not.toHaveBeenCalled();
   expect(screen.queryByText('COMPLETED')).not.toBeInTheDocument();
   const row = screen.getByRole('link', { name: 'Job failed-job: Failed (system)' }).closest('tr')!;
@@ -129,7 +127,7 @@ it.each(['', '?status=ACTIVE&status=READY&cell=platform'])('preserves list filte
       listReads.push(url);
       data = { jobs: [{ job_id: 'job', status: 'READY', recipe: 'build', store: 'ACTIVE' }] };
     } else data = [];
-    return { ok: true, json: async () => data };
+    return new Response(JSON.stringify(data));
   }));
   render(<MemoryRouter initialEntries={[`/project/tenant/jobs${query}`]}>
     <Location />
@@ -162,15 +160,15 @@ function GoalRoute() {
 
 it('groups attempts and restores expanded details through goal navigation and browser back/forward with selected detail queries', async () => {
   const jobs: Partial<RecipeJob>[] = [
-    { job_id: 'first', goal_id: 'goal-a', prompt: 'Build a useful feature', status: 'READY', store: 'ACTIVE', cell_name: 'platform', execution: { status: 'published', source: 'job', published: true, demand: { cpu: 4 } } },
+    { job_id: 'first', goal_id: 'goal-a', prompt: 'Build a useful feature', status: 'READY', store: 'ACTIVE', cell_name: 'platform', execution: { status: 'specified', source: 'yield', published: true, demand: { effective: { cpu: 4 } } } },
     { job_id: 'second', goal_id: 'goal-a', prompt: 'Build a useful feature', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'failed_app' },
     { job_id: 'single', goal_id: 'goal-b', status: 'READY', store: 'ACTIVE' },
   ];
   const fetch = vi.fn(async (input: string) => {
     const url = new URL(input, 'http://localhost');
     const path = url.pathname;
-    if (path.endsWith('/cells')) return { ok: true, json: async () => [] };
-    if (path.endsWith('/jobs')) return { ok: true, json: async () => ({ jobs: url.searchParams.get('goal') === 'goal-a' ? jobs.slice(0, 2).map(compact) : jobs.map(compact) }) };
+    if (path.endsWith('/cells')) return new Response(JSON.stringify([]));
+    if (path.endsWith('/jobs')) return new Response(JSON.stringify(({ jobs: url.searchParams.get('goal') === 'goal-a' ? jobs.slice(0, 2).map(compact) : jobs.map(compact) })));
     throw new Error(`Unexpected detail query: ${path}`);
   });
   vi.stubGlobal('fetch', fetch);
@@ -203,10 +201,10 @@ it('groups attempts and restores expanded details through goal navigation and br
 });
 
 it('uses compact wait indicators until dependency targets are inspected', async () => {
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes('/cells') ? [] : { jobs: [
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => (new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs: [
     { job_id: 'review', goal_id: 'g1', status: 'READY', store: 'ACTIVE', next_route: { jobType: 'recipe', taskType: 'input:collect_user_input' } },
     { job_id: 'waiting', goal_id: 'g2', status: 'PENDING_JOBS', store: 'ACTIVE', blocking_wait_summary: { waitId: 'wait' } },
-  ] } })));
+  ] })))));
   render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
   expect(await screen.findByRole('link', { name: 'Open input/review' })).toHaveAttribute('href', '/project/tenant/reviews/review');
   expect(screen.getByText('Waiting for dependencies')).toBeVisible();
@@ -226,8 +224,8 @@ it('uses compact wait indicators until dependency targets are inspected', async 
 });
 
 it('submits a prompt-only goal and opens the returned goal identity', async () => {
-  const fetch = vi.fn(async (_: string, init?: RequestInit) => ({ ok: true, json: async () => init?.method === 'POST'
-    ? { tenant_id: 'tenant', goal_id: 'created-goal', job_id: 'created-job' } : _.includes('/cells') ? [] : { jobs: [] } }));
+  const fetch = vi.fn(async (_: string, init?: RequestInit) => (new Response(JSON.stringify(init?.method === 'POST'
+    ? { tenant_id: 'tenant', goal_id: 'created-goal', job_id: 'created-job' } : _.includes('/cells') ? [] : { jobs: [] }))));
   vi.stubGlobal('fetch', fetch);
   render(<MemoryRouter><Location /><JobsListPage projectId="tenant" /></MemoryRouter>);
   fireEvent.click(screen.getByRole('button', { name: 'New goal' }));
@@ -244,7 +242,7 @@ it('submits a prompt-only goal and opens the returned goal identity', async () =
 it.each([undefined, '', ' \n ', 'self', 'platform'])('uses explicit cell identity or Unknown cell in list and attempts (%j)', async cell_name => {
   const jobs = ['first', 'second'].map(job_id => ({ job_id, goal_id: 'goal', prompt: 'Goal prompt', cell_name,
     status: 'READY', store: 'ACTIVE', repo: 'https://example.test/not-a-cell', parent: { cell_name: 'parent-cell' } }));
-  vi.stubGlobal('fetch', vi.fn(async (input: string) => ({ ok: true, json: async () => input.includes('/cells') ? [{ name: 'configured-cell', kind: 'self' }] : { jobs } })));
+  vi.stubGlobal('fetch', vi.fn(async (input: string) => (new Response(JSON.stringify(input.includes('/cells') ? [{ name: 'configured-cell', kind: 'self' }] : { jobs })))));
   render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
   const row = (await screen.findByRole('link', { name: 'Goal prompt', exact: true })).closest('tr')!;
   const label = cell_name?.trim() ? cell_name : 'Unknown cell';
@@ -255,23 +253,84 @@ it.each([undefined, '', ' \n ', 'self', 'platform'])('uses explicit cell identit
 });
 
 function compact(job: Partial<RecipeJob>) {
-  const { completion_detail, blocking_wait, other_goal_ids, task_wait, client_payload, execution, wait_for, ...summary } = job;
+  const { blocking_wait, other_goal_ids, ...summary } = job;
   return { ...summary, client_payload_revision: 7 };
 }
+
+it('renders escaped multiline completion and ordered prerequisites from the list without inspection', async () => {
+  const completion = '  <img src=x onerror=alert(1)> 雪\n\tsecond line & more\n';
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs: [
+    { job_id: 'failed', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'future_outcome', completion_detail: completion },
+    { job_id: 'retrying', status: 'READY', store: 'ACTIVE' },
+    { job_id: 'waiting', status: 'PENDING_JOBS', store: 'ACTIVE', wait_for: ['second/id', 'first'], blocking_wait_summary: { waitId: 'wait', deadline: '2027-01-01T00:00:00Z' } },
+  ] }))));
+  render(<MemoryRouter><JobsListPage projectId="tenant /雪" /></MemoryRouter>);
+  const row = (await screen.findByRole('link', { name: 'Job failed: Finished (future_outcome)' })).closest('tr')!;
+  expect(row.querySelector('.job-completion')?.textContent).toBe(completion);
+  expect((row.querySelector('.job-completion') as HTMLElement).style.whiteSpace).toBe('pre-wrap');
+  expect(row.querySelector('img')).toBeNull();
+  const waiting = screen.getByRole('link', { name: 'Job waiting: Waiting for jobs' }).closest('tr')!;
+  expect(within(waiting).getAllByRole('link').filter(link => link.textContent?.startsWith('Execution')).map(link => link.getAttribute('href'))).toEqual([
+    '/project/tenant%20%2F%E9%9B%AA/jobs/second%2Fid/story', '/project/tenant%20%2F%E9%9B%AA/jobs/first/story',
+  ]);
+  expect(screen.getByRole('link', { name: 'Job retrying: Ready' })).toBeVisible();
+  expect(getJob).not.toHaveBeenCalled();
+});
+
+it('replaces requirements on refresh and never shows stale demand or diagnostics for active or terminal jobs', async () => {
+  const job = { job_id: 'job', status: 'READY', store: 'ACTIVE', execution: {
+    status: 'specified', source: 'yield', published: true, demand: { effective: { resources: { cpu: '4', memory: '4Gi' }, image: 'example/image' } },
+  } };
+  const fetch = vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs: [job] })));
+  vi.stubGlobal('fetch', fetch);
+  render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
+  expect(await screen.findByText(/4Gi/)).toBeVisible();
+  for (const [status, label] of [
+    ['unspecified', 'No requirements specified'], ['unresolved', 'Requirements not yet resolved'],
+    ['malformed', 'Invalid execution requirements'], ['unsupported', 'Unsupported execution requirements'],
+    ['in_flight', undefined], ['not_waiting', undefined],
+  ]) {
+    job.execution = { ...job.execution, status: status!, diagnostic: 'invalid demand 雪' } as typeof job.execution;
+    job.status = status === 'in_flight' ? 'ACTIVE' : status === 'not_waiting' ? 'COMPLETED' : 'READY';
+    job.store = status === 'not_waiting' ? 'ARCHIVED' : 'ACTIVE';
+    const before = fetch.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(fetch.mock.calls.length).toBe(before + 2));
+    if (label) expect(await screen.findByText(label)).toBeVisible();
+    else await waitFor(() => expect(screen.queryByText('invalid demand 雪')).not.toBeInTheDocument());
+    expect(screen.queryByText(/4Gi/)).not.toBeInTheDocument();
+  }
+  expect(getJob).not.toHaveBeenCalled();
+});
+
+it('shows restored selected fields even while inspection is unavailable', async () => {
+  const raw = `{"jobs":[{"job_id":"job","status":"READY","store":"ACTIVE","client_payload":{"other":9007199254740993},"client_payload_revision":7,"task_wait":{"inputOrdinal":0,"outputOrdinal":9007199254740995,"inputHash":"occurrence-hash","resumeJobType":"recipe"},"blocking_wait_summary":{"waitId":"wait-identity","deadline":"2027-01-01T00:00:00Z"}}]}`;
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(url.includes('/cells') ? '[]' : raw)));
+  vi.mocked(getJob).mockRejectedValue(new Error('Inspection unavailable'));
+  render(<MemoryRouter initialEntries={['/?expanded=job:job']}><JobsListPage projectId="tenant" /></MemoryRouter>);
+  await screen.findByText('Could not load job details');
+  fireEvent.click(screen.getByText('Technical details'));
+  expect(screen.getByText('occurrence-hash')).toBeVisible();
+  expect(screen.getByText('9007199254740995')).toBeVisible();
+  expect(screen.getByText('wait-identity')).toBeVisible();
+  fireEvent.click(screen.getByText('All job data'));
+  expect(screen.getByText(/"other": 9007199254740993/)).toBeVisible();
+  expect(screen.queryByText(/9007199254740992/)).not.toBeInTheDocument();
+});
 
 it('inspects only visible selections, revalidates on refresh/reopen, and ignores late attempts', async () => {
   const jobs = ['first', 'second'].map(job_id => ({ tenant_id: 'tenant', job_id, goal_id: 'goal',
     prompt: 'Grouped goal', status: 'READY', store: 'ACTIVE', client_payload_revision: 9 }));
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes('/cells') ? [] : { jobs } })));
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => (new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs })))));
   let resolveFirst!: (job: RecipeJob) => void;
   vi.mocked(getJob).mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
-    .mockImplementation(async (tenant, id) => ({ tenant_id: tenant, job_id: id, completion_detail: `${id} inspected` } as RecipeJob));
+    .mockImplementation(async (tenant, id) => ({ tenant_id: tenant, job_id: id, other_goal_ids: [`${id} inspected`] } as RecipeJob));
   render(<StrictMode><MemoryRouter initialEntries={['/?expanded=goal:goal']}><JobsListPage projectId="tenant" /></MemoryRouter></StrictMode>);
   const attempts = await screen.findByRole('region', { name: 'Attempts' });
   await waitFor(() => expect(getJob).toHaveBeenCalledExactlyOnceWith('tenant', 'first'));
   fireEvent.click(within(attempts).getAllByRole('button', { name: 'Details' })[1]);
   expect((await screen.findAllByText('second inspected'))[0]).toBeVisible();
-  await act(async () => resolveFirst({ job_id: 'first', completion_detail: 'LATE first' } as RecipeJob));
+  await act(async () => resolveFirst({ job_id: 'first', other_goal_ids: ['LATE first'] } as RecipeJob));
   expect(screen.queryByText('LATE first')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   await waitFor(() => expect(getJob).toHaveBeenCalledTimes(3));
@@ -287,9 +346,9 @@ it('inspects only visible selections, revalidates on refresh/reopen, and ignores
 
 it('retries failed inspection and never reuses another tenant’s details', async () => {
   const job = { job_id: 'same', goal_id: 'goal', prompt: 'Same ID', status: 'READY', store: 'ACTIVE' };
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes('/cells') ? [] : { jobs: [job] } })));
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => (new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs: [job] })))));
   vi.mocked(getJob).mockRejectedValueOnce(new Error('Unavailable'))
-    .mockImplementation(async (tenant) => ({ ...job, completion_detail: `${tenant} details` } as RecipeJob));
+    .mockImplementation(async (tenant) => ({ ...job, other_goal_ids: [`${tenant} details`] } as RecipeJob));
   const view = (tenant: string) => <MemoryRouter initialEntries={['/?expanded=goal:goal']}><JobsListPage projectId={tenant} /></MemoryRouter>;
   const { rerender } = render(view('first'));
   fireEvent.click(await screen.findByRole('button', { name: 'Retry details' }));
@@ -305,10 +364,10 @@ it('keeps 200 collapsed summaries compact and follows an empty page cursor', asy
     status: 'PENDING_JOBS', store: 'ACTIVE', client_payload_revision: 5, blocking_wait_summary: { waitId: `wait-${index}` } }));
   const listReads: string[] = [];
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-    if (url.includes('/cells')) return { ok: true, json: async () => [] };
+    if (url.includes('/cells')) return new Response(JSON.stringify([]));
     listReads.push(url);
-    return { ok: true, json: async () => url.includes('pageToken=empty') ? { jobs: [], next_page_token: 'last' }
-      : url.includes('pageToken=last') ? { jobs: [] } : { jobs, next_page_token: 'empty' } };
+    return new Response(JSON.stringify(url.includes('pageToken=empty') ? { jobs: [], next_page_token: 'last' }
+      : url.includes('pageToken=last') ? { jobs: [] } : { jobs, next_page_token: 'empty' }));
   }));
   render(<StrictMode><MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter></StrictMode>);
   await screen.findByRole('checkbox', { name: 'Select job job-199' });
@@ -324,7 +383,7 @@ it('keeps 200 collapsed summaries compact and follows an empty page cursor', asy
 it('groups only primary membership while honoring a server-filtered secondary goal', async () => {
   // Compatibility fields from an older backend must not restore secondary groups.
   const job = { job_id: 'member', goal_id: 'primary', other_goal_ids: ['secondary'], prompt: 'Member', status: 'READY', store: 'ACTIVE' };
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes('/cells') ? [] : { jobs: [job] } })));
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => (new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs: [job] })))));
   const { rerender } = render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
   await screen.findByRole('link', { name: 'Member', exact: true });
   expect(screen.getAllByRole('link', { name: 'Goal overview' })).toHaveLength(1);

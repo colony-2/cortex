@@ -4,6 +4,7 @@ export * from './types';
 // Export API functions
 export * from './api';
 export * from './apiBase';
+export * from './jobJSON';
 
 // Export URL state utilities
 export * from './urlState';

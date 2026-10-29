@@ -1,5 +1,6 @@
 import type { RecipeJobSummary } from '../types';
 import { API_BASE } from '../apiBase';
+import { parseJobJSON, stringifyJobJSON } from '../jobJSON';
 
 function createSubmissionId(): string {
   if (typeof globalThis.crypto.randomUUID === 'function') return globalThis.crypto.randomUUID();
@@ -246,7 +247,7 @@ class InputActivityService extends EventEmitter {
 
       this.eventSource.addEventListener('inputs_changed', (event) => {
         try {
-          const { inputs } = JSON.parse((event as MessageEvent).data) as { inputs: PendingInput[] };
+          const { inputs } = parseJobJSON((event as MessageEvent).data) as { inputs: PendingInput[] };
           const projectId = streamTenant;
           if (this.currentProjectId !== projectId) return;
           this.pendingVersions.set(projectId, (this.pendingVersions.get(projectId) || 0) + 1);
@@ -255,7 +256,7 @@ class InputActivityService extends EventEmitter {
           const byId = new Map(inputs.map(input => [input.id, input]));
           for (const input of previous) {
             const next = byId.get(input.id);
-            if (JSON.stringify(next) !== JSON.stringify(input)) this.formDetailsCache.delete(JSON.stringify([projectId, input.id]));
+            if (stringifyJobJSON(next) !== stringifyJobJSON(input)) this.formDetailsCache.delete(JSON.stringify([projectId, input.id]));
           }
           this.pendingInputsCache.set(projectId, inputs);
           this.emit('inputs_changed', { projectId, inputs });
@@ -396,7 +397,7 @@ class InputActivityService extends EventEmitter {
         throw new Error(`Failed to fetch pending inputs: ${response.statusText}`);
       }
 
-      const inputs = await response.json();
+      const inputs = parseJobJSON(await response.text()) as PendingInput[];
       if ((this.pendingVersions.get(projectId) || 0) !== version) return this.pendingInputsCache.get(projectId) || inputs;
       this.pendingInputsCache.set(projectId, inputs);
       return inputs;

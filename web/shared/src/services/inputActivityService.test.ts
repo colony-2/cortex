@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { inputActivityService } from './inputActivityService';
+import { stringifyJobJSON } from '../jobJSON';
 
 // Create mock EventSource instance
 const createMockEventSource = () => ({
@@ -69,6 +70,19 @@ describe('InputActivityService', () => {
   });
 
   describe('SSE Connection', () => {
+    it('preserves exact payloads with their revision through HTTP caching and streamed replacement', async () => {
+      const raw = '{"id":"job","client_payload":{"other":9007199254740993},"client_payload_revision":7}';
+      vi.mocked(fetch).mockResolvedValueOnce(new Response(`[${raw}]`));
+      expect(stringifyJobJSON((await inputActivityService.getPendingInputs(projectId))[0])).toBe(raw);
+      inputActivityService.connect(projectId);
+      const source = EventSourceMock.mock.results[0].value;
+      const snapshot = source.addEventListener.mock.calls.find(([name]: [string]) => name === 'inputs_changed')[1];
+      const replacement = '{"id":"job","client_payload":null,"client_payload_revision":8}';
+      snapshot({ data: `{"inputs":[${replacement}]}` });
+      expect(stringifyJobJSON((await inputActivityService.getPendingInputs(projectId))[0])).toBe(replacement);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
     it('uses one compact snapshot for all pending rows and invalidates changed forms', async () => {
       inputActivityService.connect(projectId);
       const source = EventSourceMock.mock.results[0].value;
@@ -77,10 +91,10 @@ describe('InputActivityService', () => {
       snapshot({ data: JSON.stringify({ inputs }) });
       expect(await inputActivityService.getPendingInputs(projectId)).toEqual(inputs);
       expect(fetch).not.toHaveBeenCalled();
-      vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => ({ form: { question: 'First?' } }) } as Response);
+      vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify(({ form: { question: 'First?' } }))) as Response);
       await inputActivityService.getInputDetails(projectId, '0');
       snapshot({ data: JSON.stringify({ inputs: inputs.map(input => input.id === '0' ? { ...input, client_payload_revision: 2 } : input) }) });
-      vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => ({ form: { question: 'Next?' } }) } as Response);
+      vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify(({ form: { question: 'Next?' } }))) as Response);
       expect((await inputActivityService.getInputDetails(projectId, '0')).form.question).toBe('Next?');
       expect(fetch).toHaveBeenCalledTimes(2);
       inputActivityService.connect('other');
@@ -96,7 +110,7 @@ describe('InputActivityService', () => {
       const source = EventSourceMock.mock.results[0].value;
       const snapshot = source.addEventListener.mock.calls.find(([name]: [string]) => name === 'inputs_changed')[1];
       snapshot({ data: JSON.stringify({ inputs: [{ id: 'new' }] }) });
-      resolve({ ok: true, json: async () => [{ id: 'old' }] } as Response);
+      resolve(new Response(JSON.stringify([{ id: 'old' }])) as Response);
       expect(await pending).toEqual([{ id: 'new' }]);
       expect(await inputActivityService.getPendingInputs(projectId)).toEqual([{ id: 'new' }]);
     });
@@ -106,7 +120,7 @@ describe('InputActivityService', () => {
       const completed = vi.fn();
       inputActivityService.on('input_completed', completed);
       try {
-        vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => [{ id: 'job-1' }] } as Response);
+        vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify([{ id: 'job-1' }])) as Response);
         await inputActivityService.getPendingInputs(projectId);
         await inputActivityService.getInputDetails(projectId, 'job-1');
 
@@ -115,7 +129,7 @@ describe('InputActivityService', () => {
         listener({ data: JSON.stringify({ jobId: 'job-1' }) });
         expect(completed).toHaveBeenCalledWith({ jobId: 'job-1' });
 
-        vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => [] } as Response);
+        vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify([])) as Response);
         expect(await inputActivityService.getPendingInputs(projectId)).toEqual([]);
         await inputActivityService.getInputDetails(projectId, 'job-1');
         expect(fetch).toHaveBeenCalledTimes(4);
@@ -126,12 +140,12 @@ describe('InputActivityService', () => {
 
     it('fetches a fresh form when the same job requests another input', async () => {
       inputActivityService.connect(projectId);
-      vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => ({ form: { question: 'First?' } }) } as Response);
+      vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify(({ form: { question: 'First?' } }))) as Response);
       await inputActivityService.getInputDetails(projectId, 'job-1');
       const source = EventSourceMock.mock.results[0].value;
       const listener = source.addEventListener.mock.calls.find(([name]: [string]) => name === 'input_pending')[1];
       listener({ data: JSON.stringify({ id: 'job-1', task_ordinal: 9 }) });
-      vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => ({ form: { question: 'Second?' } }) } as Response);
+      vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify(({ form: { question: 'Second?' } }))) as Response);
       expect(await inputActivityService.getInputDetails(projectId, 'job-1')).toMatchObject({ form: { question: 'Second?' } });
       expect(fetch).toHaveBeenCalledTimes(2);
     });
@@ -210,10 +224,7 @@ describe('InputActivityService', () => {
         { id: 'job-1' }
       ];
 
-      ((globalThis as any).fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockInputs
-      });
+      ((globalThis as any).fetch as any).mockResolvedValueOnce(new Response(JSON.stringify(mockInputs)));
 
       const result = await inputActivityService.getPendingInputs(projectId);
       
@@ -226,10 +237,7 @@ describe('InputActivityService', () => {
     it('should cache results', async () => {
       const mockInputs = [{ id: 'job-1' }];
 
-      ((globalThis as any).fetch as any).mockResolvedValue({
-        ok: true,
-        json: async () => mockInputs
-      });
+      ((globalThis as any).fetch as any).mockImplementation(async () => new Response(JSON.stringify(mockInputs)));
 
       const result1 = await inputActivityService.getPendingInputs(projectId);
       const result2 = await inputActivityService.getPendingInputs(projectId);
@@ -254,10 +262,7 @@ describe('InputActivityService', () => {
 
       ((globalThis as any).fetch as any).mockImplementation((url: string) => {
         if (url.includes(`/projects/${projectId}/user-inputs/job-1`)) {
-          return Promise.resolve({
-            ok: true,
-            json: async () => mockDetails
-          });
+          return Promise.resolve(new Response(JSON.stringify(mockDetails)));
         }
         return Promise.reject(new Error('Unexpected URL'));
       });

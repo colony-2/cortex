@@ -1,13 +1,37 @@
 import { test, expect } from '@playwright/test';
 
+test('expands a full multiline message from a 200-row list without detail requests', async ({ page, context, baseURL }) => {
+  await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+  const completion = '  <script>literal text</script> 雪\n' + 'The stored failure message keeps its whitespace.\n'.repeat(12) + '\tfinal line\n';
+  const jobs = Array.from({ length: 200 }, (_, index) => ({ tenant_id: 'restored', job_id: `job-${index}`,
+    status: index ? 'READY' : 'COMPLETED', store: index ? 'ACTIVE' : 'ARCHIVED',
+    completion_status: index ? undefined : 'future_outcome', completion_detail: index ? undefined : completion,
+  }));
+  let listReads = 0;
+  const detailReads: string[] = [];
+  await page.route('**/api/projects/restored/jobs?*', route => { listReads++; return route.fulfill({ json: { jobs } }); });
+  page.on('request', request => { if (/\/projects\/restored\/jobs\/[^/?]+$/.test(new URL(request.url()).pathname)) detailReads.push(request.url()); });
+  await page.goto('/project/restored/jobs');
+  await expect(page.getByRole('checkbox', { name: 'Select job job-199', exact: true })).toBeAttached();
+  const row = page.getByRole('link', { name: 'Job job-0: Finished (future_outcome)', exact: true }).locator('xpath=ancestor::tr');
+  await row.getByRole('button', { name: 'Expand', exact: true }).click();
+  const message = row.locator('.job-completion');
+  await expect(message).toContainText('final line');
+  expect(await message.evaluate(element => Array.from(element.childNodes).filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent).join(''))).toBe(completion);
+  await expect(message).toHaveCSS('white-space', 'pre-wrap');
+  await expect(message.locator('script')).toHaveCount(0);
+  expect(listReads).toBe(1);
+  expect(detailReads).toEqual([]);
+});
+
 test('renders a single compact row or grouped attempts with metadata and waiting links', async ({ page, context, baseURL }) => {
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
   const created = '2026-10-25T10:00:00Z';
-  const first = { tenant_id: 'goal-layout', job_id: 'first', goal_id: 'shared-goal', prompt: 'Build a reliable release dashboard', recipe: 'build', job_type: 'recipe', cell_name: 'platform', repo: 'https://github.com/example/platform.git', git_ref: 'main', submitted_at: created, created_at: created, store: 'ACTIVE', status: 'READY', next_route: { jobType: 'recipe', taskType: 'input:collect_user_input' }, parent: { job_id: 'coordinator', tenant_id: 'goal-layout' }, execution: { status: 'published', source: 'metadata', published: true, demand: { memory: '4Gi' } } };
+  const first = { tenant_id: 'goal-layout', job_id: 'first', goal_id: 'shared-goal', prompt: 'Build a reliable release dashboard', recipe: 'build', job_type: 'recipe', cell_name: 'platform', repo: 'https://github.com/example/platform.git', git_ref: 'main', submitted_at: created, created_at: created, store: 'ACTIVE', status: 'READY', next_route: { jobType: 'recipe', taskType: 'input:collect_user_input' }, parent: { job_id: 'coordinator', tenant_id: 'goal-layout' }, execution: { status: 'specified', source: 'yield', published: true, demand: { effective: { memory: '4Gi' } } } };
   const second = { ...first, job_id: 'second', store: 'ARCHIVED', status: 'COMPLETED', completion_status: 'failed_app', completion_detail: 'sequence node 0 failed: sequence node 2 failed: The deployment check failed' };
   const solo = { ...first, job_id: 'solo', goal_id: 'solo-goal', prompt: 'Wait for deployment approval', status: 'PENDING_JOBS', next_route: undefined, parent: undefined, blocking_wait: { waitId: 'wait', state: 'PENDING', dependencies: [{ target: { goalId: 'dependency' }, condition: 'success', state: 'PENDING' }, { target: { jobId: 'job-dependency' }, condition: 'complete', state: 'PENDING' }] } };
   const compact = (job: any) => {
-    const { execution, completion_detail, blocking_wait, ...summary } = job;
+    const { blocking_wait, ...summary } = job;
     return { ...summary, client_payload_revision: 8, ...(blocking_wait ? { blocking_wait_summary: { waitId: blocking_wait.waitId } } : {}) };
   };
   const detailsRead: string[] = [];
@@ -39,7 +63,7 @@ test('renders a single compact row or grouped attempts with metadata and waiting
   expect(detailsRead).toEqual(['first']);
   const attempts = page.getByRole('region', { name: 'Attempts', exact: true }).getByRole('table');
   await expect(attempts).toHaveCount(1);
-  await expect(attempts.getByText(second.completion_detail, { exact: true })).toHaveCount(0);
+  await expect(attempts.getByText(second.completion_detail, { exact: true })).toBeVisible();
   await expect(page.getByText('shared-goal', { exact: true })).toHaveCount(0);
   await page.screenshot({ path: '/tmp/cortex-goals-list.png', fullPage: true });
   await row.getByRole('link', { name: 'Goal overview' }).click();

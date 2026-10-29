@@ -7,6 +7,8 @@ import SelectedJobDetails from './SelectedJobDetails';
 import JobWaitLinks, { jobPath } from './JobWaitLinks';
 import { latestActiveJob, newestFirst } from '../utils/goalPresentation';
 import { jobStatus } from '../utils/jobStatus';
+import JobCompletionMessage from './JobCompletionMessage';
+import JobExecutionRequirements from './JobExecutionRequirements';
 
 export function AttemptStatus({ job }: { job: RecipeJobSummary }) {
   const status = jobStatus(job);
@@ -43,13 +45,17 @@ export default function GoalJobOverview({ jobs, projectId, navigationState, show
         { title: 'Submitted', render: (_, job) => <Link to={storyLink(job)} state={navigationState}>{jobTime(job.submitted_at || job.created_at) || 'Open execution'}</Link> },
         { title: 'Status', render: (_, job) => <Link to={storyLink(job)} state={navigationState}><AttemptStatus job={job} /></Link> },
         { title: 'Cell', render: (_, job) => cellLabel(job.cell_name) },
-        { title: 'Progress', render: (_, job) => <JobWaitLinks job={job} projectId={projectId} /> },
+        { title: 'Progress', render: (_, job) => <Space direction="vertical" size={2}>
+          <JobWaitLinks job={job} projectId={projectId} />
+          <JobCompletionMessage job={job} />
+          <JobExecutionRequirements execution={job.execution} />
+        </Space> },
         { title: '', render: (_, job) => <Button size="small" type="text" aria-pressed={job.job_id === selected.job_id} onClick={() => choose(job)}>Details</Button> },
       ]} /></section>}
     <Card size="small" className="goal-attempt-detail" title={<Space wrap>
       <AttemptStatus job={selected} /><Typography.Text type="secondary">{jobTime(selected.submitted_at || selected.created_at)}</Typography.Text>
     </Space>} extra={<Link to={storyLink(selected)} state={navigationState}>Open execution</Link>}>
-      <SelectedJobDetails key={JSON.stringify([projectId, selected.job_id])} jobId={selected.job_id} projectId={projectId} refresh={refresh} prompt={prompt} navigationState={navigationState} />
+      <SelectedJobDetails key={JSON.stringify([projectId, selected.job_id])} summary={selected} jobId={selected.job_id} projectId={projectId} refresh={refresh} prompt={prompt} navigationState={navigationState} />
     </Card>
   </div>;
 }
