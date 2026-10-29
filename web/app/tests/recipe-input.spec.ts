@@ -1,4 +1,5 @@
 import { abbreviatePrompt } from '../src/utils/goalPresentation';
+import { setStatusFilter } from './helpers/goalList';
 import { test as base, expect, type Page } from '@playwright/test';
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, copyFileSync, rmSync } from 'node:fs';
@@ -260,12 +261,9 @@ for (const multiField of [false, true]) {
       await page.goto(`/project/${tenant}/jobs`);
       await expect(page.getByRole('heading', { name: 'Goals', exact: true })).toBeVisible();
       await expect(page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) })).toBeVisible();
-      await page.getByRole('combobox', { name: 'Status filter' }).click();
-      await page.getByTitle('Ready', { exact: true }).click();
-      await page.getByRole('combobox', { name: 'Status filter' }).press('Escape');
+      await setStatusFilter(page, ['Ready']);
       await expect(page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) })).toHaveCount(0);
-      await page.locator('.ant-select').first().hover();
-      await page.locator('.ant-select-clear').first().click();
+      await setStatusFilter(page, null);
       const jobs = await (await request.get(`/api/projects/${tenant}/jobs?status=all`)).json();
       expect(jobs.jobs.find((job: { job_id: string }) => job.job_id === jobID)).toMatchObject({ status: 'COMPLETED', completion_status: 'success' });
       const row = page.getByRole('row').filter({ has: page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }) });

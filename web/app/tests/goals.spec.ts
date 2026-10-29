@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { setStatusFilter } from './helpers/goalList';
 
 test('expands a full multiline message from a 200-row list without detail requests', async ({ page, context, baseURL }) => {
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
@@ -103,22 +104,13 @@ test('filters through the jobs API before pagination and restores filters throug
   });
   await page.goto('/project/filter-test/goals?status=READY&pageToken=later-page');
   await expect(page.getByRole('link', { name: 'later-ready', exact: true })).toBeVisible();
-  await page.getByRole('combobox', { name: 'Status filter' }).click();
-  await page.getByRole('combobox', { name: 'Status filter' }).fill('Cancelled');
-  await page.locator('.ant-select-dropdown:visible').getByText('Cancelled', { exact: true }).click();
-  // Remove Ready so the new query contains exactly the requested status.
-  await page.getByRole('combobox', { name: 'Status filter' }).fill('Ready');
-  await page.locator('.ant-select-dropdown:visible').getByText('Ready', { exact: true }).click();
-  await page.keyboard.press('Escape');
+  await setStatusFilter(page, ['Cancelled']);
   await expect(page.getByRole('link', { name: 'cancelled-on-another-page', exact: true })).toBeVisible();
   await expect.poll(() => queries.at(-1)?.getAll('displayStatus')).toEqual(['CANCELLED']);
   expect(queries.at(-1)?.has('pageToken')).toBe(false);
   expect(new URL(page.url()).searchParams.has('pageToken')).toBe(false);
   const filteredURL = page.url();
-  await page.getByRole('combobox', { name: 'Status filter' }).click();
-  await page.getByRole('combobox', { name: 'Status filter' }).fill('Cancelled');
-  await page.locator('.ant-select-dropdown:visible').getByText('Cancelled', { exact: true }).click();
-  await page.keyboard.press('Escape');
+  await setStatusFilter(page, null);
   await expect(page.getByRole('link', { name: 'first-ready', exact: true })).toBeVisible();
   expect(queries.at(-1)?.getAll('status')).toEqual(['all']);
   await page.goBack();
@@ -152,37 +144,122 @@ test('filters by displayed outcomes and combines them with scheduling states', a
   });
   await page.goto('/project/outcome-filter/goals?status=READY&pageToken=old-page');
   await expect(page.getByRole('link', { name: 'Job ready: Ready', exact: true })).toBeVisible();
-  const select = async (label: string) => {
-    await page.getByRole('combobox', { name: 'Status filter' }).click();
-    const dropdown = page.locator('.ant-select-dropdown:visible');
-    // Ant Design virtualizes options, so search to reach options below the fold.
-    await page.getByRole('combobox', { name: 'Status filter' }).fill(label);
-    await dropdown.getByText(label, { exact: true }).click();
-    await page.keyboard.press('Escape');
-  };
-  await select('Succeeded');
+  await setStatusFilter(page, ['Ready', 'Succeeded']);
   await expect(page.getByRole('link', { name: 'Job succeeded: Succeeded', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Job ready: Ready', exact: true })).toBeVisible();
   expect(queries.at(-1)?.getAll('displayStatus')).toEqual(['READY', 'success']);
   expect(queries.at(-1)?.has('pageToken')).toBe(false);
   expect(new URL(page.url()).searchParams.has('pageToken')).toBe(false);
-  await select('Ready');
-  await select('Failed (application)');
+  await setStatusFilter(page, ['Succeeded', 'Failed (application)']);
   await expect(page.getByRole('link', { name: 'Job failed: Failed (application)', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Job ready: Ready', exact: true })).toHaveCount(0);
   expect(queries.at(-1)?.getAll('displayStatus')).toEqual(['success', 'failed_app']);
   await page.reload();
   await expect(page.getByRole('link', { name: 'Job succeeded: Succeeded', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Job failed: Failed (application)', exact: true })).toBeVisible();
-  await select('Succeeded');
-  await select('Failed (application)');
-  await select('Finished (outcome unavailable)');
+  await setStatusFilter(page, ['Finished (outcome unavailable)']);
   await expect(page.getByRole('link', { name: 'Job unavailable: Finished (outcome unavailable)', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Job succeeded: Succeeded', exact: true })).toHaveCount(0);
-  await select('Finished (outcome unavailable)');
-  await select('Cancellation requested');
+  await setStatusFilter(page, ['Cancellation requested']);
   await expect(page.getByRole('link', { name: 'Job cancelling: Cancellation requested', exact: true })).toBeVisible();
   await expect(page.getByRole('checkbox', { name: /^Select job / })).toHaveCount(1);
+});
+
+test('starts with every status checked and supports individual exclusions, none, and all', async ({ page, context, baseURL }) => {
+  await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+  const jobs = [
+    { job_id: 'ready', status: 'READY', store: 'ACTIVE' },
+    { job_id: 'success', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'success' },
+    { job_id: 'future', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'future_outcome' },
+  ];
+  const queries: URLSearchParams[] = [];
+  await page.route('**/api/projects/status-menu/jobs?*', route => {
+    const query = new URL(route.request().url()).searchParams;
+    queries.push(query);
+    const selected = query.getAll('displayStatus');
+    return route.fulfill({ json: { jobs: jobs.filter(job => !selected.length || selected.includes(job.job_id === 'ready' ? 'READY' : job.job_id === 'future' ? 'completion:future_outcome' : 'success')) } });
+  });
+  await page.goto('/project/status-menu/goals');
+  await expect(page.getByRole('link', { name: 'Job success: Succeeded', exact: true })).toBeVisible();
+  // The column filter is keyboard accessible without triggering column sorting.
+  const icon = page.getByRole('img', { name: 'Filter statuses', exact: true });
+  await icon.focus();
+  await icon.press('Enter');
+  const dropdown = page.locator('.ant-table-filter-dropdown:visible');
+  await expect(dropdown.getByRole('checkbox', { name: 'Select all', exact: true })).toBeChecked();
+  await dropdown.getByText('Succeeded', { exact: true }).click();
+  expect(queries).toHaveLength(1); // Nothing changes until Apply.
+  await dropdown.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Job success: Succeeded', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Job future: Finished (future_outcome)', exact: true })).toBeVisible();
+  expect(queries.at(-1)?.getAll('displayStatus')).not.toContain('success');
+  expect(new URL(page.url()).searchParams.has('sort')).toBe(false);
+  const beforeNone = queries.length;
+  await setStatusFilter(page, []);
+  await expect(page.getByText('No statuses selected', { exact: true })).toBeVisible();
+  expect(new URL(page.url()).searchParams.get('status')).toBe('none');
+  expect(queries).toHaveLength(beforeNone);
+  await page.reload();
+  await expect(page.getByText('No statuses selected', { exact: true })).toBeVisible();
+  expect(queries).toHaveLength(beforeNone);
+  await setStatusFilter(page, null);
+  await expect(page.getByRole('link', { name: 'Job success: Succeeded', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Job future: Finished (future_outcome)', exact: true })).toBeVisible();
+  expect(queries.at(-1)?.getAll('status')).toEqual(['all']);
+  expect(new URL(page.url()).searchParams.has('status')).toBe(false);
+  await page.goBack();
+  await expect(page.getByText('No statuses selected', { exact: true })).toBeVisible();
+});
+
+test('searches complete prompts and sorts locally while preserving the view through goal navigation', async ({ page, context, baseURL }) => {
+  await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+  const jobs = [
+    { job_id: 'zeta', goal_id: 'zeta', title: 'Zeta task', prompt: 'Common task for Zeta', created_at: '2026-10-29T08:00:00Z', status: 'READY', store: 'ACTIVE' },
+    { job_id: 'alpha', goal_id: 'alpha', title: 'Alpha task', prompt: `${'Common task with a long preamble. '.repeat(10)}Needle\n  beyond truncation`, created_at: '2026-10-29T09:00:00Z', status: 'READY', store: 'ACTIVE' },
+    { job_id: 'alpha-old', goal_id: 'alpha', prompt: 'Historical requirement for this common task', created_at: '2026-10-28T09:00:00Z', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'failed_app' },
+    { job_id: 'middle', goal_id: 'middle', title: 'Middle task', prompt: 'Common task for Middle', created_at: '2026-10-29T10:00:00Z', status: 'READY', store: 'ACTIVE' },
+  ];
+  let reads = 0;
+  await page.route('**/api/projects/local-search/jobs?*', route => {
+    reads++;
+    const goal = new URL(route.request().url()).searchParams.get('goal');
+    return route.fulfill({ json: { jobs: goal ? jobs.filter(job => job.goal_id === goal) : jobs, next_page_token: goal ? undefined : 'later' } });
+  });
+  await page.route('**/api/projects/local-search/jobs/alpha', route => route.fulfill({ json: jobs[1] }));
+  await page.goto('/project/local-search/goals');
+  const names = page.locator('a.goal-prompt');
+  await expect(names).toHaveText(['Zeta task', 'Alpha task', 'Middle task']);
+  const search = page.getByRole('textbox', { name: 'Search goals' });
+  await search.fill('NEEDLE beyond truncation');
+  await expect(names).toHaveText(['Alpha task']);
+  await expect(page.getByText('2 attempts on this page', { exact: true })).toBeVisible();
+  await search.fill('historical requirement');
+  await expect(names).toHaveText(['Alpha task']);
+  await search.fill('missing text');
+  await expect(page.getByText('No goals match this search on this page', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Next jobs', exact: true })).toBeVisible();
+  await search.fill('common task');
+  await expect(names).toHaveCount(3);
+  const header = page.getByRole('columnheader', { name: 'Submitted', exact: true });
+  await header.click();
+  await expect(header).toHaveAttribute('aria-sort', 'ascending');
+  await expect(names).toHaveText(['Zeta task', 'Alpha task', 'Middle task']);
+  await header.click();
+  await expect(header).toHaveAttribute('aria-sort', 'descending');
+  await expect(names).toHaveText(['Middle task', 'Alpha task', 'Zeta task']);
+  expect(reads).toBe(1);
+  const listURL = page.url();
+  const row = page.getByRole('link', { name: 'Alpha task', exact: true }).locator('xpath=ancestor::tr');
+  await row.getByRole('link', { name: 'Goal overview', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Goal overview', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Back to Goals', exact: true }).click();
+  await expect(page).toHaveURL(listURL);
+  await expect(search).toHaveValue('common task');
+  await expect(names).toHaveText(['Middle task', 'Alpha task', 'Zeta task']);
+  await page.reload();
+  await expect(search).toHaveValue('common task');
+  await expect(names).toHaveText(['Middle task', 'Alpha task', 'Zeta task']);
+  await expect(header).toHaveAttribute('aria-sort', 'descending');
 });
 
 for (const cellName of [undefined, '', '  \n ', 'self', 'platform']) {

@@ -116,7 +116,7 @@ function Location() {
   return <output data-testid="location">{location.pathname}{location.search}</output>;
 }
 
-it.each(['', '?status=ACTIVE&status=READY&cell=platform', '?status=success&status=failed_app&status=CANCEL_REQUESTED&cell=platform'])('preserves list filters through story navigation: %s', async (query) => {
+it.each(['', '?status=ACTIVE&status=READY&cell=platform', '?status=success&status=failed_app&status=CANCEL_REQUESTED&cell=platform', '?q=search+term&sort=submitted&order=descend'])('preserves list filters through story navigation: %s', async (query) => {
   const listReads: URL[] = [];
   vi.stubGlobal('fetch', vi.fn(async (input: string) => {
     const url = new URL(input, 'http://localhost');
@@ -125,7 +125,7 @@ it.each(['', '?status=ACTIVE&status=READY&cell=platform', '?status=success&statu
       data = { job_id: 'job', status: 'completed', root: { id: 'root', kind: 'recipe', title: 'recipe build', status: 'succeeded', path: [] } };
     } else if (url.pathname.endsWith('/jobs')) {
       listReads.push(url);
-      data = { jobs: [{ job_id: 'job', status: 'READY', recipe: 'build', store: 'ACTIVE' }] };
+      data = { jobs: [{ job_id: 'job', prompt: 'Search term in the full prompt', status: 'READY', recipe: 'build', store: 'ACTIVE' }] };
     } else data = [];
     return new Response(JSON.stringify(data));
   }));
@@ -145,10 +145,109 @@ it.each(['', '?status=ACTIVE&status=READY&cell=platform', '?status=success&statu
   expect(screen.getByTestId('location')).toHaveTextContent(`/project/tenant/jobs${query}`);
   await waitFor(() => expect(listReads).toHaveLength(2));
   for (const url of listReads) {
-    expect(url.searchParams.getAll('displayStatus')).toEqual(new URLSearchParams(query).getAll('status'));
-    expect(url.searchParams.getAll('status')).toEqual(query ? [] : ['all']);
-    expect(url.searchParams.get('cell')).toBe(query ? 'platform' : null);
+    const expected = new URLSearchParams(query);
+    expect(url.searchParams.getAll('displayStatus')).toEqual(expected.getAll('status'));
+    expect(url.searchParams.getAll('status')).toEqual(expected.has('status') ? [] : ['all']);
+    expect(url.searchParams.get('cell')).toBe(expected.get('cell'));
+    expect(url.searchParams.has('q')).toBe(false);
+    expect(url.searchParams.has('sort')).toBe(false);
   }
+});
+
+it('searches full prompts across attempts without fetching and clears hidden selections', async () => {
+  const jobs = [
+    { job_id: 'new', goal_id: 'grouped', title: 'Short title', prompt: `${'Long preamble '.repeat(12)}deep\n  needle`, status: 'READY', store: 'ACTIVE', created_at: '2026-10-29T12:00:00Z' },
+    { job_id: 'old', goal_id: 'grouped', prompt: 'Earlier attempt contains an older requirement', status: 'COMPLETED', completion_status: 'failed_app', store: 'ARCHIVED', created_at: '2026-10-28T12:00:00Z' },
+    { job_id: 'unrelated', prompt: 'Different work', status: 'READY', store: 'ACTIVE' },
+    { job_id: 'missing', status: 'READY', store: 'ACTIVE' },
+  ];
+  const fetch = vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs })));
+  vi.stubGlobal('fetch', fetch);
+  render(<MemoryRouter><Navigation /><Location /><JobsListPage projectId="tenant" /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Select job unrelated' }));
+  const search = screen.getByRole('textbox', { name: 'Search goals' });
+  fireEvent.change(search, { target: { value: ' DEEP needle ' } });
+  expect(screen.getByRole('link', { name: 'Short title', exact: true })).toBeVisible();
+  expect(screen.getByText('2 attempts on this page')).toBeVisible();
+  expect(screen.queryByRole('link', { name: 'Different work', exact: true })).not.toBeInTheDocument();
+  expect(screen.getByText('0 selected')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Delete selected' })).toBeDisabled();
+  fireEvent.change(search, { target: { value: 'older requirement' } });
+  expect(screen.getByRole('link', { name: 'Short title', exact: true })).toBeVisible();
+  fireEvent.change(search, { target: { value: 'not present' } });
+  expect(screen.getByText('No goals match this search on this page')).toBeVisible();
+  fireEvent.change(search, { target: { value: '' } });
+  expect(screen.getByRole('link', { name: 'Different work', exact: true })).toBeVisible();
+  expect(screen.getByRole('link', { name: 'Untitled goal', exact: true })).toBeVisible();
+  // Sorting pushes a history entry; changing search replaces only that entry.
+  // Going back must also clear selection, even though the input did not fire.
+  fireEvent.click(screen.getByRole('columnheader', { name: /^Goal/ }));
+  fireEvent.change(search, { target: { value: 'Different work' } });
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select job unrelated' }));
+  expect(screen.getByText('1 selected')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
+  expect(search).toHaveValue('');
+  expect(screen.getByText('0 selected')).toBeVisible();
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(getJob).not.toHaveBeenCalled();
+});
+
+it('sorts goal, status, cell, and submission columns locally in both directions', async () => {
+  const jobs = [
+    { job_id: 'z', title: 'Zebra', status: 'READY', store: 'ACTIVE', cell_name: 'alpha', submitted_at: '2026-10-29T08:00:00Z', created_at: '2026-10-30T00:00:00Z' },
+    { job_id: 'a', title: 'Alpha', status: 'COMPLETED', completion_status: 'success', store: 'ARCHIVED', cell_name: 'zeta', created_at: '2026-10-29T09:00:00Z' },
+    { job_id: 'm', title: 'Middle', status: 'COMPLETED', completion_status: 'failed_app', store: 'ARCHIVED', cell_name: 'middle', created_at: '2026-10-29T10:00:00Z' },
+  ];
+  const fetch = vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs })));
+  vi.stubGlobal('fetch', fetch);
+  render(<MemoryRouter><Location /><JobsListPage projectId="tenant" /></MemoryRouter>);
+  await screen.findByRole('link', { name: 'Zebra', exact: true });
+  const names = () => Array.from(document.querySelectorAll('a.goal-prompt')).map(link => link.textContent);
+  for (const [column, ascending] of [
+    ['Goal', ['Alpha', 'Middle', 'Zebra']], ['Status', ['Middle', 'Zebra', 'Alpha']],
+    ['Cell', ['Zebra', 'Middle', 'Alpha']], ['Submitted', ['Zebra', 'Alpha', 'Middle']],
+  ] as const) {
+    const header = screen.getByRole('columnheader', { name: new RegExp(`^${column}`) });
+    fireEvent.click(header);
+    expect(names()).toEqual(ascending);
+    expect(header).toHaveAttribute('aria-sort', 'ascending');
+    fireEvent.click(header);
+    expect(names()).toEqual([...ascending].reverse());
+    expect(header).toHaveAttribute('aria-sort', 'descending');
+  }
+  expect(screen.getByTestId('location')).toHaveTextContent('sort=submitted&order=descend');
+  fireEvent.click(screen.getByRole('columnheader', { name: /^Submitted/ }));
+  expect(names()).toEqual(['Zebra', 'Alpha', 'Middle']);
+  expect(screen.getByTestId('location').textContent).not.toContain('sort=');
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(getJob).not.toHaveBeenCalled();
+});
+
+it('starts status checkboxes selected and distinguishes selecting none from selecting all', async () => {
+  const reads: URL[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+    const url = new URL(input);
+    if (url.pathname.endsWith('/cells')) return new Response('[]');
+    reads.push(url);
+    return new Response(JSON.stringify({ jobs: [{ job_id: 'job', status: 'READY', store: 'ACTIVE' }] }));
+  }));
+  render(<MemoryRouter><Location /><JobsListPage projectId="tenant" /></MemoryRouter>);
+  await screen.findByRole('link', { name: 'Job job: Ready', exact: true });
+  fireEvent.click(screen.getByRole('button', { name: 'Filter statuses' }));
+  const dropdown = () => within(document.querySelector('.ant-table-filter-dropdown') as HTMLElement);
+  expect(dropdown().getByRole('checkbox', { name: 'Select all', exact: true })).toBeChecked();
+  fireEvent.click(screen.getByRole('button', { name: 'Select none', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply', exact: true }));
+  expect(await screen.findByText('No statuses selected')).toBeVisible();
+  expect(screen.getByTestId('location')).toHaveTextContent('status=none');
+  expect(reads).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Filter statuses' }));
+  fireEvent.click(dropdown().getByRole('checkbox', { name: 'Select all', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply', exact: true }));
+  expect(await screen.findByRole('link', { name: 'Job job: Ready', exact: true })).toBeVisible();
+  expect(reads).toHaveLength(2);
+  expect(reads[1].searchParams.get('status')).toBe('all');
+  expect(screen.getByTestId('location').textContent).not.toContain('status=');
 });
 
 function Navigation() {

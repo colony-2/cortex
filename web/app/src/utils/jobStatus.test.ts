@@ -56,4 +56,11 @@ describe('job display status', () => {
   it('keeps the outcome-unavailable selection in links created by the old dropdown', () => {
     expect(readJobFilters(new URLSearchParams('status=COMPLETED'))).toEqual({ status: ['OUTCOME_UNAVAILABLE'], cell: undefined });
   });
+
+  it('distinguishes all statuses from none and retains local search and sorting in links', () => {
+    expect(readJobFilters(new URLSearchParams()).status).toBeNull();
+    expect(readJobFilters(new URLSearchParams('status=none')).status).toEqual([]);
+    const params = new URLSearchParams('status=none&q=full+prompt&sort=submitted&order=descend&pageToken=next');
+    expect(jobFilterSearch(params)).toBe('?status=none&q=full+prompt&sort=submitted&order=descend&pageToken=next');
+  });
 });

@@ -1,15 +1,16 @@
 import { cellLabel } from '../utils/cellPresentation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Alert, Button, Form, Input, Modal, Select, Space, Spin, Table, Typography, message } from 'antd';
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
-import type { ColumnsType } from 'antd/es/table';
+import { Alert, Button, Form, Input, Modal, Select, Space, Spin, Table, Typography, message, theme } from 'antd';
+import { FilterFilled, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import type { ColumnsType, TableProps } from 'antd/es/table';
+import type { SortOrder } from 'antd/es/table/interface';
 import { listCells, listJobs, submitJob } from '@colony2/shared/api';
 import type { CortexCell, RecipeJobSummary } from '@colony2/shared/types';
 import { jobStatus, jobStatusOptions } from '../utils/jobStatus';
 import { jobTime } from './JobListDetails';
 import GoalJobOverview, { AttemptStatus } from './GoalJobOverview';
-import { abbreviatePrompt, latestActiveJob } from '../utils/goalPresentation';
+import { abbreviatePrompt, jobTimestamp, latestActiveJob } from '../utils/goalPresentation';
 import { jobFilterSearch, readJobFilters } from '../utils/jobFilters';
 import JobActionDialog, { type JobAction } from './JobActionDialog';
 import JobWaitLinks, { goalPath, jobPath } from './JobWaitLinks';
@@ -26,6 +27,7 @@ export default function JobsListPage(props: Props) {
 }
 
 function JobsList({ projectId, goalId }: Props) {
+  const { token } = theme.useToken();
   const navigate = useNavigate();
   const location = useLocation();
   const homePath = `/project/${encodeURIComponent(projectId)}/goals`;
@@ -51,11 +53,19 @@ function JobsList({ projectId, goalId }: Props) {
   const filters = readJobFilters(params);
   const pageToken = params.get('pageToken') || undefined;
   const statusesKey = JSON.stringify(filters.status);
+  const noStatuses = !goalId && filters.status?.length === 0;
+  const search = params.get('q') || '';
+  const searchTerm = search.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+  const sortOrder = (column: string): SortOrder => params.get('sort') === column
+    && (params.get('order') === 'ascend' || params.get('order') === 'descend') ? params.get('order') as SortOrder : null;
   const expanded = params.getAll('expanded');
   const [form] = Form.useForm<{ prompt: string }>();
   const changeQuery = (change: (query: URLSearchParams) => void, replace = false) => setParams(previous => {
     const query = new URLSearchParams(previous); change(query); return query;
   }, { replace });
+
+  // Also clear selections when browser history restores a different search.
+  useEffect(() => { setSelectedIds([]); }, [search]);
 
   useEffect(() => {
     const version = ++loadVersion.current;
@@ -63,7 +73,7 @@ function JobsList({ projectId, goalId }: Props) {
     (async () => {
       const key = JSON.stringify([projectId, goalId, statusesKey, filters.cell, pageToken, refresh]);
       if (listRequest.current?.key !== key) listRequest.current = { key, promise: Promise.all([
-        listCells(projectId), listJobs(projectId, { goal: goalId, displayStatus: goalId ? [] : JSON.parse(statusesKey), cell: goalId ? undefined : filters.cell, pageToken }),
+        listCells(projectId), noStatuses ? Promise.resolve({ jobs: [] }) : listJobs(projectId, { goal: goalId, displayStatus: goalId ? [] : JSON.parse(statusesKey) || [], cell: goalId ? undefined : filters.cell, pageToken }),
       ]) };
       const [cellData, page] = await listRequest.current.promise;
       if (version !== loadVersion.current) return;
@@ -73,7 +83,7 @@ function JobsList({ projectId, goalId }: Props) {
       if (version === loadVersion.current) setError(reason instanceof Error ? reason.message : 'Could not load goals');
     }).finally(() => { if (version === loadVersion.current) setLoading(false); });
     return () => { loadVersion.current++; };
-  }, [projectId, goalId, filters.cell, pageToken, statusesKey, refresh]);
+  }, [projectId, goalId, filters.cell, pageToken, statusesKey, noStatuses, refresh]);
 
   // Group only the matching jobs returned by the server. A goal link lists all
   // its attempts; a page is not an authoritative goal count or goal state.
@@ -90,19 +100,39 @@ function JobsList({ projectId, goalId }: Props) {
     }
     return [...grouped.values()];
   }, [jobs, goalId]);
-  const rows: Row[] = groups.map(group => ({ key: group.key, group, job: latestActiveJob(group.jobs) }));
-  const setStatuses = (statuses: string[]) => {
+  // Search complete prompts (including other attempts), even when the row uses
+  // a title or an abbreviated prompt. Keep the entire matching goal together.
+  const rows: Row[] = noStatuses ? [] : groups.filter(group => !searchTerm || group.jobs.some(job =>
+    [job.prompt, job.title].some(text => text?.replace(/\s+/g, ' ').toLocaleLowerCase().includes(searchTerm)),
+  )).map(group => ({ key: group.key, group, job: latestActiveJob(group.jobs) }));
+  const statusOptions = jobStatusOptions(jobs, filters.status || []);
+  const setStatuses = (statuses: string[] | null) => {
     setSelectedIds([]);
     changeQuery(query => {
       query.delete('pageToken'); query.delete('status');
-      statuses.forEach(status => query.append('status', status));
+      if (statuses?.length === 0) query.set('status', 'none');
+      statuses?.forEach(status => query.append('status', status));
     });
   };
   const fullPrompt = (group: JobGroup) => latestActiveJob(group.jobs).title || latestActiveJob(group.jobs).prompt || group.jobs.find(job => job.prompt?.trim())?.prompt;
   const setSelection = (ids: string[], selected: boolean) => setSelectedIds(previous => selected
     ? [...new Set([...previous, ...ids])] : previous.filter(id => !ids.includes(id)));
+  const onTableChange: TableProps<Row>['onChange'] = (_, columnFilters, sorter, extra) => {
+    if (extra.action === 'filter') {
+      const statuses = columnFilters.status?.map(String) || [];
+      setStatuses(statuses.length === statusOptions.length ? null : statuses);
+    } else if (extra.action === 'sort') {
+      const active = Array.isArray(sorter) ? sorter[0] : sorter;
+      changeQuery(query => {
+        query.delete('sort'); query.delete('order');
+        if (active.order && active.columnKey) {
+          query.set('sort', String(active.columnKey)); query.set('order', active.order);
+        }
+      });
+    }
+  };
   const columns: ColumnsType<Row> = [
-    { title: 'Goal', key: 'prompt', render: (_, { group, job }) => <Space direction="vertical" size={2}>
+    { title: 'Goal', key: 'prompt', sorter: (a, b) => (fullPrompt(a.group) || 'Untitled goal').localeCompare(fullPrompt(b.group) || 'Untitled goal'), sortOrder: sortOrder('prompt'), render: (_, { group, job }) => <Space direction="vertical" size={2}>
       <Link className="goal-prompt" to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)}>
         {abbreviatePrompt(fullPrompt(group) || 'Untitled goal')}
       </Link>
@@ -111,9 +141,16 @@ function JobsList({ projectId, goalId }: Props) {
       <JobCompletionMessage job={job} />
       <JobExecutionRequirements execution={job.execution} />
     </Space> },
-    { title: 'Status', width: 160, render: (_, { job, group }) => <Link to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)} aria-label={`Job ${job.job_id}: ${jobStatus(job).label}`}><AttemptStatus job={job} /></Link> },
-    { title: 'Cell', width: 120, render: (_, { job }) => cellLabel(job.cell_name) },
-    { title: 'Submitted', width: 185, render: (_, { job }) => jobTime(job.submitted_at || job.created_at) || '—' },
+    { title: 'Status', key: 'status', width: 180,
+      sorter: (a, b) => jobStatus(a.job).label.localeCompare(jobStatus(b.job).label), sortOrder: sortOrder('status'),
+      filters: statusOptions.map(option => ({ text: option.label, value: option.value })),
+      filteredValue: filters.status ?? statusOptions.map(option => option.value), filtered: filters.status !== null,
+      filterMode: 'tree', filterSearch: true, filterOnClose: false,
+      filterIcon: <FilterFilled aria-label="Filter statuses" style={{ color: filters.status === null ? token.colorTextDescription : token.colorPrimary }} tabIndex={0}
+        onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); event.currentTarget.click(); } }} />,
+      render: (_, { job, group }) => <Link to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)} aria-label={`Job ${job.job_id}: ${jobStatus(job).label}`}><AttemptStatus job={job} /></Link> },
+    { title: 'Cell', key: 'cell', width: 120, sorter: (a, b) => cellLabel(a.job.cell_name).localeCompare(cellLabel(b.job.cell_name)), sortOrder: sortOrder('cell'), render: (_, { job }) => cellLabel(job.cell_name) },
+    { title: 'Submitted', key: 'submitted', width: 185, sorter: (a, b) => jobTimestamp(a.job) - jobTimestamp(b.job), sortOrder: sortOrder('submitted'), render: (_, { job }) => jobTime(job.submitted_at || job.created_at) || '—' },
     { title: 'Links', width: 180, render: (_, { job, group }) => <Space direction="vertical" size={2}>
       {group.goalId && <Link to={goalPath(projectId, group.goalId)} state={{ goalsReturnTo }}>Goal overview</Link>}
       {job.parent?.job_id && <Link to={jobPath(job.parent.tenant_id || projectId, job.parent.job_id)}>Parent</Link>}
@@ -139,8 +176,11 @@ function JobsList({ projectId, goalId }: Props) {
         <Title level={3} style={{ margin: 0 }}>{goalId ? 'Goal overview' : 'Goals'}</Title>
         <Space wrap>
           {goalId && <Link to={goalsReturnTo}>Back to Goals</Link>}
-          {!goalId && <Select mode="multiple" aria-label="Status filter" value={filters.status} style={{ minWidth: 240 }} placeholder="All statuses" maxTagCount="responsive" allowClear optionFilterProp="label"
-            options={jobStatusOptions(jobs, filters.status)} onChange={setStatuses} />}
+          {!goalId && <Input aria-label="Search goals" placeholder="Search full prompts" prefix={<SearchOutlined aria-hidden />} allowClear value={search}
+            style={{ width: 280 }} onChange={event => {
+              const value = event.target.value;
+              changeQuery(query => { if (value) query.set('q', value); else query.delete('q'); }, true);
+            }} />}
           {!goalId && <Select aria-label="Cell filter" value={filters.cell} options={cells.map(cell => ({ value: cell.name || cell.repository_source, label: cell.name }))}
             style={{ minWidth: 160 }} placeholder="All cells" allowClear showSearch onChange={cell => {
               setSelectedIds([]); changeQuery(query => { query.delete('cell'); if (cell) query.set('cell', cell); query.delete('pageToken'); query.delete('expanded'); });
@@ -149,6 +189,7 @@ function JobsList({ projectId, goalId }: Props) {
           <Button type="primary" icon={<PlusOutlined aria-hidden />} onClick={() => setSubmitOpen(true)}>New goal</Button>
         </Space>
       </div>
+      {!goalId && <Text type="secondary">Search and sorting apply to the current page.</Text>}
       {error && <Alert type="error" showIcon message={error} />}
       {goalId ? <Spin spinning={loading}>
         <section aria-label="Goal overview">
@@ -162,6 +203,8 @@ function JobsList({ projectId, goalId }: Props) {
           {!!selectedIds.length && <Button onClick={() => setSelectedIds([])}>Clear selection</Button>}
         </Space>
         <Table<Row> rowKey="key" columns={columns} dataSource={rows} loading={loading} pagination={false} size="small" scroll={{ x: 1000 }}
+          onChange={onTableChange} locale={{ filterCheckAll: 'Select all', filterReset: 'Select none', filterConfirm: 'Apply',
+            emptyText: noStatuses ? 'No statuses selected' : searchTerm ? 'No goals match this search on this page' : undefined }}
           rowSelection={{
             selectedRowKeys: rows.filter(row => row.group.jobs.every(job => selectedIds.includes(job.job_id))).map(row => row.key),
             onSelect: (row, selected) => setSelection(row.group.jobs.map(job => job.job_id), selected),

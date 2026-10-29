@@ -11,11 +11,19 @@ tenants; cells are the current Git repository and its c2j-configured dependents.
 
 ## Job status filters
 
-The status filter matches the badges shown for jobs, including Succeeded,
+The Status column's filter matches the badges shown for jobs, including Succeeded,
 Failed (application/system), Timed out, and Cancellation requested. Multiple
-selections match any selected status. Finished (outcome unavailable) matches
+selections match any selected status. All statuses start checked; uncheck individual
+items or use Select all / Select none, then Apply. Selecting none shows no jobs.
+Finished (outcome unavailable) matches
 completed jobs with no stored outcome; retrying jobs retain their scheduling
 status even if a previous attempt failed.
+
+Search full prompts in the Goals toolbar, including text beyond the shortened row
+label and prompts from other loaded attempts. Click the Goal, Status, Cell, or
+Submitted column header to sort ascending or descending; click again to restore
+the original order. Search and sorting run in the browser on the current page.
+Search, sorting, and filters persist in the URL when opening a goal and returning.
 
 The jobs API accepts repeated `displayStatus` parameters for these states, for
 example `?displayStatus=READY&displayStatus=failed_app`. The existing `status`
