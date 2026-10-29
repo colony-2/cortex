@@ -9,6 +9,21 @@ Cortex connects to a remote [JobDB](https://github.com/colony-2/jobdb) server.
 Run c2j workers separately against the same JobDB. Projects in the UI are JobDB
 tenants; cells are the current Git repository and its c2j-configured dependents.
 
+## Job status filters
+
+The status filter matches the badges shown for jobs, including Succeeded,
+Failed (application/system), Timed out, and Cancellation requested. Multiple
+selections match any selected status. Finished (outcome unavailable) matches
+completed jobs with no stored outcome; retrying jobs retain their scheduling
+status even if a previous attempt failed.
+
+The jobs API accepts repeated `displayStatus` parameters for these states, for
+example `?displayStatus=READY&displayStatus=failed_app`. The existing `status`
+parameter still filters raw scheduling states; the two parameters cannot be
+combined. Display filtering scans compact JobDB pages without loading job
+details. Each request scans at most 20 backend pages, so a sparse or empty result
+can still have a `next_page_token`; use **Next jobs** to continue.
+
 ## Chapter downloads
 
 On a job's story page, **Download chapters** saves a JSON inspection export of

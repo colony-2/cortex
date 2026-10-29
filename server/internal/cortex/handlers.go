@@ -116,6 +116,19 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 	if len(statuses) == 0 && !allStatuses {
 		statuses = recipejob.DefaultVisibleStatuses()
 	}
+	displayStatuses, err := parseDisplayStatuses(r.URL.Query()["displayStatus"])
+	if err != nil {
+		writeHTTPError(w, http.StatusBadRequest, err)
+		return
+	}
+	if len(displayStatuses) > 0 {
+		if len(r.URL.Query()["status"]) > 0 {
+			writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("status and displayStatus cannot be combined"))
+			return
+		}
+		// Outcomes and cancellation requests can override the scheduling status.
+		statuses, allStatuses = nil, true
+	}
 
 	repo, err := s.jobListRepositoryFilter(r, tenantID)
 	if err != nil {
@@ -131,7 +144,7 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 	if allStatuses {
 		stores = []jobdb.JobStore{jobdb.JobStoreActive, jobdb.JobStoreArchived}
 	}
-	resp, err := recipejob.ListRecipeJobs(r.Context(), s.engine, recipejob.ListRecipeJobsRequest{
+	resp, err := listJobsByDisplayStatus(r.Context(), s.engine, recipejob.ListRecipeJobsRequest{
 		GoalIDs:          r.URL.Query()["goal"],
 		TenantID:         tenantID,
 		RepositorySource: repo,
@@ -139,7 +152,7 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 		Stores:           stores,
 		PageSize:         pageSize,
 		PageToken:        r.URL.Query().Get("pageToken"),
-	})
+	}, displayStatuses)
 	if err != nil {
 		writeError(w, err)
 		return

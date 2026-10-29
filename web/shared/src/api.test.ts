@@ -33,6 +33,23 @@ it('requests all statuses when the status filter is explicitly cleared', async (
   expect(new URL(fetch.mock.calls[2][0]).searchParams.has('status')).toBe(false);
 });
 
+it('sends mixed display statuses to the API and retains pagination and scoping', async () => {
+  const fetch = vi.fn(async () => new Response(JSON.stringify({ jobs: [] })));
+  vi.stubGlobal('fetch', fetch);
+  await listJobs('tenant', { displayStatus: ['READY', 'success', 'failed_app', 'CANCEL_REQUESTED', 'OUTCOME_UNAVAILABLE', 'completion:future outcome'], cell: 'app', goal: 'goal', pageSize: 2, pageToken: 'cursor+/=' });
+  const query = new URL(vi.mocked(globalThis.fetch).mock.calls[0][0] as string).searchParams;
+  expect(query.getAll('displayStatus')).toEqual(['READY', 'success', 'failed_app', 'CANCEL_REQUESTED', 'OUTCOME_UNAVAILABLE', 'completion:future outcome']);
+  expect(query.has('status')).toBe(false);
+  expect(query.get('cell')).toBe('app');
+  expect(query.get('goal')).toBe('goal');
+  expect(query.get('pageSize')).toBe('2');
+  expect(query.get('pageToken')).toBe('cursor+/=');
+  await listJobs('tenant', { displayStatus: [] });
+  const cleared = new URL(vi.mocked(globalThis.fetch).mock.calls[1][0] as string).searchParams;
+  expect(cleared.getAll('status')).toEqual(['all']);
+  expect(cleared.has('displayStatus')).toBe(false);
+});
+
 it('downloads opaque chapter bytes through encoded routes and forwards cancellation', async () => {
   const { getJobChaptersDownload } = await import('./api');
   const { API_BASE } = await import('./apiBase');

@@ -4,6 +4,7 @@ import type {
   Project,
   RecipeJob,
   RecipeJobStatus,
+  RecipeJobFilterStatus,
   SubmitRecipeJobRequest,
   RestartContext,
 } from './types';
@@ -36,6 +37,7 @@ export async function listJobs(
   projectId: string,
   options: {
     status?: RecipeJobStatus[];
+    displayStatus?: RecipeJobFilterStatus[];
     cell?: string;
     pageSize?: number;
     pageToken?: string;
@@ -44,10 +46,11 @@ export async function listJobs(
 ): Promise<ListRecipeJobsResponse> {
   const params = new URLSearchParams();
   // An explicitly cleared filter means all statuses; omitted options retain API defaults.
-  if (options.status?.length === 0) params.set('status', 'all');
+  if (options.status?.length === 0 || options.displayStatus?.length === 0) params.set('status', 'all');
   for (const status of options.status || []) {
     params.append('status', status);
   }
+  for (const status of options.displayStatus || []) params.append('displayStatus', status);
   if (options.cell) params.set('cell', options.cell);
   if (options.goal) params.set('goal', options.goal);
   if (options.pageSize) params.set('pageSize', String(options.pageSize));

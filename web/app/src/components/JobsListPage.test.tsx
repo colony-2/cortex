@@ -116,7 +116,7 @@ function Location() {
   return <output data-testid="location">{location.pathname}{location.search}</output>;
 }
 
-it.each(['', '?status=ACTIVE&status=READY&cell=platform'])('preserves list filters through story navigation: %s', async (query) => {
+it.each(['', '?status=ACTIVE&status=READY&cell=platform', '?status=success&status=failed_app&status=CANCEL_REQUESTED&cell=platform'])('preserves list filters through story navigation: %s', async (query) => {
   const listReads: URL[] = [];
   vi.stubGlobal('fetch', vi.fn(async (input: string) => {
     const url = new URL(input, 'http://localhost');
@@ -145,7 +145,8 @@ it.each(['', '?status=ACTIVE&status=READY&cell=platform'])('preserves list filte
   expect(screen.getByTestId('location')).toHaveTextContent(`/project/tenant/jobs${query}`);
   await waitFor(() => expect(listReads).toHaveLength(2));
   for (const url of listReads) {
-    expect(url.searchParams.getAll('status')).toEqual(query ? ['ACTIVE', 'READY'] : ['all']);
+    expect(url.searchParams.getAll('displayStatus')).toEqual(new URLSearchParams(query).getAll('status'));
+    expect(url.searchParams.getAll('status')).toEqual(query ? [] : ['all']);
     expect(url.searchParams.get('cell')).toBe(query ? 'platform' : null);
   }
 });

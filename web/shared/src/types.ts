@@ -30,6 +30,11 @@ export type RecipeJobStatus =
   | 'CANCELLED'
   | 'COMPLETED';
 
+// User-visible states combine scheduling status with terminal outcomes.
+export type RecipeJobFilterStatus = Exclude<RecipeJobStatus, 'COMPLETED'>
+  | 'success' | 'failed_app' | 'failed_system' | 'failed_timeout'
+  | 'CANCEL_REQUESTED' | 'OUTCOME_UNAVAILABLE' | `completion:${string}`;
+
 export interface RecipeJob {
   title?: string;
   metadata?: Record<string, unknown>;

@@ -6,7 +6,7 @@ import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { listCells, listJobs, submitJob } from '@colony2/shared/api';
 import type { CortexCell, RecipeJobSummary } from '@colony2/shared/types';
-import { jobStatus, schedulingStatuses } from '../utils/jobStatus';
+import { jobStatus, jobStatusOptions } from '../utils/jobStatus';
 import { jobTime } from './JobListDetails';
 import GoalJobOverview, { AttemptStatus } from './GoalJobOverview';
 import { abbreviatePrompt, latestActiveJob } from '../utils/goalPresentation';
@@ -63,7 +63,7 @@ function JobsList({ projectId, goalId }: Props) {
     (async () => {
       const key = JSON.stringify([projectId, goalId, statusesKey, filters.cell, pageToken, refresh]);
       if (listRequest.current?.key !== key) listRequest.current = { key, promise: Promise.all([
-        listCells(projectId), listJobs(projectId, { goal: goalId, status: goalId ? [] : JSON.parse(statusesKey), cell: goalId ? undefined : filters.cell, pageToken }),
+        listCells(projectId), listJobs(projectId, { goal: goalId, displayStatus: goalId ? [] : JSON.parse(statusesKey), cell: goalId ? undefined : filters.cell, pageToken }),
       ]) };
       const [cellData, page] = await listRequest.current.promise;
       if (version !== loadVersion.current) return;
@@ -139,8 +139,8 @@ function JobsList({ projectId, goalId }: Props) {
         <Title level={3} style={{ margin: 0 }}>{goalId ? 'Goal overview' : 'Goals'}</Title>
         <Space wrap>
           {goalId && <Link to={goalsReturnTo}>Back to Goals</Link>}
-          {!goalId && <Select mode="multiple" aria-label="Status filter" value={filters.status} style={{ minWidth: 240 }} placeholder="All statuses" maxTagCount="responsive" allowClear
-            options={Object.entries(schedulingStatuses).map(([value, status]) => ({ value, label: status.label }))} onChange={setStatuses} />}
+          {!goalId && <Select mode="multiple" aria-label="Status filter" value={filters.status} style={{ minWidth: 240 }} placeholder="All statuses" maxTagCount="responsive" allowClear optionFilterProp="label"
+            options={jobStatusOptions(jobs, filters.status)} onChange={setStatuses} />}
           {!goalId && <Select aria-label="Cell filter" value={filters.cell} options={cells.map(cell => ({ value: cell.name || cell.repository_source, label: cell.name }))}
             style={{ minWidth: 160 }} placeholder="All cells" allowClear showSearch onChange={cell => {
               setSelectedIds([]); changeQuery(query => { query.delete('cell'); if (cell) query.set('cell', cell); query.delete('pageToken'); query.delete('expanded'); });

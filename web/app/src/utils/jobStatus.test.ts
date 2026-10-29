@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RecipeJob } from '@colony2/shared/types';
-import { jobStatus } from './jobStatus';
+import { jobStatus, jobStatusOptions } from './jobStatus';
+import { jobFilterSearch, readJobFilters } from './jobFilters';
 
 const job: RecipeJob = {
   tenant_id: 'tenant', job_id: 'job', job_type: 'recipe', recipe: 'test',
@@ -29,5 +30,30 @@ describe('job display status', () => {
   it('distinguishes a cancellation request from terminal cancellation', () => {
     expect(jobStatus({ ...job, status: 'CANCELLED', store: 'ACTIVE', cancel_requested: true }).label).toBe('Cancellation requested');
     expect(jobStatus({ ...job, status: 'CANCELLED', cancel_requested: true, completion_status: 'cancelled' }).label).toBe('Cancelled');
+  });
+
+  it('offers the displayed outcomes with a single Cancelled option and no generic Completed option', () => {
+    const options = jobStatusOptions([{ ...job, completion_status: 'future_outcome' }], ['completion:previous_outcome']);
+    expect(options.map(option => option.label)).toEqual([
+      'Ready', 'Waiting for jobs', 'Scheduled', 'Running', 'Worker unresponsive', 'Expired',
+      'Cancellation requested', 'Cancelled', 'Succeeded', 'Failed (application)', 'Failed (system)',
+      'Timed out', 'Finished (outcome unavailable)', 'Finished (previous_outcome)', 'Finished (future_outcome)',
+    ]);
+    expect(options.some(option => option.value === 'COMPLETED')).toBe(false);
+    for (const completion_status of ['success', 'failed_app', 'failed_system', 'failed_timeout', 'cancelled', '', 'future_outcome']) {
+      expect(options.some(option => option.label === jobStatus({ ...job, completion_status }).label)).toBe(true);
+    }
+  });
+
+  it('preserves mixed display filters and unknown outcomes through navigation', () => {
+    const params = new URLSearchParams('status=READY&status=success&status=failed_app&status=CANCEL_REQUESTED&status=OUTCOME_UNAVAILABLE&status=completion%3Afuture_outcome&status=constructor&cell=platform&pageToken=next');
+    expect(readJobFilters(params)).toEqual({ status: ['READY', 'success', 'failed_app', 'CANCEL_REQUESTED', 'OUTCOME_UNAVAILABLE', 'completion:future_outcome'], cell: 'platform' });
+    const restored = new URLSearchParams(jobFilterSearch(params));
+    expect(readJobFilters(restored)).toEqual(readJobFilters(params));
+    expect(restored.get('pageToken')).toBe('next');
+  });
+
+  it('keeps the outcome-unavailable selection in links created by the old dropdown', () => {
+    expect(readJobFilters(new URLSearchParams('status=COMPLETED'))).toEqual({ status: ['OUTCOME_UNAVAILABLE'], cell: undefined });
   });
 });

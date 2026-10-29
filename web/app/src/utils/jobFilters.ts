@@ -1,9 +1,9 @@
-import type { RecipeJobStatus } from '@colony2/shared/types';
-import { schedulingStatuses } from './jobStatus';
+import type { RecipeJobFilterStatus } from '@colony2/shared/types';
+import { isJobFilterStatus } from './jobStatus';
 
-export function readJobFilters(params: URLSearchParams): { status: RecipeJobStatus[]; cell?: string } {
-  const status = params.getAll('status').filter((value): value is RecipeJobStatus =>
-    Object.prototype.hasOwnProperty.call(schedulingStatuses, value));
+export function readJobFilters(params: URLSearchParams): { status: RecipeJobFilterStatus[]; cell?: string } {
+  // Older links used COMPLETED for the "outcome unavailable" filter label.
+  const status = params.getAll('status').map(value => value === 'COMPLETED' ? 'OUTCOME_UNAVAILABLE' : value).filter(isJobFilterStatus);
   return { status, cell: params.get('cell') || undefined };
 }
 
