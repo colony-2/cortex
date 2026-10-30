@@ -1,3 +1,4 @@
+import './JobStoryPage.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import {
@@ -34,6 +35,8 @@ import AttemptTabs from './AttemptTabs';
 import CancelJobButton from './CancelJobButton';
 import DownloadChaptersButton from './DownloadChaptersButton';
 import { getJob } from '@colony2/shared/api';
+import type { RecipeJob } from '@colony2/shared/types';
+import { jobStatusValue } from '../utils/jobStatus';
 import { goalPath } from './JobWaitLinks';
 import { jobFilterSearch } from '../utils/jobFilters';
 import { buildStoryTree, storyAttempts, storyNodeName, type ArtifactKey, type StoryNode, type StoryKind, type StoryNodeRef } from '../utils/storyTree';
@@ -355,20 +358,28 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   const suppliedReturn = location.state?.goalsReturnTo || location.state?.returnTo;
   const returnTo = typeof suppliedReturn === 'string' && [goalsHome, `/project/${encodeURIComponent(projectId)}/jobs`].includes(suppliedReturn.split('?')[0])
     ? suppliedReturn : `${goalsHome}${filterSearch}`;
-  const [loadedGoal, setLoadedGoal] = useState<{ jobId: string; projectId: string; goalId?: string }>();
+  const [loadedJob, setLoadedJob] = useState<{ jobId: string; projectId: string; job: RecipeJob }>();
+  const metadataGeneration = useRef(0);
+  const job = loadedJob?.jobId === jobId && loadedJob.projectId === projectId ? loadedJob.job : undefined;
+  const jobTitle = typeof job?.title === 'string' && job.title.trim() ? job.title : undefined;
+  const prompt = job?.prompt?.trim() ? job.prompt : undefined;
+  const terminalStatus = job ? jobStatusValue(job) : undefined;
+  const failureDetail = terminalStatus && ['failed_app', 'failed_system', 'failed_timeout'].includes(terminalStatus)
+    && job?.completion_detail?.trim() ? job.completion_detail : undefined;
+  const loadMetadata = () => {
+    const generation = ++metadataGeneration.current;
+    void getJob(projectId, jobId).then(job => {
+      if (generation === metadataGeneration.current) setLoadedJob({ projectId, jobId, job });
+    }).catch(() => {
+      // Metadata failure must not prevent story inspection.
+      if (generation === metadataGeneration.current) setLoadedJob(undefined);
+    });
+  };
   const navigationGoal = typeof location.state?.goalId === 'string' ? location.state.goalId : undefined;
-  const currentGoal = navigationGoal || (loadedGoal?.jobId === jobId && loadedGoal.projectId === projectId ? loadedGoal.goalId : undefined);
+  const currentGoal = navigationGoal || job?.goal_id;
   const overviewPath = currentGoal ? goalPath(projectId, currentGoal) : undefined;
   const savedOverview = location.state?.goalReturnTo;
   const overviewLink = typeof savedOverview === 'string' && savedOverview.split('?')[0] === overviewPath ? savedOverview : overviewPath;
-  useEffect(() => {
-    if (!jobId || navigationGoal) return;
-    let cancelled = false;
-    getJob(projectId, jobId).then(job => {
-      if (!cancelled) setLoadedGoal({ projectId, jobId, goalId: job.goal_id });
-    }).catch(() => { /* The story remains available if metadata cannot be read. */ });
-    return () => { cancelled = true; };
-  }, [projectId, jobId, navigationGoal]);
 
 
   const selectedRef = useMemo(() => {
@@ -390,6 +401,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
 
   const load = async (opts?: { preserveSelection?: boolean }) => {
     if (!jobId) return;
+    loadMetadata();
     setLoading(true);
     setError(null);
     try {
@@ -435,7 +447,9 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   };
 
   useEffect(() => {
+    setLoadedJob(undefined);
     load();
+    return () => { ++metadataGeneration.current; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, jobId]);
 
@@ -664,14 +678,6 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
     </Space>
   );
 
-  if (loading && !story) {
-    return (
-      <div style={{ padding: 24, textAlign: 'center' }}>
-        <Spin size="large" />
-      </div>
-    );
-  }
-
   const pendingInputForm = pendingInputDetails ? adaptInputFormConfig(pendingInputDetails.form, jobId) : null;
   const selectedIsPendingNode =
     focusTaskOrdinal !== null &&
@@ -705,17 +711,17 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   return (
     <div style={{ padding: 24 }}>
       <Space direction="vertical" style={{ width: '100%' }} size="large">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Space>
+        <div className="job-story-header" data-testid="job-story-header" style={{ display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'space-between', alignItems: 'center', minWidth: 0 }}>
+          <Space wrap style={{ minWidth: 0, maxWidth: '100%' }}>
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(returnTo)}>
               Back to Goals
             </Button>
-            <Title level={2} style={{ margin: 0 }}>
-              Job Story
+            <Title level={2} style={{ margin: 0, overflowWrap: 'anywhere' }}>
+              {jobTitle ? `Job Story: ${jobTitle}` : 'Job Story'}
             </Title>
             {overviewLink && <Link to={overviewLink} state={{ goalsReturnTo: returnTo }}>Goal overview</Link>}
           </Space>
-          <Space>
+          <Space wrap style={{ maxWidth: '100%' }}>
             <DownloadChaptersButton key={JSON.stringify([projectId, jobId])} projectId={projectId} jobId={jobId} />
             {story?.status === 'running' ? (
               <Space>
@@ -741,6 +747,15 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
               onCancelled={async () => { await Promise.all([load({ preserveSelection: true }), refreshPendingInputs()]); }} />
           </Space>
         </div>
+
+        {prompt && <section aria-label="Job prompt">
+          <Text strong>Prompt</Text>
+          <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginBottom: 0 }}>{prompt}</Typography.Paragraph>
+        </section>}
+        {failureDetail && <Alert type="error" showIcon
+          message={terminalStatus === 'failed_timeout' ? 'Job timed out' : 'Job failed'}
+          description={<div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{failureDetail}</div>} />}
+        {loading && !story && <Spin size="large" />}
 
         {error ? (
           <Alert

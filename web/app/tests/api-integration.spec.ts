@@ -90,12 +90,14 @@ test('creates a prompt-only goal and restores expanded list state through naviga
   await name.click();
   await expect(page).toHaveURL(new RegExp(`/jobs/${job.job_id}/story`));
   await expect(page.getByRole('heading', { name: 'Job Story' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Job prompt' }).locator('div.ant-typography')).toHaveText(prompt);
   await page.goBack();
   await expect(page).toHaveURL(detailURL);
   await expect(page.getByText('Execution requirements', { exact: true }).locator('..')).toHaveAttribute('open', '');
   await page.goForward();
   await expect(page.getByRole('heading', { name: 'Job Story' })).toBeVisible();
   await page.reload();
+  await expect(page.getByRole('region', { name: 'Job prompt' }).locator('div.ant-typography')).toHaveText(prompt);
   await page.getByRole('link', { name: 'Goal overview', exact: true }).click();
   await expect(page).toHaveURL(goalURL);
   await expect(page.getByRole('button', { name: 'Expand row' })).toHaveCount(0);
@@ -237,4 +239,41 @@ test('downloads persisted job chapters as JSON without changing the story route'
   }
   await expect(page).toHaveURL(new RegExp(`${route}$`));
   await expect(page.getByRole('button', { name: 'Download chapters', exact: true })).toBeEnabled();
+});
+
+
+test('wraps long job story context without overflowing its header', async ({ page, context, baseURL }) => {
+  await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+  const title = 'LongTitle'.repeat(65);
+  const prompt = 'LongPrompt'.repeat(100) + '\nSecond prompt line';
+  const detail = 'LongDiagnostic'.repeat(100) + '\nSecond diagnostic line';
+  await page.route('**/api/projects/layout/jobs/layout-job', route => route.fulfill({ json: {
+    tenant_id: 'layout', job_id: 'layout-job', status: 'COMPLETED', store: 'ARCHIVED',
+    title, prompt, completion_status: 'failed_app', completion_detail: detail,
+  } }));
+  await page.route('**/api/projects/layout/jobs/layout-job/story', route => route.fulfill({ json: {
+    job_id: 'layout-job', status: 'failed', root: null,
+  } }));
+  await page.goto('/project/layout/jobs/layout-job/story');
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    const heading = page.getByRole('heading', { level: 2, name: `Job Story: ${title}` });
+    const promptRegion = page.getByRole('region', { name: 'Job prompt' });
+    const failure = page.getByRole('alert').filter({ hasText: 'Job failed' });
+    await expect(heading).toBeVisible();
+    await expect(promptRegion.locator('div.ant-typography')).toHaveText(prompt);
+    await expect(failure).toContainText(detail);
+    const header = page.getByTestId('job-story-header');
+    for (const element of [header, promptRegion, failure]) {
+      const box = await element.boundingBox();
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+      expect(await element.evaluate(node => node.scrollWidth - node.clientWidth), await element.getAttribute('class') || 'context').toBeLessThanOrEqual(1);
+    }
+    const headingBox = await header.boundingBox();
+    const promptBox = await promptRegion.boundingBox();
+    const failureBox = await failure.boundingBox();
+    expect(promptBox!.y).toBeGreaterThanOrEqual(headingBox!.y + headingBox!.height);
+    expect(failureBox!.y).toBeGreaterThanOrEqual(promptBox!.y + promptBox!.height);
+    await expect(page.getByRole('button', { name: /Refresh/ })).toBeVisible();
+  }
 });

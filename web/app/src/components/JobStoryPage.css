@@ -1,0 +1,12 @@
+.job-story-header .ant-space-item {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.job-story-header .ant-btn {
+  max-width: 100%;
+  height: auto;
+  min-height: 32px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
