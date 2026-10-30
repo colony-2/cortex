@@ -3,7 +3,7 @@ module github.com/colony-2/colony2/server
 go 1.26
 
 require (
-	github.com/colony-2/c2j v0.0.111-0.20261030011436-7bdeab7e30c4
+	github.com/colony-2/c2j v0.0.112-0.20261030043708-61d3294e5acf
 	github.com/colony-2/jobdb v0.0.65
 	github.com/gorilla/mux v1.8.1
 	github.com/spf13/cobra v1.10.2
