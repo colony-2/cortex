@@ -16,11 +16,13 @@ function executableOnPath(name: string): string | undefined {
     });
 }
 
-const chromium = executableOnPath('chromium');
-if (chromium) {
-  const ffmpeg = executableOnPath('ffmpeg');
-  if (!ffmpeg) throw new Error('Chromium on PATH requires FFmpeg on PATH for Playwright video recording.');
-
+// CI explicitly installs Playwright's browser and encoder in this directory.
+// Otherwise use a complete system pair (as provided by c2), or Playwright's cache.
+const chromium = process.env.CORTEX_PLAYWRIGHT_BROWSERS_PATH
+  ? undefined
+  : executableOnPath('chromium');
+const ffmpeg = chromium ? executableOnPath('ffmpeg') : undefined;
+if (chromium && ffmpeg) {
   // Playwright 1.61.1 has no public FFmpeg path option. Point its registry at
   // the declared executable without downloading or modifying the browser cache.
   // Recheck this adapter when updating Playwright in pnpm-lock.yaml.
@@ -50,7 +52,7 @@ export default defineConfig({
     baseURL: webURL,
     trace: 'on-first-retry',
     headless: true,
-    launchOptions: chromium ? { executablePath: chromium } : {},
+    launchOptions: chromium && ffmpeg ? { executablePath: chromium } : {},
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     actionTimeout: 15000, // 15s default timeout for actions like click, fill, etc.

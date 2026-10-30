@@ -206,6 +206,12 @@ PLAYWRIGHT_BROWSERS_PATH="${CORTEX_PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-pla
 
 The Nix Chromium package targets Linux workers; macOS developers can use the
 Playwright installation command above.
+
+Setting `CORTEX_PLAYWRIGHT_BROWSERS_PATH` selects that Playwright installation
+even when system browsers are on `PATH`, as in CI. Otherwise, system executables
+are used only when both Chromium and FFmpeg are available; an incomplete pair
+falls back to Playwright's browser cache.
+
 The suite manages its own servers on ports 15173 and 18081–18083. It covers
 submission, stories, tenants, cells, and input events. The production tests use
 HTTP JobDB backed by temporary SQLite storage.
