@@ -459,24 +459,30 @@ it('retries failed inspection and never reuses another tenant’s details', asyn
   expect(getJob).toHaveBeenLastCalledWith('second', 'same');
 });
 
-it('keeps 200 collapsed summaries compact and follows an empty page cursor', async () => {
-  const jobs = Array.from({ length: 200 }, (_, index) => ({ job_id: `job-${index}`, goal_id: `goal-${index}`,
+it('keeps collapsed summaries compact and follows an empty page cursor in StrictMode', async () => {
+  // The browser suite covers 200-row rendering. This test controls each response
+  // to verify request deduplication and pagination without a large jsdom render.
+  const jobs = Array.from({ length: 3 }, (_, index) => ({ job_id: `job-${index}`, goal_id: `goal-${index}`,
     status: 'PENDING_JOBS', store: 'ACTIVE', client_payload_revision: 5, blocking_wait_summary: { waitId: `wait-${index}` } }));
-  const listReads: string[] = [];
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-    if (url.includes('/cells')) return new Response(JSON.stringify([]));
-    listReads.push(url);
-    return new Response(JSON.stringify(url.includes('pageToken=empty') ? { jobs: [], next_page_token: 'last' }
-      : url.includes('pageToken=last') ? { jobs: [] } : { jobs, next_page_token: 'empty' }));
-  }));
+  const requests: { url: URL; resolve: (response: Response) => void }[] = [];
+  vi.stubGlobal('fetch', vi.fn((url: string) => new Promise<Response>(resolve => requests.push({ url: new URL(url), resolve }))));
   render(<StrictMode><MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter></StrictMode>);
-  await screen.findByRole('checkbox', { name: 'Select job job-199' });
-  expect(listReads).toHaveLength(1);
+  expect(requests).toHaveLength(1);
+  await act(async () => { requests[0].resolve(new Response(JSON.stringify({ jobs, next_page_token: 'empty' }))); });
+  expect(screen.getByRole('checkbox', { name: 'Select job job-2' })).toBeVisible();
+  expect(getJob).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Next jobs' }));
-  await waitFor(() => expect(screen.queryByRole('checkbox', { name: 'Select job job-199' })).toBeNull());
+  expect(requests).toHaveLength(2);
+  expect(requests[1].url.searchParams.get('pageToken')).toBe('empty');
+  expect(screen.getByRole('button', { name: 'Next jobs' })).toBeDisabled();
+  await act(async () => { requests[1].resolve(new Response(JSON.stringify({ jobs: [], next_page_token: 'last' }))); });
+  expect(screen.queryByRole('checkbox', { name: 'Select job job-2' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Next jobs' })).toBeEnabled();
   fireEvent.click(screen.getByRole('button', { name: 'Next jobs' }));
-  await waitFor(() => expect(listReads).toHaveLength(3));
-  expect(listReads[2]).toContain('pageToken=last');
+  expect(requests).toHaveLength(3);
+  expect(requests[2].url.searchParams.get('pageToken')).toBe('last');
+  await act(async () => { requests[2].resolve(new Response(JSON.stringify({ jobs: [] }))); });
+  expect(screen.queryByRole('button', { name: 'Next jobs' })).not.toBeInTheDocument();
   expect(getJob).not.toHaveBeenCalled();
 });
 

@@ -1,19 +1,26 @@
 import { test, expect } from '@playwright/test';
 import { setCellFilter, setStatusFilter } from './helpers/goalList';
 
-test('expands a full multiline message from a 200-row list without detail requests', async ({ page, context, baseURL }) => {
+test('renders 200 compact rows, expands a full message, and follows empty page cursors without detail requests', async ({ page, context, baseURL }) => {
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
   const completion = '  <script>literal text</script> 雪\n' + 'The stored failure message keeps its whitespace.\n'.repeat(12) + '\tfinal line\n';
   const jobs = Array.from({ length: 200 }, (_, index) => ({ tenant_id: 'restored', job_id: `job-${index}`,
     status: index ? 'READY' : 'COMPLETED', store: index ? 'ACTIVE' : 'ARCHIVED',
     completion_status: index ? undefined : 'future_outcome', completion_detail: index ? undefined : completion,
+    client_payload_revision: 5, blocking_wait_summary: { waitId: `wait-${index}` },
   }));
-  let listReads = 0;
+  const listReads: URLSearchParams[] = [];
   const detailReads: string[] = [];
-  await page.route('**/api/projects/restored/jobs?*', route => { listReads++; return route.fulfill({ json: { jobs } }); });
+  await page.route('**/api/projects/restored/jobs?*', route => {
+    const query = new URL(route.request().url()).searchParams;
+    listReads.push(query);
+    return route.fulfill({ json: query.get('pageToken') === 'empty' ? { jobs: [], next_page_token: 'last' }
+      : query.get('pageToken') === 'last' ? { jobs: [] } : { jobs, next_page_token: 'empty' } });
+  });
   page.on('request', request => { if (/\/projects\/restored\/jobs\/[^/?]+$/.test(new URL(request.url()).pathname)) detailReads.push(request.url()); });
   await page.goto('/project/restored/jobs');
   await expect(page.getByRole('checkbox', { name: 'Select job job-199', exact: true })).toBeAttached();
+  await expect(page.getByRole('checkbox', { name: /^Select job / })).toHaveCount(200);
   const row = page.getByRole('link', { name: 'Job job-0: Finished (future_outcome)', exact: true }).locator('xpath=ancestor::tr');
   await row.getByRole('button', { name: 'Expand', exact: true }).click();
   const message = row.locator('.job-completion');
@@ -21,7 +28,15 @@ test('expands a full multiline message from a 200-row list without detail reques
   expect(await message.evaluate(element => Array.from(element.childNodes).filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent).join(''))).toBe(completion);
   await expect(message).toHaveCSS('white-space', 'pre-wrap');
   await expect(message.locator('script')).toHaveCount(0);
-  expect(listReads).toBe(1);
+  expect(listReads).toHaveLength(1);
+  expect(detailReads).toEqual([]);
+  await page.getByRole('button', { name: 'Next jobs', exact: true }).click();
+  await expect(page.getByRole('checkbox', { name: /^Select job / })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Next jobs', exact: true })).toBeEnabled();
+  expect(listReads.map(query => query.get('pageToken'))).toEqual([null, 'empty']);
+  await page.getByRole('button', { name: 'Next jobs', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Next jobs', exact: true })).toHaveCount(0);
+  expect(listReads.map(query => query.get('pageToken'))).toEqual([null, 'empty', 'last']);
   expect(detailReads).toEqual([]);
 });
 
