@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RecipeJob } from '@colony2/shared/types';
 import { jobStatus, jobStatusOptions } from './jobStatus';
-import { jobFilterSearch, readJobFilters } from './jobFilters';
+import { jobFilterSearch, nextFilterSelection, readJobFilters } from './jobFilters';
 
 const job: RecipeJob = {
   tenant_id: 'tenant', job_id: 'job', job_type: 'recipe', recipe: 'test',
@@ -70,10 +70,18 @@ describe('job display status', () => {
       ['cell=alpha&cell=beta', ['alpha', 'beta']],
       ['cellSelection=none', []],
       ['cell=none', ['none']],
+      ['cell=', ['']],
     ] as const) {
       const params = new URLSearchParams(query);
       expect(readJobFilters(params).cell).toEqual(cells);
       expect(readJobFilters(new URLSearchParams(jobFilterSearch(params))).cell).toEqual(cells);
     }
+  });
+
+  it('preserves an untouched cell selection when another column changes or options disappear', () => {
+    expect(nextFilterSelection([], [], [])).toEqual([]);
+    expect(nextFilterSelection(['alpha'], ['alpha'], ['alpha'])).toEqual(['alpha']);
+    expect(nextFilterSelection(['alpha', 'beta'], ['alpha', 'beta'], ['alpha'])).toBeNull();
+    expect(nextFilterSelection([], ['alpha', 'beta'], null)).toEqual([]);
   });
 });

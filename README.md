@@ -18,8 +18,10 @@ items or use Select all / Select none, then Apply. Selecting none shows no jobs.
 Finished (outcome unavailable) matches
 completed jobs with no stored outcome; retrying jobs retain their scheduling
 status even if a previous attempt failed. The Cell column uses the same checkbox
-controls, with all cells selected initially. Multiple cells match any selected
-cell, combined with the selected statuses, across pages.
+controls, with all cells selected initially. Its choices come from cell names in
+the returned jobs, including Unknown cell for missing names, rather than the server's
+configured cell catalogue. Cell filtering runs in the browser on the current page;
+unchecked cells remain available in the menu. Status filtering runs across pages.
 
 Search full prompts at the right of the Cancel/Delete row, including text beyond the shortened row
 label and prompts from other loaded attempts. Click the Goal, Status, Cell, or

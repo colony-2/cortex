@@ -211,14 +211,18 @@ test('starts with every status checked and supports individual exclusions, none,
   await expect(page.getByText('No statuses selected', { exact: true })).toBeVisible();
 });
 
-test('combines multi-cell and status filters, restoring none and all through history', async ({ page, context, baseURL }) => {
+test('derives cells from returned jobs and combines local cell filtering with status and history', async ({ page, context, baseURL }) => {
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
   const jobs = ['alpha', 'beta', 'gamma'].flatMap(cell_name => [
     { job_id: `${cell_name}-ready`, cell_name, status: 'READY', store: 'ACTIVE' },
     { job_id: `${cell_name}-success`, cell_name, status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'success' },
   ]);
   const queries: URLSearchParams[] = [];
-  await page.route('**/api/projects/cell-filter/cells', route => route.fulfill({ json: ['alpha', 'beta', 'gamma'].map(name => ({ name, kind: 'dependent', repository_source: `https://example.com/${name}` })) }));
+  let catalogReads = 0;
+  await page.route('**/api/projects/cell-filter/cells', route => {
+    catalogReads++;
+    return route.fulfill({ status: 500, body: 'No local cell configuration' });
+  });
   await page.route('**/api/projects/cell-filter/jobs?*', route => {
     const query = new URL(route.request().url()).searchParams;
     queries.push(query);
@@ -240,14 +244,16 @@ test('combines multi-cell and status filters, restoring none and all through his
   expect(queries).toHaveLength(1);
   await dropdown.getByRole('button', { name: 'Apply', exact: true }).click();
   await expect(selections).toHaveCount(4);
-  expect(queries.at(-1)?.getAll('cell')).toEqual(['alpha', 'beta']);
-  expect(queries.at(-1)?.has('pageToken')).toBe(false);
+  expect(queries).toHaveLength(1); // Cell filtering keeps the loaded page and its cursor.
+  expect(queries.at(-1)?.getAll('cell')).toEqual([]);
+  expect(new URL(page.url()).searchParams.get('pageToken')).toBe('old-page');
   expect(new URL(page.url()).searchParams.has('sort')).toBe(false);
   await expect(page.getByText('0 selected', { exact: true })).toBeVisible();
   await setStatusFilter(page, ['Succeeded']);
   await expect(selections).toHaveCount(2);
-  expect(queries.at(-1)?.getAll('cell')).toEqual(['alpha', 'beta']);
+  expect(queries.at(-1)?.getAll('cell')).toEqual([]);
   expect(queries.at(-1)?.getAll('displayStatus')).toEqual(['success']);
+  expect(queries.at(-1)?.has('pageToken')).toBe(false);
   const filteredURL = page.url();
   await page.reload();
   await expect(selections).toHaveCount(2);
@@ -258,11 +264,13 @@ test('combines multi-cell and status filters, restoring none and all through his
   expect(new URL(page.url()).searchParams.get('cellSelection')).toBe('none');
   await page.reload();
   await expect(page.getByText('No cells selected', { exact: true })).toBeVisible();
-  expect(queries).toHaveLength(beforeNone);
-  // Changing Status must not undo Cell's empty selection.
+  expect(queries).toHaveLength(beforeNone + 1); // Reload still loads choices while showing no rows.
+  // Changing Status must not undo Cell's empty selection, even through an empty page.
+  await setStatusFilter(page, []);
+  await expect(page.getByText('No statuses selected', { exact: true })).toBeVisible();
   await setStatusFilter(page, null);
   await expect(page.getByText('No cells selected', { exact: true })).toBeVisible();
-  expect(queries).toHaveLength(beforeNone);
+  await expect.poll(() => queries.length).toBe(beforeNone + 2);
   await setStatusFilter(page, ['Succeeded']);
   await setCellFilter(page, null);
   await expect(selections).toHaveCount(3);
@@ -272,7 +280,45 @@ test('combines multi-cell and status filters, restoring none and all through his
   await expect(page.getByText('No cells selected', { exact: true })).toBeVisible();
   await page.goto(filteredURL);
   await expect(selections).toHaveCount(2);
+  expect(catalogReads).toBe(0);
   await page.screenshot({ path: '/tmp/cortex-cell-filter.png', fullPage: true });
+});
+
+test('filters missing cell names and refreshes choices from each returned page', async ({ page, context, baseURL }) => {
+  await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+  const jobs = [undefined, '', ' \n ', 'self', 'platform'].map((cell_name, i) => ({
+    job_id: `job-${i}`, cell_name, status: 'READY', store: 'ACTIVE',
+  }));
+  let reads = 0;
+  await page.route('**/api/projects/unknown-cell/jobs?*', route => {
+    reads++;
+    return route.fulfill({ json: new URL(route.request().url()).searchParams.has('pageToken')
+      ? { jobs: [{ job_id: 'next', cell_name: 'next-cell', status: 'READY', store: 'ACTIVE' }] }
+      : { jobs, next_page_token: 'later' } });
+  });
+  await page.goto('/project/unknown-cell/goals');
+  const selections = page.getByRole('checkbox', { name: /^Select job / });
+  await expect(selections).toHaveCount(5);
+  await setCellFilter(page, ['Unknown cell']);
+  await expect(selections).toHaveCount(3);
+  expect(new URL(page.url()).searchParams.getAll('cell')).toEqual(['']);
+  expect(reads).toBe(1);
+  await page.reload();
+  await expect(selections).toHaveCount(3);
+  expect(reads).toBe(2);
+  await page.getByRole('button', { name: 'Next jobs', exact: true }).click();
+  await expect.poll(() => reads).toBe(3);
+  await expect(selections).toHaveCount(0);
+  await page.getByRole('button', { name: 'Filter cells', exact: true }).click();
+  const dropdown = page.locator('.ant-table-filter-dropdown:visible');
+  await expect(dropdown.getByRole('checkbox', { name: 'Select Unknown cell', exact: true })).toBeChecked();
+  await expect(dropdown.getByRole('checkbox', { name: 'Select next-cell', exact: true })).not.toBeChecked();
+  await expect(dropdown.getByText('platform', { exact: true })).toHaveCount(0);
+  await dropdown.getByRole('checkbox', { name: 'Select all', exact: true }).check();
+  await dropdown.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(selections).toHaveCount(1);
+  await expect(page.getByRole('link', { name: 'Job next: Ready', exact: true })).toBeVisible();
+  expect(reads).toBe(3);
 });
 
 test('searches complete prompts and sorts locally while preserving the view through goal navigation', async ({ page, context, baseURL }) => {

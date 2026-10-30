@@ -105,7 +105,7 @@ it('shows restored fields immediately and inspects only after expansion', async 
   expect(screen.getByText('Finished')).toBeVisible();
   fireEvent.click(screen.getByText('All job data'));
   expect(screen.getByText(/saved payload/)).toBeVisible();
-  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(fetch).toHaveBeenCalledTimes(1);
   expect(getJob).toHaveBeenCalledExactlyOnceWith('tenant', 'failed-job');
   const jobsURL = fetch.mock.calls.map(([url]) => new URL(url, 'http://localhost')).find(url => url.pathname.endsWith('/jobs'))!;
   expect(jobsURL.pathname).toBe('/api/projects/tenant/jobs');
@@ -125,7 +125,7 @@ it.each(['', '?status=ACTIVE&status=READY&cell=platform', '?status=success&statu
       data = { job_id: 'job', status: 'completed', root: { id: 'root', kind: 'recipe', title: 'recipe build', status: 'succeeded', path: [] } };
     } else if (url.pathname.endsWith('/jobs')) {
       listReads.push(url);
-      data = { jobs: [{ job_id: 'job', prompt: 'Search term in the full prompt', status: 'READY', recipe: 'build', store: 'ACTIVE' }] };
+      data = { jobs: [{ job_id: 'job', prompt: 'Search term in the full prompt', cell_name: 'platform', status: 'READY', recipe: 'build', store: 'ACTIVE' }] };
     } else data = [];
     return new Response(JSON.stringify(data));
   }));
@@ -148,7 +148,7 @@ it.each(['', '?status=ACTIVE&status=READY&cell=platform', '?status=success&statu
     const expected = new URLSearchParams(query);
     expect(url.searchParams.getAll('displayStatus')).toEqual(expected.getAll('status'));
     expect(url.searchParams.getAll('status')).toEqual(expected.has('status') ? [] : ['all']);
-    expect(url.searchParams.getAll('cell')).toEqual(expected.getAll('cell'));
+    expect(url.searchParams.has('cell')).toBe(false);
     expect(url.searchParams.has('q')).toBe(false);
     expect(url.searchParams.has('sort')).toBe(false);
   }
@@ -188,7 +188,7 @@ it('searches full prompts across attempts without fetching and clears hidden sel
   fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
   expect(search).toHaveValue('');
   expect(screen.getByText('0 selected')).toBeVisible();
-  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(fetch).toHaveBeenCalledTimes(1);
   expect(getJob).not.toHaveBeenCalled();
 });
 
@@ -219,7 +219,7 @@ it('sorts goal, status, cell, and submission columns locally in both directions'
   fireEvent.click(screen.getByRole('columnheader', { name: /^Submitted/ }));
   expect(names()).toEqual(['Zebra', 'Alpha', 'Middle']);
   expect(screen.getByTestId('location').textContent).not.toContain('sort=');
-  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(fetch).toHaveBeenCalledTimes(1);
   expect(getJob).not.toHaveBeenCalled();
 });
 
@@ -283,7 +283,7 @@ it('groups attempts and restores expanded details through goal navigation and br
   fireEvent.click(within(first).getByRole('button', { name: 'Expand row' }));
   fireEvent.click(await screen.findByText('Execution requirements'));
   expect(within(screen.getByText('Execution requirements').closest('details')!).getByText(/"cpu": 4/)).toBeVisible();
-  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(fetch).toHaveBeenCalledTimes(1);
   const originalURL = screen.getByTestId('location').textContent;
   fireEvent.click(within(first).getByRole('link', { name: 'Goal overview' }));
   await screen.findByRole('heading', { name: 'Goal overview', exact: true });
@@ -395,7 +395,7 @@ it('replaces requirements on refresh and never shows stale demand or diagnostics
     job.store = status === 'not_waiting' ? 'ARCHIVED' : 'ACTIVE';
     const before = fetch.mock.calls.length;
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
-    await waitFor(() => expect(fetch.mock.calls.length).toBe(before + 2));
+    await waitFor(() => expect(fetch.mock.calls.length).toBe(before + 1));
     if (label) expect(await screen.findByText(label)).toBeVisible();
     else await waitFor(() => expect(screen.queryByText('invalid demand 雪')).not.toBeInTheDocument());
     expect(screen.queryByText(/4Gi/)).not.toBeInTheDocument();

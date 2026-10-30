@@ -1,17 +1,17 @@
-import { cellLabel } from '../utils/cellPresentation';
+import { cellFilterValue, cellLabel } from '../utils/cellPresentation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, Button, Form, Input, Modal, Space, Spin, Table, Typography, message, theme } from 'antd';
 import { FilterFilled, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType, TableProps } from 'antd/es/table';
 import type { SortOrder } from 'antd/es/table/interface';
-import { listCells, listJobs, submitJob } from '@colony2/shared/api';
-import type { CortexCell, RecipeJobSummary } from '@colony2/shared/types';
+import { listJobs, submitJob } from '@colony2/shared/api';
+import type { RecipeJobSummary } from '@colony2/shared/types';
 import { jobStatus, jobStatusOptions } from '../utils/jobStatus';
 import { jobTime } from './JobListDetails';
 import GoalJobOverview, { AttemptStatus } from './GoalJobOverview';
 import { abbreviatePrompt, jobTimestamp, latestActiveJob } from '../utils/goalPresentation';
-import { jobFilterSearch, readJobFilters } from '../utils/jobFilters';
+import { jobFilterSearch, nextFilterSelection, readJobFilters } from '../utils/jobFilters';
 import JobActionDialog, { type JobAction } from './JobActionDialog';
 import JobWaitLinks, { goalPath, jobPath } from './JobWaitLinks';
 import JobCompletionMessage from './JobCompletionMessage';
@@ -38,7 +38,6 @@ function JobsList({ projectId, goalId }: Props) {
   const navigationState = (id?: string) => ({ goalsReturnTo, goalId: id,
     ...(goalId ? { goalReturnTo: location.pathname + location.search } : {}) });
   const [jobs, setJobs] = useState<RecipeJobSummary[]>([]);
-  const [cells, setCells] = useState<CortexCell[]>([]);
   const [nextPage, setNextPage] = useState<string>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
@@ -48,15 +47,15 @@ function JobsList({ projectId, goalId }: Props) {
   const [operation, setOperation] = useState<{ action: JobAction; jobIds: string[] } | null>(null);
   const [refresh, setRefresh] = useState(0);
   const loadVersion = useRef(0);
-  const listRequest = useRef<{ key: string; promise: Promise<[CortexCell[], Awaited<ReturnType<typeof listJobs>>]> }>();
+  const listRequest = useRef<{ key: string; promise: ReturnType<typeof listJobs> }>();
   const [params, setParams] = useSearchParams();
-  const filters = readJobFilters(params);
+  const filters = useMemo(() => readJobFilters(params), [params]);
   const pageToken = params.get('pageToken') || undefined;
   const statusesKey = JSON.stringify(filters.status);
   const cellsKey = JSON.stringify(filters.cell);
   const noStatuses = !goalId && filters.status?.length === 0;
   const noCells = !goalId && filters.cell?.length === 0;
-  const submissionCell = filters.cell?.length === 1 ? filters.cell[0] : undefined;
+  const submissionCell = filters.cell?.length === 1 ? filters.cell[0] || undefined : undefined;
   const search = params.get('q') || '';
   const searchTerm = search.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
   const sortOrder = (column: string): SortOrder => params.get('sort') === column
@@ -67,32 +66,33 @@ function JobsList({ projectId, goalId }: Props) {
     const query = new URLSearchParams(previous); change(query); return query;
   }, { replace });
 
-  // Also clear selections when browser history restores a different search.
-  useEffect(() => { setSelectedIds([]); }, [search]);
+  // Also clear selections when browser history restores a different local filter.
+  useEffect(() => { setSelectedIds([]); }, [search, cellsKey]);
 
   useEffect(() => {
     const version = ++loadVersion.current;
     setLoading(true); setError(undefined);
     (async () => {
-      const key = JSON.stringify([projectId, goalId, statusesKey, cellsKey, pageToken, refresh]);
-      if (listRequest.current?.key !== key) listRequest.current = { key, promise: Promise.all([
-        listCells(projectId), noStatuses || noCells ? Promise.resolve({ jobs: [] }) : listJobs(projectId, { goal: goalId, displayStatus: goalId ? [] : JSON.parse(statusesKey) || [], cell: goalId ? undefined : JSON.parse(cellsKey) || undefined, pageToken }),
-      ]) };
-      const [cellData, page] = await listRequest.current.promise;
+      const key = JSON.stringify([projectId, goalId, statusesKey, pageToken, refresh]);
+      if (listRequest.current?.key !== key) listRequest.current = { key, promise: noStatuses ? Promise.resolve({ jobs: [] })
+        : listJobs(projectId, { goal: goalId, displayStatus: goalId ? [] : JSON.parse(statusesKey) || [], pageToken }) };
+      const page = await listRequest.current.promise;
       if (version !== loadVersion.current) return;
-      setCells(cellData); setJobs(page.jobs); setNextPage(page.next_page_token);
+      setJobs(page.jobs); setNextPage(page.next_page_token);
       setSelectedIds(previous => previous.filter(id => page.jobs.some(job => job.job_id === id)));
     })().catch(reason => {
       if (version === loadVersion.current) setError(reason instanceof Error ? reason.message : 'Could not load goals');
     }).finally(() => { if (version === loadVersion.current) setLoading(false); });
     return () => { loadVersion.current++; };
-  }, [projectId, goalId, cellsKey, pageToken, statusesKey, noStatuses, noCells, refresh]);
+  }, [projectId, goalId, pageToken, statusesKey, noStatuses, refresh]);
 
-  // Group only the matching jobs returned by the server. A goal link lists all
-  // its attempts; a page is not an authoritative goal count or goal state.
+  // Cell choices come from the loaded jobs, independent of local configuration.
+  // Filter attempts before grouping, matching the status filter's grouping behavior.
+  // A goal link lists all its attempts; a page is not an authoritative goal count or state.
   const groups = useMemo(() => {
     const grouped = new Map<string, JobGroup>();
     for (const job of jobs) {
+      if (!goalId && filters.cell !== null && !filters.cell.includes(cellFilterValue(job.cell_name))) continue;
       const goals = goalId ? [goalId] : job.goal_id ? [job.goal_id] : [];
       for (const id of goals.length ? goals : [undefined]) {
         const key = id ? `goal:${id}` : `job:${job.job_id}`;
@@ -102,15 +102,17 @@ function JobsList({ projectId, goalId }: Props) {
       }
     }
     return [...grouped.values()];
-  }, [jobs, goalId]);
+  }, [jobs, goalId, filters.cell]);
   // Search complete prompts (including other attempts), even when the row uses
   // a title or an abbreviated prompt. Keep the entire matching goal together.
   const rows: Row[] = noStatuses || noCells ? [] : groups.filter(group => !searchTerm || group.jobs.some(job =>
     [job.prompt, job.title].some(text => text?.replace(/\s+/g, ' ').toLocaleLowerCase().includes(searchTerm)),
   )).map(group => ({ key: group.key, group, job: latestActiveJob(group.jobs) }));
   const statusOptions = jobStatusOptions(jobs, filters.status || []);
-  const cellOptions = [...new Set([...cells.map(cell => cell.name || cell.repository_source), ...filters.cell || []])]
-    .map(value => ({ value, label: value }));
+  // Use the unfiltered page so unchecked cells stay available; preserve selections
+  // from saved links even when another page/status has no jobs in those cells.
+  const cellOptions = [...new Set([...jobs.map(job => cellFilterValue(job.cell_name)), ...filters.cell || []])]
+    .sort((a, b) => cellLabel(a).localeCompare(cellLabel(b))).map(value => ({ value, label: cellLabel(value) }));
   const checkboxFilter = (label: string, options: { value: string; label: string }[], selected: string[] | null) => ({
     filters: options.map(option => ({ text: option.label, value: option.value })),
     filteredValue: selected ?? options.map(option => option.value), filtered: selected !== null,
@@ -124,12 +126,13 @@ function JobsList({ projectId, goalId }: Props) {
   const onTableChange: TableProps<Row>['onChange'] = (_, columnFilters, sorter, extra) => {
     if (extra.action === 'filter') {
       const statuses = columnFilters.status?.map(String) || [];
-      const selectedStatuses = statuses.length === statusOptions.length ? null : statuses;
+      const selectedStatuses = nextFilterSelection(statuses, statusOptions.map(option => option.value), filters.status);
       const cells = columnFilters.cell?.map(String) || [];
-      const selectedCells = cells.length === cellOptions.length ? null : cells;
+      const selectedCells = nextFilterSelection(cells, cellOptions.map(option => option.value), filters.cell);
       setSelectedIds([]);
       changeQuery(query => {
-        query.delete('pageToken'); query.delete('status'); query.delete('cell'); query.delete('cellSelection');
+        if (JSON.stringify(selectedStatuses) !== statusesKey) query.delete('pageToken');
+        query.delete('status'); query.delete('cell'); query.delete('cellSelection');
         if (selectedStatuses?.length === 0) query.set('status', 'none');
         selectedStatuses?.forEach(status => query.append('status', status));
         if (selectedCells?.length === 0) query.set('cellSelection', 'none');
@@ -192,7 +195,7 @@ function JobsList({ projectId, goalId }: Props) {
           <Button type="primary" icon={<PlusOutlined aria-hidden />} onClick={() => setSubmitOpen(true)}>New goal</Button>
         </Space>
       </div>
-      {!goalId && <Text type="secondary">Search and sorting apply to the current page.</Text>}
+      {!goalId && <Text type="secondary">Search, cell filtering, and sorting apply to the current page.</Text>}
       {error && <Alert type="error" showIcon message={error} />}
       {goalId ? <Spin spinning={loading}>
         <section aria-label="Goal overview">
@@ -244,7 +247,7 @@ function JobsList({ projectId, goalId }: Props) {
       setSelectedIds(previous => previous.filter(id => !succeeded.includes(id))); setRefresh(value => value + 1);
     }} />}
     <Modal title="New goal" open={submitOpen} onCancel={() => setSubmitOpen(false)} onOk={submit} okText="Create goal" okButtonProps={{ loading: submitting }} destroyOnHidden>
-      <Text type="secondary">Cell: {submissionCell || cells.find(cell => cell.kind === 'self')?.name || 'self'}</Text>
+      <Text type="secondary">Cell: {submissionCell || 'self'}</Text>
       <Form form={form} layout="vertical"><Form.Item label="Prompt" name="prompt" rules={[{ required: true, whitespace: true, message: 'Enter a prompt' }]}><Input.TextArea rows={6} /></Form.Item></Form>
     </Modal>
   </div>;
