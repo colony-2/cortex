@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setStatusFilter } from './helpers/goalList';
+import { setCellFilter, setStatusFilter } from './helpers/goalList';
 
 test('expands a full multiline message from a 200-row list without detail requests', async ({ page, context, baseURL }) => {
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
@@ -211,6 +211,70 @@ test('starts with every status checked and supports individual exclusions, none,
   await expect(page.getByText('No statuses selected', { exact: true })).toBeVisible();
 });
 
+test('combines multi-cell and status filters, restoring none and all through history', async ({ page, context, baseURL }) => {
+  await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+  const jobs = ['alpha', 'beta', 'gamma'].flatMap(cell_name => [
+    { job_id: `${cell_name}-ready`, cell_name, status: 'READY', store: 'ACTIVE' },
+    { job_id: `${cell_name}-success`, cell_name, status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'success' },
+  ]);
+  const queries: URLSearchParams[] = [];
+  await page.route('**/api/projects/cell-filter/cells', route => route.fulfill({ json: ['alpha', 'beta', 'gamma'].map(name => ({ name, kind: 'dependent', repository_source: `https://example.com/${name}` })) }));
+  await page.route('**/api/projects/cell-filter/jobs?*', route => {
+    const query = new URL(route.request().url()).searchParams;
+    queries.push(query);
+    const cells = query.getAll('cell');
+    const statuses = query.getAll('displayStatus');
+    return route.fulfill({ json: { jobs: jobs.filter(job => (!cells.length || cells.includes(job.cell_name))
+      && (!statuses.length || statuses.includes(job.completion_status || job.status))) } });
+  });
+  await page.goto('/project/cell-filter/goals?pageToken=old-page');
+  const selections = page.getByRole('checkbox', { name: /^Select job / });
+  await expect(selections).toHaveCount(6);
+  await selections.first().check();
+  const icon = page.getByRole('img', { name: 'Filter cells', exact: true });
+  await icon.focus();
+  await icon.press('Enter');
+  const dropdown = page.locator('.ant-table-filter-dropdown:visible');
+  await expect(dropdown.getByRole('checkbox', { name: 'Select all', exact: true })).toBeChecked();
+  await dropdown.getByText('gamma', { exact: true }).click();
+  expect(queries).toHaveLength(1);
+  await dropdown.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(selections).toHaveCount(4);
+  expect(queries.at(-1)?.getAll('cell')).toEqual(['alpha', 'beta']);
+  expect(queries.at(-1)?.has('pageToken')).toBe(false);
+  expect(new URL(page.url()).searchParams.has('sort')).toBe(false);
+  await expect(page.getByText('0 selected', { exact: true })).toBeVisible();
+  await setStatusFilter(page, ['Succeeded']);
+  await expect(selections).toHaveCount(2);
+  expect(queries.at(-1)?.getAll('cell')).toEqual(['alpha', 'beta']);
+  expect(queries.at(-1)?.getAll('displayStatus')).toEqual(['success']);
+  const filteredURL = page.url();
+  await page.reload();
+  await expect(selections).toHaveCount(2);
+  const beforeNone = queries.length;
+  await setCellFilter(page, []);
+  await expect(page.getByText('No cells selected', { exact: true })).toBeVisible();
+  expect(queries).toHaveLength(beforeNone);
+  expect(new URL(page.url()).searchParams.get('cellSelection')).toBe('none');
+  await page.reload();
+  await expect(page.getByText('No cells selected', { exact: true })).toBeVisible();
+  expect(queries).toHaveLength(beforeNone);
+  // Changing Status must not undo Cell's empty selection.
+  await setStatusFilter(page, null);
+  await expect(page.getByText('No cells selected', { exact: true })).toBeVisible();
+  expect(queries).toHaveLength(beforeNone);
+  await setStatusFilter(page, ['Succeeded']);
+  await setCellFilter(page, null);
+  await expect(selections).toHaveCount(3);
+  expect(queries.at(-1)?.getAll('cell')).toEqual([]);
+  expect(queries.at(-1)?.getAll('displayStatus')).toEqual(['success']);
+  await page.goBack();
+  await expect(page.getByText('No cells selected', { exact: true })).toBeVisible();
+  await page.goto(filteredURL);
+  await expect(selections).toHaveCount(2);
+  await page.screenshot({ path: '/tmp/cortex-cell-filter.png', fullPage: true });
+});
+
 test('searches complete prompts and sorts locally while preserving the view through goal navigation', async ({ page, context, baseURL }) => {
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
   const jobs = [
@@ -230,6 +294,12 @@ test('searches complete prompts and sorts locally while preserving the view thro
   const names = page.locator('a.goal-prompt');
   await expect(names).toHaveText(['Zeta task', 'Alpha task', 'Middle task']);
   const search = page.getByRole('textbox', { name: 'Search goals' });
+  const searchBox = await page.locator('.goal-search').boundingBox();
+  const actionBox = await page.getByRole('button', { name: 'Delete selected', exact: true }).boundingBox();
+  const toolbarBox = await page.locator('.goal-list-actions').boundingBox();
+  expect(Math.abs(searchBox!.y + searchBox!.height / 2 - actionBox!.y - actionBox!.height / 2)).toBeLessThan(2);
+  expect(Math.abs(searchBox!.x + searchBox!.width - toolbarBox!.x - toolbarBox!.width)).toBeLessThan(2);
+  expect(searchBox!.x).toBeGreaterThan(actionBox!.x + actionBox!.width);
   await search.fill('NEEDLE beyond truncation');
   await expect(names).toHaveText(['Alpha task']);
   await expect(page.getByText('2 attempts on this page', { exact: true })).toBeVisible();

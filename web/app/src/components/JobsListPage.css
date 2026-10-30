@@ -1,4 +1,6 @@
 .goal-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.goal-list-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.goal-search { width: 280px; max-width: 100%; margin-left: auto; }
 a.goal-prompt, a.goal-prompt:hover, a.goal-prompt:visited { color: inherit; text-decoration: none; overflow-wrap: anywhere; }
 a.goal-prompt:focus-visible { outline: 2px solid #1677ff; outline-offset: 3px; }
 .goal-attempt-count { font-size: 12px; }

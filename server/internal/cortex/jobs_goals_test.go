@@ -96,3 +96,82 @@ func TestJobsListGoalMetadataAndStatusPagination(t *testing.T) {
 		t.Fatalf("tenant isolation: %#v", isolated)
 	}
 }
+
+func TestJobsListMultipleCellsBeforePagination(t *testing.T) {
+	runtime, err := sqliteruntime.StartEmbeddedRuntime(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Shutdown()
+	backend := httptest.NewServer(remote.NewServer(runtime.Runtime))
+	defer backend.Close()
+	srv, err := NewRemoteServer(Config{WorkingDir: writeC2JConfig(t), JobDBURL: backend.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := httptest.NewServer(srv)
+	defer api.Close()
+	base := api.URL + "/api/projects/cells-test/jobs"
+	var goal string
+	for _, entry := range []struct{ id, cell string }{
+		{"alpha-one", "alpha"}, {"beta-one", "beta"}, {"alpha-two", "alpha"}, {"self", "self"}, {"other-goal", "beta"},
+	} {
+		job := postJSON[recipejob.RecipeJob](t, base, map[string]any{"job_id": entry.id, "cell": entry.cell, "recipe": "smoke"})
+		if goal == "" {
+			goal = job.GoalID
+		} else if entry.id != "other-goal" {
+			_, err := srv.engine.(jobdb.GoalRuntime).AddGoalCandidate(context.Background(), jobdb.AddGoalCandidateRequest{
+				GoalKey: jobdb.GoalKey{TenantId: "cells-test", GoalID: goal}, JobID: job.JobID,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		if entry.id == "alpha-one" || entry.id == "beta-one" {
+			if err := srv.engine.CancelJob(context.Background(), jobdb.CancelJob{JobKey: jobdb.JobKey{TenantId: "cells-test", JobId: job.JobID}}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	type page struct {
+		Jobs []recipejob.RecipeJob `json:"jobs"`
+		Next string                `json:"next_page_token"`
+	}
+	for _, test := range []struct {
+		name, status string
+		want         map[string]bool
+	}{
+		{"all statuses", "status=all", map[string]bool{"alpha-one": true, "beta-one": true, "alpha-two": true}},
+		{"display status intersection", "displayStatus=CANCELLED", map[string]bool{"alpha-one": true, "beta-one": true}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			query := base + "?cell=alpha&cell=beta&" + test.status + "&goal=" + url.QueryEscape(goal) + "&pageSize=1"
+			next := ""
+			seen := map[string]bool{}
+			for i := 0; i < 10; i++ {
+				result := getJSON[page](t, query+"&pageToken="+url.QueryEscape(next))
+				if len(result.Jobs) > 1 {
+					t.Fatalf("page size ignored: %#v", result)
+				}
+				for _, job := range result.Jobs {
+					if !test.want[job.JobID] || seen[job.JobID] {
+						t.Fatalf("unexpected or duplicate job %s: %#v", job.JobID, result)
+					}
+					seen[job.JobID] = true
+				}
+				next = result.Next
+				if next == "" {
+					break
+				}
+			}
+			if next != "" || len(seen) != len(test.want) {
+				t.Fatalf("incomplete multi-cell results: %v, cursor %q", seen, next)
+			}
+		})
+	}
+	// Preserve the legacy repository alias and normalization of a single selector.
+	legacy := getJSON[page](t, base+"?repo="+url.QueryEscape("github.com/acme/boo-alpha")+"&status=all")
+	if len(legacy.Jobs) != 2 {
+		t.Fatalf("legacy repo filter: %#v", legacy)
+	}
+}

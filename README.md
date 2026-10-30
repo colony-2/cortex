@@ -9,7 +9,7 @@ Cortex connects to a remote [JobDB](https://github.com/colony-2/jobdb) server.
 Run c2j workers separately against the same JobDB. Projects in the UI are JobDB
 tenants; cells are the current Git repository and its c2j-configured dependents.
 
-## Job status filters
+## Goal list filters and search
 
 The Status column's filter matches the badges shown for jobs, including Succeeded,
 Failed (application/system), Timed out, and Cancellation requested. Multiple
@@ -17,9 +17,11 @@ selections match any selected status. All statuses start checked; uncheck indivi
 items or use Select all / Select none, then Apply. Selecting none shows no jobs.
 Finished (outcome unavailable) matches
 completed jobs with no stored outcome; retrying jobs retain their scheduling
-status even if a previous attempt failed.
+status even if a previous attempt failed. The Cell column uses the same checkbox
+controls, with all cells selected initially. Multiple cells match any selected
+cell, combined with the selected statuses, across pages.
 
-Search full prompts in the Goals toolbar, including text beyond the shortened row
+Search full prompts at the right of the Cancel/Delete row, including text beyond the shortened row
 label and prompts from other loaded attempts. Click the Goal, Status, Cell, or
 Submitted column header to sort ascending or descending; click again to restore
 the original order. Search and sorting run in the browser on the current page.
@@ -31,6 +33,8 @@ parameter still filters raw scheduling states; the two parameters cannot be
 combined. Display filtering scans compact JobDB pages without loading job
 details. Each request scans at most 20 backend pages, so a sparse or empty result
 can still have a `next_page_token`; use **Next jobs** to continue.
+Repeated `cell` parameters (for example `?cell=alpha&cell=beta`) match jobs from
+either cell's repository before pagination; a single `cell` works as before.
 
 ## Chapter downloads
 

@@ -38,7 +38,7 @@ export async function listJobs(
   options: {
     status?: RecipeJobStatus[];
     displayStatus?: RecipeJobFilterStatus[];
-    cell?: string;
+    cell?: string | string[];
     pageSize?: number;
     pageToken?: string;
     goal?: string;
@@ -51,7 +51,7 @@ export async function listJobs(
     params.append('status', status);
   }
   for (const status of options.displayStatus || []) params.append('displayStatus', status);
-  if (options.cell) params.set('cell', options.cell);
+  for (const cell of Array.isArray(options.cell) ? options.cell : options.cell ? [options.cell] : []) params.append('cell', cell);
   if (options.goal) params.set('goal', options.goal);
   if (options.pageSize) params.set('pageSize', String(options.pageSize));
   if (options.pageToken) params.set('pageToken', options.pageToken);

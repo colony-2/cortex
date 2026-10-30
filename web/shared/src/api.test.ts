@@ -33,6 +33,16 @@ it('requests all statuses when the status filter is explicitly cleared', async (
   expect(new URL(fetch.mock.calls[2][0]).searchParams.has('status')).toBe(false);
 });
 
+it('sends multiple cells as a union alongside status and pagination', async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response('{"jobs":[]}'));
+  vi.stubGlobal('fetch', fetch);
+  await listJobs('tenant', { cell: ['alpha', 'beta'], displayStatus: ['READY'], pageToken: 'cursor' });
+  const query = new URL(fetch.mock.calls[0][0]).searchParams;
+  expect(query.getAll('cell')).toEqual(['alpha', 'beta']);
+  expect(query.getAll('displayStatus')).toEqual(['READY']);
+  expect(query.get('pageToken')).toBe('cursor');
+});
+
 it('sends mixed display statuses to the API and retains pagination and scoping', async () => {
   const fetch = vi.fn(async () => new Response(JSON.stringify({ jobs: [] })));
   vi.stubGlobal('fetch', fetch);

@@ -116,7 +116,7 @@ function Location() {
   return <output data-testid="location">{location.pathname}{location.search}</output>;
 }
 
-it.each(['', '?status=ACTIVE&status=READY&cell=platform', '?status=success&status=failed_app&status=CANCEL_REQUESTED&cell=platform', '?q=search+term&sort=submitted&order=descend'])('preserves list filters through story navigation: %s', async (query) => {
+it.each(['', '?status=ACTIVE&status=READY&cell=platform', '?status=success&status=failed_app&status=CANCEL_REQUESTED&cell=platform', '?status=READY&cell=platform&cell=app', '?q=search+term&sort=submitted&order=descend'])('preserves list filters through story navigation: %s', async (query) => {
   const listReads: URL[] = [];
   vi.stubGlobal('fetch', vi.fn(async (input: string) => {
     const url = new URL(input, 'http://localhost');
@@ -148,7 +148,7 @@ it.each(['', '?status=ACTIVE&status=READY&cell=platform', '?status=success&statu
     const expected = new URLSearchParams(query);
     expect(url.searchParams.getAll('displayStatus')).toEqual(expected.getAll('status'));
     expect(url.searchParams.getAll('status')).toEqual(expected.has('status') ? [] : ['all']);
-    expect(url.searchParams.get('cell')).toBe(expected.get('cell'));
+    expect(url.searchParams.getAll('cell')).toEqual(expected.getAll('cell'));
     expect(url.searchParams.has('q')).toBe(false);
     expect(url.searchParams.has('sort')).toBe(false);
   }

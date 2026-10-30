@@ -1,7 +1,7 @@
 import { cellLabel } from '../utils/cellPresentation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Alert, Button, Form, Input, Modal, Select, Space, Spin, Table, Typography, message, theme } from 'antd';
+import { Alert, Button, Form, Input, Modal, Space, Spin, Table, Typography, message, theme } from 'antd';
 import { FilterFilled, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType, TableProps } from 'antd/es/table';
 import type { SortOrder } from 'antd/es/table/interface';
@@ -53,7 +53,10 @@ function JobsList({ projectId, goalId }: Props) {
   const filters = readJobFilters(params);
   const pageToken = params.get('pageToken') || undefined;
   const statusesKey = JSON.stringify(filters.status);
+  const cellsKey = JSON.stringify(filters.cell);
   const noStatuses = !goalId && filters.status?.length === 0;
+  const noCells = !goalId && filters.cell?.length === 0;
+  const submissionCell = filters.cell?.length === 1 ? filters.cell[0] : undefined;
   const search = params.get('q') || '';
   const searchTerm = search.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
   const sortOrder = (column: string): SortOrder => params.get('sort') === column
@@ -71,9 +74,9 @@ function JobsList({ projectId, goalId }: Props) {
     const version = ++loadVersion.current;
     setLoading(true); setError(undefined);
     (async () => {
-      const key = JSON.stringify([projectId, goalId, statusesKey, filters.cell, pageToken, refresh]);
+      const key = JSON.stringify([projectId, goalId, statusesKey, cellsKey, pageToken, refresh]);
       if (listRequest.current?.key !== key) listRequest.current = { key, promise: Promise.all([
-        listCells(projectId), noStatuses ? Promise.resolve({ jobs: [] }) : listJobs(projectId, { goal: goalId, displayStatus: goalId ? [] : JSON.parse(statusesKey) || [], cell: goalId ? undefined : filters.cell, pageToken }),
+        listCells(projectId), noStatuses || noCells ? Promise.resolve({ jobs: [] }) : listJobs(projectId, { goal: goalId, displayStatus: goalId ? [] : JSON.parse(statusesKey) || [], cell: goalId ? undefined : JSON.parse(cellsKey) || undefined, pageToken }),
       ]) };
       const [cellData, page] = await listRequest.current.promise;
       if (version !== loadVersion.current) return;
@@ -83,7 +86,7 @@ function JobsList({ projectId, goalId }: Props) {
       if (version === loadVersion.current) setError(reason instanceof Error ? reason.message : 'Could not load goals');
     }).finally(() => { if (version === loadVersion.current) setLoading(false); });
     return () => { loadVersion.current++; };
-  }, [projectId, goalId, filters.cell, pageToken, statusesKey, noStatuses, refresh]);
+  }, [projectId, goalId, cellsKey, pageToken, statusesKey, noStatuses, noCells, refresh]);
 
   // Group only the matching jobs returned by the server. A goal link lists all
   // its attempts; a page is not an authoritative goal count or goal state.
@@ -102,25 +105,37 @@ function JobsList({ projectId, goalId }: Props) {
   }, [jobs, goalId]);
   // Search complete prompts (including other attempts), even when the row uses
   // a title or an abbreviated prompt. Keep the entire matching goal together.
-  const rows: Row[] = noStatuses ? [] : groups.filter(group => !searchTerm || group.jobs.some(job =>
+  const rows: Row[] = noStatuses || noCells ? [] : groups.filter(group => !searchTerm || group.jobs.some(job =>
     [job.prompt, job.title].some(text => text?.replace(/\s+/g, ' ').toLocaleLowerCase().includes(searchTerm)),
   )).map(group => ({ key: group.key, group, job: latestActiveJob(group.jobs) }));
   const statusOptions = jobStatusOptions(jobs, filters.status || []);
-  const setStatuses = (statuses: string[] | null) => {
-    setSelectedIds([]);
-    changeQuery(query => {
-      query.delete('pageToken'); query.delete('status');
-      if (statuses?.length === 0) query.set('status', 'none');
-      statuses?.forEach(status => query.append('status', status));
-    });
-  };
+  const cellOptions = [...new Set([...cells.map(cell => cell.name || cell.repository_source), ...filters.cell || []])]
+    .map(value => ({ value, label: value }));
+  const checkboxFilter = (label: string, options: { value: string; label: string }[], selected: string[] | null) => ({
+    filters: options.map(option => ({ text: option.label, value: option.value })),
+    filteredValue: selected ?? options.map(option => option.value), filtered: selected !== null,
+    filterMode: 'tree' as const, filterSearch: true, filterOnClose: false,
+    filterIcon: <FilterFilled aria-label={label} style={{ color: selected === null ? token.colorTextDescription : token.colorPrimary }} tabIndex={0}
+      onKeyDown={(event: React.KeyboardEvent<HTMLSpanElement>) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); event.currentTarget.click(); } }} />,
+  });
   const fullPrompt = (group: JobGroup) => latestActiveJob(group.jobs).title || latestActiveJob(group.jobs).prompt || group.jobs.find(job => job.prompt?.trim())?.prompt;
   const setSelection = (ids: string[], selected: boolean) => setSelectedIds(previous => selected
     ? [...new Set([...previous, ...ids])] : previous.filter(id => !ids.includes(id)));
   const onTableChange: TableProps<Row>['onChange'] = (_, columnFilters, sorter, extra) => {
     if (extra.action === 'filter') {
       const statuses = columnFilters.status?.map(String) || [];
-      setStatuses(statuses.length === statusOptions.length ? null : statuses);
+      const selectedStatuses = statuses.length === statusOptions.length ? null : statuses;
+      const cells = columnFilters.cell?.map(String) || [];
+      const selectedCells = cells.length === cellOptions.length ? null : cells;
+      setSelectedIds([]);
+      changeQuery(query => {
+        query.delete('pageToken'); query.delete('status'); query.delete('cell'); query.delete('cellSelection');
+        if (selectedStatuses?.length === 0) query.set('status', 'none');
+        selectedStatuses?.forEach(status => query.append('status', status));
+        if (selectedCells?.length === 0) query.set('cellSelection', 'none');
+        selectedCells?.forEach(cell => query.append('cell', cell));
+        if (JSON.stringify(selectedCells) !== cellsKey) query.delete('expanded');
+      });
     } else if (extra.action === 'sort') {
       const active = Array.isArray(sorter) ? sorter[0] : sorter;
       changeQuery(query => {
@@ -143,13 +158,10 @@ function JobsList({ projectId, goalId }: Props) {
     </Space> },
     { title: 'Status', key: 'status', width: 180,
       sorter: (a, b) => jobStatus(a.job).label.localeCompare(jobStatus(b.job).label), sortOrder: sortOrder('status'),
-      filters: statusOptions.map(option => ({ text: option.label, value: option.value })),
-      filteredValue: filters.status ?? statusOptions.map(option => option.value), filtered: filters.status !== null,
-      filterMode: 'tree', filterSearch: true, filterOnClose: false,
-      filterIcon: <FilterFilled aria-label="Filter statuses" style={{ color: filters.status === null ? token.colorTextDescription : token.colorPrimary }} tabIndex={0}
-        onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); event.currentTarget.click(); } }} />,
+      ...checkboxFilter('Filter statuses', statusOptions, filters.status),
       render: (_, { job, group }) => <Link to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)} aria-label={`Job ${job.job_id}: ${jobStatus(job).label}`}><AttemptStatus job={job} /></Link> },
-    { title: 'Cell', key: 'cell', width: 120, sorter: (a, b) => cellLabel(a.job.cell_name).localeCompare(cellLabel(b.job.cell_name)), sortOrder: sortOrder('cell'), render: (_, { job }) => cellLabel(job.cell_name) },
+    { title: 'Cell', key: 'cell', width: 140, sorter: (a, b) => cellLabel(a.job.cell_name).localeCompare(cellLabel(b.job.cell_name)), sortOrder: sortOrder('cell'),
+      ...checkboxFilter('Filter cells', cellOptions, filters.cell), render: (_, { job }) => cellLabel(job.cell_name) },
     { title: 'Submitted', key: 'submitted', width: 185, sorter: (a, b) => jobTimestamp(a.job) - jobTimestamp(b.job), sortOrder: sortOrder('submitted'), render: (_, { job }) => jobTime(job.submitted_at || job.created_at) || '—' },
     { title: 'Links', width: 180, render: (_, { job, group }) => <Space direction="vertical" size={2}>
       {group.goalId && <Link to={goalPath(projectId, group.goalId)} state={{ goalsReturnTo }}>Goal overview</Link>}
@@ -163,7 +175,7 @@ function JobsList({ projectId, goalId }: Props) {
     try { values = await form.validateFields(); } catch { return; }
     setSubmitting(true);
     try {
-      const job = await submitJob(projectId, { cell: filters.cell, inputs: { prompt: values.prompt, type: 'build' } });
+      const job = await submitJob(projectId, { cell: submissionCell, inputs: { prompt: values.prompt, type: 'build' } });
       message.success('Goal created'); setSubmitOpen(false); form.resetFields();
       navigate(goalPath(projectId, job.goal_id!), { state: { goalsReturnTo } });
     } catch (reason) { message.error(reason instanceof Error ? reason.message : 'Could not create goal'); }
@@ -176,15 +188,6 @@ function JobsList({ projectId, goalId }: Props) {
         <Title level={3} style={{ margin: 0 }}>{goalId ? 'Goal overview' : 'Goals'}</Title>
         <Space wrap>
           {goalId && <Link to={goalsReturnTo}>Back to Goals</Link>}
-          {!goalId && <Input aria-label="Search goals" placeholder="Search full prompts" prefix={<SearchOutlined aria-hidden />} allowClear value={search}
-            style={{ width: 280 }} onChange={event => {
-              const value = event.target.value;
-              changeQuery(query => { if (value) query.set('q', value); else query.delete('q'); }, true);
-            }} />}
-          {!goalId && <Select aria-label="Cell filter" value={filters.cell} options={cells.map(cell => ({ value: cell.name || cell.repository_source, label: cell.name }))}
-            style={{ minWidth: 160 }} placeholder="All cells" allowClear showSearch onChange={cell => {
-              setSelectedIds([]); changeQuery(query => { query.delete('cell'); if (cell) query.set('cell', cell); query.delete('pageToken'); query.delete('expanded'); });
-            }} />}
           <Button icon={<ReloadOutlined aria-hidden />} onClick={() => setRefresh(value => value + 1)}>Refresh</Button>
           <Button type="primary" icon={<PlusOutlined aria-hidden />} onClick={() => setSubmitOpen(true)}>New goal</Button>
         </Space>
@@ -196,15 +199,22 @@ function JobsList({ projectId, goalId }: Props) {
           <GoalJobOverview jobs={jobs} projectId={projectId} refresh={refresh} navigationState={navigationState(goalId)} />
         </section>
       </Spin> : <>
-        <Space wrap>
-          <Text>{selectedIds.length} selected</Text>
-          <Button danger disabled={loading || !selectedIds.length} onClick={() => setOperation({ action: 'cancel', jobIds: selectedIds })}>Cancel selected</Button>
-          <Button danger disabled={loading || !selectedIds.length} onClick={() => setOperation({ action: 'delete', jobIds: selectedIds })}>Delete selected</Button>
-          {!!selectedIds.length && <Button onClick={() => setSelectedIds([])}>Clear selection</Button>}
-        </Space>
+        <div className="goal-list-actions">
+          <Space wrap>
+            <Text>{selectedIds.length} selected</Text>
+            <Button danger disabled={loading || !selectedIds.length} onClick={() => setOperation({ action: 'cancel', jobIds: selectedIds })}>Cancel selected</Button>
+            <Button danger disabled={loading || !selectedIds.length} onClick={() => setOperation({ action: 'delete', jobIds: selectedIds })}>Delete selected</Button>
+            {!!selectedIds.length && <Button onClick={() => setSelectedIds([])}>Clear selection</Button>}
+          </Space>
+          <Input className="goal-search" aria-label="Search goals" placeholder="Search full prompts" prefix={<SearchOutlined aria-hidden />} allowClear value={search}
+            onChange={event => {
+              const value = event.target.value;
+              changeQuery(query => { if (value) query.set('q', value); else query.delete('q'); }, true);
+            }} />
+        </div>
         <Table<Row> rowKey="key" columns={columns} dataSource={rows} loading={loading} pagination={false} size="small" scroll={{ x: 1000 }}
           onChange={onTableChange} locale={{ filterCheckAll: 'Select all', filterReset: 'Select none', filterConfirm: 'Apply',
-            emptyText: noStatuses ? 'No statuses selected' : searchTerm ? 'No goals match this search on this page' : undefined }}
+            emptyText: noStatuses ? 'No statuses selected' : noCells ? 'No cells selected' : searchTerm ? 'No goals match this search on this page' : undefined }}
           rowSelection={{
             selectedRowKeys: rows.filter(row => row.group.jobs.every(job => selectedIds.includes(job.job_id))).map(row => row.key),
             onSelect: (row, selected) => setSelection(row.group.jobs.map(job => job.job_id), selected),
@@ -234,7 +244,7 @@ function JobsList({ projectId, goalId }: Props) {
       setSelectedIds(previous => previous.filter(id => !succeeded.includes(id))); setRefresh(value => value + 1);
     }} />}
     <Modal title="New goal" open={submitOpen} onCancel={() => setSubmitOpen(false)} onOk={submit} okText="Create goal" okButtonProps={{ loading: submitting }} destroyOnHidden>
-      <Text type="secondary">Cell: {filters.cell || cells.find(cell => cell.kind === 'self')?.name || 'self'}</Text>
+      <Text type="secondary">Cell: {submissionCell || cells.find(cell => cell.kind === 'self')?.name || 'self'}</Text>
       <Form form={form} layout="vertical"><Form.Item label="Prompt" name="prompt" rules={[{ required: true, whitespace: true, message: 'Enter a prompt' }]}><Input.TextArea rows={6} /></Form.Item></Form>
     </Modal>
   </div>;

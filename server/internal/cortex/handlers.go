@@ -13,6 +13,7 @@ import (
 
 	"github.com/colony-2/c2j/pkg/jobref"
 	"github.com/colony-2/c2j/pkg/recipejob"
+	"github.com/colony-2/c2j/pkg/starter"
 	"github.com/colony-2/c2j/pkg/story"
 	coretask "github.com/colony-2/c2j/pkg/task"
 	"github.com/colony-2/jobdb/pkg/jobdb"
@@ -145,13 +146,13 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 		stores = []jobdb.JobStore{jobdb.JobStoreActive, jobdb.JobStoreArchived}
 	}
 	resp, err := listJobsByDisplayStatus(r.Context(), s.engine, recipejob.ListRecipeJobsRequest{
-		GoalIDs:          r.URL.Query()["goal"],
-		TenantID:         tenantID,
-		RepositorySource: repo,
-		Statuses:         statuses,
-		Stores:           stores,
-		PageSize:         pageSize,
-		PageToken:        r.URL.Query().Get("pageToken"),
+		GoalIDs:        r.URL.Query()["goal"],
+		TenantID:       tenantID,
+		MetadataFilter: repo,
+		Statuses:       statuses,
+		Stores:         stores,
+		PageSize:       pageSize,
+		PageToken:      r.URL.Query().Get("pageToken"),
 	}, displayStatuses)
 	if err != nil {
 		writeError(w, err)
@@ -394,24 +395,43 @@ func (s *Server) tenantID(r *http.Request) string {
 	return s.cfg.DefaultTenantID
 }
 
-func (s *Server) jobListRepositoryFilter(r *http.Request, tenantID string) (string, error) {
+func (s *Server) jobListRepositoryFilter(r *http.Request, tenantID string) (jobdb.MetadataFilter, error) {
 	query := r.URL.Query()
-	cell := strings.TrimSpace(query.Get("cell"))
-	if cell == "" {
-		cell = strings.TrimSpace(query.Get("repo"))
+	cells := make([]string, 0, len(query["cell"]))
+	for _, value := range query["cell"] {
+		if cell := strings.TrimSpace(value); cell != "" {
+			cells = append(cells, cell)
+		}
 	}
-	if cell == "" {
-		return "", nil
+	if len(cells) == 0 {
+		if repo := strings.TrimSpace(query.Get("repo")); repo != "" {
+			cells = append(cells, repo)
+		}
 	}
-	target, err := recipejob.ResolveTarget(r.Context(), recipejob.ResolveTargetRequest{
-		WorkingDir: s.cfg.WorkingDir,
-		Cell:       cell,
-		TenantID:   tenantID,
-	})
-	if err != nil {
-		return "", err
+	var filter jobdb.MetadataFilter
+	for _, cell := range cells {
+		target, err := recipejob.ResolveTarget(r.Context(), recipejob.ResolveTargetRequest{
+			WorkingDir: s.cfg.WorkingDir,
+			Cell:       cell,
+			TenantID:   tenantID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		candidate, err := jobdb.Metadata().EqualFilter(starter.MetaFieldRepo, target.RepositorySource)
+		if err != nil {
+			return nil, err
+		}
+		if filter == nil {
+			filter = candidate
+		} else {
+			filter, err = filter.OrFilter(candidate)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
-	return target.RepositorySource, nil
+	return filter, nil
 }
 
 func parsePositiveInt(value string, fallback int) int {
