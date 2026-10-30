@@ -230,12 +230,9 @@ is mapped to that repository in the worker's environment. No API or EventSource
 mocks are used in these tests. Worker logs and recipe outcomes are attached to
 the Playwright report in `web/app/playwright-report`.
 
-The timeout regression also runs against the real worker. It currently records
-an **expected failure**: with the pinned c2j / JobDB versions, an unanswered external
-input task remains pending past its recipe deadline. Step deadlines have the
-same limitation. The test first verifies that the prompt appears, then marks
-only a confirmed still-pending outcome after the deadline as expected; setup
-and other failures still fail CI. Timeout handling needs an upstream JobDB fix.
+The timeout regression also runs against the real worker. It verifies that an
+unanswered input expires, clears pending prompts in both browser tabs, and rejects
+late submissions.
 
 ## Releases
 
