@@ -18,7 +18,8 @@ afterEach(() => {
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: vi.fn().mockImplementation(query => ({
-    matches: false,
+    matches: /min-width: (\d+)px/.test(query) ? window.innerWidth >= Number(query.match(/min-width: (\d+)px/)![1])
+      : /max-width: (\d+)px/.test(query) ? window.innerWidth <= Number(query.match(/max-width: (\d+)px/)![1]) : false,
     media: query,
     onchange: null,
     addListener: vi.fn(), // deprecated

@@ -222,6 +222,8 @@ for (const multiField of [false, true]) {
         page.on('request', req => {
           if (req.url().endsWith(`/user-inputs/${jobID}`) || req.url().endsWith(`/jobs/${jobID}`)) inspections.push(req.url());
         });
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.getByRole('button', { name: 'Open navigation' }).click();
         await page.getByRole('link', { name: 'Reviews', exact: true }).click();
         await expect(page.getByText(`Job ID: ${jobID}`, { exact: true })).toBeVisible();
         expect(inspections).toEqual([]);
@@ -258,6 +260,7 @@ for (const multiField of [false, true]) {
       });
       if (!multiField) await page.goto(`/project/${tenant}/jobs/${jobID}/story`);
       await expect(page.getByRole('cell', { name: 'COMPLETED', exact: true }).first()).toBeVisible();
+      await page.setViewportSize({ width: 1440, height: 900 });
       await page.goto(`/project/${tenant}/jobs`);
       await expect(page.getByRole('heading', { name: 'Goals', exact: true })).toBeVisible();
       await expect(page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) })).toBeVisible();
@@ -277,6 +280,7 @@ for (const multiField of [false, true]) {
         await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
         const story = await (await storyResponse).json();
         expect(story.restart_scopes.length).toBeGreaterThan(0);
+        await page.setViewportSize({ width: 390, height: 844 });
         await page.getByRole('button', { name: 'Restart job', exact: true }).click();
         const restartDialog = page.getByRole('dialog');
         await expect(restartDialog.getByRole('button', { name: 'Restart', exact: true })).toBeEnabled();
@@ -313,6 +317,13 @@ for (const multiField of [false, true]) {
         expect((await request.get(`/api/projects/${tenant}/jobs/${jobID}/restart-context?chapter_ordinal=0`)).status()).toBe(400);
         expect((await request.post(`/api/projects/${tenant}/jobs/${jobID}/restart`, { data: { chapter_ordinal: expectedChapter, scope_id: 'also-supplied' } })).status()).toBe(400);
         await expect(restartDialog.getByTitle('Start a new goal', { exact: true })).toBeVisible();
+        for (const width of [320, 390, 768, 1440]) {
+          await page.setViewportSize({ width, height: width < 768 ? 360 : 900 });
+          await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+          await restartDialog.getByRole('button', { name: 'Restart', exact: true }).scrollIntoViewIfNeeded();
+          await expect(restartDialog.getByRole('button', { name: 'Restart', exact: true })).toBeInViewport();
+        }
+        await page.setViewportSize({ width: 390, height: 844 });
         const restarted = page.waitForResponse(r => r.url().endsWith(`/jobs/${jobID}/restart`) && r.request().method() === 'POST');
         await restartDialog.getByRole('button', { name: 'Restart', exact: true }).click();
         const restartResponse = await restarted;
@@ -415,16 +426,20 @@ test.describe('input timeout', () => {
 for (const clarification of [false, true]) {
   test.describe(clarification ? 'clarification review' : 'document review', () => {
     test.use({ recipeFixture: clarification ? 'browser-review-clarification' : 'browser-review' });
-    test('reviews render immutable Markdown and submit through c2j', async ({ page, request, recipeRun }) => {
+    test('reviews render immutable Markdown and submit through c2j', async ({ page, request, recipeRun }, testInfo) => {
       const { tenant, jobID, observer, stopWorker, startWorker } = recipeRun;
       expect(await page.evaluate(() => typeof globalThis.crypto.randomUUID)).toBe('undefined');
       await stopWorker();
       const job = await (await request.get(`/api/projects/${tenant}/jobs/${jobID}`)).json();
       expect(job.prompt).toBe(reviewGoalPrompt);
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.getByRole('button', { name: 'Open navigation' }).click();
       await page.getByRole('link', { name: 'Reviews', exact: true }).click();
       await expect(page.getByText(abbreviatePrompt(job.title || job.prompt), { exact: true })).toBeVisible();
       await expect(page.getByText(`Cell: ${job.cell_name?.trim() ? job.cell_name : 'Unknown cell'}`, { exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Open Review', exact: true }).click();
+      await page.getByText('Goal context', { exact: true }).click();
+      await page.getByText('Review instructions', { exact: true }).click();
       const goalPrompt = page.getByRole('region', { name: 'Goal prompt', exact: true });
       await expect(goalPrompt).toContainText(job.prompt);
       await expect(page.getByText(job.cell_name?.trim() ? job.cell_name : 'Unknown cell', { exact: true })).toBeVisible();
@@ -432,7 +447,9 @@ for (const clarification of [false, true]) {
         document.querySelector('[aria-label="Review context"]')!
       ) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
       await expect(page.getByRole('heading', { name: 'Review the release' })).toBeVisible();
+      await page.getByRole('button', { name: 'Read design.md', exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
+      await page.getByText('Document options', { exact: true }).click();
       await expect(page.getByLabel('Rendered document').getByRole('table')).toBeVisible();
       await expect(page.locator('[contenteditable=true]')).toHaveCount(0);
       await page.getByText('Markdown', { exact: true }).click();
@@ -443,6 +460,7 @@ for (const clarification of [false, true]) {
       await page.getByText('Rendered', { exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Rollout', exact: true })).toBeVisible();
       await expect(page.getByRole('checkbox')).toBeDisabled();
+      await page.getByRole('button', { name: 'Back to review', exact: true }).click();
 
       const details = await (await request.get(`/api/projects/${tenant}/user-inputs/${jobID}`)).json();
       const stale = await page.request.post(`/api/projects/${tenant}/reviews/${jobID}/respond`, {
@@ -471,6 +489,17 @@ for (const clarification of [false, true]) {
       }
       await feedback.fill('Please use the proposed mandate and clarify the ownership boundary.');
       if (!clarification) await page.locator('input[type=file]').setInputFiles({ name: 'feedback.md', mimeType: 'text/markdown', buffer: Buffer.from('# Feedback from browser') });
+      await page.getByRole('button', { name: 'Read design.md', exact: true }).click();
+      await expect(page.getByRole('dialog').getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Back to review', exact: true }).click();
+      await expect(feedback).toHaveValue('Please use the proposed mandate and clarify the ownership boundary.');
+
+      for (const viewport of [{ width: 320, height: 568 }, { width: 768, height: 1024 }, { width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+        await page.setViewportSize(viewport);
+        await expect(feedback).toHaveValue('Please use the proposed mandate and clarify the ownership boundary.');
+        await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+      }
+      await page.screenshot({ path: testInfo.outputPath('phone-review.png'), fullPage: true });
 
       // A rejected request must remain actionable, with the draft preserved.
       let releaseFailure!: () => void;
@@ -613,10 +642,13 @@ test.describe('review job metadata', () => {
     await expect(page.getByText(`Job ID: ${jobID}`, { exact: true })).toBeVisible();
     expect(await fits()).toBe(true);
     await page.getByRole('button', { name: 'Open Review' }).click();
+    await page.getByText('Goal context', { exact: true }).click();
     const region = page.getByRole('region', { name: 'Goal prompt' });
     await expect(region).toContainText(prompt);
     await expect(region.locator('script, strong')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Read design.md', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Back to review', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Back to Reviews' })).toBeVisible();
     expect(await fits()).toBe(true);

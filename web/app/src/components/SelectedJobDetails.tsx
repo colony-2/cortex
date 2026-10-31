@@ -6,8 +6,8 @@ import JobListDetails from './JobListDetails';
 
 // Mounted only for a visible selection, keyed by tenant and job by the parent.
 // List responses never enter this state. Reopening remounts and revalidates.
-export default function SelectedJobDetails({ projectId, jobId, summary, refresh, prompt, navigationState }: {
-  projectId: string; jobId: string; summary: RecipeJobSummary; refresh: number; prompt?: string; navigationState: Record<string, unknown>;
+export default function SelectedJobDetails({ projectId, jobId, summary, refresh, prompt, navigationState, inspectionRequests }: {
+  inspectionRequests?: Map<string, ReturnType<typeof getJob>>; projectId: string; jobId: string; summary: RecipeJobSummary; refresh: number; prompt?: string; navigationState: Record<string, unknown>;
 }) {
   const [job, setJob] = useState<RecipeJob>();
   const [error, setError] = useState<string>();
@@ -17,16 +17,21 @@ export default function SelectedJobDetails({ projectId, jobId, summary, refresh,
   useEffect(() => {
     let active = true;
     setLoading(true); setError(undefined);
+    const cacheKey = JSON.stringify([projectId, jobId, refresh]);
     const key = JSON.stringify([projectId, jobId, refresh, retry]);
     // React StrictMode replays effects; reuse the same request for that replay.
-    if (request.current?.key !== key) request.current = { key, promise: getJob(projectId, jobId) };
+    if (request.current?.key !== key) {
+      const promise = (retry === 0 ? inspectionRequests?.get(cacheKey) : undefined) || getJob(projectId, jobId);
+      inspectionRequests?.set(cacheKey, promise);
+      request.current = { key, promise };
+    }
     request.current.promise.then(result => {
       if (active) setJob(result);
     }).catch(reason => {
       if (active) setError(reason instanceof Error ? reason.message : 'Could not load job details');
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [projectId, jobId, refresh, retry]);
+  }, [projectId, jobId, refresh, retry, inspectionRequests]);
   return <>
     {error && <Alert type="error" showIcon message="Could not load job details" description={error}
       action={<Button onClick={() => setRetry(value => value + 1)}>Retry details</Button>} />}

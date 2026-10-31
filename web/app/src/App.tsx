@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { FileSearchOutlined, LogoutOutlined, OrderedListOutlined, PlayCircleOutlined } from '@ant-design/icons';
-import { Alert, Badge, Button, Empty, Input, Layout, Menu, Space, Spin, Typography } from 'antd';
+import { FileSearchOutlined, MenuOutlined, LogoutOutlined, OrderedListOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { Alert, Badge, Button, Drawer, Empty, Input, Layout, Menu, Spin, Typography } from 'antd';
 import {
   InputActivityProvider,
   clearUserEmail,
@@ -14,6 +14,7 @@ import JobsListPage from './components/JobsListPage';
 import PendingInputsListPage from './components/PendingInputsListPage';
 import InputDetailPage from './components/InputDetailPage';
 import JobStoryPage from './components/JobStoryPage';
+import { useCompact } from './hooks/useCompact';
 import LoginPage from './components/LoginPage';
 
 const { Header, Content, Sider } = Layout;
@@ -53,6 +54,14 @@ function initialTenantId(search: string, pathname: string, defaultTenantId: stri
 }
 
 function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
+  const compact = useCompact();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => { if (!compact) setMenuOpen(false); }, [compact]);
+  const closeMenu = () => {
+    setMenuOpen(false);
+    requestAnimationFrame(() => menuButton.current?.focus({ preventScroll: true }));
+  };
   const [authenticated, setAuthenticated] = useState(isAuthenticated());
   const location = useLocation();
   const navigate = useNavigate();
@@ -95,53 +104,52 @@ function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
     setAuthenticated(false);
   };
 
-  return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Header style={{ background: '#fff', borderBottom: '1px solid #f0f0f0' }}>
-        <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
-          <Space align="center">
-            <Typography.Text strong>cortex</Typography.Text>
-            <Typography.Text type="secondary">Tenant</Typography.Text>
-            <Input.Search
-              aria-label="Tenant ID"
-              value={tenantDraft}
-              onChange={(event) => setTenantDraft(event.target.value)}
-              onSearch={applyTenant}
-              enterButton="Use"
-              style={{ width: 220 }}
-            />
-          </Space>
-          <Button icon={<LogoutOutlined />} onClick={handleLogout}>
-            Logout
-          </Button>
-        </Space>
-      </Header>
-      <Layout style={{ height: 'calc(100vh - 64px)' }}>
-        <Sider width={220} theme="light" collapsedWidth={72}>
+  const navigation = (
           <Menu
+            onClick={closeMenu}
             mode="inline"
             selectedKeys={[navKey]}
             items={[
               {
                 key: 'jobs',
-                label: <Link to={`/project/${tenantId}/goals`}>Goals</Link>,
+                label: <Link className="compact-touch-link" to={`/project/${tenantId}/goals`}>Goals</Link>,
                 icon: <PlayCircleOutlined />,
               },
               {
                 key: 'reviews',
-                label: <Badge count={pendingCount} offset={[10, 0]} size="small"><Link to={`/project/${tenantId}/reviews`}>Reviews</Link></Badge>,
+                label: <Badge count={pendingCount} offset={[10, 0]} size="small"><Link className="compact-touch-link" to={`/project/${tenantId}/reviews`}>Reviews</Link></Badge>,
                 icon: <FileSearchOutlined />,
               },
               {
                 key: 'cells',
-                label: <Link to={`/project/${tenantId}/cells`}>Cells</Link>,
+                label: <Link className="compact-touch-link" to={`/project/${tenantId}/cells`}>Cells</Link>,
                 icon: <OrderedListOutlined />,
               },
             ]}
             style={{ height: '100%', borderRight: 0 }}
           />
-        </Sider>
-        <Content style={{ overflow: 'auto' }}>
+  );
+  return (
+    <Layout className="app-shell">
+      <Header className="app-header">
+        <div className="app-brand">
+          {compact && <Button ref={menuButton} aria-label="Open navigation" aria-expanded={menuOpen} icon={<MenuOutlined />} onClick={() => setMenuOpen(true)} />}
+          <Typography.Text strong>cortex</Typography.Text>
+        </div>
+        <div className="tenant-control">
+          <Typography.Text type="secondary">Tenant</Typography.Text>
+          <Input.Search aria-label="Tenant ID" value={tenantDraft} onChange={event => setTenantDraft(event.target.value)} onSearch={applyTenant} enterButton="Use" />
+        </div>
+        <Button className="logout-button" icon={<LogoutOutlined />} onClick={handleLogout}>Logout</Button>
+      </Header>
+      <Layout className="app-body">
+        {compact ? <Drawer title="Navigation" width="min(320px, 100%)" open={menuOpen} onClose={closeMenu} afterOpenChange={open => {
+          // rc-drawer restores its captured element after this callback. Restore
+          // our explicit opener afterwards, including interrupted animations.
+          if (!open) queueMicrotask(() => menuButton.current?.focus({ preventScroll: true }));
+        }}>{navigation}</Drawer>
+          : <Sider width={220} theme="light">{navigation}</Sider>}
+        <Content className="app-content">
           <Routes>
             <Route path="/" element={<Navigate to={`/project/${tenantId}/jobs`} replace />} />
             <Route path="/jobs" element={<JobsListPage projectId={tenantId} />} />
@@ -183,7 +191,8 @@ function InputRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
 }
 
 function CellsRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
-  return <CellsList projectId={useRouteProjectId(fallbackProjectId)} />;
+  const projectId = useRouteProjectId(fallbackProjectId);
+  return <CellsList key={projectId} projectId={projectId} />;
 }
 
 function StoryRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
@@ -192,7 +201,7 @@ function StoryRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
   if (!jobId) {
     return <Empty description="Missing job ID" />;
   }
-  return <JobStoryPage projectId={projectId} />;
+  return <JobStoryPage key={`${projectId}/${jobId}`} projectId={projectId} />;
 }
 
 export default App;

@@ -51,7 +51,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browser and dependencies
-        run: pnpm --filter @colony2/app exec playwright install --with-deps --only-shell chromium
+        run: pnpm --filter @colony2/app exec playwright install --with-deps chromium
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ env.CORTEX_PLAYWRIGHT_BROWSERS_PATH }}
 

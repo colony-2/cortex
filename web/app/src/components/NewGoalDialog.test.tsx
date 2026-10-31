@@ -1,0 +1,90 @@
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { listCells, submitJob } from '@colony2/shared/api';
+import type { CortexCell, RecipeJob } from '@colony2/shared/types';
+import NewGoalDialog from './NewGoalDialog';
+vi.mock('@colony2/shared/api', () => ({ listCells: vi.fn(), submitJob: vi.fn() }));
+afterEach(() => { vi.mocked(listCells).mockReset(); vi.mocked(submitJob).mockReset(); });
+const catalogue = [{ name: 'platform', repository_source: 'https://github.com/colony-2/platform.git', kind: 'dependent' }, { name: 'self', repository_source: 'https://github.com/colony-2/cortex.git', kind: 'self' }] as CortexCell[];
+const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; };
+function open(filters: string[] | null = null) {
+  const onCreated = vi.fn(); const onClose = vi.fn();
+  const props = { projectId: 'one', jobs: [{ job_id: 'j', cell_name: 'platform' }], filters, onClose, onCreated };
+  const view = render(<NewGoalDialog {...props} />);
+  fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Build a tool' } });
+  return { ...view, props, onCreated };
+}
+it('keeps a job-only target identity when a matching catalogue arrives or filters change', async () => {
+  const cells = deferred<CortexCell[]>(); vi.mocked(listCells).mockReturnValue(cells.promise);
+  vi.mocked(submitJob).mockResolvedValue({ goal_id: 'g' } as RecipeJob);
+  const view = open(['platform']);
+  view.rerender(<NewGoalDialog {...view.props} filters={['other']} />);
+  await act(async () => cells.resolve(catalogue));
+  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
+  await waitFor(() => expect(submitJob).toHaveBeenCalledWith('one', { cell: 'platform', inputs: { prompt: 'Build a tool', type: 'build' } }));
+  expect(view.onCreated).toHaveBeenCalledWith('g');
+});
+it('keeps self explicit, validates repository mode, and ignores inactive repository values', async () => {
+  vi.mocked(listCells).mockResolvedValue(catalogue); vi.mocked(submitJob).mockResolvedValue({ goal_id: 'g' } as RecipeJob);
+  open();
+  fireEvent.click(screen.getByRole('radio', { name: 'Repository' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Repository' }), { target: { value: 'github/colony-2/a?bad' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
+  await screen.findByText('Enter github/colony-2/<name> or its GitHub HTTPS URL');
+  expect(submitJob).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('radio', { name: 'Known cell' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
+  await waitFor(() => expect(submitJob).toHaveBeenCalledWith('one', { cell: undefined, inputs: { prompt: 'Build a tool', type: 'build' } }));
+});
+it('retries catalogue failure without losing edits and posts normalized repositories only once while pending', async () => {
+  vi.mocked(listCells).mockRejectedValueOnce(new Error('offline')).mockResolvedValue(catalogue);
+  const post = deferred<RecipeJob>(); vi.mocked(submitJob).mockReturnValue(post.promise);
+  const view = open();
+  await screen.findByText('Could not load known cells');
+  fireEvent.click(screen.getByRole('radio', { name: 'Repository' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Repository' }), { target: { value: 'github/colony-2/new.git/' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Retry cells' }));
+  await waitFor(() => expect(listCells).toHaveBeenCalledTimes(2));
+  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
+  await waitFor(() => expect(submitJob).toHaveBeenCalledTimes(1));
+  expect(submitJob).toHaveBeenCalledWith('one', { cell: 'https://github.com/colony-2/new.git', inputs: { prompt: 'Build a tool', type: 'build' } });
+  view.unmount();
+  await act(async () => post.resolve({ goal_id: 'old-tenant-goal' } as RecipeJob));
+  expect(view.onCreated).not.toHaveBeenCalled();
+});
+it('retains fields and errors after submission failure and permits retry', async () => {
+  vi.mocked(listCells).mockResolvedValue([]);
+  vi.mocked(submitJob).mockRejectedValueOnce(new Error('resolution failed')).mockResolvedValue({ goal_id: 'g' } as RecipeJob);
+  open(['platform']);
+  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
+  await screen.findByText('resolution failed');
+  expect(screen.getByLabelText('Prompt')).toHaveValue('Build a tool');
+  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
+  await waitFor(() => expect(submitJob).toHaveBeenCalledTimes(2));
+  expect(vi.mocked(submitJob).mock.calls[1][1].cell).toBe('platform');
+});
+it('ignores late catalogue responses after tenant unmount and leaves the next draft clean', async () => {
+  const cells = deferred<CortexCell[]>(); vi.mocked(listCells).mockReturnValueOnce(cells.promise).mockResolvedValue([]);
+  const old = open(['platform']); old.unmount();
+  render(<NewGoalDialog projectId="two" jobs={[]} filters={null} onClose={vi.fn()} onCreated={vi.fn()} />);
+  await act(async () => cells.resolve(catalogue));
+  expect(screen.getByLabelText('Prompt')).toHaveValue('');
+  expect(screen.getByText('Target: This cell (self)')).toBeVisible();
+  fireEvent.mouseDown(screen.getByRole('combobox'));
+  expect(screen.queryByText('platform · https://github.com/colony-2/platform.git')).not.toBeInTheDocument();
+});
+it('submits a catalogue-backed repository and prevents an empty prompt from posting', async () => {
+  vi.mocked(listCells).mockResolvedValue(catalogue);
+  vi.mocked(submitJob).mockResolvedValue({ goal_id: 'g' } as RecipeJob);
+  render(<NewGoalDialog projectId="one" jobs={[]} filters={null} onClose={vi.fn()} onCreated={vi.fn()} />);
+  await waitFor(() => expect(screen.queryByText('Loading known cells…')).not.toBeInTheDocument());
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Cell' }));
+  fireEvent.click(await screen.findByText('platform · https://github.com/colony-2/platform.git'));
+  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
+  await screen.findByText('Enter a prompt');
+  expect(submitJob).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Build a tool' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
+  await waitFor(() => expect(submitJob).toHaveBeenCalledWith('one', { cell: 'https://github.com/colony-2/platform.git', inputs: { prompt: 'Build a tool', type: 'build' } }));
+});

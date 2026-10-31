@@ -716,7 +716,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   };
 
   return (
-    <div style={{ padding: 24 }}>
+    <div className="app-page job-story-page" style={{ padding: 24 }}>
       <Space direction="vertical" style={{ width: '100%' }} size="large">
         <div className="job-story-header" data-testid="job-story-header" style={{ display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'space-between', alignItems: 'center', minWidth: 0 }}>
           <Space wrap style={{ minWidth: 0, maxWidth: '100%' }}>
@@ -726,7 +726,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
             <Title level={2} style={{ margin: 0, overflowWrap: 'anywhere' }}>
               {jobTitle ? `Job Story: ${jobTitle}` : 'Job Story'}
             </Title>
-            {overviewLink && <Link to={overviewLink} state={{ goalsReturnTo: returnTo }}>Goal overview</Link>}
+            {overviewLink && <Link className="compact-touch-link" to={overviewLink} state={{ goalsReturnTo: returnTo }}>Goal overview</Link>}
           </Space>
           <Space wrap style={{ maxWidth: '100%' }}>
             <DownloadChaptersButton key={JSON.stringify([projectId, jobId])} projectId={projectId} jobId={jobId} />
@@ -865,20 +865,21 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
               <summary>Recipe metadata</summary>
             <div>Job ID: <Text code>{jobId}</Text></div>
               <div style={{ marginTop: 8 }}>
-                <ReactJson
+                <div role="region" aria-label="JSON data" className="technical-region" tabIndex={0}><ReactJson
                   src={story.recipe}
                   collapsed={1}
                   displayDataTypes={false}
                   enableClipboard
                   theme="rjv-default"
-                />
+                /></div>
               </div>
             </details>
           ) : null}
         </Card>
 
-        <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
-          <Card title={isPastJob ? `Story · job attempt ${selectedRef?.jobAttempt}` : 'Story'} style={{ flex: 1, minWidth: 420 }} styles={{ body: { padding: 12, overflowX: 'auto' } }}
+        <a className="compact-details-link" href="#selected-story-details">View selected details</a>
+        <div className="story-panels">
+          <Card title={isPastJob ? `Story · job attempt ${selectedRef?.jobAttempt}` : 'Story'} className="story-tree-panel" styles={{ body: { padding: 12, overflowX: 'auto' } }}
             extra={<Space>
               {!!story?.root?.past_attempts?.length && <Button size="small" onClick={() => {
                 setSelectedFromNode(displayedRoot || story.root!);
@@ -891,7 +892,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                 ? 'The story API returned no steps for this finished job.'
                 : 'No story available yet'} />
             ) : (
-              <Tree
+              <div role="region" aria-label="Execution story tree" className="technical-region" tabIndex={0}><Tree
                 showLine
                 treeData={treeData}
                 expandedKeys={expandedKeys}
@@ -918,11 +919,11 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                   }
                   setSelectedKey(key);
                 }}
-              />
+              /></div>
             )}
           </Card>
 
-          <Card title={detailsHeader} style={{ flex: 1.2, minWidth: 400 }} styles={{ body: { padding: 12, overflowWrap: 'anywhere' } }}>
+          <Card title={detailsHeader} id="selected-story-details" tabIndex={-1} className="story-details-panel" styles={{ body: { padding: 12, overflowWrap: 'anywhere' } }}>
             {!selectedNode ? (
               <Empty description="Select a node from the story tree" />
             ) : (
@@ -1013,13 +1014,13 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                         {selectedNode.kind === 'contextPatch' ? (
                           <Card title="Applied Context Patch" size="small">
                             {selectedNode.output ? (
-                              <ReactJson
+                              <div role="region" aria-label="JSON data" className="technical-region" tabIndex={0}><ReactJson
                                 src={selectedNode.output as any}
                                 collapsed={2}
                                 displayDataTypes={false}
                                 enableClipboard
                                 theme="rjv-default"
-                              />
+                              /></div>
                             ) : (
                               <Empty description="No patch payload found" />
                             )}
@@ -1133,13 +1134,13 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                     key: 'input',
                     label: 'Input',
                     children: selectedNode.input ? (
-                      <ReactJson
+                      <div role="region" aria-label="JSON data" className="technical-region" tabIndex={0}><ReactJson
                         src={selectedNode.input as any}
                         collapsed={2}
                         displayDataTypes={false}
                         enableClipboard
                         theme="rjv-default"
-                      />
+                      /></div>
                     ) : (
                       <Empty description="No input payload" />
                     ),
@@ -1148,13 +1149,13 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                     key: 'output',
                     label: 'Output',
                     children: selectedNode.output ? (
-                      <ReactJson
+                      <div role="region" aria-label="JSON data" className="technical-region" tabIndex={0}><ReactJson
                         src={selectedNode.output as any}
                         collapsed={2}
                         displayDataTypes={false}
                         enableClipboard
                         theme="rjv-default"
-                      />
+                      /></div>
                     ) : (
                       <Empty description="No output payload" />
                     ),
@@ -1183,6 +1184,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                                 <List.Item.Meta
                                   title={
                                     <a
+                                      className="compact-touch-link"
                                       href="#"
                                       onClick={(e) => {
                                         e.preventDefault();
@@ -1537,13 +1539,13 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                     </Card>
 
                     <Card size="small" title="Patch payload">
-                      <ReactJson
+                      <div role="region" aria-label="JSON data" className="technical-region" tabIndex={0}><ReactJson
                         src={buildContextPatch(jobPatchLines, scopePatchLines) ?? {}}
                         collapsed={2}
                         displayDataTypes={false}
                         enableClipboard
                         theme="rjv-default"
-                      />
+                      /></div>
                     </Card>
                   </Space>
                 )}

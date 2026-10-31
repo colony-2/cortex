@@ -300,3 +300,55 @@ func doJSON[T any](t *testing.T, req *http.Request, wantStatus int) T {
 	}
 	return out
 }
+
+// Exercise the existing submission contract independently of browser mocks.
+func TestGoalTargetResolution(t *testing.T) {
+	for _, mode := range []string{"toy", "remote"} {
+		t.Run(mode, func(t *testing.T) {
+			cfg := Config{WorkingDir: writeC2JConfig(t), DefaultTenantID: "1"}
+			var srv *Server
+			var err error
+			if mode == "remote" {
+				backend := httptest.NewServer(remote.NewServer(toy.New()))
+				t.Cleanup(backend.Close)
+				cfg.JobDBURL = backend.URL
+				srv, err = NewRemoteServer(cfg)
+			} else {
+				srv, err = NewUITestServer(cfg)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			api := httptest.NewServer(srv)
+			t.Cleanup(api.Close)
+			cells := getJSON[[]Cell](t, api.URL+"/api/projects/targets/cells")
+			for i, target := range []struct{ cell, repo string }{
+				{"alpha", cells[1].RepositorySource},
+				{cells[1].RepositorySource, cells[1].RepositorySource},
+				{"", cells[0].RepositorySource},
+			} {
+				job := postJSON[map[string]interface{}](t, api.URL+"/api/projects/targets/jobs", map[string]interface{}{
+					"cell": target.cell, "recipe": "build", "inputs": map[string]interface{}{"prompt": "Build a tool", "type": "build"},
+				})
+				stored := getJSON[map[string]interface{}](t, api.URL+"/api/projects/targets/jobs/"+job["job_id"].(string))
+				if stored["repo"] != target.repo || stored["tenant_id"] != "targets" || stored["prompt"] != "Build a tool" {
+					t.Fatalf("target %d resolved incorrectly: %#v", i, stored)
+				}
+			}
+			before := getJSON[map[string]interface{}](t, api.URL+"/api/projects/targets/jobs?status=all")
+			response, err := http.Post(api.URL+"/api/projects/targets/jobs", "application/json", bytes.NewBufferString(`{"cell":"git+https://github.com/colony-2/cortex.git//recipes/build.yaml@main","inputs":{"prompt":"invalid","type":"build"}}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer response.Body.Close()
+			if response.StatusCode != http.StatusBadRequest {
+				body, _ := io.ReadAll(response.Body)
+				t.Fatalf("invalid target: status %d: %s", response.StatusCode, body)
+			}
+			after := getJSON[map[string]interface{}](t, api.URL+"/api/projects/targets/jobs?status=all")
+			if len(before["jobs"].([]interface{})) != len(after["jobs"].([]interface{})) {
+				t.Fatal("invalid target created a job")
+			}
+		})
+	}
+}

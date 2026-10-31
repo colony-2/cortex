@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Modal, Space, Typography, message } from 'antd';
 import { cancelJob, deleteJob } from '@colony2/shared/api';
 
@@ -16,6 +16,10 @@ interface Props {
 // Mount a fresh dialog for each action so its confirmed IDs cannot change with
 // filtering, selection, or a background list refresh.
 export default function JobActionDialog({ projectId, jobIds, action, onClose, onComplete, onBusyChange }: Props) {
+  const trigger = useRef(document.activeElement as HTMLElement | null);
+  useEffect(() => () => {
+    if (trigger.current?.isConnected) trigger.current.focus({ preventScroll: true });
+  }, []);
   const [pending, setPending] = useState(jobIds);
   const [busy, setBusy] = useState(false);
   const [failures, setFailures] = useState<{ id: string; error: string }[]>([]);

@@ -1,3 +1,4 @@
+import { useCompact } from '../hooks/useCompact';
 import ReviewJobContext from './ReviewJobContext';
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -17,6 +18,7 @@ interface InputDetailPageProps {
 }
 
 export default function InputDetailPage({ projectId }: InputDetailPageProps) {
+  const compact = useCompact();
   const { jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
   const [details, setDetails] = useState<UserInputDetails | null>(null);
@@ -114,7 +116,14 @@ export default function InputDetailPage({ projectId }: InputDetailPageProps) {
             disabled={submitting} onBusyChange={setCancelling} onCancelled={handleCancel} />}
         </Space>
 
-        <Card style={{ overflowWrap: 'anywhere' }}>
+        <div className={compact && reviews ? "review-secondary" : undefined}>
+        {compact && reviews ? <Card>
+          <Title level={4} style={{ margin: 0 }}>{details.form.title || details.form.question || 'Review'}</Title>
+          <details><summary>Request details</summary>
+            <p>Job ID: {details.jobId}</p><p>Input status: {details.status}</p>
+            <p>Input started: {new Date(details.startTime).toLocaleString()}</p>
+          </details>
+        </Card> : (<Card style={{ overflowWrap: 'anywhere' }}>
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
             <div>
               <Title level={4} style={{ margin: 0 }}>
@@ -133,12 +142,18 @@ export default function InputDetailPage({ projectId }: InputDetailPageProps) {
               <Text>{new Date(details.startTime).toLocaleString()}</Text>
             </div>
           </Space>
-        </Card>
+        </Card>)}
 
-        {reviews && <ReviewJobContext key={`${projectId}/${jobId}`} projectId={projectId} jobId={jobId} />}
-        {reviewPrompt && <Card title="Review context">
+        {reviews && <details className="review-goal-context" open={!compact || undefined}>
+          <summary>Goal context</summary>
+          <ReviewJobContext key={`${projectId}/${jobId}`} projectId={projectId} jobId={jobId} />
+        </details>}
+        {reviewPrompt && (compact ? <details><summary>Review instructions</summary>
           <section aria-label="Review context" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{reviewPrompt}</section>
-        </Card>}
+        </details> : <Card title="Review context">
+          <section aria-label="Review context" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{reviewPrompt}</section>
+        </Card>)}
+        </div>
         {reviews && <ReviewDocuments key={details.form.request_id} projectId={projectId} jobId={jobId}
           requestId={details.form.request_id!} documents={details.form.documents || {}} />}
         <Card title={reviews ? 'Your response' : form.title}>

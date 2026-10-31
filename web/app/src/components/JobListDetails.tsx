@@ -35,7 +35,7 @@ export default function JobListDetails({ job, inspection, projectId, showPrompt 
     }
   };
   const jobLink = (id: string, tenant = projectId, label = 'View execution') => (
-    <Link key={id} state={{ goalsReturnTo: navigationState?.goalsReturnTo || location.pathname + location.search }} to={`/project/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(id)}/story${tenant === projectId ? jobFilterSearch(searchParams) : ''}`}>{label}</Link>
+    <Link className="compact-touch-link" key={id} state={{ goalsReturnTo: navigationState?.goalsReturnTo || location.pathname + location.search }} to={`/project/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(id)}/story${tenant === projectId ? jobFilterSearch(searchParams) : ''}`}>{label}</Link>
   );
   add('Recipe', job.recipe);
   add('Cell', job.cell_name);
@@ -52,13 +52,13 @@ export default function JobListDetails({ job, inspection, projectId, showPrompt 
   add('Cancellation', job.cancel_requested ? 'Requested' : undefined);
   add('Wait state', inspection?.blocking_wait?.state);
   add('Wait deadline', jobTime(job.blocking_wait_summary?.deadline || inspection?.blocking_wait?.deadline));
-  add('Other goals', inspection?.other_goal_ids?.length ? <Space wrap>{inspection.other_goal_ids.map(id => <Link key={id} to={goalPath(projectId, id)}>{id}</Link>)}</Space> : undefined);
+  add('Other goals', inspection?.other_goal_ids?.length ? <Space wrap>{inspection.other_goal_ids.map(id => <Link className="compact-touch-link" key={id} to={goalPath(projectId, id)}>{id}</Link>)}</Space> : undefined);
 
   return <Space direction="vertical" size="middle" style={{ width: '100%', overflowWrap: 'anywhere' }}>
     {showPrompt && job.prompt && <div style={{ whiteSpace: 'pre-wrap' }}>{job.prompt}</div>}
     <JobWaitLinks job={job} projectId={projectId} details={inspection} />
     {inspection?.blocking_wait?.dependencies.map((dependency, index) => <div key={index}>
-      {dependency.target.goalId ? <Link to={goalPath(projectId, dependency.target.goalId)}>View goal</Link> : dependency.target.jobId ? jobLink(dependency.target.jobId) : null}
+      {dependency.target.goalId ? <Link className="compact-touch-link" to={goalPath(projectId, dependency.target.goalId)}>View goal</Link> : dependency.target.jobId ? jobLink(dependency.target.jobId) : null}
       {` · ${dependency.condition} · ${dependency.state}`}
       {dependency.blockedReason && ` · ${dependency.blockedReason}`}
       {dependency.satisfiedByJobId && <> · Result from {jobLink(dependency.satisfiedByJobId)}</>}

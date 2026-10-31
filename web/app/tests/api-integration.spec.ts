@@ -6,7 +6,9 @@ import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-test('confirms cancellation on job details and bulk cancel/delete for selected jobs', async ({ page, request, context, baseURL }) => {
+for (const width of [1440, 390]) {
+test(`confirms cancellation on job details and bulk cancel/delete at ${width}px`, async ({ page, request, context, baseURL }) => {
+  await page.setViewportSize({ width, height: 844 });
   const tenant = `actions-${randomUUID()}`;
   const base = `/api/projects/${tenant}/jobs`;
   for (const job_id of ['detail-job', 'bulk-one', 'bulk-two', 'untouched']) {
@@ -57,6 +59,8 @@ test('confirms cancellation on job details and bulk cancel/delete for selected j
   expect(remaining.find((job: { job_id: string }) => job.job_id === 'untouched').status).toBe('READY');
   expect(mutations).toHaveLength(5);
 });
+
+}
 
 // Run against both the test API and the production binary with remote JobDB.
 // No route interception or EventSource replacement: HTTP and SSE cross the API.
@@ -348,4 +352,28 @@ test('shows persisted prompt and failure on the production story through direct 
     await testInfo.attach('story-worker.log', { body: workerLog, contentType: 'text/plain' });
     rmSync(repo, { recursive: true, force: true });
   }
+});
+
+test('creates a repository-targeted goal on a phone through the real API', async ({ page, request, context, baseURL }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const tenant = `phone-${randomUUID()}`;
+  await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+  await page.goto(`/project/${tenant}/goals`);
+  await page.getByRole('button', { name: 'New goal', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('radio', { name: 'Repository', exact: true }).check();
+  await dialog.getByRole('textbox', { name: 'Repository', exact: true }).fill('github/colony-2/cortex');
+  await dialog.getByLabel('Prompt').fill('Build a phone-friendly dashboard');
+  const responsePromise = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith(`/projects/${tenant}/jobs`));
+  await dialog.getByRole('button', { name: 'Create goal', exact: true }).click();
+  const response = await responsePromise;
+  expect(response.status(), await response.text()).toBe(201);
+  expect(response.request().postDataJSON()).toEqual({ cell: 'https://github.com/colony-2/cortex.git', inputs: { prompt: 'Build a phone-friendly dashboard', type: 'build' } });
+  const job = await response.json();
+  const stored = await (await request.get(`/api/projects/${tenant}/jobs/${job.job_id}`)).json();
+  expect(stored.repo.replace(/\.git$/, '')).toContain('github.com/colony-2/cortex');
+  expect(stored.tenant_id).toBe(tenant);
+  await expect(page).toHaveURL(new RegExp(`/goals/${job.goal_id}$`));
+  await expect(page.getByText('Build a phone-friendly dashboard', { exact: true }).first()).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

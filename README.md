@@ -38,6 +38,31 @@ can still have a `next_page_token`; use **Next jobs** to continue.
 Repeated `cell` parameters (for example `?cell=alpha&cell=beta`) match jobs from
 either cell's repository before pagination; a single `cell` works as before.
 
+## Phones and new goals
+
+Phone reviews list documents without embedding their full contents. **Read** opens
+a full-screen reader with one vertical scrolling area; **Back to review** returns
+to the same response draft and attachments. **Document options** provides source,
+document selection, and download. Request details, goal context, and instructions
+remain available through disclosures.
+
+Below 768px, navigation opens from **Open navigation**, and goals, attempts, and
+cells use cards. Goal cards start with a two-line prompt, status, cell, and attempt
+count; expand a card for submission time, related links, and inspection.
+**Filters and sorting** reveals search and the existing controls. The phone
+filter dialogs retain Select all / Select none / Apply;
+search and sorting keep the same current-page and URL behavior as the desktop list.
+Story and details stack vertically, with a **View selected details** jump link.
+
+**New goal** has an independent target picker. Choose self, a configured cell, or a
+cell known from the loaded jobs and saved cell filter. A single cell filter seeds
+the initial choice; subsequent filter changes do not change an open draft.
+**Repository** accepts `github/colony-2/<name>`, `github.com/colony-2/<name>`, or
+`https://github.com/colony-2/<name>`, optionally ending in `.git` or `/`.
+The resolved repository is shown before submission. This submits a goal to an
+existing repository; it does not register or create a cell. Catalogue failures
+leave self, job-known choices, and repository entry available.
+
 ## Chapter downloads
 
 On a job's story page, **Download chapters** saves a JSON inspection export of
@@ -201,8 +226,13 @@ browser before running the tests:
 
 ```sh
 PLAYWRIGHT_BROWSERS_PATH="${CORTEX_PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}" \
-  pnpm --filter @colony2/app exec playwright install --with-deps --only-shell chromium
+  pnpm --filter @colony2/app exec playwright install --with-deps chromium
 ```
+
+Install full Chromium as well as its headless shell: the native 200% zoom test
+loads a temporary extension in a fresh browser profile and verifies
+`chrome.tabs.setZoom`/`getZoom`, layout dimensions, and device-pixel ratio. The
+extension exists only during testing and is never bundled into the app.
 
 The Nix Chromium package targets Linux workers; macOS developers can use the
 Playwright installation command above.

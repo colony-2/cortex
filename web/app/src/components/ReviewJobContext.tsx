@@ -24,8 +24,8 @@ export default function ReviewJobContext({ projectId, jobId }: { projectId: stri
     <Space direction="vertical" style={{ width: '100%' }}>
       <Descriptions size="small" column={{ xs: 1, sm: 2, lg: 3 }} items={items} />
       <Space wrap>
-        <Link to={jobPath(projectId, jobId)}>Open execution</Link>
-        {job.goal_id && <Link to={goalPath(projectId, job.goal_id)}>Goal overview</Link>}
+        <Link className="compact-touch-link" to={jobPath(projectId, jobId)}>Open execution</Link>
+        {job.goal_id && <Link className="compact-touch-link" to={goalPath(projectId, job.goal_id)}>Goal overview</Link>}
       </Space>
       <section aria-label="Goal prompt" style={{ width: '100%' }}>
         <Typography.Title level={5}>Goal prompt</Typography.Title>

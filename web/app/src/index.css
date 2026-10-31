@@ -12,9 +12,10 @@ body {
 }
 
 #root {
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
+  width: 100%;
+  min-width: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* Layout improvements */
@@ -28,15 +29,15 @@ body {
 
 /* Tabs customization */
 .ant-tabs {
-  height: 100%;
+  min-width: 0;
 }
 
 .ant-tabs-content {
-  height: calc(100% - 46px);
+  min-height: 0;
 }
 
 .ant-tabs-tabpane {
-  height: 100%;
+  min-width: 0;
 }
 
 /* Loading and Error States */
@@ -170,3 +171,125 @@ body {
   .review-page .review-markdown, .review-page .review-markdown-source { padding: 8px; }
   .review-page .ant-descriptions table { table-layout: fixed; }
 }
+
+/* Shared responsive shell. Content owns its width; the document scrolls vertically. */
+.app-shell { min-height: 100vh; min-height: 100dvh; min-width: 0; }
+.app-header.ant-layout-header { display: flex; align-items: center; gap: 20px; height: auto; min-height: 64px; padding: 12px 24px; line-height: normal; background: #fff; border-bottom: 1px solid #f0f0f0; }
+.app-brand, .tenant-control { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.tenant-control .ant-input-search { width: 220px; min-width: 0; }
+.logout-button { margin-left: auto; }
+.app-body { flex: 1; min-width: 0; }
+.app-content, .app-page, .ant-space-item, .ant-tabs-content-holder { min-width: 0; }
+.app-content { overflow-wrap: anywhere; }
+.app-content > .app-page { width: 100%; }
+.compact-cards { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.compact-cards .ant-card, .compact-cards .ant-card-body { min-width: 0; }
+.compact-controls { margin-bottom: 12px; }
+.compact-controls .ant-select { min-width: 130px; }
+.compact-filter { max-width: min(300px, calc(100vw - 48px)); }
+.compact-filter-options { display: flex; flex-direction: column; max-height: 45dvh; overflow: auto; width: 100%; }
+.goal-card-field { margin-block: 8px; }
+.goal-target-summary { overflow-wrap: anywhere; }
+.story-panels { display: flex; gap: 16px; align-items: stretch; min-width: 0; }
+.story-tree-panel { flex: 1; min-width: 0; }
+.story-details-panel { flex: 1.2; min-width: 0; scroll-margin-top: 12px; }
+.technical-region { max-width: 100%; min-width: 0; overflow: auto; }
+.compact-details-link { display: none; }
+.ant-modal { max-width: calc(100vw - 24px); }
+.ant-modal .ant-modal-body { max-height: calc(100vh - 200px); max-height: calc(100dvh - 200px); overflow: auto; overflow-wrap: anywhere; }
+.ant-modal .ant-modal-footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 1100px) {
+  .story-panels { flex-direction: column; }
+  .story-panels > .ant-card { width: 100%; }
+}
+@media (max-width: 767px) {
+  .app-header.ant-layout-header { flex-wrap: wrap; gap: 8px 12px; padding: 8px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); }
+  .tenant-control { order: 3; width: 100%; }
+  .tenant-control .ant-input-search { width: 100%; flex: 1; }
+  .app-content { padding-bottom: env(safe-area-inset-bottom); }
+  .app-page, .review-page, .job-story-page { padding: 12px !important; }
+  .app-content .ant-card-body, .ant-modal .ant-modal-content { padding: 12px; }
+  .app-content .ant-card-head { padding-inline: 12px; }
+  .app-content .ant-card-head-wrapper { flex-wrap: wrap; gap: 8px; }
+  .app-content .ant-card-head-title { white-space: normal; }
+  .app-content .ant-card-extra { margin-inline-start: 0; max-width: 100%; }
+  .app-content .ant-space, .ant-modal .ant-space { max-width: 100%; }
+  .app-content .ant-space-horizontal, .ant-modal .ant-space-horizontal { flex-wrap: wrap; }
+  .app-content .ant-space-item, .ant-modal .ant-space-item { max-width: 100%; min-width: 0; }
+  .ant-btn { min-height: 44px; height: auto; white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+  .ant-btn.ant-btn-icon-only { min-width: 44px; }
+  .ant-checkbox-wrapper, .ant-radio-wrapper, .ant-radio-button-wrapper { min-height: 44px; align-items: center; }
+  .ant-radio-button-wrapper { line-height: 42px; }
+  .ant-input, .ant-select-selection-search-input, .ant-input-number-input { font-size: 16px !important; }
+  .ant-input:not(textarea), .ant-select-single, .ant-select-single .ant-select-selector { min-height: 44px; }
+  .ant-select-single .ant-select-selection-item { line-height: 42px !important; }
+  .ant-select-item { min-height: 44px; }
+  .ant-select-item-option-content { white-space: normal; overflow-wrap: anywhere; }
+  .ant-tree .ant-tree-switcher { min-width: 44px; min-height: 44px; line-height: 44px; }
+  .ant-tree .ant-tree-node-content-wrapper { min-height: 44px; line-height: 44px; }
+  .ant-tabs-tab { min-height: 44px; }
+  .compact-details-link { display: inline-flex; min-height: 44px; align-items: center; }
+  .goal-search { width: 100%; margin-left: 0; }
+  .goal-list-actions > .ant-space { width: 100%; }
+  .ant-descriptions table { table-layout: fixed; }
+  .ant-descriptions-item-content { overflow-wrap: anywhere; }
+  .ant-modal { top: 12px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .ant-modal .ant-modal-close, .ant-drawer .ant-drawer-close { min-width: 44px; min-height: 44px; }
+  .ant-modal .ant-modal-title { padding-right: 44px; }
+  .ant-modal .ant-modal-body { max-height: calc(100dvh - 180px); }
+  .ant-drawer .ant-drawer-body { padding: 12px; }
+  .ant-menu-inline .ant-menu-item { min-height: 44px; }
+}
+@media (max-width: 767px) {
+  .job-story-header .ant-btn, .review-page .ant-btn { min-height: 44px; }
+  .ant-collapse-header, summary { min-height: 44px; }
+}
+
+.compact-cards code { white-space: normal; overflow-wrap: anywhere; }
+.compact-sort { min-height: 44px; max-width: 100%; padding: 8px; font: inherit; font-size: 16px; border: 1px solid #d9d9d9; border-radius: 6px; background: white; }
+@media (max-width: 767px) {
+  .tenant-control .ant-input-search-button { white-space: nowrap; min-width: 56px; }
+}
+
+@media (max-width: 767px) {
+  /* Size anchors themselves so short labels have real, non-overlapping targets. */
+  .compact-touch-link {
+    display: inline-flex;
+    align-items: center;
+    min-width: 44px;
+    min-height: 44px;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding-block: 4px;
+    vertical-align: middle;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Full-screen phone reading has one vertical scroller, owned by the Drawer.
+   The form stays mounted underneath, so returning keeps answers and attachments. */
+.review-reader .review-markdown, .review-reader .review-markdown-source {
+  max-height: none; overflow: visible; border: 0; padding: 12px 0;
+}
+.review-reader .ant-drawer-header { padding: 12px; }
+.review-reader .ant-drawer-body { padding: 12px; }
+.review-reader .ant-drawer-title { overflow-wrap: anywhere; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.review-reader .ant-drawer-extra { margin-left: 8px; }
+.review-reader .reader-options { margin-bottom: 12px; }
+.review-reader summary { min-height: 44px; cursor: pointer; }
+.review-reader pre { overflow-wrap: anywhere; }
+@media (max-width: 767px) {
+  .goal-card-summary { display: grid; grid-template-columns: 28px minmax(0, 1fr) 44px; gap: 8px; align-items: center; }
+  .goal-card-summary .ant-checkbox-wrapper { min-width: 44px; margin-left: -8px; padding-left: 8px; }
+  .goal-card-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .goal-card-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 0 8px; }
+  .goal-card-meta .goal-attempt-count { margin-left: auto; }
+  .goal-card-secondary { border-top: 1px solid #f0f0f0; margin-top: 8px; }
+  .goal-search-control { width: 100%; }
+  .review-secondary > .ant-card .ant-space { gap: 4px !important; }
+  .review-secondary > details { padding: 8px 12px; border-bottom: 1px solid #f0f0f0; background: white; }
+  .review-secondary summary { line-height: 44px; cursor: pointer; }
+}
+
+.review-goal-context > summary { display: none; }
+@media (max-width: 767px) { .review-goal-context > summary { display: list-item; } }

@@ -1,3 +1,4 @@
+import { useCompact } from '../hooks/useCompact';
 import type { ReactNode } from 'react';
 import { Tabs } from 'antd';
 
@@ -10,10 +11,11 @@ interface AttemptTabsProps {
 }
 
 export default function AttemptTabs({ attempts, activeKey, kind, onChange, children }: AttemptTabsProps) {
+  const compact = useCompact();
   if (attempts.length < 2) return <>{children}</>;
   return <Tabs
     className="attempt-tabs"
-    tabPosition="right"
+    tabPosition={compact ? 'top' : 'right'}
     size="small"
     tabBarGutter={4}
     activeKey={activeKey || attempts[0].key}
