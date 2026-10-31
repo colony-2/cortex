@@ -358,21 +358,28 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   const suppliedReturn = location.state?.goalsReturnTo || location.state?.returnTo;
   const returnTo = typeof suppliedReturn === 'string' && [goalsHome, `/project/${encodeURIComponent(projectId)}/jobs`].includes(suppliedReturn.split('?')[0])
     ? suppliedReturn : `${goalsHome}${filterSearch}`;
-  const [loadedJob, setLoadedJob] = useState<{ jobId: string; projectId: string; job: RecipeJob }>();
+  const [loadedJob, setLoadedJob] = useState<{
+    jobId: string; projectId: string; job?: RecipeJob;
+    status: 'loading' | 'loaded' | 'failed'; error?: string;
+  }>();
   const metadataGeneration = useRef(0);
-  const job = loadedJob?.jobId === jobId && loadedJob.projectId === projectId ? loadedJob.job : undefined;
+  const metadata = loadedJob?.jobId === jobId && loadedJob.projectId === projectId ? loadedJob : undefined;
+  const job = metadata?.job;
   const jobTitle = typeof job?.title === 'string' && job.title.trim() ? job.title : undefined;
   const prompt = job?.prompt?.trim() ? job.prompt : undefined;
   const terminalStatus = job ? jobStatusValue(job) : undefined;
-  const failureDetail = terminalStatus && ['failed_app', 'failed_system', 'failed_timeout'].includes(terminalStatus)
-    && job?.completion_detail?.trim() ? job.completion_detail : undefined;
+  const failed = terminalStatus && ['failed_app', 'failed_system', 'failed_timeout'].includes(terminalStatus);
+  const failureDetail = job?.completion_detail?.trim() ? job.completion_detail : undefined;
   const loadMetadata = () => {
     const generation = ++metadataGeneration.current;
+    setLoadedJob(previous => ({ projectId, jobId, status: 'loading',
+      job: previous?.projectId === projectId && previous.jobId === jobId ? previous.job : undefined }));
     void getJob(projectId, jobId).then(job => {
-      if (generation === metadataGeneration.current) setLoadedJob({ projectId, jobId, job });
-    }).catch(() => {
+      if (generation === metadataGeneration.current) setLoadedJob({ projectId, jobId, job, status: 'loaded' });
+    }).catch(error => {
       // Metadata failure must not prevent story inspection.
-      if (generation === metadataGeneration.current) setLoadedJob(undefined);
+      if (generation === metadataGeneration.current) setLoadedJob({ projectId, jobId, status: 'failed',
+        error: error instanceof Error ? error.message : 'Could not load job details' });
     });
   };
   const navigationGoal = typeof location.state?.goalId === 'string' ? location.state.goalId : undefined;
@@ -748,13 +755,20 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
           </Space>
         </div>
 
-        {prompt && <section aria-label="Job prompt">
+        {!job && (!metadata || metadata.status === 'loading') && <Text role="status" aria-label="Job details loading">Loading job details...</Text>}
+        {metadata?.status === 'failed' && <Alert type="warning" showIcon message="Job details unavailable"
+          description={<div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+            <div>Prompt and completion information could not be loaded.</div>
+            <div>{metadata.error}</div>
+          </div>}
+          action={<Button size="small" onClick={loadMetadata}>Retry</Button>} />}
+        {job && <section aria-label="Job prompt">
           <Text strong>Prompt</Text>
-          <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginBottom: 0 }}>{prompt}</Typography.Paragraph>
+          <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginBottom: 0 }}>{prompt || 'No prompt recorded for this job.'}</Typography.Paragraph>
         </section>}
-        {failureDetail && <Alert type="error" showIcon
+        {failed && <Alert type="error" showIcon
           message={terminalStatus === 'failed_timeout' ? 'Job timed out' : 'Job failed'}
-          description={<div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{failureDetail}</div>} />}
+          description={<div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{failureDetail || 'No failure details recorded for this job.'}</div>} />}
         {loading && !story && <Spin size="large" />}
 
         {error ? (

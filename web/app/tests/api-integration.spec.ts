@@ -1,5 +1,10 @@
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
+import { spawn, execFileSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, copyFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { resolve, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 test('confirms cancellation on job details and bulk cancel/delete for selected jobs', async ({ page, request, context, baseURL }) => {
   const tenant = `actions-${randomUUID()}`;
@@ -275,5 +280,72 @@ test('wraps long job story context without overflowing its header', async ({ pag
     expect(promptBox!.y).toBeGreaterThanOrEqual(headingBox!.y + headingBox!.height);
     expect(failureBox!.y).toBeGreaterThanOrEqual(promptBox!.y + promptBox!.height);
     await expect(page.getByRole('button', { name: /Refresh/ })).toBeVisible();
+  }
+});
+
+// This crosses real Git recipe resolution, worker completion, HTTP JobDB,
+// Cortex's detail projection, and the UI embedded in the production executable.
+test('shows persisted prompt and failure on the production story through direct and list navigation', async ({ page, request, context, baseURL }, testInfo) => {
+  test.skip(testInfo.project.name !== 'production', 'Requires the production JobDB and pinned worker harness');
+  test.setTimeout(90_000);
+  const tenant = `story-${randomUUID()}`;
+  const jobID = `story-${randomUUID()}`;
+  const repo = mkdtempSync(join(tmpdir(), 'cortex-story-'));
+  const prompt = 'Story prompt <literal> 雪\nSecond prompt line';
+  const marker = 'Story context diagnostic <literal> 雪\nSecond diagnostic line';
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  let worker: ReturnType<typeof spawn> | undefined;
+  let workerLog = '';
+  try {
+    mkdirSync(join(repo, '.c2/recipes'), { recursive: true });
+    copyFileSync(resolve('tests/fixtures/recipes/browser-story-failure.yaml'), join(repo, '.c2/recipes/failure.yaml'));
+    const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { stdio: 'pipe' });
+    git('init', '-b', 'main');
+    git('add', '.');
+    git('-c', 'user.name=Cortex Browser Test', '-c', 'user.email=browser@example.com', '-c', 'commit.gpgsign=false', 'commit', '-m', 'Story failure fixture');
+    const recipe = `git+${pathToFileURL(repo).href}//.c2/recipes/failure.yaml@main`;
+    const base = `/api/projects/${tenant}/jobs`;
+    const submitted = await request.post(base, { data: { job_id: jobID, recipe, repo: pathToFileURL(repo).href, inputs: { prompt } } });
+    expect(submitted.status(), await submitted.text()).toBe(201);
+    worker = spawn(resolve('../../build/c2j-test-worker'), [
+      'run', 'one', '--job-id', jobID, '--input-mode', 'ops', '--jobdb', `http://127.0.0.1:18082/${tenant}`,
+    ], { cwd: repo, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    worker.stdout!.on('data', data => { workerLog += data.toString(); });
+    worker.stderr!.on('data', data => { workerLog += data.toString(); });
+    worker.on('error', error => { workerLog += error.message; });
+    await expect.poll(async () => {
+      const response = await request.get(`${base}/${jobID}`);
+      expect(response.status()).toBe(200);
+      return (await response.json()).completion_status;
+    }, { timeout: 45_000, message: 'Worker must persist a terminal failure' }).toBe('failed_app');
+    const stored = await (await request.get(`${base}/${jobID}`)).json();
+    expect(stored.prompt).toBe(prompt);
+    expect(stored.completion_detail).toContain(marker);
+    await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+    const assertContext = async () => {
+      const region = page.getByRole('region', { name: 'Job prompt' });
+      await expect(region.locator('div.ant-typography')).toHaveText(prompt);
+      const failure = page.getByRole('alert').filter({ hasText: 'Job failed' });
+      await expect(failure).toContainText(stored.completion_detail);
+      expect(await region.evaluate(node => node.textContent)).toBe(`Prompt${prompt}`);
+      await expect(page.getByText('Job details unavailable', { exact: true })).toHaveCount(0);
+    };
+    await page.goto(`/project/${tenant}/jobs/${jobID}/story`);
+    await assertContext();
+    await page.goto(`/project/${tenant}/jobs`);
+    await page.getByRole('link', { name: `Job ${jobID}: Failed (application)`, exact: true }).click();
+    await assertContext();
+    expect(errors).toEqual([]);
+  } finally {
+    if (worker?.pid && worker.exitCode === null && worker.signalCode === null) {
+      const stopped = new Promise<void>(done => worker!.once('close', () => done()));
+      worker.kill('SIGTERM');
+      const timer = setTimeout(() => worker?.kill('SIGKILL'), 5000);
+      await stopped;
+      clearTimeout(timer);
+    }
+    await testInfo.attach('story-worker.log', { body: workerLog, contentType: 'text/plain' });
+    rmSync(repo, { recursive: true, force: true });
   }
 });

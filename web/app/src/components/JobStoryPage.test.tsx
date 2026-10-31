@@ -439,12 +439,22 @@ describe('job story context', () => {
     expect(heading.compareDocumentPosition(region) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(container.querySelector('img')).toBeNull();
   });
-  it.each([undefined, '', '  \n '])('omits blank context: %s', async value => {
+  it.each([undefined, '', '  \n '])('shows an empty prompt: %s', async value => {
     vi.mocked(getJob).mockResolvedValue(metadata({ title: value, prompt: value }));
     mount();
     await screen.findByText('Development.Design.Task 3.2');
     expect(screen.getByRole('heading', { name: 'Job Story', exact: true })).toBeVisible();
-    expect(screen.queryByRole('region', { name: 'Job prompt' })).toBeNull();
+    expect(screen.getByRole('region', { name: 'Job prompt' })).toHaveTextContent('No prompt recorded for this job.');
+  });
+  it('does not manufacture a prompt from other context', async () => {
+    vi.mocked(getJob).mockResolvedValue(metadata({ title: 'Title is not a prompt', parent: { job_id: 'parent' }, metadata: { prompt: 'Wrong nested prompt' } }));
+    mount('?input=true');
+    const region = await screen.findByRole('region', { name: 'Job prompt' });
+    expect(region).toHaveTextContent('No prompt recorded for this job.');
+    expect(region).not.toHaveTextContent('Title is not a prompt');
+    expect(region).not.toHaveTextContent('Wrong nested prompt');
+    fireEvent.click(await screen.findByText('Development.Design.Task 3.2'));
+    expect(region).toHaveTextContent('No prompt recorded for this job.');
   });
   it.each(['failed_app', 'failed_system', 'failed_timeout'].flatMap(completion_status => [
     { completion_status, status: 'READY' as const, store: 'ARCHIVED' as const },
@@ -457,10 +467,18 @@ describe('job story context', () => {
     expect(message.closest('[role="alert"]')?.textContent).toContain('  <script>bad()</script> & 雪\n\tsecond line');
     expect(document.querySelector('script')).toBeNull();
   });
+  it.each(['failed_app', 'failed_system', 'failed_timeout'].flatMap(completion_status =>
+    [undefined, '', '  \n '].map(completion_detail => ({ completion_status, completion_detail }))))(
+    'shows terminal failures without details: %j', async overrides => {
+      vi.mocked(getJob).mockResolvedValue(metadata(overrides));
+      mount();
+      expect(await screen.findByText('No failure details recorded for this job.')).toBeVisible();
+      expect(screen.getByText(overrides.completion_status === 'failed_timeout' ? 'Job timed out' : 'Job failed')).toBeVisible();
+    });
   it.each([
     { completion_status: 'success' }, { completion_status: 'cancelled' }, {},
     { status: 'ACTIVE', store: 'ACTIVE', completion_status: 'failed_app' },
-    ...[undefined, '', '  '].map(completion_detail => ({ completion_status: 'failed_app', completion_detail })),
+    { completion_status: 'future_outcome' },
   ])('does not invent failures for %j', async overrides => {
     vi.mocked(getJob).mockResolvedValue(metadata({ completion_detail: 'retained failure', ...overrides } as Partial<RecipeJob>));
     mount();
@@ -492,7 +510,10 @@ describe('job story context', () => {
     vi.mocked(getJob).mockReturnValueOnce(pending.promise);
     mount();
     await screen.findByText('Development.Design.Task 3.2');
+    expect(screen.getByRole('status', { name: 'Job details loading' })).toHaveTextContent('Loading job details...');
+    expect(screen.queryByText('No prompt recorded for this job.')).toBeNull();
     await act(async () => { pending.reject(new Error('metadata unavailable')); });
+    expect(screen.getByText('Job details unavailable')).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Job Story' })).toBeVisible();
     expect(screen.queryByText('Failed to load job story')).toBeNull();
     vi.mocked(getJob).mockResolvedValue(metadata({ title: 'Recovered', prompt: 'New prompt', completion_status: 'failed_system', completion_detail: 'New detail' }));
@@ -500,6 +521,7 @@ describe('job story context', () => {
     await screen.findByRole('heading', { name: 'Job Story: Recovered' });
     expect(screen.getByText('New prompt')).toBeVisible();
     expect(screen.getByText('New detail')).toBeVisible();
+    expect(screen.queryByText('Job details unavailable')).toBeNull();
   });
   it('renders metadata while story is pending and keeps story errors separate', async () => {
     const pending = deferred<Response>();
@@ -526,6 +548,65 @@ describe('job story context', () => {
     await act(async () => { if (outcome === 'success') old.resolve(metadata({ title: 'Obsolete' })); else old.reject(new Error('obsolete')); });
     expect(screen.getByRole('heading', { name: 'Job Story: Newest' })).toBeVisible();
   });
+  it('retries only metadata and escapes its diagnostic', async () => {
+    const diagnostic = '<img src=x onerror=alert(1)> 雪\n second line';
+    vi.mocked(getJob).mockRejectedValueOnce(new Error(diagnostic));
+    const fetchMock = mount();
+    expect(await screen.findByText('Job details unavailable')).toBeVisible();
+    expect(screen.getByText(/<img src=x/).textContent).toBe(diagnostic);
+    expect(document.querySelector('img')).toBeNull();
+    const reads = fetchMock.mock.calls.length;
+    vi.mocked(getJob).mockResolvedValue(metadata({ title: 'Recovered', prompt: 'Recovered prompt', completion_status: 'failed_app', completion_detail: 'Recovered diagnostic' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
+    expect(await screen.findByText('Recovered prompt')).toBeVisible();
+    expect(screen.getByText('Recovered diagnostic')).toBeVisible();
+    expect(getJob).toHaveBeenLastCalledWith('tenant', 'job');
+    expect(fetchMock.mock.calls.length).toBe(reads);
+    expect(screen.queryByText('Job details unavailable')).toBeNull();
+  });
+  it('clears context after a failed refresh and recovers with Refresh', async () => {
+    vi.mocked(getJob).mockResolvedValue(metadata({ title: 'Old', prompt: 'Old prompt', completion_status: 'failed_app', completion_detail: 'Old diagnostic' }));
+    mount();
+    await screen.findByText('Old prompt');
+    vi.mocked(getJob).mockRejectedValueOnce(new Error('refresh failed'));
+    fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+    await screen.findByText('Job details unavailable');
+    expect(screen.queryByText('Old prompt')).toBeNull();
+    expect(screen.queryByText('Old diagnostic')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Job Story', exact: true })).toBeVisible();
+    vi.mocked(getJob).mockResolvedValue(metadata({ prompt: 'Fresh prompt' }));
+    fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+    expect(await screen.findByText('Fresh prompt')).toBeVisible();
+    expect(screen.queryByText('Job details unavailable')).toBeNull();
+  });
+  it('keeps simultaneous metadata and story errors independently retryable', async () => {
+    vi.mocked(getJob).mockRejectedValueOnce(new Error('metadata failed'));
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('story failed')));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    renderContext(false);
+    await screen.findByText('Job details unavailable');
+    await screen.findByText('Failed to load job story');
+    vi.mocked(getJob).mockResolvedValue(metadata({ prompt: 'Loaded prompt' }));
+    fireEvent.click(screen.getByText('Job details unavailable').closest('[role="alert"]')!.querySelector('button')!);
+    expect(await screen.findByText('Loaded prompt')).toBeVisible();
+    expect(screen.getByText('Failed to load job story')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
+    log.mockRestore();
+  });
+  it.each(['success', 'failure'])('ignores obsolete %s after a newer metadata failure', async outcome => {
+    vi.mocked(getJob).mockResolvedValue(metadata({ prompt: 'Initial' }));
+    mount();
+    await screen.findByText('Initial');
+    const old = deferred<RecipeJob>();
+    vi.mocked(getJob).mockReturnValueOnce(old.promise).mockRejectedValueOnce(new Error('new failure'));
+    fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+    await screen.findByText('new failure');
+    await act(async () => { if (outcome === 'success') old.resolve(metadata({ prompt: 'Obsolete' })); else old.reject(new Error('old failure')); });
+    expect(screen.getByText('new failure')).toBeVisible();
+    expect(screen.queryByText('Obsolete')).toBeNull();
+    expect(screen.queryByText('old failure')).toBeNull();
+  });
   it('retains final metadata after terminal story polling stops', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     vi.mocked(getJob).mockResolvedValue(metadata({ status: 'ACTIVE', store: 'ACTIVE' }));
@@ -539,7 +620,26 @@ describe('job story context', () => {
     await act(async () => { final.resolve(metadata({ status: 'COMPLETED', store: 'ACTIVE', completion_status: 'failed_app', completion_detail: 'Final diagnostic' })); });
     expect(await screen.findByText('Final diagnostic')).toBeVisible();
   });
-  it.each(['job', 'tenant'])('isolates context across %s changes and late responses', async change => {
+  it.each(['job', 'tenant'])('clears metadata warnings immediately across %s navigation', async change => {
+    vi.mocked(getJob).mockRejectedValueOnce(new Error('Old warning'));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => story }));
+    const current = deferred<RecipeJob>();
+    let navigate!: ReturnType<typeof useNavigate>;
+    function Nav() { navigate = useNavigate(); return null; }
+    function Host() { return <JobStoryPage projectId={useLocation().pathname.split('/')[2]} />; }
+    render(<MemoryRouter initialEntries={['/project/tenant/jobs/job/story']}><Nav /><Routes>
+      <Route path="/project/:projectId/jobs/:jobId/story" element={<Host />} />
+    </Routes></MemoryRouter>);
+    await screen.findByText('Old warning');
+    vi.mocked(getJob).mockReturnValueOnce(current.promise);
+    act(() => navigate(change === 'job' ? '/project/tenant/jobs/new/story' : '/project/other/jobs/job/story'));
+    expect(screen.queryByText('Old warning')).toBeNull();
+    expect(screen.queryByText('Job details unavailable')).toBeNull();
+    expect(screen.getByRole('status', { name: 'Job details loading' })).toBeVisible();
+    await act(async () => { current.resolve(metadata()); });
+    expect(screen.getByText('No prompt recorded for this job.')).toBeVisible();
+  });
+  it.each(['job', 'tenant'].flatMap(change => ['success', 'failure'].map(outcome => ({ change, outcome }))))('isolates context across $change changes and late $outcome', async ({ change, outcome }) => {
     const old = deferred<RecipeJob>();
     vi.mocked(getJob).mockResolvedValueOnce(metadata({ title: 'Old', prompt: 'Old prompt' })).mockReturnValueOnce(old.promise);
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => story }));
@@ -559,7 +659,8 @@ describe('job story context', () => {
     vi.mocked(getJob).mockReturnValueOnce(current.promise);
     act(() => navigate(change === 'job' ? '/project/tenant/jobs/new/story' : '/project/other/jobs/job/story'));
     expect(screen.queryByText('Old prompt')).toBeNull();
-    await act(async () => { old.resolve(metadata({ title: 'Obsolete', prompt: 'Leaked' })); });
+    await act(async () => { if (outcome === 'success') old.resolve(metadata({ title: 'Obsolete', prompt: 'Leaked' })); else old.reject(new Error('Leaked warning')); });
+    expect(screen.queryByText('Leaked warning')).toBeNull();
     expect(screen.queryByText('Leaked')).toBeNull();
     await act(async () => { current.resolve(metadata({ title: 'Current' })); });
     expect(screen.getByRole('heading', { name: 'Job Story: Current' })).toBeVisible();

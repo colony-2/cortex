@@ -1,0 +1,18 @@
+id: browser-story-failure
+version: "1.0"
+input_schema:
+  prompt:
+    type: string
+sequence:
+  - id: fail
+    op: command_execution
+    inputs:
+      run: exit 7
+      shell: bash
+    catch:
+      - id: describe_failure
+        when: true
+        fail:
+          kind: task_error
+          code: STORY_CONTEXT_FAILURE
+          message: "Story context diagnostic <literal> 雪\nSecond diagnostic line"
