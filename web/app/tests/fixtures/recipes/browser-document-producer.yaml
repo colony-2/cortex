@@ -1,0 +1,11 @@
+id: browser-document-producer
+version: "1.0"
+input_schema: {}
+sequence:
+  - id: emit
+    op: command_execution
+    inputs:
+      working_directory: "{{ context.environment.op.outbox }}"
+      run: "printf 'Cross-job original\\n' > external.txt"
+outputs:
+  document: '${{ sequence.emit.artifacts["external.txt"] }}'

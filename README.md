@@ -38,6 +38,19 @@ can still have a `next_page_token`; use **Next jobs** to continue.
 Repeated `cell` parameters (for example `?cell=alpha&cell=beta`) match jobs from
 either cell's repository before pagination; a single `cell` works as before.
 
+## Review document previews
+
+Reviews support Markdown, unified and side-by-side patches, raster images, JSON,
+JSONL, logs and source files. Source views provide line numbers, search and wrapping.
+JSON formatting preserves large numbers and duplicate keys. HTML and SVG appear
+as source; archives remain downloads. Unknown binary files have a hex preview.
+
+Previews are read-only and bounded. Text loads up to 2 MiB; structured previews
+require complete inputs within 1 MiB and 20,000 lines. Raster previews allow up to
+16 MiB and 32 megapixels. Banners identify limited previews, and Download always
+returns the complete original bytes. Markdown images load only from unambiguous
+attachments in the current review.
+
 ## Phones and new goals
 
 Phone reviews list documents without embedding their full contents. **Read** opens

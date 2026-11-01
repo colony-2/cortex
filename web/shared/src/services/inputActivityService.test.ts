@@ -409,3 +409,12 @@ describe('InputActivityService', () => {
     });
   });
 });
+
+describe('A05 review document URL identity', () => {
+  it('encodes tenant/job path segments and request/document query identities', () => {
+    const url = new URL(inputActivityService.reviewDocumentURL('tenant/雪','job/a','request & 1','folder/雪.md'), 'http://localhost');
+    expect(url.pathname).toContain('/projects/tenant%2F%E9%9B%AA/reviews/job%2Fa/documents');
+    expect(url.searchParams.get('request_id')).toBe('request & 1');
+    expect(url.searchParams.get('document_id')).toBe('folder/雪.md');
+  });
+});

@@ -65,6 +65,12 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
     {
+      name: 'review-development',
+      testMatch: 'recipe-input.spec.ts',
+      grep: /multi-format review viewers/,
+      use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:15174' },
+    },
+    {
       name: 'production',
       testMatch: ['api-integration.spec.ts', 'recipe-input.spec.ts'],
       use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:18083' },
@@ -97,6 +103,14 @@ export default defineConfig({
       command: 'pnpm exec vite --host 127.0.0.1 --port 15173 --strictPort',
       url: webURL,
       env: { CORTEX_API_URL: apiURL, VITE_CORTEX_API_BASE: '/api' },
+      reuseExistingServer: false,
+      timeout: 120_000,
+      cwd: '.',
+    },
+    {
+      command: 'pnpm exec vite --host 127.0.0.1 --port 15174 --strictPort',
+      url: 'http://127.0.0.1:15174',
+      env: { CORTEX_API_URL: 'http://127.0.0.1:18083', VITE_CORTEX_API_BASE: '/api' },
       reuseExistingServer: false,
       timeout: 120_000,
       cwd: '.',

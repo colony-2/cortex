@@ -11,7 +11,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe('review documents', () => {
   it('renders Markdown safely and exposes the exact immutable source', async () => {
     const source = '# Design\n\n**Bold**\n\n<script>alert(1)</script>\n\n[bad](javascript:alert(1))';
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, text: async () => source }));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(source)));
     const { container } = render(<ReviewDocuments projectId="tenant" jobId="job" requestId="request" documents={documents} />);
     expect(await screen.findByRole('heading', { name: 'Design' })).toBeInTheDocument();
     expect(container.querySelector('script')).toBeNull();
@@ -23,7 +23,7 @@ describe('review documents', () => {
   });
 
   it('can retry document failures and handles reviews without documents', async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: false }).mockResolvedValueOnce({ ok: true, text: async () => '# Recovered' });
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: false }).mockResolvedValueOnce(new Response('# Recovered'));
     vi.stubGlobal('fetch', fetchMock);
     const { rerender } = render(<ReviewDocuments projectId="tenant" jobId="job" requestId="request" documents={documents} />);
     await screen.findByText(/Could not load this document/);
@@ -36,11 +36,11 @@ describe('review documents', () => {
   it('does not display a late response from another request', async () => {
     let resolveOld!: (value: unknown) => void;
     vi.stubGlobal('fetch', vi.fn().mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }))
-      .mockResolvedValueOnce({ ok: true, text: async () => '# Current' }));
+      .mockResolvedValueOnce(new Response('# Current')));
     const { rerender } = render(<ReviewDocuments projectId="tenant" jobId="job" requestId="old" documents={documents} />);
     rerender(<ReviewDocuments projectId="tenant" jobId="job" requestId="new" documents={documents} />);
     await screen.findByRole('heading', { name: 'Current' });
-    resolveOld({ ok: true, text: async () => '# Stale' });
+    resolveOld(new Response('# Stale'));
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Stale' })).not.toBeInTheDocument());
   });
 });

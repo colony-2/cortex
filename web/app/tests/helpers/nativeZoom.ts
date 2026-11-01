@@ -19,6 +19,8 @@ export const test = base.extend<{ nativeZoom: boolean }>({
       ...launchOptions, channel: 'chromium', headless: true, viewport: { width: 1280, height: 900 },
       args: [...(launchOptions.args || []), `--disable-extensions-except=${directory}`, `--load-extension=${directory}`],
     });
+    zoomContext.setDefaultTimeout(15_000);
+    zoomContext.setDefaultNavigationTimeout(15_000);
     try { await use(zoomContext); }
     finally { await zoomContext.close(); rmSync(directory, { recursive: true, force: true }); }
   },

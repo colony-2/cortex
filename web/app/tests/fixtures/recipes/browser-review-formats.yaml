@@ -1,0 +1,77 @@
+id: browser-input
+version: "1.0"
+input_schema:
+  prompt:
+    type: string
+    default_value: ""
+sequence:
+  - id: draft
+    op: command_execution
+    inputs:
+      working_directory: "{{ context.environment.op.outbox }}"
+      run: |
+        printf '# Design\n\n**Immutable original**\n\n| Choice | Result |\n| --- | --- |\n| Approve | Continue |\n' > design.md
+        printf '# Rollout\n\n- [ ] Verify recovery\n' > rollout.md
+  - id: formats
+    op: command_execution
+    inputs:
+      working_directory: "{{ context.environment.op.outbox }}"
+      run: |
+        printf '{"n":9007199254740993,"n":1e+40}' > data.json
+        printf 'diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-old\n+new\n' > changes.patch
+        printf 'first line\nneedle\nlast line\n' > checks.log
+        printf '<!doctype html><meta http-equiv="refresh" content="0;url=https://blocked.invalid"><script>fetch("https://blocked.invalid/script")</script><iframe src="https://blocked.invalid/frame"></iframe><a href="https://blocked.invalid">link</a>' > mock.html
+        printf '<svg xmlns="http://www.w3.org/2000/svg" onload="fetch(&quot;https://blocked.invalid/svg&quot;)"><image href="https://blocked.invalid/img"/></svg>' > vector.svg
+        printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII=' | base64 -d > screenshot.png
+        ffmpeg -v error -f lavfi -i color=c=blue:s=1280x900 -frames:v 1 -y wide.png
+        for format in jpg gif webp avif bmp; do
+          ffmpeg -v error -f lavfi -i color=c=blue:s=2x2 -frames:v 1 -y "sample.$format"
+        done
+        printf '\037\213container-original' > evidence.tar.gz
+        printf '# Pictures\n\n![attached](screenshot.png)\n\n![blocked](https://blocked.invalid/markdown.png)\n\n[Safe link](https://example.com)\n' > pictures.md
+        printf '<meta http-equiv="refresh" content="1;url=https://blocked.invalid/delayed"><script>location="https://blocked.invalid/nav"</script>' > delayed.html
+  - id: review
+    op: input
+    inputs:
+      form:
+        kind: review
+        title: Review the release
+        documents:
+          external: __EXTERNAL_DOCUMENT__
+          json: '${{ sequence.formats.artifacts["data.json"] }}'
+          patch: '${{ sequence.formats.artifacts["changes.patch"] }}'
+          log: '${{ sequence.formats.artifacts["checks.log"] }}'
+          html: '${{ sequence.formats.artifacts["mock.html"] }}'
+          svg: '${{ sequence.formats.artifacts["vector.svg"] }}'
+          wide: '${{ sequence.formats.artifacts["wide.png"] }}'
+          png: '${{ sequence.formats.artifacts["screenshot.png"] }}'
+          archive: '${{ sequence.formats.artifacts["evidence.tar.gz"] }}'
+          pictures: '${{ sequence.formats.artifacts["pictures.md"] }}'
+          delayed: '${{ sequence.formats.artifacts["delayed.html"] }}'
+          jpg: '${{ sequence.formats.artifacts["sample.jpg"] }}'
+          gif: '${{ sequence.formats.artifacts["sample.gif"] }}'
+          webp: '${{ sequence.formats.artifacts["sample.webp"] }}'
+          avif: '${{ sequence.formats.artifacts["sample.avif"] }}'
+          bmp: '${{ sequence.formats.artifacts["sample.bmp"] }}'
+          settings: {kind: value, name: settings.json, format: json, value: {approved: true}}
+          design: '${{ sequence.draft.artifacts["design.md"] }}'
+          rollout: '${{ sequence.draft.artifacts["rollout.md"] }}'
+        fields:
+          - id: decision
+            type: multiple_choice
+            question: How should we proceed?
+            required: true
+            options:
+              - {value: approve, label: Approve}
+              - {value: revise, label: Request changes}
+          - id: feedback
+            type: paragraph_text
+            question: What should change?
+            required: true
+          - id: annotation
+            type: file_upload
+            question: Attach feedback document
+outputs:
+  answers: "${{ sequence.review.outputs.fields }}"
+  receipt: "${{ sequence.review.outputs.receipt }}"
+  artifact_refs: "${{ sequence.review.outputs.artifact_refs }}"

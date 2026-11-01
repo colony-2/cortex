@@ -1,8 +1,9 @@
 import { abbreviatePrompt } from '../src/utils/goalPresentation';
 import { setStatusFilter } from './helpers/goalList';
-import { test as base, expect, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test as base, setNativeZoom } from './helpers/nativeZoom';
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, mkdirSync, copyFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -80,6 +81,7 @@ const test = base.extend<{
     try {
       mkdirSync(join(repo, '.c2/recipes'), { recursive: true });
       copyFileSync(resolve(`tests/fixtures/recipes/${recipeFixture}.yaml`), join(repo, '.c2/recipes/browser-input.yaml'));
+      if (recipeFixture === 'browser-review-formats') copyFileSync(resolve('tests/fixtures/recipes/browser-document-producer.yaml'), join(repo, '.c2/recipes/producer.yaml'));
       const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { stdio: 'pipe' });
       git('init', '-b', 'main');
       git('add', '.');
@@ -96,6 +98,23 @@ const test = base.extend<{
       await observer.goto(`/project/${tenant}/reviews`);
       await expect(observer.getByText('No pending reviews')).toBeVisible();
 
+      let externalDocument: unknown;
+      if (recipeFixture === 'browser-review-formats') {
+        const producerID = `producer-${randomUUID()}`;
+        const producer = await request.post(`/api/projects/${tenant}/jobs`, { data: { job_id: producerID, recipe: `git+${pathToFileURL(repo).href}//.c2/recipes/producer.yaml@main`, repo: pathToFileURL(repo).href } });
+        expect(producer.status(), await producer.text()).toBe(201);
+        startWorker(producerID);
+        await expect.poll(async () => {
+          const result = await request.get(`/api/projects/${tenant}/jobs/${producerID}/outcome`);
+          if (result.status() !== 200) return false;
+          const body = await result.json(); externalDocument = body.output?.document; return !!externalDocument;
+        }, { timeout: 30000 }).toBe(true);
+        await stopWorker();
+        const mainRecipe = join(repo, '.c2/recipes/browser-input.yaml');
+        writeFileSync(mainRecipe, readFileSync(mainRecipe, 'utf8').replace('__EXTERNAL_DOCUMENT__', JSON.stringify(externalDocument)));
+        git('add', '.');
+        git('-c', 'user.name=Cortex Browser Test', '-c', 'user.email=browser@example.com', '-c', 'commit.gpgsign=false', 'commit', '-m', 'Bind stored cross-job review fixture');
+      }
       const submitted = await request.post(`/api/projects/${tenant}/jobs`, {
         data: { job_id: jobID, recipe, repo: pathToFileURL(repo).href, ...(review ? { inputs: { prompt: reviewGoalPrompt } } : {}) },
       });
@@ -654,5 +673,92 @@ test.describe('review job metadata', () => {
     expect(await fits()).toBe(true);
     await page.getByRole('button', { name: 'Back to Reviews' }).click();
     await expect(page.getByRole('button', { name: 'Open Review' })).toBeVisible();
+  });
+});
+
+
+test.describe('multi-format review viewers', () => {
+  test.use({ recipeFixture: 'browser-review-formats', nativeZoom: true });
+  test.beforeEach(() => test.setTimeout(180_000));
+  test('E01-E11 previews stored formats safely and preserves review responses', async ({ page, request, recipeRun }, testInfo) => {
+    const {tenant,jobID,observer,stopWorker,startWorker}=recipeRun;
+    await stopWorker();
+    // The observer was the last opened tab; reviewer animations need a foreground tab.
+    await page.bringToFront();
+    const fetched: string[]=[]; const external: string[]=[];
+    page.on('request',r=>{if(r.url().includes('/documents?'))fetched.push(r.url());if(r.url().includes('blocked.invalid'))external.push(r.url());});
+    await page.goto(`/project/${tenant}/reviews`);
+    await expect(page.getByRole('button',{name:'Open Review',exact:true})).toBeVisible();
+    expect(fetched).toHaveLength(0);
+    await setNativeZoom(page,2);
+    await page.getByRole('button',{name:'Open Review',exact:true}).click();
+    expect(fetched).toHaveLength(0);
+    const feedback=page.getByLabel('What should change?',{exact:true});
+    await feedback.fill('Multi-format feedback');
+    await page.locator('input[type=file]').setInputFiles({name:'feedback.md',mimeType:'text/markdown',buffer:Buffer.from('# Feedback')});
+    let lastRead = '';
+    const read=async(name:string)=>{lastRead = name;await page.getByRole('button',{name:`Read ${name}`,exact:true}).click();await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'Back to review',exact:true}).scrollIntoViewIfNeeded();
+      // Wait for finite Drawer opening transitions before closing or resizing it.
+      await page.evaluate(async () => {
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        await Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})));
+      });
+    };
+    const back=async()=>{const close=page.getByRole('button',{name:'Back to review',exact:true});await close.focus();await expect(close).toBeInViewport({ratio:1});await page.keyboard.press('Enter');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('button',{name:`Read ${lastRead}`,exact:true})).toBeFocused();};
+    await read('data.json');await expect(page.getByLabel('Formatted JSON')).toContainText('9007199254740993');
+    await page.getByText('Formatted JSON — collapse / expand',{exact:true}).click();await expect(page.getByLabel('Formatted JSON')).toBeHidden();
+    await page.getByText('Formatted JSON — collapse / expand',{exact:true}).click();await back();
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    await setNativeZoom(page,1);await page.setViewportSize({width:320,height:700});
+    await read('settings.json');await expect(page.getByLabel('Formatted JSON')).toContainText('approved');await back();
+    await read('external.txt');await expect(page.getByLabel('Document source')).toHaveText('Cross-job original\n');await back();
+    await read('changes.patch');await expect(page.getByLabel('Unified diff')).toContainText('-old');
+    await page.getByText('Side by side',{exact:true}).click();await expect(page.getByLabel('Side by side diff')).toContainText('+new');
+    await page.screenshot({path:testInfo.outputPath('dual-pane.png')});await back();
+    await page.route(/\/documents\?.*document_id=log(?:&|$)/,route=>route.fulfill({status:404,body:'missing document'}),{times:1});
+    await read('checks.log');await expect(page.getByText(/Could not load this document/)).toBeVisible();await page.getByRole('button',{name:'Retry',exact:true}).click();await page.getByLabel('Search document').fill('needle');await expect(page.locator('mark')).toHaveText('needle');await back();
+    await read('changes.patch');await expect(page.getByLabel('Side by side diff')).toBeVisible();await back();
+    for(const name of ['mock.html','delayed.html','vector.svg']){
+      await read(name);await expect(page.getByLabel('Document source')).toContainText('blocked.invalid');
+      await page.waitForTimeout(2100);expect(external).toHaveLength(0);await expect(page.locator('iframe')).toHaveCount(0);
+      await expect(page).toHaveURL(new RegExp(`/reviews/${jobID}$`));await back();
+    }
+    await read('screenshot.png');
+    const png=page.getByRole('img',{name:'screenshot.png',exact:true});
+    await expect(png).toBeVisible();await expect.poll(()=>png.evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBe(1);
+    await page.getByRole('button',{name:'Actual size',exact:true}).click();await page.getByRole('button',{name:'Zoom in',exact:true}).click();await back();
+    for (const ext of ['jpg','gif','webp','avif','bmp']) {
+      await read(`sample.${ext}`);
+      const image = page.getByRole('img',{name:`sample.${ext}`,exact:true});
+      await expect(image).toBeVisible();await expect.poll(()=>image.evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBe(2);await back();
+    }
+    await read('wide.png');
+    await page.getByRole('button',{name:'Actual size',exact:true}).click();
+    const imageRegion = page.getByRole('region',{name:'Image preview',exact:true});
+    await imageRegion.focus();await expect(imageRegion).toBeFocused();await page.keyboard.press('ArrowRight');
+    await expect.poll(()=>imageRegion.evaluate(el=>el.scrollLeft)).toBeGreaterThan(0);
+    await imageRegion.evaluate(el=>{el.scrollLeft=0;});
+    const box = await imageRegion.boundingBox();
+    const touchSession = await page.context().newCDPSession(page);
+    await touchSession.send('Input.synthesizeScrollGesture',{x:Math.round(box!.x+100),y:Math.round(Math.min(box!.y+50,600)),xDistance:-100,yDistance:0,gestureSourceType:'touch'});
+    await touchSession.detach();await expect.poll(()=>imageRegion.evaluate(el=>el.scrollLeft)).toBeGreaterThan(0);await back();
+    await read('pictures.md');await expect(page.getByRole('img',{name:'screenshot.png',exact:true})).toBeVisible();
+    await expect(page.getByText(/Blocked external or ambiguous image/)).toBeVisible();expect(external).toHaveLength(0);await back();
+    await read('evidence.tar.gz');await expect(page.getByText(/Container data/)).toBeVisible();await back();
+    expect(fetched.every(u=>!u.includes('document_id=rollout'))).toBe(true);
+    await expect(feedback).toHaveValue('Multi-format feedback');
+    const details=await(await request.get(`/api/projects/${tenant}/user-inputs/${jobID}`)).json();
+    expect(details.form.documents.external.stored.key.jobId).not.toBe(jobID);
+    for(const id of ['json','patch','png','archive']){
+      const url=`/api/projects/${tenant}/reviews/${jobID}/documents?request_id=${encodeURIComponent(details.form.request_id)}&document_id=${id}`;
+      const downloaded=await request.get(url);expect(downloaded.status()).toBe(200);
+      const key=details.form.documents[id].stored.key;
+      const original=await request.get(`/api/projects/${tenant}/jobs/${key.jobId}/tasks/${key.taskOrdinal}/artifacts/${encodeURIComponent(key.name)}`);
+      expect(await downloaded.body()).toEqual(await original.body());
+    }
+    await page.getByRole('button',{name:'Approve',exact:true}).click();await expect(observer.getByText('No pending reviews')).toBeVisible();
+    startWorker();await expect.poll(async()=>{
+      const response=await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`);return response.status()===200?response.json():null;
+    },{timeout:30000}).toMatchObject({status:'completed',output:{answers:{feedback:'Multi-format feedback',annotation:{kind:'stored'}},receipt:{actor:{id:'browser@example.com',kind:'human'}}}});
   });
 });

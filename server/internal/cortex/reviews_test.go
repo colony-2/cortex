@@ -47,11 +47,16 @@ type reviewArtifactEngine struct {
 	jobworkflow.Engine
 	tenant string
 	key    jobdb.ArtifactKey
+	data   []byte
 }
 
 func (e *reviewArtifactEngine) GetArtifact(tenant string, key jobdb.ArtifactKey) (jobdb.Artifact, error) {
 	e.tenant, e.key = tenant, key
-	return jobdb.NewArtifactFromBytes(key.Name, []byte("# Original\n")), nil
+	data := e.data
+	if data == nil {
+		data = []byte("# Original\n")
+	}
+	return jobdb.NewArtifactFromBytes(key.Name, data), nil
 }
 func TestReviewHTTPAdapters(t *testing.T) {
 	key := jobdb.ArtifactKey{JobId: "child-producer", TaskOrdinal: 12, Name: "design.md"}
@@ -81,6 +86,40 @@ func TestReviewHTTPAdapters(t *testing.T) {
 			router.ServeHTTP(w, httptest.NewRequest("GET", "/tenant-a/reviews/review/documents?"+tc.query, nil))
 			if w.Code != tc.status {
 				t.Fatalf("%d %s", w.Code, w.Body.String())
+			}
+		}
+	})
+	t.Run("A01 A04 preserves original binary bytes and download headers", func(t *testing.T) {
+		original := []byte{137, 80, 78, 71, 0, 255, 13, 10}
+		engine.data = original
+		defer func() { engine.data = nil }()
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest("GET", "/tenant-a/reviews/review/documents?request_id=request-2&document_id=design%2Fid", nil))
+		if w.Code != 200 || !bytes.Equal(w.Body.Bytes(), original) {
+			t.Fatalf("binary response: %d %v", w.Code, w.Body.Bytes())
+		}
+		for name, want := range map[string]string{"Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"} {
+			if w.Header().Get(name) != want {
+				t.Fatalf("%s = %q", name, w.Header().Get(name))
+			}
+		}
+		if !strings.HasPrefix(w.Header().Get("Content-Disposition"), "attachment;") {
+			t.Fatal("missing original attachment")
+		}
+	})
+	t.Run("A02 A03 rejects nonreviews and membership bypasses before artifact lookup", func(t *testing.T) {
+		for _, path := range []string{
+			"/tenant-a/reviews/ordinary/documents?request_id=request-2&document_id=design%2Fid",
+			"/tenant-a/reviews/missing/documents?request_id=request-2&document_id=design%2Fid",
+			"/tenant-a/reviews/review/documents?request_id=request-2&document_id=..%2Fdesign.md",
+			"/tenant-a/reviews/review/documents?request_id=request-2&document_id=https%3A%2F%2Fevil.test",
+			"/tenant-a/reviews/review/documents?request_id=request-2&document_id=child-producer",
+		} {
+			engine.key = jobdb.ArtifactKey{}
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+			if w.Code != 404 || engine.key.JobId != "" {
+				t.Fatalf("membership bypass: %s %d", path, w.Code)
 			}
 		}
 	})
