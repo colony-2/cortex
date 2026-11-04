@@ -1,5 +1,5 @@
 import type {
-  CortexCell,
+  CortexCell, ListCellsResponse, ListCellsOptions, CreateCellRequest, SubmittedJob,
   ListRecipeJobsResponse,
   Project,
   RecipeJob,
@@ -11,11 +11,17 @@ import type {
 
 import { API_BASE } from './apiBase';
 import { parseJobJSON } from './jobJSON';
+import { validateJobCell, validateCell } from './cellProtocol';
 
+export class APIError extends Error {
+  constructor(message: string, public status: number, public code?: string) { super(message); }
+}
 async function handleResponse(response: Response, operation: string) {
   if (!response.ok) {
-    const errorText = await response.text().catch(() => 'Unknown error');
-    throw new Error(`${operation} failed: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ''}`);
+    const text = await response.text().catch(() => 'Unknown error');
+    let message = text, code: string | undefined;
+    try { const body = JSON.parse(text); message = body.error || body.message || text; code = body.code; } catch { /* plain HTTP error */ }
+    throw new APIError(`${operation} failed: ${response.status} ${response.statusText} - ${message}`, response.status, code);
   }
   return response;
 }
@@ -27,10 +33,34 @@ export async function listProjects(tenantId?: string): Promise<Project[]> {
   return response.json();
 }
 
-export async function listCells(projectId: string): Promise<CortexCell[]> {
-  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/cells`);
+export async function listCells(projectId: string, options: ListCellsOptions = {}): Promise<ListCellsResponse> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(options)) if (value !== undefined && value !== '') params.set(key, String(value));
+  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/cells?${params}`);
   await handleResponse(response, 'List cells');
-  return response.json();
+  const page: ListCellsResponse = await response.json();
+  if (!Array.isArray(page.cells)) throw new Error('Invalid cell registry response');
+  page.cells.forEach(cell => validateCell(cell, projectId));
+  return page;
+}
+
+export async function getCell(projectId: string, cellId: string): Promise<CortexCell> {
+  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/cells/${encodeURIComponent(cellId)}`);
+  await handleResponse(response, 'Get cell');
+  const cell: CortexCell = await response.json();
+  validateCell(cell, projectId);
+  if (cell.id !== cellId) throw new Error('Cell response does not match the selected cell');
+  return cell;
+}
+
+export async function createCell(projectId: string, input: CreateCellRequest): Promise<CortexCell> {
+  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/cells`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+  });
+  await handleResponse(response, 'Create cell');
+  const cell: CortexCell = await response.json();
+  validateCell(cell, projectId);
+  return cell;
 }
 
 export async function listJobs(
@@ -38,7 +68,7 @@ export async function listJobs(
   options: {
     status?: RecipeJobStatus[];
     displayStatus?: RecipeJobFilterStatus[];
-    cell?: string | string[];
+    cellNames?: string[];
     pageSize?: number;
     pageToken?: string;
     goal?: string;
@@ -51,7 +81,7 @@ export async function listJobs(
     params.append('status', status);
   }
   for (const status of options.displayStatus || []) params.append('displayStatus', status);
-  for (const cell of Array.isArray(options.cell) ? options.cell : options.cell ? [options.cell] : []) params.append('cell', cell);
+  for (const cell of options.cellNames || []) params.append('cellNames', cell);
   if (options.goal) params.set('goal', options.goal);
   if (options.pageSize) params.set('pageSize', String(options.pageSize));
   if (options.pageToken) params.set('pageToken', options.pageToken);
@@ -60,7 +90,10 @@ export async function listJobs(
     `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs${query ? `?${query}` : ''}`,
   );
   await handleResponse(response, 'List jobs');
-  return parseJobJSON(await response.text()) as ListRecipeJobsResponse;
+  const page = parseJobJSON(await response.text()) as ListRecipeJobsResponse;
+  if (!Array.isArray(page.jobs)) throw new Error('Invalid job list response');
+  page.jobs.forEach(validateJobCell);
+  return page;
 }
 
 export async function getJob(projectId: string, jobId: string): Promise<RecipeJob> {
@@ -68,7 +101,9 @@ export async function getJob(projectId: string, jobId: string): Promise<RecipeJo
     `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}`,
   );
   await handleResponse(response, 'Get job');
-  return parseJobJSON(await response.text()) as RecipeJob;
+  const job = parseJobJSON(await response.text()) as RecipeJob;
+  validateJobCell(job);
+  return job;
 }
 
 export async function getRestartContext(projectId: string, jobId: string, boundary: number | string, signal?: AbortSignal): Promise<RestartContext> {
@@ -101,14 +136,17 @@ export async function deleteJob(projectId: string, jobId: string): Promise<void>
   await handleResponse(response, 'Delete job');
 }
 
-export async function submitJob(projectId: string, input: SubmitRecipeJobRequest): Promise<RecipeJob> {
+export async function submitJob(projectId: string, input: SubmitRecipeJobRequest): Promise<SubmittedJob> {
   const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
   await handleResponse(response, 'Submit job');
-  return parseJobJSON(await response.text()) as RecipeJob;
+  const job = parseJobJSON(await response.text()) as SubmittedJob;
+  validateJobCell(job);
+  if (!job.goal_id || !job.job_id || job.tenant_id !== projectId) throw new Error('Invalid submission identity');
+  return job;
 }
 
 /** Keep export bytes opaque: JSON parsing here can round persisted 64-bit integers. */

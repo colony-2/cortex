@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/internal/cortex"
+	"github.com/colony-2/colony2/server/internal/testjobdb"
 	"github.com/colony-2/jobdb/pkg/jobdb/runtime/remote"
 	sqliteruntime "github.com/colony-2/jobdb/pkg/jobdb/runtime/sqlite"
 	"github.com/colony-2/jobdb/pkg/jobdb/runtime/toy"
@@ -44,9 +45,9 @@ func main() {
 				log.Fatal(err)
 			}
 			defer runtime.Shutdown()
-			srv = remote.NewServer(runtime.Runtime)
+			srv = testjobdb.Handler(remote.NewServer(runtime.Runtime))
 		} else {
-			srv = remote.NewServer(toy.New())
+			srv = testjobdb.Handler(remote.NewServer(toy.New()))
 		}
 	} else {
 		var err error

@@ -25,14 +25,11 @@ it('renders only designated fields, literal full prompt, formatted status, and e
   expect(screen.getByText(/2026-10-25/)).toBeVisible();
 });
 
-it.each([undefined, '', '  \n '])('shows unknown names and absent prompts without invalid optional fields (%j)', async cell_name => {
-  vi.mocked(getJob).mockResolvedValue({ status: 'READY', store: 'ACTIVE', cell_name, prompt: ' \n ', submitted_at: '0001-01-01T00:00:00Z', created_at: 'bad date' } as RecipeJob);
+it('shows invalid ownership as a protocol error', async () => {
+  vi.mocked(getJob).mockRejectedValue(new Error('Invalid job response: required cell_name is missing'));
   render(<MemoryRouter><ReviewJobContext projectId="tenant" jobId="job" /></MemoryRouter>);
-  await screen.findByText('Unknown cell');
-  expect(screen.getByText('No prompt provided')).toBeVisible();
-  expect(screen.queryByText('Submitted')).toBeNull();
-  expect(screen.queryByText('Invalid Date')).toBeNull();
-  expect(screen.queryByRole('link', { name: 'Goal overview' })).toBeNull();
+  await screen.findByText('Job context unavailable');
+  expect(screen.queryByText('Unknown cell')).toBeNull();
 });
 
 it('distinguishes failures from missing metadata and retries only context', async () => {

@@ -11,13 +11,33 @@ export interface Project {
 
 export interface CortexCell {
   id: string;
-  project_id: string;
-  tenant_id: string;
+  tenantId: string;
   name: string;
   repo: string;
-  repository_source: string;
-  git_ref?: string;
-  kind: 'self' | 'dependent' | string;
+  description: string;
+  metadata: Record<string, unknown>;
+  state: 'ACTIVE' | 'RETIRED';
+  aliases: string[];
+  revision: string;
+  createdAt: string;
+  updatedAt: string;
+  retiredAt?: string;
+}
+
+export interface ListCellsResponse { cells: CortexCell[]; nextPageToken?: string }
+export interface ListCellsOptions {
+  name?: string;
+  state?: 'ACTIVE' | 'RETIRED' | 'ALL';
+  pageSize?: number;
+  pageToken?: string;
+}
+export interface CreateCellRequest {
+  name: string; repo: string; description?: string;
+  metadata?: Record<string, unknown>; requestId: string;
+}
+export interface SubmittedJob {
+  goal_id: string; tenant_id: string; job_id: string;
+  cell_id: string; cell_name: string; repo: string;
 }
 
 export type RecipeJobStatus =
@@ -52,9 +72,9 @@ export interface RecipeJob {
   store: 'ACTIVE' | 'ARCHIVED';
   job_type: string;
   recipe: string;
-  repo?: string;
-  cell_id?: string;
-  cell_name?: string;
+  repo: string;
+  cell_id: string;
+  cell_name: string;
   git_ref?: string;
   input_hash?: string;
   parent?: {
@@ -121,7 +141,7 @@ export interface ListRecipeJobsResponse {
 }
 
 export interface SubmitRecipeJobRequest {
-  cell?: string;
+  cell: string;
   repo?: string;
   recipe?: string;
   inputs?: Record<string, unknown>;

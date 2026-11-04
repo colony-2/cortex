@@ -33,7 +33,8 @@ func TestRestartContextHTTP(t *testing.T) {
 	}
 	ts := httptest.NewServer(srv)
 	defer ts.Close()
-	postJSON[map[string]any](t, ts.URL+"/api/projects/tenant/jobs", map[string]any{"job_id": "source", "recipe": "smoke"})
+	postJSON[map[string]any](t, ts.URL+"/api/projects/tenant/cells", map[string]string{"name": "self", "repo": "github.com/acme/boo-self"})
+	postJSON[map[string]any](t, ts.URL+"/api/projects/tenant/jobs", map[string]any{"job_id": "source", "recipe": "smoke", "cell": "self", "repo": "github.com/acme/boo-self"})
 	inspection := &contextInspectionService{storyService: srv.story}
 	srv.story = inspection
 	base := ts.URL + "/api/projects/tenant/jobs/source/restart-context"

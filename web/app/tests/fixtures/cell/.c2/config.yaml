@@ -1,10 +1,11 @@
 jobdb: http://127.0.0.1:18082/c2
 pattern: 'github.com/cortex-test/${{ cell }}'
 self:
+  cell: platform
   repo: github.com/cortex-test/platform
   ref: main
 root:
-  repo: github.com/cortex-test/platform
+  repo: github.com/cortex-test/root
   ref: main
 dependents:
   - github.com/cortex-test/api

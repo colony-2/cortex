@@ -40,8 +40,10 @@ describe('Input Pages - Error Cases', () => {
   });
 
   afterEach(() => {
+    inputActivityService.disconnect();
     inputActivityService.clearCaches(); // Clear caches between tests
     server.close();
+    server.resetHandlers();
     eventSourceMock.restore();
     vi.clearAllMocks();
   });
@@ -95,10 +97,10 @@ describe('Input Pages - Error Cases', () => {
       const sse = await waitForSSEConnection();
       sse.emitConnected();
 
-      // Should show empty state (graceful degradation)
+      // Failed loads stay distinguishable from an empty registry-backed list.
       await waitFor(
       () => {
-        expect(screen.getByText('No pending reviews')).toBeInTheDocument();
+        expect(screen.getByText('Could not load reviews')).toBeInTheDocument();
       },
       { timeout: 3000 }
     );

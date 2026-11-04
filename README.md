@@ -7,7 +7,7 @@ embedded React UI from one executable.
 
 Cortex connects to a remote [JobDB](https://github.com/colony-2/jobdb) server.
 Run c2j workers separately against the same JobDB. Projects in the UI are JobDB
-tenants; cells are the current Git repository and its c2j-configured dependents.
+tenants; cells are durable named records in JobDB, with generated IDs and repository locators.
 
 ## Goal list filters and search
 
@@ -18,10 +18,11 @@ items or use Select all / Select none, then Apply. Selecting none shows no jobs.
 Finished (outcome unavailable) matches
 completed jobs with no stored outcome; retrying jobs retain their scheduling
 status even if a previous attempt failed. The Cell column uses the same checkbox
-controls, with all cells selected initially. Its choices come from cell names in
-the returned jobs, including Unknown cell for missing names, rather than the server's
-configured cell catalogue. Cell filtering runs in the browser on the current page;
-unchecked cells remain available in the menu. Status filtering runs across pages.
+controls, with all cells selected initially. Choices come from the JobDB registry,
+including cells with no jobs and retired cells for historical inspection. Cell and
+status filters run on the backend before pagination. URLs store stable cell IDs;
+renames preserve selections and refresh displayed names. Missing required cell
+fields produce a protocol error rather than an inferred identity.
 
 Search full prompts at the right of the Cancel/Delete row, including text beyond the shortened row
 label and prompts from other loaded attempts. Click the Goal, Status, Cell, or
@@ -35,8 +36,9 @@ parameter still filters raw scheduling states; the two parameters cannot be
 combined. Display filtering scans compact JobDB pages without loading job
 details. Each request scans at most 20 backend pages, so a sparse or empty result
 can still have a `next_page_token`; use **Next jobs** to continue.
-Repeated `cell` parameters (for example `?cell=alpha&cell=beta`) match jobs from
-either cell's repository before pagination; a single `cell` works as before.
+Repeated `cellNames` parameters (for example `?cellNames=alpha&cellNames=beta`)
+match jobs owned by either named cell before pagination. Repository selectors and
+the old `cell` query parameter are no longer accepted.
 
 ## Review document previews
 
@@ -67,14 +69,37 @@ filter dialogs retain Select all / Select none / Apply;
 search and sorting keep the same current-page and URL behavior as the desktop list.
 Story and details stack vertically, with a **View selected details** jump link.
 
-**New goal** has an independent target picker. Choose self, a configured cell, or a
-cell known from the loaded jobs and saved cell filter. A single cell filter seeds
-the initial choice; subsequent filter changes do not change an open draft.
-**Repository** accepts `github/colony-2/<name>`, `github.com/colony-2/<name>`, or
-`https://github.com/colony-2/<name>`, optionally ending in `.git` or `/`.
-The resolved repository is shown before submission. This submits a goal to an
-existing repository; it does not register or create a cell. Catalogue failures
-leave self, job-known choices, and repository entry available.
+**New goal** selects an active registered cell. A single cell filter seeds the
+picker, and the selected ID is resolved to its current name before submission.
+Existing-cell submission uses the registry repository. **New cell** mode requires
+an explicit name and repository. It registers the cell first, then submits the goal.
+If submission fails, the cell remains registered; retrying reuses the completed
+registration and the same job ID for an unchanged request.
+
+## Cells and creation
+
+The Cells page lists the registry with active/retired/all filters,
+exact-name/alias lookup, and pagination. **Create cell** requires a name and
+repository, with optional description and JSON metadata. It registers a cell
+without submitting work; creating or publishing its Git repository is separate.
+Hosted repository locators, HTTPS URLs, and supported SSH forms are normalized by
+JobDB. Local filesystem paths cannot serve as cell identity.
+
+A cell's detail page shows its current name, repository, state, aliases and metadata.
+**Goals for this cell** opens the goals list filtered by its stable ID;
+**New goal in this cell** preselects it for submission. Retired cells remain
+inspectable but cannot receive new jobs. `root` is an ordinary cell name with no
+special designation or creation restrictions.
+Cell editing and retirement UI are deferred.
+
+Job rows display current cell names while retaining each job's submitted repository
+snapshot. Changing a registry repo does not change historical source links.
+
+This release requires compatible JobDB/c2j workers and fresh execution stores.
+Old jobs, pagination cursors and saved execution selections are unsupported; deploy
+the server and bundled UI together. See the
+[cell upgrade plan](docs/Cortex-Cell-Registry-Upgrade-Plan.md) for cutover details.
+Authentication and user-specific permissions are outside this migration.
 
 ## Chapter downloads
 
@@ -153,7 +178,7 @@ jobdb: http://localhost:9047/c2
 If your project still uses `.c2j/config.yaml`, move it to `.c2/config.yaml`;
 c2j no longer discovers configuration in the old directory.
 
-Run `cortex` from that cell or a subdirectory, or select the discovery directory
+Run `cortex` from that cell or a subdirectory, or select the configuration directory
 with `--working-dir`. Cortex requires a remote HTTP(S) JobDB server; `embed:///`
 is not supported.
 
@@ -269,7 +294,7 @@ and restart it to verify the exact recipe output and completed story. They also
 cover cancellation from another client, rejected late answers, and consecutive
 prompts in one job without reloading either tab. Each test has a separate tenant
 and temporary Git repository; the fixture cell's Git URL
-is mapped to that repository in the worker's environment. No API or EventSource
+is mapped to that repository by a test-only Git transport shim in the worker's PATH. No API or EventSource
 mocks are used in these tests. Worker logs and recipe outcomes are attached to
 the Playwright report in `web/app/playwright-report`.
 

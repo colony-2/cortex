@@ -1,15 +1,12 @@
+import { jobIdentity, mockCells, cellFixture } from './helpers/cells';
 import { expect, type Page } from '@playwright/test';
 import { test, setNativeZoom, captureNativeZoom } from './helpers/nativeZoom';
 
 const prompt = 'Build a reliable dashboard ' + 'long-content-'.repeat(30);
 const jobs = [
-  { job_id: 'one', goal_id: 'g', cell_name: 'platform', repo: 'https://github.com/colony-2/platform.git', prompt, status: 'READY', store: 'ACTIVE', created_at: '2026-10-30T10:00:00Z' },
-  { job_id: 'two', goal_id: 'g', cell_name: 'platform', prompt, status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'success', created_at: '2026-10-29T10:00:00Z' },
-  { job_id: 'three', goal_id: 'other', prompt: 'Another goal', status: 'READY', store: 'ACTIVE', created_at: '2026-10-28T10:00:00Z' },
-];
-const cells = [
-  { id: 'self', name: 'cortex', repository_source: 'https://github.com/colony-2/cortex.git', kind: 'self', git_ref: 'main' },
-  { id: 'api', name: 'api', repository_source: 'https://github.com/colony-2/api.git', kind: 'dependent', git_ref: 'long-ref-'.repeat(30) },
+  { ...jobIdentity, job_id: 'one', goal_id: 'g', cell_name: 'platform', repo: 'https://github.com/colony-2/platform.git', prompt, status: 'READY', store: 'ACTIVE', created_at: '2026-10-30T10:00:00Z' },
+  { ...jobIdentity, job_id: 'two', goal_id: 'g', cell_name: 'platform', prompt, status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'success', created_at: '2026-10-29T10:00:00Z' },
+  { ...jobIdentity, cell_id: 'cell-api', cell_name: 'api', job_id: 'three', goal_id: 'other', prompt: 'Another goal', status: 'READY', store: 'ACTIVE', created_at: '2026-10-28T10:00:00Z' },
 ];
 async function noOverflow(page: Page) {
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
@@ -33,15 +30,15 @@ test.beforeEach(async ({ page, context, baseURL }) => {
       close() {} addEventListener() {} removeEventListener() {}
     };
   });
-  await page.route('**/api/projects', route => route.fulfill({ json: [{ tenant_id: 'phone' }] }));
-  await page.route(/\/api\/projects\/[^/]+\/cells$/, route => route.fulfill({ json: cells }));
+  await page.route('**/api/projects', route => route.fulfill({ json: [{ ...jobIdentity, tenant_id: 'phone' }] }));
+  await mockCells(page, ['platform', 'api']);
   await page.route(/\/api\/projects\/[^/]+\/user-inputs\/pending$/, route => route.fulfill({ json: [] }));
-  await page.route(/\/api\/projects\/[^/]+\/jobs(?:\?.*)?$/, route => route.fulfill({ json: { jobs } }));
+  await page.route(/\/api\/projects\/[^/]+\/jobs(?:\?.*)?$/, route => { const names = new URL(route.request().url()).searchParams.getAll('cellNames'); return route.fulfill({ json: { jobs: jobs.filter(job => !names.length || names.includes(job.cell_name)) } }); });
   await page.route(/\/api\/projects\/[^/]+\/jobs\/[^/?]+$/, route => {
     const id = new URL(route.request().url()).pathname.split('/').pop();
     return route.fulfill({ json: { ...jobs.find(job => job.job_id === id), tenant_id: 'phone' } });
   });
-  await page.route(/\/api\/projects\/[^/]+\/jobs\/[^/]+\/story$/, route => route.fulfill({ json: { job_id: 'one', status: 'completed', root: { id: 'root', kind: 'recipe', title: 'Phone recipe', path: [], attempt: 1, status: 'completed', children: [{ id: 'child', kind: 'op', title: 'Task name ' + 'x'.repeat(200), path: ['step'], attempt: 1, status: 'completed', output: { data: 'value'.repeat(200) } }] } } }));
+  await page.route(/\/api\/projects\/[^/]+\/jobs\/[^/]+\/story$/, route => route.fulfill({ json: { ...jobIdentity, job_id: 'one', status: 'completed', root: { id: 'root', kind: 'recipe', title: 'Phone recipe', path: [], attempt: 1, status: 'completed', children: [{ id: 'child', kind: 'op', title: 'Task name ' + 'x'.repeat(200), path: ['step'], attempt: 1, status: 'completed', output: { data: 'value'.repeat(200) } }] } } }));
 });
 
 test('phone filters, ordering, selection, history, and responsive state share one model', async ({ page }) => {
@@ -53,7 +50,7 @@ test('phone filters, ordering, selection, history, and responsive state share on
   await expect(page.getByText('2 attempts on this page')).toBeVisible();
   await filter(page, 'Filter cells', []);
   await expect(page.getByText('No cells selected')).toBeVisible();
-  await filter(page, 'Filter cells', ['Unknown cell']);
+  await filter(page, 'Filter cells', ['api']);
   await expect(page.locator('.goal-card')).toHaveCount(1);
   await expect(page.getByRole('link', { name: 'Another goal', exact: true })).toBeVisible();
   await filter(page, 'Filter cells', null);
@@ -101,7 +98,7 @@ test('drawer keyboard navigation closes, restores focus, and changes at the md b
   await page.getByRole('dialog').getByRole('link', { name: 'Cells', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Cells', exact: true })).toBeVisible();
   await expect(opener).toBeFocused();
-  await expect(page.getByText('Ref: ' + 'long-ref-'.repeat(30))).toBeVisible();
+  await expect(page.getByText('github.com/acme/api', { exact: true })).toBeVisible();
   await opener.click();
   await page.setViewportSize({ width: 768, height: 1024 });
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -125,11 +122,11 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await page.getByRole('button', { name: 'New goal', exact: true }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('Prompt').fill(prompt);
-    await expect(dialog.getByText('Target: This cell (self)')).toBeVisible();
+    await expect(dialog.getByRole('combobox', { name: 'Cell' })).toBeVisible();
     await dialog.getByRole('combobox', { name: 'Cell', exact: true }).focus();
     await page.keyboard.press('ArrowDown');
-    await page.getByTitle('api · https://github.com/colony-2/api.git', { exact: true }).click();
-    await expect(dialog.getByText('Target: https://github.com/colony-2/api.git')).toBeVisible();
+    await page.getByTitle('api · github.com/acme/api', { exact: true }).click();
+    await expect(dialog.locator('.goal-target-summary')).toBeVisible();
     await expect(page.locator('.ant-select-dropdown:visible')).toHaveCount(0);
     await noOverflow(page);
     if (viewport.width === 390) await page.screenshot({ path: testInfo.outputPath('phone-target.png'), fullPage: true });
@@ -185,15 +182,15 @@ test('goal target modes validate before posting and cancellation starts a fresh 
   await page.setViewportSize({ width: 390, height: 844 });
   const posts: unknown[] = [];
   page.on('request', request => { if (request.method() === 'POST') posts.push(request.postDataJSON()); });
-  await page.goto('/project/phone/goals?cell=platform');
+  await page.goto('/project/phone/goals?cellId=cell-platform&executionState=cells-v1');
   await page.getByRole('button', { name: 'New goal', exact: true }).click();
   let dialog = page.getByRole('dialog');
   await expect(dialog.locator('.goal-target-summary')).toContainText('platform');
-  await dialog.getByRole('radio', { name: 'Repository', exact: true }).check();
-  await dialog.getByRole('textbox', { name: 'Repository', exact: true }).fill('github/colony-2/a?invalid');
+  await dialog.getByRole('radio', { name: 'New cell', exact: true }).check();
+  await dialog.getByLabel('Repository', { exact: true }).fill('github/colony-2/a?invalid');
   await dialog.getByLabel('Prompt').fill('An old draft');
   await dialog.getByRole('button', { name: 'Create goal', exact: true }).click();
-  await expect(dialog.getByText('Enter github/colony-2/<name> or its GitHub HTTPS URL')).toBeVisible();
+  await expect(dialog.getByText('Enter a cell name')).toBeVisible();
   expect(posts).toEqual([]);
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
@@ -201,10 +198,10 @@ test('goal target modes validate before posting and cancellation starts a fresh 
   await page.getByRole('button', { name: 'New goal', exact: true }).click();
   dialog = page.getByRole('dialog');
   await expect(dialog.getByLabel('Prompt')).toHaveValue('');
-  await expect(dialog.getByRole('radio', { name: 'Known cell' })).toBeChecked();
+  await expect(dialog.getByRole('radio', { name: 'Existing cell' })).toBeChecked();
   const picker = dialog.getByRole('combobox', { name: 'Cell', exact: true });
   await picker.focus(); await picker.fill('api'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
-  await expect(dialog.locator('.goal-target-summary')).toHaveText('Target: https://github.com/colony-2/api.git');
+  await expect(dialog.locator('.goal-target-summary')).toHaveText('api · github.com/acme/api');
   await dialog.getByRole('button', { name: 'Create goal', exact: true }).click();
   await expect(dialog.getByText('Enter a prompt')).toBeVisible();
   expect(posts).toEqual([]);
@@ -213,7 +210,7 @@ test('goal target modes validate before posting and cancellation starts a fresh 
 for (const width of [320, 390]) {
   test(`short compact navigation anchors have actual touch areas at ${width}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
-    await page.route(/\/api\/projects\/[^/]+\/jobs(?:\?.*)?$/, route => route.fulfill({ json: { jobs: jobs.map(job => ({ ...job, prompt: 'X', repo: job.repo ? 'https://github.com/colony-2/a.git' : undefined, parent: { job_id: 'two', tenant_id: 'phone' } })) } }));
+    await page.route(/\/api\/projects\/[^/]+\/jobs(?:\?.*)?$/, route => route.fulfill({ json: { jobs: jobs.map(job => ({ ...job, prompt: 'X', repo: 'https://github.com/colony-2/a.git', parent: { ...jobIdentity, job_id: 'two', tenant_id: 'phone' } })) } }));
     await page.goto('/project/phone/goals');
     await page.getByRole('button', { name: 'Expand goal details' }).first().click();
     const links = page.locator('.compact-cards a');
@@ -289,7 +286,7 @@ test.describe('native browser zoom', () => {
       await expect(trigger).toBeFocused();
     }
     await page.route(/\/api\/projects\/[^/]+\/jobs\/one\/story$/, route => route.fulfill({ json: {
-      job_id: 'one', status: 'completed',
+      ...jobIdentity, job_id: 'one', status: 'completed',
       restart_scopes: [{ scope_id: 'scope', chapter_ordinal: 1, title: 'Recorded point', started_at: '2026-10-30T10:00:00Z' }],
       root: { id: 'root', kind: 'recipe', title: 'Phone recipe', path: [], attempt: 1, status: 'completed', restart_scope_id: 'scope', restart_chapter_ordinal: 1 },
     } }));
@@ -317,7 +314,7 @@ for (const width of [320, 390]) {
   test(`story overview and short artifact links have touch areas at ${width}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
     await page.route(/\/api\/projects\/[^/]+\/jobs\/one\/story$/, route => route.fulfill({ json: {
-      job_id: 'one', status: 'completed', root: {
+      ...jobIdentity, job_id: 'one', status: 'completed', root: {
         id: 'root', kind: 'recipe', title: 'Phone recipe', path: [], attempt: 1, status: 'completed',
         artifact_keys: [{ taskOrdinal: 1, name: 'a', sizeBytes: 12 }],
       },

@@ -3,6 +3,7 @@ package cortex
 import (
 	"context"
 	"fmt"
+	"github.com/colony-2/colony2/server/internal/testjobdb"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,12 +16,12 @@ import (
 )
 
 func TestJobsListGoalMetadataAndStatusPagination(t *testing.T) {
-	runtime, err := sqliteruntime.StartEmbeddedRuntime(context.Background())
+	runtime, err := sqliteruntime.StartEmbeddedRuntime(testjobdb.Context(context.Background()))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer runtime.Shutdown()
-	backend := httptest.NewServer(remote.NewServer(runtime.Runtime))
+	backend := httptest.NewServer(testjobdb.Handler(remote.NewServer(runtime.Runtime)))
 	defer backend.Close()
 	srv, err := NewRemoteServer(Config{WorkingDir: writeC2JConfig(t), JobDBURL: backend.URL})
 	if err != nil {
@@ -29,10 +30,11 @@ func TestJobsListGoalMetadataAndStatusPagination(t *testing.T) {
 	api := httptest.NewServer(srv)
 	defer api.Close()
 	base := api.URL + "/api/projects/goals-test"
+	postJSON[jobdb.Cell](t, base+"/cells", map[string]string{"name": "alpha", "repo": "github.com/acme/boo-alpha"})
 	var goal string
 	for i := 0; i < 26; i++ {
 		job := postJSON[recipejob.RecipeJob](t, base+"/jobs", map[string]any{
-			"job_id": fmt.Sprintf("attempt-%02d", i), "cell": "alpha", "inputs": map[string]any{"prompt": "Build a useful tool", "type": "build"},
+			"job_id": fmt.Sprintf("attempt-%02d", i), "cell": "alpha", "repo": "github.com/acme/boo-alpha", "inputs": map[string]any{"prompt": "Build a useful tool", "type": "build"},
 		})
 		if i == 0 {
 			goal = job.GoalID
@@ -41,7 +43,7 @@ func TestJobsListGoalMetadataAndStatusPagination(t *testing.T) {
 			t.Fatalf("submission metadata: %#v", job)
 		}
 		if i > 0 {
-			_, err := srv.engine.(jobdb.GoalRuntime).AddGoalCandidate(context.Background(), jobdb.AddGoalCandidateRequest{GoalKey: jobdb.GoalKey{TenantId: "goals-test", GoalID: goal}, JobID: job.JobID})
+			_, err := srv.engine.(jobdb.GoalRuntime).AddGoalCandidate(testjobdb.Context(context.Background()), jobdb.AddGoalCandidateRequest{GoalKey: jobdb.GoalKey{TenantId: "goals-test", GoalID: goal}, JobID: job.JobID})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -78,7 +80,7 @@ func TestJobsListGoalMetadataAndStatusPagination(t *testing.T) {
 			t.Fatalf("cancel status: %d", resp.StatusCode)
 		}
 	}
-	filteredQuery := "/jobs?status=CANCELLED&cell=alpha&goal=" + url.QueryEscape(goal) + "&pageSize=1"
+	filteredQuery := "/jobs?status=CANCELLED&cellNames=alpha&goal=" + url.QueryEscape(goal) + "&pageSize=1"
 	filtered := getJSON[page](t, base+filteredQuery)
 	if len(filtered.Jobs) != 1 || string(filtered.Jobs[0].Status) != "CANCELLED" || filtered.Next == "" {
 		t.Fatalf("status filter before pagination: %#v", filtered)
@@ -87,7 +89,8 @@ func TestJobsListGoalMetadataAndStatusPagination(t *testing.T) {
 	if len(filteredLast.Jobs) != 1 || string(filteredLast.Jobs[0].Status) != "CANCELLED" || filteredLast.Jobs[0].JobID == filtered.Jobs[0].JobID || filteredLast.Next != "" {
 		t.Fatalf("filtered continuation: %#v", filteredLast)
 	}
-	other := getJSON[page](t, base+"/jobs?status=all&cell=beta&goal="+url.QueryEscape(goal))
+	postJSON[jobdb.Cell](t, base+"/cells", map[string]string{"name": "beta", "repo": "github.com/acme/beta"})
+	other := getJSON[page](t, base+"/jobs?status=all&cellNames=beta&goal="+url.QueryEscape(goal))
 	if len(other.Jobs) != 0 {
 		t.Fatalf("repository filter ignored: %#v", other)
 	}
@@ -98,12 +101,12 @@ func TestJobsListGoalMetadataAndStatusPagination(t *testing.T) {
 }
 
 func TestJobsListMultipleCellsBeforePagination(t *testing.T) {
-	runtime, err := sqliteruntime.StartEmbeddedRuntime(context.Background())
+	runtime, err := sqliteruntime.StartEmbeddedRuntime(testjobdb.Context(context.Background()))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer runtime.Shutdown()
-	backend := httptest.NewServer(remote.NewServer(runtime.Runtime))
+	backend := httptest.NewServer(testjobdb.Handler(remote.NewServer(runtime.Runtime)))
 	defer backend.Close()
 	srv, err := NewRemoteServer(Config{WorkingDir: writeC2JConfig(t), JobDBURL: backend.URL})
 	if err != nil {
@@ -112,15 +115,18 @@ func TestJobsListMultipleCellsBeforePagination(t *testing.T) {
 	api := httptest.NewServer(srv)
 	defer api.Close()
 	base := api.URL + "/api/projects/cells-test/jobs"
+	for _, name := range []string{"alpha", "beta", "self"} {
+		postJSON[jobdb.Cell](t, api.URL+"/api/projects/cells-test/cells", map[string]string{"name": name, "repo": "github.com/acme/boo-" + name})
+	}
 	var goal string
 	for _, entry := range []struct{ id, cell string }{
 		{"alpha-one", "alpha"}, {"beta-one", "beta"}, {"alpha-two", "alpha"}, {"self", "self"}, {"other-goal", "beta"},
 	} {
-		job := postJSON[recipejob.RecipeJob](t, base, map[string]any{"job_id": entry.id, "cell": entry.cell, "recipe": "smoke"})
+		job := postJSON[recipejob.RecipeJob](t, base, map[string]any{"job_id": entry.id, "cell": entry.cell, "repo": "github.com/acme/boo-" + entry.cell, "recipe": "smoke"})
 		if goal == "" {
 			goal = job.GoalID
 		} else if entry.id != "other-goal" {
-			_, err := srv.engine.(jobdb.GoalRuntime).AddGoalCandidate(context.Background(), jobdb.AddGoalCandidateRequest{
+			_, err := srv.engine.(jobdb.GoalRuntime).AddGoalCandidate(testjobdb.Context(context.Background()), jobdb.AddGoalCandidateRequest{
 				GoalKey: jobdb.GoalKey{TenantId: "cells-test", GoalID: goal}, JobID: job.JobID,
 			})
 			if err != nil {
@@ -128,7 +134,7 @@ func TestJobsListMultipleCellsBeforePagination(t *testing.T) {
 			}
 		}
 		if entry.id == "alpha-one" || entry.id == "beta-one" {
-			if err := srv.engine.CancelJob(context.Background(), jobdb.CancelJob{JobKey: jobdb.JobKey{TenantId: "cells-test", JobId: job.JobID}}); err != nil {
+			if err := srv.engine.CancelJob(testjobdb.Context(context.Background()), jobdb.CancelJob{JobKey: jobdb.JobKey{TenantId: "cells-test", JobId: job.JobID}}); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -145,7 +151,7 @@ func TestJobsListMultipleCellsBeforePagination(t *testing.T) {
 		{"display status intersection", "displayStatus=CANCELLED", map[string]bool{"alpha-one": true, "beta-one": true}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			query := base + "?cell=alpha&cell=beta&" + test.status + "&goal=" + url.QueryEscape(goal) + "&pageSize=1"
+			query := base + "?cellNames=alpha&cellNames=beta&" + test.status + "&goal=" + url.QueryEscape(goal) + "&pageSize=1"
 			next := ""
 			seen := map[string]bool{}
 			for i := 0; i < 10; i++ {
@@ -169,9 +175,7 @@ func TestJobsListMultipleCellsBeforePagination(t *testing.T) {
 			}
 		})
 	}
-	// Preserve the legacy repository alias and normalization of a single selector.
-	legacy := getJSON[page](t, base+"?repo="+url.QueryEscape("github.com/acme/boo-alpha")+"&status=all")
-	if len(legacy.Jobs) != 2 {
-		t.Fatalf("legacy repo filter: %#v", legacy)
-	}
+	// Legacy repository selectors must not silently broaden the query.
+	req, _ := http.NewRequest(http.MethodGet, base+"?repo=github.com/acme/boo-alpha", nil)
+	doJSON[errorResponse](t, req, http.StatusBadRequest)
 }

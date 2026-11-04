@@ -8,7 +8,8 @@ This package should stay independent of the retired OpenAPI-generated client
 and the removed UI packages. Keep API calls aligned with the Go Cortex server:
 
 - `/api/projects?tenantId=...`
-- `/api/projects/:projectId/cells`
+- `/api/projects/:projectId/cells` (paginated GET and create POST)
+- `/api/projects/:projectId/cells/:cellId`
 - `/api/projects/:projectId/jobs`
 - `/api/projects/:projectId/jobs/:jobId`
 - `/api/projects/:projectId/user-inputs/...`

@@ -1,77 +1,92 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Form, Input, Modal, Radio, Select, Spin, Typography } from 'antd';
-import { listCells, submitJob } from '@colony2/shared/api';
-import type { CortexCell, RecipeJobSummary } from '@colony2/shared/types';
-import { goalTargets, initialGoalTarget, normalizeGoalRepository, type GoalTarget } from '../utils/goalTarget';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, Button, Form, Input, Modal, Radio, Select, Typography } from 'antd';
+import { createCell, getCell, submitJob } from '@colony2/shared/api';
+import { createRequestId } from '@colony2/shared/cellProtocol';
+import type { CortexCell, SubmitRecipeJobRequest } from '@colony2/shared/types';
+import { cellNameRules, goalTargets } from '../utils/goalTarget';
+import { useCells } from '../hooks/useCells';
 
-type Props = {
-  projectId: string; jobs: RecipeJobSummary[]; filters: string[] | null;
-  onClose: () => void; onCreated: (goalId: string) => void;
-};
-
-// Mounted for each opening. Targets are snapshots, including a job-only choice
-// selected before its repository becomes available from the catalogue.
-export default function NewGoalDialog({ projectId, jobs, filters, onClose, onCreated }: Props) {
-  const [open, setOpen] = useState(true);
-  const [catalogue, setCatalogue] = useState<CortexCell[]>([]);
-  const choices = useMemo(() => goalTargets(catalogue, jobs, filters || []), [catalogue, jobs, filters]);
-  const [target, setTarget] = useState<GoalTarget>(() => initialGoalTarget(choices, filters));
+type Props = { projectId: string; filters: string[] | null; onClose: () => void; onCreated: (goalId: string) => void };
+export default function NewGoalDialog({ projectId, filters, onClose, onCreated }: Props) {
+  const registry = useCells(projectId, 'ACTIVE');
+  const [selected, setSelected] = useState<CortexCell>();
   const [mode, setMode] = useState('known');
-  const [repository, setRepository] = useState('');
-  const [catalogueError, setCatalogueError] = useState<string>();
-  const [submitError, setSubmitError] = useState<string>();
-  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(true);
+  const [error, setError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
-  const [retry, setRetry] = useState(0);
-  const active = useRef(false);
+  const [registered, setRegistered] = useState<CortexCell>();
   const pending = useRef(false);
-  const [form] = Form.useForm<{ prompt: string; repository?: string; target?: string }>();
-  useEffect(() => {
-    active.current = true;
-    return () => { active.current = false; };
-  }, []);
+  const active = useRef(true);
+  const registration = useRef<{ payload: string; requestId: string; cell?: CortexCell }>();
+  const attempt = useRef<{ payload: string; input: SubmitRecipeJobRequest }>();
+  const [form] = Form.useForm<{ prompt: string; name?: string; repo?: string; target?: string }>();
+  const initialId = filters?.length === 1 ? filters[0] : undefined;
+  useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   useEffect(() => {
     let current = true;
-    setLoading(true); setCatalogueError(undefined);
-    listCells(projectId).then(cells => { if (current) setCatalogue(cells); })
-      .catch(error => { if (current) setCatalogueError(error instanceof Error ? error.message : 'Could not load cells'); })
-      .finally(() => { if (current) setLoading(false); });
+    if (initialId) getCell(projectId, initialId).then(cell => { if (current) setSelected(cell); })
+      .catch(reason => { if (current) setError(reason.message); });
     return () => { current = false; };
-  }, [projectId, retry]);
-  const options = choices.some(choice => choice.value === target.value) ? choices : [target, ...choices];
-  let canonical: string | undefined;
-  try { canonical = normalizeGoalRepository(repository); } catch { /* Validation is shown on submission. */ }
+  }, [projectId, initialId]);
+  const choices = new Map(registry.cells.map(cell => [cell.id, cell]));
+  if (selected) choices.set(selected.id, selected);
   const submit = async () => {
     if (pending.current) return;
     pending.current = true;
     try {
       const values = await form.validateFields();
       if (!active.current) return;
-      setSubmitting(true); setSubmitError(undefined);
-      const cell = mode === 'repository' ? normalizeGoalRepository(values.repository || '') : target.cell;
-      const job = await submitJob(projectId, { cell, inputs: { prompt: values.prompt, type: 'build' } });
-      if (active.current) onCreated(job.goal_id!);
-    } catch (error) {
-      if (active.current && error instanceof Error) setSubmitError(error.message);
-    } finally {
-      pending.current = false;
-      if (active.current) setSubmitting(false);
-    }
+      setSubmitting(true); setError(undefined);
+      const payload = JSON.stringify({ mode, ...values });
+      if (attempt.current?.payload !== payload) {
+        let current: CortexCell;
+        if (mode === 'known') {
+          current = await getCell(projectId, values.target!);
+        } else {
+          const input = { name: values.name!, repo: values.repo!.trim() };
+          const cellPayload = JSON.stringify(input);
+          if (registration.current?.payload !== cellPayload) {
+            registration.current = { payload: cellPayload, requestId: createRequestId() };
+          }
+          const creation = registration.current;
+          if (!creation.cell) {
+            creation.cell = await createCell(projectId, { ...input, requestId: creation.requestId });
+            if (active.current) { setRegistered(creation.cell); registry.reload(); }
+          }
+          if (!active.current) return;
+          current = await getCell(projectId, creation.cell.id);
+        }
+        if (current.state !== 'ACTIVE') throw new Error('This cell is retired. Choose an active cell.');
+        if (active.current) setSelected(current);
+        const cell = current.name;
+        const repo = mode === 'new' ? registration.current!.cell!.repo : undefined;
+        attempt.current = { payload, input: { cell, ...(repo ? { repo } : {}), job_id: createRequestId(), inputs: { prompt: values.prompt, type: 'build' } } };
+      }
+      if (!active.current) return;
+      const job = await submitJob(projectId, attempt.current.input);
+      if (active.current) onCreated(job.goal_id);
+    } catch (reason) {
+      if (active.current && reason instanceof Error) setError(reason.message);
+    } finally { pending.current = false; if (active.current) setSubmitting(false); }
   };
-  return <Modal title="New goal" open={open} onCancel={() => { active.current = false; setOpen(false); }} afterClose={onClose} onOk={submit} okText="Create goal" okButtonProps={{ loading: submitting }}>
-    {catalogueError && <Alert type="warning" showIcon message="Could not load known cells" description={<>{catalogueError} <Button onClick={() => setRetry(value => value + 1)}>Retry cells</Button></>} />}
-    {loading && <div role="status"><Spin size="small" /> Loading known cells…</div>}
-    {submitError && <Alert type="error" showIcon message={submitError} />}
-    <Form form={form} layout="vertical" initialValues={{ target: target.value }}>
-      <Form.Item label="Target mode"><Radio.Group value={mode} onChange={event => setMode(event.target.value)} options={[{ label: 'Known cell', value: 'known' }, { label: 'Repository', value: 'repository' }]} /></Form.Item>
-      {mode === 'known' ? <Form.Item label="Cell" name="target" rules={[{ required: true, message: 'Choose a cell' }]}>
-        <Select aria-label="Cell" showSearch optionFilterProp="label" options={options} onChange={value => setTarget(options.find(choice => choice.value === value)!)} />
-      </Form.Item> : <Form.Item label="Repository" name="repository" rules={[{ validator: (_, value) => {
-        try { normalizeGoalRepository(value || ''); return Promise.resolve(); } catch (error) { return Promise.reject(error); }
-      } }]}>
-        <Input aria-label="Repository" placeholder="github/colony-2/name" onChange={event => setRepository(event.target.value)} />
-      </Form.Item>}
-      <Typography.Paragraph className="goal-target-summary" type="secondary">Target: {mode === 'known' ? target.cell || 'This cell (self)' : canonical || 'Enter a repository'}</Typography.Paragraph>
+  return <Modal title="New goal" open={open} onCancel={() => { if (!pending.current) { active.current = false; setOpen(false); } }} afterClose={onClose} onOk={submit} okText="Create goal" confirmLoading={submitting} cancelButtonProps={{ disabled: submitting }} closable={!submitting} maskClosable={!submitting}
+    okButtonProps={{ disabled: mode === 'known' && !!registry.error }}>
+    {registry.error && <Alert type="error" message={registry.error} action={<Button onClick={registry.reload}>Retry cells</Button>} />}
+    {error && <Alert type="error" showIcon message={error} />}
+    {registered && <Alert type="info" message={`Cell “${registered.name}” is registered. If goal submission fails, retry here or choose this cell later.`} />}
+    <Form form={form} disabled={submitting} layout="vertical" initialValues={{ target: initialId }}>
+      <Form.Item label="Target mode"><Radio.Group value={mode} onChange={event => setMode(event.target.value)} options={[{ label: 'Existing cell', value: 'known' }, { label: 'New cell', value: 'new' }]} /></Form.Item>
+      {mode === 'known' ? <>
+        <Form.Item label="Cell" name="target" rules={[{ required: true, message: 'Choose a cell' }]}>
+          <Select aria-label="Cell" showSearch optionFilterProp="label" loading={registry.loading} options={goalTargets([...choices.values()])}
+            onChange={id => setSelected(choices.get(id))} />
+        </Form.Item>
+        {selected && <Typography.Paragraph className="goal-target-summary" type="secondary">{selected.name} · {selected.repo}{selected.state === 'RETIRED' && ' · Retired'}</Typography.Paragraph>}
+      </> : <>
+        <Typography.Paragraph type="secondary">The cell is registered first, then the goal is submitted. The cell remains available if submission fails.</Typography.Paragraph>
+        <Form.Item label="Name" name="name" rules={cellNameRules}><Input /></Form.Item>
+        <Form.Item label="Repository" name="repo" rules={[{ required: true, whitespace: true, message: 'Enter a repository locator' }]}><Input placeholder="github.com/organization/repository" /></Form.Item>
+      </>}
       <Form.Item label="Prompt" name="prompt" rules={[{ required: true, whitespace: true, message: 'Enter a prompt' }]}><Input.TextArea rows={6} /></Form.Item>
     </Form>
   </Modal>;

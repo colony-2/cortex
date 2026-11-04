@@ -1,10 +1,11 @@
+import { jobIdentity, mockCells, cellFixture } from './helpers/cells';
 import { test, expect } from '@playwright/test';
 import { setCellFilter, setStatusFilter } from './helpers/goalList';
 
 test('renders 200 compact rows, expands a full message, and follows empty page cursors without detail requests', async ({ page, context, baseURL }) => {
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
   const completion = '  <script>literal text</script> 雪\n' + 'The stored failure message keeps its whitespace.\n'.repeat(12) + '\tfinal line\n';
-  const jobs = Array.from({ length: 200 }, (_, index) => ({ tenant_id: 'restored', job_id: `job-${index}`,
+  const jobs = Array.from({ length: 200 }, (_, index) => ({ ...jobIdentity, tenant_id: 'restored', job_id: `job-${index}`,
     status: index ? 'READY' : 'COMPLETED', store: index ? 'ACTIVE' : 'ARCHIVED',
     completion_status: index ? undefined : 'future_outcome', completion_detail: index ? undefined : completion,
     client_payload_revision: 5, blocking_wait_summary: { waitId: `wait-${index}` },
@@ -43,7 +44,7 @@ test('renders 200 compact rows, expands a full message, and follows empty page c
 test('renders a single compact row or grouped attempts with metadata and waiting links', async ({ page, context, baseURL }) => {
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
   const created = '2026-10-25T10:00:00Z';
-  const first = { tenant_id: 'goal-layout', job_id: 'first', goal_id: 'shared-goal', prompt: 'Build a reliable release dashboard', recipe: 'build', job_type: 'recipe', cell_name: 'platform', repo: 'https://github.com/example/platform.git', git_ref: 'main', submitted_at: created, created_at: created, store: 'ACTIVE', status: 'READY', next_route: { jobType: 'recipe', taskType: 'input:collect_user_input' }, parent: { job_id: 'coordinator', tenant_id: 'goal-layout' }, execution: { status: 'specified', source: 'yield', published: true, demand: { effective: { memory: '4Gi' } } } };
+  const first = { ...jobIdentity, tenant_id: 'goal-layout', job_id: 'first', goal_id: 'shared-goal', prompt: 'Build a reliable release dashboard', recipe: 'build', job_type: 'recipe', cell_name: 'platform', repo: 'https://github.com/example/platform.git', git_ref: 'main', submitted_at: created, created_at: created, store: 'ACTIVE', status: 'READY', next_route: { jobType: 'recipe', taskType: 'input:collect_user_input' }, parent: { ...jobIdentity, job_id: 'coordinator', tenant_id: 'goal-layout' }, execution: { status: 'specified', source: 'yield', published: true, demand: { effective: { memory: '4Gi' } } } };
   const second = { ...first, job_id: 'second', store: 'ARCHIVED', status: 'COMPLETED', completion_status: 'failed_app', completion_detail: 'sequence node 0 failed: sequence node 2 failed: The deployment check failed' };
   const solo = { ...first, job_id: 'solo', goal_id: 'solo-goal', prompt: 'Wait for deployment approval', status: 'PENDING_JOBS', next_route: undefined, parent: undefined, blocking_wait: { waitId: 'wait', state: 'PENDING', dependencies: [{ target: { goalId: 'dependency' }, condition: 'success', state: 'PENDING' }, { target: { jobId: 'job-dependency' }, condition: 'complete', state: 'PENDING' }] } };
   const compact = (job: any) => {
@@ -115,9 +116,9 @@ test('filters through the jobs API before pagination and restores filters throug
     queries.push(query);
     const cancelled = query.get('displayStatus') === 'CANCELLED';
     const job_id = cancelled ? 'cancelled-on-another-page' : query.has('pageToken') ? 'later-ready' : 'first-ready';
-    return route.fulfill({ json: { jobs: [{ tenant_id: 'filter-test', job_id, prompt: job_id, goal_id: job_id, recipe: 'build', job_type: 'recipe', status: cancelled ? 'CANCELLED' : 'READY', store: cancelled ? 'ARCHIVED' : 'ACTIVE' }], next_page_token: cancelled ? undefined : 'next-page' } });
+    return route.fulfill({ json: { jobs: [{ ...jobIdentity, tenant_id: 'filter-test', job_id, prompt: job_id, goal_id: job_id, recipe: 'build', job_type: 'recipe', status: cancelled ? 'CANCELLED' : 'READY', store: cancelled ? 'ARCHIVED' : 'ACTIVE' }], next_page_token: cancelled ? undefined : 'next-page' } });
   });
-  await page.goto('/project/filter-test/goals?status=READY&pageToken=later-page');
+  await page.goto('/project/filter-test/goals?executionState=cells-v1&status=READY&pageToken=later-page');
   await expect(page.getByRole('link', { name: 'later-ready', exact: true })).toBeVisible();
   await setStatusFilter(page, ['Cancelled']);
   await expect(page.getByRole('link', { name: 'cancelled-on-another-page', exact: true })).toBeVisible();
@@ -143,11 +144,11 @@ test('filters through the jobs API before pagination and restores filters throug
 test('filters by displayed outcomes and combines them with scheduling states', async ({ page, context, baseURL }) => {
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
   const jobs = [
-    { job_id: 'ready', status: 'READY', store: 'ACTIVE', completion_status: 'failed_app' },
-    { job_id: 'succeeded', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'success' },
-    { job_id: 'failed', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'failed_app' },
-    { job_id: 'unavailable', status: 'COMPLETED', store: 'ARCHIVED' },
-    { job_id: 'cancelling', status: 'ACTIVE', store: 'ACTIVE', cancel_requested: true },
+    { ...jobIdentity, job_id: 'ready', status: 'READY', store: 'ACTIVE', completion_status: 'failed_app' },
+    { ...jobIdentity, job_id: 'succeeded', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'success' },
+    { ...jobIdentity, job_id: 'failed', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'failed_app' },
+    { ...jobIdentity, job_id: 'unavailable', status: 'COMPLETED', store: 'ARCHIVED' },
+    { ...jobIdentity, job_id: 'cancelling', status: 'ACTIVE', store: 'ACTIVE', cancel_requested: true },
   ];
   const statusByID: Record<string, string> = { ready: 'READY', succeeded: 'success', failed: 'failed_app', unavailable: 'OUTCOME_UNAVAILABLE', cancelling: 'CANCEL_REQUESTED' };
   const queries: URLSearchParams[] = [];
@@ -183,9 +184,9 @@ test('filters by displayed outcomes and combines them with scheduling states', a
 test('starts with every status checked and supports individual exclusions, none, and all', async ({ page, context, baseURL }) => {
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
   const jobs = [
-    { job_id: 'ready', status: 'READY', store: 'ACTIVE' },
-    { job_id: 'success', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'success' },
-    { job_id: 'future', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'future_outcome' },
+    { ...jobIdentity, job_id: 'ready', status: 'READY', store: 'ACTIVE' },
+    { ...jobIdentity, job_id: 'success', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'success' },
+    { ...jobIdentity, job_id: 'future', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'future_outcome' },
   ];
   const queries: URLSearchParams[] = [];
   await page.route('**/api/projects/status-menu/jobs?*', route => {
@@ -226,22 +227,22 @@ test('starts with every status checked and supports individual exclusions, none,
   await expect(page.getByText('No statuses selected', { exact: true })).toBeVisible();
 });
 
-test('derives cells from returned jobs and combines local cell filtering with status and history', async ({ page, context, baseURL }) => {
+test('uses registry cells and combines backend cell filtering with status and history', async ({ page, context, baseURL }) => {
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
   const jobs = ['alpha', 'beta', 'gamma'].flatMap(cell_name => [
-    { job_id: `${cell_name}-ready`, cell_name, status: 'READY', store: 'ACTIVE' },
-    { job_id: `${cell_name}-success`, cell_name, status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'success' },
+    { ...jobIdentity, job_id: `${cell_name}-ready`, cell_name, status: 'READY', store: 'ACTIVE' },
+    { ...jobIdentity, job_id: `${cell_name}-success`, cell_name, status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'success' },
   ]);
   const queries: URLSearchParams[] = [];
   let catalogReads = 0;
-  await page.route('**/api/projects/cell-filter/cells', route => {
+  await page.route('**/api/projects/cell-filter/cells?*', route => {
     catalogReads++;
-    return route.fulfill({ status: 500, body: 'No local cell configuration' });
+    return route.fulfill({ json: { cells: ['alpha','beta','gamma'].map(name => cellFixture(name, 'cell-filter')) } });
   });
   await page.route('**/api/projects/cell-filter/jobs?*', route => {
     const query = new URL(route.request().url()).searchParams;
     queries.push(query);
-    const cells = query.getAll('cell');
+    const cells = query.getAll('cellNames');
     const statuses = query.getAll('displayStatus');
     return route.fulfill({ json: { jobs: jobs.filter(job => (!cells.length || cells.includes(job.cell_name))
       && (!statuses.length || statuses.includes(job.completion_status || job.status))) } });
@@ -259,14 +260,14 @@ test('derives cells from returned jobs and combines local cell filtering with st
   expect(queries).toHaveLength(1);
   await dropdown.getByRole('button', { name: 'Apply', exact: true }).click();
   await expect(selections).toHaveCount(4);
-  expect(queries).toHaveLength(1); // Cell filtering keeps the loaded page and its cursor.
-  expect(queries.at(-1)?.getAll('cell')).toEqual([]);
-  expect(new URL(page.url()).searchParams.get('pageToken')).toBe('old-page');
+  expect(queries).toHaveLength(2);
+  expect(queries.at(-1)?.getAll('cellNames')).toEqual(['alpha', 'beta']);
+  expect(new URL(page.url()).searchParams.has('pageToken')).toBe(false);
   expect(new URL(page.url()).searchParams.has('sort')).toBe(false);
   await expect(page.getByText('0 selected', { exact: true })).toBeVisible();
   await setStatusFilter(page, ['Succeeded']);
   await expect(selections).toHaveCount(2);
-  expect(queries.at(-1)?.getAll('cell')).toEqual([]);
+  expect(queries.at(-1)?.getAll('cellNames')).toEqual(['alpha', 'beta']);
   expect(queries.at(-1)?.getAll('displayStatus')).toEqual(['success']);
   expect(queries.at(-1)?.has('pageToken')).toBe(false);
   const filteredURL = page.url();
@@ -279,70 +280,41 @@ test('derives cells from returned jobs and combines local cell filtering with st
   expect(new URL(page.url()).searchParams.get('cellSelection')).toBe('none');
   await page.reload();
   await expect(page.getByText('No cells selected', { exact: true })).toBeVisible();
-  expect(queries).toHaveLength(beforeNone + 1); // Reload still loads choices while showing no rows.
+  expect(queries).toHaveLength(beforeNone); // Reload still loads choices while showing no rows.
   // Changing Status must not undo Cell's empty selection, even through an empty page.
   await setStatusFilter(page, []);
   await expect(page.getByText('No statuses selected', { exact: true })).toBeVisible();
   await setStatusFilter(page, null);
   await expect(page.getByText('No cells selected', { exact: true })).toBeVisible();
-  await expect.poll(() => queries.length).toBe(beforeNone + 2);
+  await expect.poll(() => queries.length).toBe(beforeNone);
   await setStatusFilter(page, ['Succeeded']);
   await setCellFilter(page, null);
   await expect(selections).toHaveCount(3);
-  expect(queries.at(-1)?.getAll('cell')).toEqual([]);
+  expect(queries.at(-1)?.getAll('cellNames')).toEqual([]);
   expect(queries.at(-1)?.getAll('displayStatus')).toEqual(['success']);
   await page.goBack();
   await expect(page.getByText('No cells selected', { exact: true })).toBeVisible();
   await page.goto(filteredURL);
   await expect(selections).toHaveCount(2);
-  expect(catalogReads).toBe(0);
+  expect(catalogReads).toBeGreaterThan(0);
   await page.screenshot({ path: '/tmp/cortex-cell-filter.png', fullPage: true });
 });
 
-test('filters missing cell names and refreshes choices from each returned page', async ({ page, context, baseURL }) => {
-  await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
-  const jobs = [undefined, '', ' \n ', 'self', 'platform'].map((cell_name, i) => ({
-    job_id: `job-${i}`, cell_name, status: 'READY', store: 'ACTIVE',
-  }));
-  let reads = 0;
-  await page.route('**/api/projects/unknown-cell/jobs?*', route => {
-    reads++;
-    return route.fulfill({ json: new URL(route.request().url()).searchParams.has('pageToken')
-      ? { jobs: [{ job_id: 'next', cell_name: 'next-cell', status: 'READY', store: 'ACTIVE' }] }
-      : { jobs, next_page_token: 'later' } });
+test('rejects missing required cell fields instead of offering Unknown cell', async ({ page, context, baseURL }) => {
+    await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+    await page.route('**/api/projects/unknown-cell/jobs?*', route => route.fulfill({ json: { jobs: [{ job_id: 'invalid', status: 'READY' }] } }));
+    await page.goto('/project/unknown-cell/goals');
+    await expect(page.getByText(/required cell_id is missing/)).toBeVisible();
+    await expect(page.getByText('Unknown cell', { exact: true })).toHaveCount(0);
   });
-  await page.goto('/project/unknown-cell/goals');
-  const selections = page.getByRole('checkbox', { name: /^Select job / });
-  await expect(selections).toHaveCount(5);
-  await setCellFilter(page, ['Unknown cell']);
-  await expect(selections).toHaveCount(3);
-  expect(new URL(page.url()).searchParams.getAll('cell')).toEqual(['']);
-  expect(reads).toBe(1);
-  await page.reload();
-  await expect(selections).toHaveCount(3);
-  expect(reads).toBe(2);
-  await page.getByRole('button', { name: 'Next jobs', exact: true }).click();
-  await expect.poll(() => reads).toBe(3);
-  await expect(selections).toHaveCount(0);
-  await page.getByRole('button', { name: 'Filter cells', exact: true }).click();
-  const dropdown = page.locator('.ant-table-filter-dropdown:visible');
-  await expect(dropdown.getByRole('checkbox', { name: 'Select Unknown cell', exact: true })).toBeChecked();
-  await expect(dropdown.getByRole('checkbox', { name: 'Select next-cell', exact: true })).not.toBeChecked();
-  await expect(dropdown.getByText('platform', { exact: true })).toHaveCount(0);
-  await dropdown.getByRole('checkbox', { name: 'Select all', exact: true }).check();
-  await dropdown.getByRole('button', { name: 'Apply', exact: true }).click();
-  await expect(selections).toHaveCount(1);
-  await expect(page.getByRole('link', { name: 'Job next: Ready', exact: true })).toBeVisible();
-  expect(reads).toBe(3);
-});
 
 test('searches complete prompts and sorts locally while preserving the view through goal navigation', async ({ page, context, baseURL }) => {
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
   const jobs = [
-    { job_id: 'zeta', goal_id: 'zeta', title: 'Zeta task', prompt: 'Common task for Zeta', created_at: '2026-10-29T08:00:00Z', status: 'READY', store: 'ACTIVE' },
-    { job_id: 'alpha', goal_id: 'alpha', title: 'Alpha task', prompt: `${'Common task with a long preamble. '.repeat(10)}Needle\n  beyond truncation`, created_at: '2026-10-29T09:00:00Z', status: 'READY', store: 'ACTIVE' },
-    { job_id: 'alpha-old', goal_id: 'alpha', prompt: 'Historical requirement for this common task', created_at: '2026-10-28T09:00:00Z', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'failed_app' },
-    { job_id: 'middle', goal_id: 'middle', title: 'Middle task', prompt: 'Common task for Middle', created_at: '2026-10-29T10:00:00Z', status: 'READY', store: 'ACTIVE' },
+    { ...jobIdentity, job_id: 'zeta', goal_id: 'zeta', title: 'Zeta task', prompt: 'Common task for Zeta', created_at: '2026-10-29T08:00:00Z', status: 'READY', store: 'ACTIVE' },
+    { ...jobIdentity, job_id: 'alpha', goal_id: 'alpha', title: 'Alpha task', prompt: `${'Common task with a long preamble. '.repeat(10)}Needle\n  beyond truncation`, created_at: '2026-10-29T09:00:00Z', status: 'READY', store: 'ACTIVE' },
+    { ...jobIdentity, job_id: 'alpha-old', goal_id: 'alpha', prompt: 'Historical requirement for this common task', created_at: '2026-10-28T09:00:00Z', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'failed_app' },
+    { ...jobIdentity, job_id: 'middle', goal_id: 'middle', title: 'Middle task', prompt: 'Common task for Middle', created_at: '2026-10-29T10:00:00Z', status: 'READY', store: 'ACTIVE' },
   ];
   let reads = 0;
   await page.route('**/api/projects/local-search/jobs?*', route => {
@@ -393,22 +365,24 @@ test('searches complete prompts and sorts locally while preserving the view thro
   await expect(header).toHaveAttribute('aria-sort', 'descending');
 });
 
-for (const cellName of [undefined, '', '  \n ', 'self', 'platform']) {
-  test(`shows explicit or unknown cell in Goals and attempts: ${JSON.stringify(cellName)}`, async ({ page, context, baseURL }) => {
+for (const cellName of ['self', 'platform']) {
+  test(`shows canonical cell in Goals and attempts: ${JSON.stringify(cellName)}`, async ({ page, context, baseURL }) => {
     await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
     let detailReads = 0;
     page.on('request', request => { if (/\/jobs\/[^/?]+$/.test(new URL(request.url()).pathname)) detailReads++; });
     await page.route('**/api/projects/cell-label/jobs?*', route => route.fulfill({ json: { jobs: ['first', 'second'].map(job_id => ({
-      tenant_id: 'cell-label', job_id, goal_id: 'goal', prompt: 'Cell identity goal', cell_name: cellName,
+      ...jobIdentity, tenant_id: 'cell-label', job_id, goal_id: 'goal', prompt: 'Cell identity goal', cell_name: cellName,
       status: 'READY', store: 'ACTIVE', recipe: 'build', job_type: 'recipe', created_at: '2026-10-25T10:00:00Z',
     })) } }));
-    await page.route('**/api/projects/cell-label/jobs/first', route => route.fulfill({ json: { job_id: 'first', cell_name: cellName, status: 'READY', store: 'ACTIVE' } }));
+    await page.route('**/api/projects/cell-label/jobs/first', route => route.fulfill({ json: { ...jobIdentity, job_id: 'first', cell_name: cellName, status: 'READY', store: 'ACTIVE' } }));
     await page.goto('/project/cell-label/goals');
-    const label = cellName?.trim() ? cellName : 'Unknown cell';
+    const label = cellName;
     const row = page.getByRole('link', { name: 'Cell identity goal', exact: true }).locator('xpath=ancestor::tr');
-    await expect(row.getByText(label, { exact: true })).toBeVisible();
+    await expect(row.getByRole('cell', { name: label, exact: true })).toBeVisible();
     await row.getByRole('link', { name: 'Goal overview' }).click();
     await expect(page.getByRole('region', { name: 'Attempts' }).getByText(label, { exact: true })).toHaveCount(2);
     await expect.poll(() => detailReads).toBe(1);
   });
 }
+
+test.beforeEach(async ({ page }) => { await mockCells(page, ['platform', 'alpha', 'beta', 'gamma', 'self']); });

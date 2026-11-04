@@ -1,3 +1,5 @@
+import { registerCell } from './helpers/cells';
+import { fixtureGitTransport } from './helpers/gitTransport';
 import { abbreviatePrompt } from '../src/utils/goalPresentation';
 import { setStatusFilter } from './helpers/goalList';
 import { expect, type Page } from '@playwright/test';
@@ -30,6 +32,7 @@ const test = base.extend<{
       await context.addInitScript(() => Object.defineProperty(globalThis.crypto, 'randomUUID', { value: undefined }));
     }
     const tenant = `input-${randomUUID()}`;
+    await registerCell(request, tenant);
     const jobID = `recipe-${randomUUID()}`;
     const repo = mkdtempSync(join(tmpdir(), 'cortex-input-'));
     const workerPath = resolve('../../build/c2j-test-worker');
@@ -42,6 +45,7 @@ const test = base.extend<{
     context.on('page', browserPage => browserPage.on('pageerror', error => errors.push(error.message)));
     page.on('pageerror', error => errors.push(error.message));
 
+    const workerEnv = fixtureGitTransport(repo);
     const startWorker = (targetJobID = jobID) => {
       workerStopped = false;
       const launch = () => {
@@ -50,10 +54,7 @@ const test = base.extend<{
           '--poll-interval', '100ms', '--jobdb', `http://127.0.0.1:18082/${tenant}`,
         ], {
           cwd: repo,
-          env: {
-            ...process.env,
-            GIT_TERMINAL_PROMPT: '0',
-          },
+          env: workerEnv,
           stdio: ['ignore', 'pipe', 'pipe'],
         });
         worker.stdout!.on('data', data => { workerLog += data.toString(); });
@@ -84,7 +85,7 @@ const test = base.extend<{
       if (recipeFixture === 'browser-review-formats') copyFileSync(resolve('tests/fixtures/recipes/browser-document-producer.yaml'), join(repo, '.c2/recipes/producer.yaml'));
       const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { stdio: 'pipe' });
       git('init', '-b', 'main');
-      git('add', '.');
+      git('add', '.c2');
       git('-c', 'user.name=Cortex Browser Test', '-c', 'user.email=browser@example.com', '-c', 'commit.gpgsign=false', 'commit', '-m', 'Input recipe fixture');
       const recipe = `git+${pathToFileURL(repo).href}//.c2/recipes/browser-input.yaml@main`;
 
@@ -101,7 +102,7 @@ const test = base.extend<{
       let externalDocument: unknown;
       if (recipeFixture === 'browser-review-formats') {
         const producerID = `producer-${randomUUID()}`;
-        const producer = await request.post(`/api/projects/${tenant}/jobs`, { data: { job_id: producerID, recipe: `git+${pathToFileURL(repo).href}//.c2/recipes/producer.yaml@main`, repo: pathToFileURL(repo).href } });
+        const producer = await request.post(`/api/projects/${tenant}/jobs`, { data: { job_id: producerID, recipe: `git+${pathToFileURL(repo).href}//.c2/recipes/producer.yaml@main`, cell: 'platform', repo: 'github.com/cortex-test/platform' } });
         expect(producer.status(), await producer.text()).toBe(201);
         startWorker(producerID);
         await expect.poll(async () => {
@@ -112,11 +113,11 @@ const test = base.extend<{
         await stopWorker();
         const mainRecipe = join(repo, '.c2/recipes/browser-input.yaml');
         writeFileSync(mainRecipe, readFileSync(mainRecipe, 'utf8').replace('__EXTERNAL_DOCUMENT__', JSON.stringify(externalDocument)));
-        git('add', '.');
+        git('add', '.c2');
         git('-c', 'user.name=Cortex Browser Test', '-c', 'user.email=browser@example.com', '-c', 'commit.gpgsign=false', 'commit', '-m', 'Bind stored cross-job review fixture');
       }
       const submitted = await request.post(`/api/projects/${tenant}/jobs`, {
-        data: { job_id: jobID, recipe, repo: pathToFileURL(repo).href, ...(review ? { inputs: { prompt: reviewGoalPrompt } } : {}) },
+        data: { job_id: jobID, recipe, cell: 'platform', repo: 'github.com/cortex-test/platform', ...(review ? { inputs: { prompt: reviewGoalPrompt } } : {}) },
       });
       expect(submitted.status(), await submitted.text()).toBe(201);
       startWorker();
@@ -350,7 +351,7 @@ for (const multiField of [false, true]) {
         expect(restartResponse.request().postDataJSON()).toEqual({ scope_id: expectedScope, request_id: expect.any(String), goal: { mode: 'new' }, patch: { job: { browser_note: 'patched' } } });
         const newJobID = (await restartResponse.json()).job_id;
         expect(newJobID).not.toBe(jobID);
-        await expect(page).toHaveURL(new RegExp(`/jobs/${newJobID}/story$`));
+        await expect(page).toHaveURL(new RegExp(`/jobs/${newJobID}/story(?:\\?executionState=cells-v1)?$`));
         startWorker(newJobID);
         await expect(observer.getByText(`Job ID: ${newJobID}`, { exact: true })).toBeVisible();
       }
@@ -455,13 +456,13 @@ for (const clarification of [false, true]) {
       await page.getByRole('button', { name: 'Open navigation' }).click();
       await page.getByRole('link', { name: 'Reviews', exact: true }).click();
       await expect(page.getByText(abbreviatePrompt(job.title || job.prompt), { exact: true })).toBeVisible();
-      await expect(page.getByText(`Cell: ${job.cell_name?.trim() ? job.cell_name : 'Unknown cell'}`, { exact: true })).toBeVisible();
+      await expect(page.getByText(`Cell: ${job.cell_name}`, { exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Open Review', exact: true }).click();
       await page.getByText('Goal context', { exact: true }).click();
       await page.getByText('Review instructions', { exact: true }).click();
       const goalPrompt = page.getByRole('region', { name: 'Goal prompt', exact: true });
       await expect(goalPrompt).toContainText(job.prompt);
-      await expect(page.getByText(job.cell_name?.trim() ? job.cell_name : 'Unknown cell', { exact: true })).toBeVisible();
+      await expect(page.getByText(job.cell_name, { exact: true })).toBeVisible();
       expect(await goalPrompt.evaluate(element => Boolean(element.compareDocumentPosition(
         document.querySelector('[aria-label="Review context"]')!
       ) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
@@ -570,7 +571,7 @@ for (const clarification of [false, true]) {
 
 test.describe('review job metadata', () => {
   test.use({ recipeFixture: 'browser-review' });
-  for (const cellName of [undefined, '', '  \n ', 'self', 'platform']) {
+  for (const cellName of ['self', 'platform']) {
     test(`renders successful cell metadata ${JSON.stringify(cellName)}`, async ({ page, recipeRun }) => {
       const { tenant, jobID, stopWorker } = recipeRun;
       await stopWorker();
@@ -579,7 +580,7 @@ test.describe('review job metadata', () => {
         await route.fulfill({ response, json: { ...await response.json(), cell_name: cellName } });
       });
       await page.goto(`/project/${tenant}/reviews`);
-      const label = cellName?.trim() ? cellName : 'Unknown cell';
+      const label = cellName;
       await expect(page.getByText(`Job ID: ${jobID}`, { exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Open Review' }).click();
       await expect(page.getByText(label, { exact: true })).toBeVisible();

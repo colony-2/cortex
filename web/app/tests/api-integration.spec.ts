@@ -5,14 +5,17 @@ import { mkdtempSync, mkdirSync, copyFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { jobIdentity, registerCell } from './helpers/cells';
+import { fixtureGitTransport } from './helpers/gitTransport';
 
 for (const width of [1440, 390]) {
 test(`confirms cancellation on job details and bulk cancel/delete at ${width}px`, async ({ page, request, context, baseURL }) => {
   await page.setViewportSize({ width, height: 844 });
   const tenant = `actions-${randomUUID()}`;
+  await registerCell(request, tenant);
   const base = `/api/projects/${tenant}/jobs`;
   for (const job_id of ['detail-job', 'bulk-one', 'bulk-two', 'untouched']) {
-    const response = await request.post(base, { data: { job_id, recipe: 'smoke' } });
+    const response = await request.post(base, { data: { cell: 'platform', repo: 'github.com/cortex-test/platform', job_id, recipe: 'smoke' } });
     expect(response.status(), await response.text()).toBe(201);
   }
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
@@ -67,12 +70,15 @@ test(`confirms cancellation on job details and bulk cancel/delete at ${width}px`
 test('creates a prompt-only goal and restores expanded list state through navigation, reload, back and forward', async ({ page, context, baseURL, request }) => {
   const tenant = `goals-${randomUUID()}`;
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+  await request.post(`/api/projects/${tenant}/cells`, { data: { name: 'platform', repo: 'github.com/cortex-test/platform' } });
   await page.goto(`/project/${tenant}/goals`);
   await page.getByRole('button', { name: 'New goal', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByLabel('Recipe')).toHaveCount(0);
   await expect(dialog.getByLabel('Job ID')).toHaveCount(0);
   const prompt = Array.from({ length: 85 }, (_, i) => `word${i}`).join(' ');
+  await dialog.getByRole('combobox', { name: 'Cell' }).click();
+  await page.getByText('platform · github.com/cortex-test/platform', { exact: true }).last().click();
   await dialog.getByLabel('Prompt').fill(prompt);
   const submitted = page.waitForResponse(r => r.url().endsWith(`/projects/${tenant}/jobs`) && r.request().method() === 'POST');
   await dialog.getByRole('button', { name: 'Create goal', exact: true }).click();
@@ -126,7 +132,8 @@ test('creates a prompt-only goal and restores expanded list state through naviga
 });
 
 test('keeps deep-linked tenant, navigation, and live input activity in sync', async ({ page, context, baseURL, request }) => {
-  const tenant = 'browser-deep-link';
+  const tenant = `browser-deep-link-${randomUUID()}`;
+  for (const name of ['platform','api']) await request.post(`/api/projects/${tenant}/cells`, { data: { name, repo: `github.com/cortex-test/${name}` } });
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
   await page.addInitScript(() => localStorage.setItem('cortex:tenantId', 'wrong-tenant'));
   const streamResponse = page.waitForResponse(response => response.url().endsWith(`/projects/${tenant}/user-inputs/stream`));
@@ -136,9 +143,10 @@ test('keeps deep-linked tenant, navigation, and live input activity in sync', as
   expect((await pendingResponse).status()).toBe(200);
   await expect(page.getByLabel('Tenant ID')).toHaveValue(tenant);
   await expect(page).toHaveTitle(`cortex: tenant ${tenant}`);
-  const rows = page.locator('.ant-table-tbody > tr');
+  const rows = page.locator('.ant-table-tbody > tr[data-row-key]');
   await expect(rows).toHaveCount(2);
-  await page.getByPlaceholder('Search cells').fill('platform');
+  await page.getByPlaceholder('Exact name or alias').fill('platform');
+  await page.getByPlaceholder('Exact name or alias').press('Enter');
   await expect(rows).toHaveCount(1);
   await page.getByRole('link', { name: 'Reviews' }).click();
   await expect(page).toHaveURL(new RegExp(`/project/${tenant}/reviews$`));
@@ -174,10 +182,11 @@ test('opens the tenant from the server connection config without a URL override'
 test('downloads persisted job chapters as JSON without changing the story route', async ({ page, request, context, baseURL }, testInfo) => {
   const { readFile } = await import('node:fs/promises');
   const tenant = `chapters-${randomUUID()}`;
+  await registerCell(request, tenant);
   const jobId = 'chapter-export';
   const route = `/project/${tenant}/jobs/${jobId}/story`;
   const submitted = await request.post(`/api/projects/${tenant}/jobs`, {
-    data: { job_id: jobId, recipe: 'smoke', inputs: { message: '雪' } },
+    data: { cell: 'platform', repo: 'github.com/cortex-test/platform', job_id: jobId, recipe: 'smoke', inputs: { message: '雪' } },
   });
   expect(submitted.status(), await submitted.text()).toBe(201);
   let expectedCount = 1;
@@ -257,7 +266,7 @@ test('wraps long job story context without overflowing its header', async ({ pag
   const prompt = 'LongPrompt'.repeat(100) + '\nSecond prompt line';
   const detail = 'LongDiagnostic'.repeat(100) + '\nSecond diagnostic line';
   await page.route('**/api/projects/layout/jobs/layout-job', route => route.fulfill({ json: {
-    tenant_id: 'layout', job_id: 'layout-job', status: 'COMPLETED', store: 'ARCHIVED',
+    ...jobIdentity, tenant_id: 'layout', job_id: 'layout-job', status: 'COMPLETED', store: 'ARCHIVED',
     title, prompt, completion_status: 'failed_app', completion_detail: detail,
   } }));
   await page.route('**/api/projects/layout/jobs/layout-job/story', route => route.fulfill({ json: {
@@ -293,6 +302,7 @@ test('shows persisted prompt and failure on the production story through direct 
   test.skip(testInfo.project.name !== 'production', 'Requires the production JobDB and pinned worker harness');
   test.setTimeout(90_000);
   const tenant = `story-${randomUUID()}`;
+  await registerCell(request, tenant);
   const jobID = `story-${randomUUID()}`;
   const repo = mkdtempSync(join(tmpdir(), 'cortex-story-'));
   const prompt = 'Story prompt <literal> 雪\nSecond prompt line';
@@ -310,11 +320,11 @@ test('shows persisted prompt and failure on the production story through direct 
     git('-c', 'user.name=Cortex Browser Test', '-c', 'user.email=browser@example.com', '-c', 'commit.gpgsign=false', 'commit', '-m', 'Story failure fixture');
     const recipe = `git+${pathToFileURL(repo).href}//.c2/recipes/failure.yaml@main`;
     const base = `/api/projects/${tenant}/jobs`;
-    const submitted = await request.post(base, { data: { job_id: jobID, recipe, repo: pathToFileURL(repo).href, inputs: { prompt } } });
+    const submitted = await request.post(base, { data: { cell: 'platform', repo: 'github.com/cortex-test/platform', job_id: jobID, recipe, inputs: { prompt } } });
     expect(submitted.status(), await submitted.text()).toBe(201);
     worker = spawn(resolve('../../build/c2j-test-worker'), [
       'run', 'one', '--job-id', jobID, '--input-mode', 'ops', '--jobdb', `http://127.0.0.1:18082/${tenant}`,
-    ], { cwd: repo, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    ], { cwd: repo, env: fixtureGitTransport(repo), stdio: ['ignore', 'pipe', 'pipe'] });
     worker.stdout!.on('data', data => { workerLog += data.toString(); });
     worker.stderr!.on('data', data => { workerLog += data.toString(); });
     worker.on('error', error => { workerLog += error.message; });
@@ -354,21 +364,26 @@ test('shows persisted prompt and failure on the production story through direct 
   }
 });
 
-test('creates a repository-targeted goal on a phone through the real API', async ({ page, request, context, baseURL }) => {
+test('registers an ordinary cell named root and creates its goal on a phone', async ({ page, request, context, baseURL }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const tenant = `phone-${randomUUID()}`;
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+  await request.post(`/api/projects/${tenant}/cells`, { data: { name: 'platform', repo: 'github.com/cortex-test/platform' } });
   await page.goto(`/project/${tenant}/goals`);
   await page.getByRole('button', { name: 'New goal', exact: true }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByRole('radio', { name: 'Repository', exact: true }).check();
-  await dialog.getByRole('textbox', { name: 'Repository', exact: true }).fill('github/colony-2/cortex');
+  await dialog.getByRole('radio', { name: 'New cell', exact: true }).check();
+  await dialog.getByLabel('Repository', { exact: true }).fill('github.com/colony-2/cortex');
+  await dialog.getByLabel('Name', { exact: true }).fill('root');
   await dialog.getByLabel('Prompt').fill('Build a phone-friendly dashboard');
   const responsePromise = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith(`/projects/${tenant}/jobs`));
+  const mutations: string[] = [];
+  page.on('request', req => { if (req.method() === 'POST') mutations.push(new URL(req.url()).pathname); });
   await dialog.getByRole('button', { name: 'Create goal', exact: true }).click();
   const response = await responsePromise;
   expect(response.status(), await response.text()).toBe(201);
-  expect(response.request().postDataJSON()).toEqual({ cell: 'https://github.com/colony-2/cortex.git', inputs: { prompt: 'Build a phone-friendly dashboard', type: 'build' } });
+  expect(response.request().postDataJSON()).toEqual({ cell: 'root', repo: 'github.com/colony-2/cortex', job_id: expect.any(String), inputs: { prompt: 'Build a phone-friendly dashboard', type: 'build' } });
+  expect(mutations).toEqual([`/api/projects/${tenant}/cells`, `/api/projects/${tenant}/jobs`]);
   const job = await response.json();
   const stored = await (await request.get(`/api/projects/${tenant}/jobs/${job.job_id}`)).json();
   expect(stored.repo.replace(/\.git$/, '')).toContain('github.com/colony-2/cortex');
@@ -377,3 +392,42 @@ test('creates a repository-targeted goal on a phone through the real API', async
   await expect(page.getByText('Build a phone-friendly dashboard', { exact: true }).first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+for (const width of [1440, 390]) {
+  test(`creates a cell without jobs and links to goals filtered by its stable ID at ${width}px`, async ({ page, request, context, baseURL }) => {
+    const tenant = `cells-${randomUUID()}`;
+    await page.setViewportSize({ width, height: 900 });
+    await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+    await page.goto(`/project/${tenant}/cells`);
+    await page.getByRole('button', { name: 'Create cell', exact: true }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'Create cell' });
+    await dialog.getByLabel('Name', { exact: true }).fill('payments');
+    await dialog.getByLabel('Repository', { exact: true }).fill('https://github.com/acme/payments.git');
+    await dialog.getByLabel('Description').fill('Payments work');
+    await dialog.getByLabel('Metadata (optional JSON object)').fill('{"team":{"members":["one",null]}}');
+    const creation = page.waitForResponse(response => new URL(response.url()).pathname === `/api/projects/${tenant}/cells` && response.request().method() === 'POST');
+    await dialog.getByRole('button', { name: 'Create cell', exact: true }).click();
+    const response = await creation;
+    expect(response.status(), await response.text()).toBe(201);
+    const cell = await response.json();
+    await expect(page).toHaveURL(new RegExp(`/cells/${cell.id}$`));
+    await expect(page.getByText('github.com/acme/payments', { exact: true })).toBeVisible();
+    const emptyJobs = await request.get(`/api/projects/${tenant}/jobs?status=all`);
+    expect(emptyJobs.status(), await emptyJobs.text()).toBe(200);
+    expect((await emptyJobs.json()).jobs).toEqual([]);
+    const base = `/api/projects/${tenant}/jobs`;
+    for (const [name, prompt] of [['payments', 'Payments goal'], ['other', 'Other goal']]) {
+      if (name === 'other') await registerCell(request, tenant, name, `github.com/acme/${name}`);
+      const submitted = await request.post(base, { data: { cell: name, repo: `github.com/acme/${name}`, recipe: 'smoke', inputs: { prompt } } });
+      expect(submitted.status(), await submitted.text()).toBe(201);
+    }
+    await page.getByRole('link', { name: 'Goals for this cell', exact: true }).click();
+    expect(new URL(page.url()).searchParams.getAll('cellId')).toEqual([cell.id]);
+    await expect(page.getByRole('link', { name: 'Payments goal', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Other goal', exact: true })).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole('link', { name: 'Payments goal', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'New goal', exact: true }).click();
+    await expect(page.getByRole('dialog').locator('.ant-select-selection-item')).toHaveText('payments · github.com/acme/payments');
+  });
+}

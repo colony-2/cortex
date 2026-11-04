@@ -1,4 +1,4 @@
-<!-- Sources: README.md; cmd/c2j/internal/cmd/*.go; cmd/c2j/internal/submitjob/options.go; cmd/c2j/internal/runjob/options.go; cmd/c2j/internal/testjob/options.go. -->
+<!-- Sources: README.md; cmd/c2j/internal/cmd/*.go; cmd/c2j/internal/submitjob/options.go; cmd/c2j/internal/submitjob/workspace.go; pkg/workspacesubmit/*.go; pkg/childbroker/workspace.go; cmd/c2j/internal/runjob/options.go; cmd/c2j/internal/testjob/options.go. -->
 
 # Testing And CLI
 
@@ -17,6 +17,53 @@ For ordinary jobs, use `c2j submit "your prompt"` to submit the build recipe. Th
 Build recipes receive `{"prompt":"your prompt","type":"build"}`. Declare both as required strings in `input_schema`, and bind them in root `inputs` when using them in recipe logic. This also applies to explicit selection of the name `build`; custom names, Git selectors, and files have no automatic type injection. For build submissions, a user-provided type must be `"build"`.
 
 Every CLI submission supplies `inputs.prompt`, so custom recipes must declare a string `prompt` in `input_schema`. When omitted from arguments and input data, a terminal prompts interactively; non-terminal stdin produces an error. `c2j test` retains its flags and does not require a prompt unless the recipe's schema does.
+
+Use `execution: {base: 'macos*'}` or scoped `execution_needs` to request a
+provider-defined environment. `--require-base` overrides the job requirement;
+`--execution-base` / `C2J_EXECUTION_BASE` report the actual concrete allocation.
+Matching is case-sensitive over the full name, with only `*` as a wildcard and
+no aliases. Exactly `*` accepts a missing allocation base. Concrete names cannot
+contain stars. Image/platform requirements are legacy-only and cannot be mixed
+with base. See [execution tracking](../../../GUIDE-Execution-Tracking.md).
+
+## Starting From Workspace State
+
+Choose the starting state explicitly; `--self` selects a cell and does not capture
+workspace changes. Without either workspace flag, `submit` uses the target cell's
+configured ref, usually `main`.
+
+- `--from-workspace` reuses the immutable incoming snapshot of the current task
+  invocation's active workspace. It includes prior tasks' persisted changes and
+  excludes commits or edits made during this task. It does not inspect the live
+  worktree. This requires a running c2j task with a workspace-aware broker.
+- `--from-workspace-now` uses current HEAD and file contents. It includes unpublished
+  commits, staged and unstaged tracked changes, deletions, and non-ignored untracked
+  files. It reuses an unchanged incoming snapshot and captures changed contents
+  when needed. A clean worktree with a newer HEAD uses that commit without creating
+  an extra commit. Staging boundaries are not preserved in the submitted snapshot.
+
+```bash
+# Inside a running task: start from the state supplied to that task.
+c2j submit "Review this task's starting state" --from-workspace
+
+# Inside a task or from a local Git worktree: include current changes.
+c2j submit "Continue with these changes" --from-workspace-now
+```
+
+The flags are mutually exclusive and work with default and custom recipes. Outside
+a running task, use `--from-workspace-now`; `--from-workspace` fails because there
+is no task-start snapshot. Inside a task, both modes use its active workspace,
+including a workspace override, rather than inferring it from the CLI's directory.
+An omitted target or `--self` selects that workspace's cell; an explicit `--cell`
+must match its repository and cell identity.
+
+Neither mode pushes changes or changes the submitting worktree, index, HEAD, or
+branch refs. Submitted state stays fixed across later local edits and retries.
+Live capture rejects unresolved merge conflicts and requires a worktree that is
+not being concurrently modified; task-start reuse can proceed despite live edits
+or conflicts. Missing context or snapshots and target mismatches fail without
+falling back to the configured ref. Upgrade the CLI and workers together; the CLI
+checks broker support before submitting with either flag inside a task.
 
 ## Inputs
 
@@ -121,10 +168,10 @@ Use the current cell:
 c2j submit "Run the requested task" --advanced-recipe-file ./recipes/my-recipe.yaml --self --embed
 ```
 
-Use another cell:
+Register the target cell before submission, for example with `c2j cell create root --repo REPO`. Every cell requires explicit creation; `root` is an ordinary name:
 
 ```bash
-c2j submit "Run the requested task" --advanced-recipe-file ./recipes/my-recipe.yaml --cell github.com/colony-2/root --embed
+c2j submit "Run the requested task" --advanced-recipe-file ./recipes/my-recipe.yaml --cell root --embed
 ```
 
 `--self` and `--cell` are mutually exclusive.
@@ -158,3 +205,5 @@ cell-relative files in `calls[].worktree` before each invocation. Absent files
 are absent map keys; regular files up to 64 KiB are included. Compare a resumed
 session input with `calls[].outputs.session` from the intended earlier call;
 checking only the object type does not establish correct checkpoint routing.
+
+`--cell` accepts a name only. `--cell-repo` is a portable hosted repository assertion. Set `self.cell` explicitly in project configuration; see [named cells](https://github.com/colony-2/c2j/blob/main/GUIDE-Named-Cells.md).

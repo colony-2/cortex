@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"github.com/colony-2/colony2/server/internal/testjobdb"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -49,7 +50,7 @@ func TestInputStreamTracksSequentialTasksAndRemoval(t *testing.T) {
 		s.handleInputStream(w, mux.SetURLVars(r, map[string]string{"projectId": "tenant-a"}))
 	}))
 	defer server.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(testjobdb.Context(context.Background()), 10*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
 	if err != nil {

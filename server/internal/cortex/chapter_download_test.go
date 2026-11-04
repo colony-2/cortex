@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/colony-2/colony2/server/internal/testjobdb"
 	"io"
 	"mime"
 	"net/http"
@@ -40,7 +41,7 @@ func TestChapterDownloadRuntimeIntegration(t *testing.T) {
 			var srv *Server
 			var err error
 			if mode == "remote" {
-				backend := httptest.NewServer(remote.NewServer(toy.New()))
+				backend := httptest.NewServer(testjobdb.Handler(remote.NewServer(toy.New())))
 				defer backend.Close()
 				cfg.JobDBURL = backend.URL
 				srv, err = NewRemoteServer(cfg)
@@ -52,9 +53,10 @@ func TestChapterDownloadRuntimeIntegration(t *testing.T) {
 			}
 			api := httptest.NewServer(srv)
 			defer api.Close()
-			ctx := context.Background()
+			ctx := testjobdb.Context(context.Background())
 			for _, tenant := range []string{"a", "b"} {
-				postJSON[map[string]any](t, api.URL+"/api/projects/"+tenant+"/jobs", map[string]any{"job_id": "same", "recipe": "smoke"})
+				postJSON[jobdb.Cell](t, api.URL+"/api/projects/"+tenant+"/cells", map[string]string{"name": "self", "repo": "github.com/acme/boo-self"})
+				postJSON[map[string]any](t, api.URL+"/api/projects/"+tenant+"/jobs", map[string]any{"job_id": "same", "recipe": "smoke", "cell": "self", "repo": "github.com/acme/boo-self"})
 			}
 			path := api.URL + "/api/projects/a/jobs/same/chapters/download"
 			download := func() chapterExport {
@@ -105,7 +107,7 @@ func TestChapterDownloadRuntimeIntegration(t *testing.T) {
 			}
 			defer lease.StopKeepAlive()
 			runtime := srv.engine.(jobdbschema.WorkflowEngine).Registry.(jobdb.WorkflowRuntime)
-			child, err := lease.SubmitJob(ctx, jobdb.SubmitJobRequest{Job: jobdb.SubmitJob{TenantId: "a", JobID: "child", JobType: "child-export-test", Data: jobdb.NewTaskDataOrPanic(map[string]any{"child_only": "excluded"})}, RequestTime: time.Now()})
+			child, err := lease.SubmitJob(ctx, jobdb.SubmitJobRequest{Job: jobdb.SubmitJob{TenantId: "a", Cell: "self", CellRepo: "github.com/acme/boo-self", JobID: "child", JobType: "child-export-test", Data: jobdb.NewTaskDataOrPanic(map[string]any{"child_only": "excluded"})}, RequestTime: time.Now()})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -233,7 +235,7 @@ func TestChapterDownloadFailureAndContext(t *testing.T) {
 		})
 	}
 	calls := 0
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(testjobdb.Context(context.Background()))
 	cancel()
 	s := &Server{chapters: chapterReaderFunc(func(got context.Context, req jobdb.ListChaptersRequest) ([]jobdb.Chapter, error) {
 		calls++

@@ -27,6 +27,9 @@ func spaHandler(dist fs.FS) http.Handler {
 			// FileServer redirects /index.html to ./, which loops on SPA deep links.
 			r.URL.Path = "/"
 		}
+		if name == "index.html" || r.URL.Path == "/" {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
 		files.ServeHTTP(w, r)
 	})
 }

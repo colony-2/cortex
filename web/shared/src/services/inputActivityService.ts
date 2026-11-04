@@ -1,3 +1,4 @@
+import { validateJobCell } from '../cellProtocol';
 import type { RecipeJobSummary } from '../types';
 import { API_BASE } from '../apiBase';
 import { parseJobJSON, stringifyJobJSON } from '../jobJSON';
@@ -157,7 +158,7 @@ export interface FormResponse {
 }
 
 // API response types
-export interface PendingInput extends Partial<RecipeJobSummary> {
+export interface PendingInput extends Partial<Omit<RecipeJobSummary, 'cell_id' | 'cell_name' | 'repo'>>, Pick<RecipeJobSummary, 'cell_id' | 'cell_name' | 'repo'> {
   id: string;
 }
 
@@ -252,6 +253,7 @@ class InputActivityService extends EventEmitter {
           if (this.currentProjectId !== projectId) return;
           this.pendingVersions.set(projectId, (this.pendingVersions.get(projectId) || 0) + 1);
           // A compact revision change may denote a new form on the same job.
+          inputs.forEach(validateJobCell);
           const previous = this.pendingInputsCache.get(projectId) || [];
           const byId = new Map(inputs.map(input => [input.id, input]));
           for (const input of previous) {
@@ -260,7 +262,10 @@ class InputActivityService extends EventEmitter {
           }
           this.pendingInputsCache.set(projectId, inputs);
           this.emit('inputs_changed', { projectId, inputs });
-        } catch (error) { console.error('Failed to parse pending input summaries:', error); }
+        } catch (error) {
+          this.pendingInputsCache.delete(streamTenant);
+          this.emit('inputs_error', { projectId: streamTenant, error });
+        }
       });
 
       this.eventSource.addEventListener('input_pending', (event) => {
@@ -398,6 +403,7 @@ class InputActivityService extends EventEmitter {
       }
 
       const inputs = parseJobJSON(await response.text()) as PendingInput[];
+      inputs.forEach(validateJobCell);
       if ((this.pendingVersions.get(projectId) || 0) !== version) return this.pendingInputsCache.get(projectId) || inputs;
       this.pendingInputsCache.set(projectId, inputs);
       return inputs;

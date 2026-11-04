@@ -10,6 +10,7 @@ import {
   useInputActivity,
 } from '@colony2/shared';
 import CellsList from './components/CellsList';
+import CellPage from './components/CellPage';
 import JobsListPage from './components/JobsListPage';
 import PendingInputsListPage from './components/PendingInputsListPage';
 import InputDetailPage from './components/InputDetailPage';
@@ -89,6 +90,16 @@ function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
     return 'jobs';
   }, [location.pathname]);
 
+  useEffect(() => {
+    const query = new URLSearchParams(location.search);
+    if (query.get('executionState') === 'cells-v1') return;
+    const obsolete = ['cell', 'cellSelection', 'pageToken', 'expanded', 'detail', 'inspect'];
+    if (!obsolete.some(key => query.has(key))) return;
+    obsolete.forEach(key => query.delete(key));
+    query.set('executionState', 'cells-v1');
+    navigate({ pathname: location.pathname, search: query.toString() }, { replace: true, state: null });
+  }, [location.pathname, location.search, navigate]);
+
   if (!authenticated) {
     return <LoginPage onLogin={() => setAuthenticated(true)} />;
   }
@@ -152,7 +163,7 @@ function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
         <Content className="app-content">
           <Routes>
             <Route path="/" element={<Navigate to={`/project/${tenantId}/jobs`} replace />} />
-            <Route path="/jobs" element={<JobsListPage projectId={tenantId} />} />
+            <Route path="/jobs" element={<JobsListPage key={tenantId} projectId={tenantId} />} />
             <Route path="/project/:projectId/jobs" element={<JobsRoute fallbackProjectId={tenantId} />} />
             <Route path="/project/:projectId/goals" element={<JobsRoute fallbackProjectId={tenantId} />} />
             <Route path="/project/:projectId/goals/:goalId" element={<JobsRoute fallbackProjectId={tenantId} />} />
@@ -160,7 +171,8 @@ function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
             <Route path="/reviews" element={<PendingInputsListPage projectId={tenantId} />} />
             <Route path="/project/:projectId/reviews" element={<ReviewsRoute fallbackProjectId={tenantId} />} />
             <Route path="/project/:projectId/reviews/:jobId" element={<InputRoute fallbackProjectId={tenantId} />} />
-            <Route path="/cells" element={<CellsList projectId={tenantId} />} />
+            <Route path="/cells" element={<CellsList key={tenantId} projectId={tenantId} />} />
+            <Route path="/project/:projectId/cells/:cellId" element={<CellRoute fallbackProjectId={tenantId} />} />
             <Route path="/project/:projectId/cells" element={<CellsRoute fallbackProjectId={tenantId} />} />
             <Route path="*" element={<Navigate to={`/project/${tenantId}/jobs`} replace />} />
           </Routes>
@@ -177,7 +189,8 @@ function useRouteProjectId(fallbackProjectId: string): string {
 
 function JobsRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
   const { goalId } = useParams<{ goalId: string }>();
-  return <JobsListPage projectId={useRouteProjectId(fallbackProjectId)} goalId={goalId} />;
+  const projectId = useRouteProjectId(fallbackProjectId);
+  return <JobsListPage key={projectId} projectId={projectId} goalId={goalId} />;
 }
 
 function ReviewsRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
@@ -193,6 +206,12 @@ function InputRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
 function CellsRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
   const projectId = useRouteProjectId(fallbackProjectId);
   return <CellsList key={projectId} projectId={projectId} />;
+}
+
+function CellRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
+  const projectId = useRouteProjectId(fallbackProjectId);
+  const { cellId } = useParams();
+  return <CellPage key={`${projectId}/${cellId}`} projectId={projectId} cellId={cellId!} />;
 }
 
 function StoryRoute({ fallbackProjectId }: { fallbackProjectId: string }) {

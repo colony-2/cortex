@@ -11,6 +11,7 @@ import (
 	"github.com/colony-2/c2j/pkg/story"
 	"github.com/colony-2/c2j/pkg/template/colonycel"
 	workerworkflow "github.com/colony-2/c2j/pkg/worker/workflow"
+	"github.com/colony-2/jobdb/pkg/jobdb"
 	jobworkflow "github.com/colony-2/jobdb/pkg/workflow"
 	"github.com/gorilla/mux"
 )
@@ -26,15 +27,14 @@ func NewServer(cfg Config, engine jobworkflow.Engine) (*Server, error) {
 		return nil, fmt.Errorf("configure recipe story replay: %w", err)
 	}
 
-	cells := &cellCatalog{
-		workingDir:       cfg.WorkingDir,
-		defaultTenantID:  cfg.DefaultTenantID,
-		defaultProjectID: cfg.DefaultTenantID,
+	cells, ok := engine.(jobdb.CellRuntime)
+	if !ok {
+		return nil, fmt.Errorf("cell registry runtime is required")
 	}
-	projects := &tenantProjectService{cells: cells, defaultTenantID: cfg.DefaultTenantID}
+	projects := &tenantProjectService{defaultTenantID: cfg.DefaultTenantID}
 	storySvc, err := story.New(story.ServiceConfig{
-		Engine:             engine,
-		Cells:              cells,
+		Engine: engine,
+
 		Projects:           projects,
 		CELOptionsProvider: colonycel.NewBuilder(colonycel.Options{}),
 	})
@@ -86,7 +86,8 @@ func (s *Server) buildRouter(inputService ops.ManagementService) http.Handler {
 	api.HandleFunc("/projects", s.handleListProjects).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}", s.handleGetProject).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/cells", s.handleListCells).Methods(http.MethodGet, http.MethodOptions)
-	api.HandleFunc("/projects/{projectId}/cells/self", s.handleSelfCell).Methods(http.MethodGet, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/cells", s.handleCreateCell).Methods(http.MethodPost, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/cells/{cellId}", s.handleGetCell).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs", s.handleListJobs).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs", s.handleSubmitJob).Methods(http.MethodPost, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}", s.handleGetJob).Methods(http.MethodGet, http.MethodOptions)

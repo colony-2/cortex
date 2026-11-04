@@ -19,6 +19,8 @@ hash. For op inputs requiring the prepared workspace's hashes, use the execution
 references instead. Reading them does not itself pin the job. Use completed op
 outputs when recipe routing needs concrete hashes.
 
+Before a symbolic workspace is pinned, every task attempt may use a different valid hash, including retries. Use `context.git.execution.base_hash` and `context.git.execution.head_hash` for the actual restored task in op inputs; a prior observation is not a pin. Persisted changes pin the candidate and active base. Explicit rebase advances both, so the diff from the active base to HEAD contains the patch changes rather than incorporated upstream changes.
+
 ## Scoped Workspaces
 
 A node with `workspace` has an independent Git snapshot lineage; descendants inherit it, and the enclosing workspace resumes on exit. `context.git.*` always describes the active workspace. See [workspaces.md](workspaces.md) before passing hashes or thin packs across cell boundaries.
@@ -82,6 +84,16 @@ current base; conflicts and genuinely divergent history fail without discarding
 pending work. See [the op specification](https://github.com/colony-2/c2j/blob/main/pkg/git/thinpackrebase-op-spec.md).
 
 Outputs include `target_base_hash`, `new_base_hash`, `new_persist_hash`, `updated_ref`, `rebased_from`, and `git_context_patch`.
+
+`thinpackrebase` and the separate `rebase` op (operation metadata version 1.1.0)
+emit `failure.code == 'REBASE_CONFLICT'` only for confirmed Git conflicts.
+`failure.attrs.rebase` version 1 carries phase, input hashes, conflict paths/status,
+`workspace_restored`, and a `diagnostics` artifact map. Require restored state
+before automatic repair. Other application errors use `REBASE_FAILED`; native
+cancellation/timeout/system kinds remain intact. Catch and `transition.failure`
+provide the data without reading failed sibling outputs. Recovery restores the
+saved candidate on a fresh worker; it does not continue an active rebase session.
+The composite publication op has a separate failure contract.
 
 ## Standalone `squash`, `rebase`, and `merge`
 

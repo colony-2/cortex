@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/colony-2/colony2/server/internal/testjobdb"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -25,7 +26,7 @@ func TestTenantCellsAndRecipeJobs(t *testing.T) {
 			var srv *Server
 			var err error
 			if mode == "remote" {
-				jobdbServer := httptest.NewServer(remote.NewServer(toy.New()))
+				jobdbServer := httptest.NewServer(testjobdb.Handler(remote.NewServer(toy.New())))
 				t.Cleanup(jobdbServer.Close)
 				cfg.JobDBURL = jobdbServer.URL
 				srv, err = NewRemoteServer(cfg)
@@ -50,16 +51,14 @@ func testTenantCellsAndRecipeJobs(t *testing.T, srv *Server) {
 		t.Fatalf("projects = %#v, want tenant 1", projects)
 	}
 
-	cells := getJSON[[]Cell](t, ts.URL+"/api/projects/42/cells")
-	if len(cells) != 3 {
-		t.Fatalf("cells len = %d, want 3: %#v", len(cells), cells)
-	}
-	if cells[0].Kind != "self" || cells[0].TenantID != "42" || cells[0].Name != "self" {
-		t.Fatalf("self cell = %#v", cells[0])
+	cells := getJSON[jobdb.ListCellsResponse](t, ts.URL+"/api/projects/42/cells")
+	if len(cells.Cells) != 0 {
+		t.Fatalf("config must not populate the registry: %+v", cells)
 	}
 
+	postJSON[jobdb.Cell](t, ts.URL+"/api/projects/42/cells", map[string]string{"name": "alpha", "repo": "github.com/acme/boo-alpha"})
 	submitted := postJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs", map[string]interface{}{
-		"cell":   "alpha",
+		"cell": "alpha", "repo": "github.com/acme/boo-alpha",
 		"recipe": "smoke",
 		"inputs": map[string]interface{}{"x": float64(1)},
 		"job_id": "job-alpha-1",
@@ -79,7 +78,7 @@ func testTenantCellsAndRecipeJobs(t *testing.T, srv *Server) {
 		t.Fatalf("job = %#v", job)
 	}
 
-	list := getJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs?cell=alpha&status=READY")
+	list := getJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs?cellNames=alpha&status=READY")
 	jobs, ok := list["jobs"].([]interface{})
 	if !ok || len(jobs) != 1 {
 		t.Fatalf("list jobs = %#v", list)
@@ -95,8 +94,9 @@ func testTenantCellsAndRecipeJobs(t *testing.T, srv *Server) {
 		t.Fatalf("jobs leaked across tenants: %#v", other)
 	}
 	// Schema registration is tenant-local, including after a prior submission.
+	postJSON[jobdb.Cell](t, ts.URL+"/api/projects/1/cells", map[string]string{"name": "self", "repo": "github.com/acme/boo-self"})
 	postJSON[map[string]interface{}](t, ts.URL+"/api/projects/1/jobs", map[string]interface{}{
-		"recipe": "smoke", "job_id": "job-self-1",
+		"recipe": "smoke", "job_id": "job-self-1", "cell": "self", "repo": "github.com/acme/boo-self",
 	})
 	for _, path := range []string{
 		"/api/projects/1/jobs/job-alpha-1",
@@ -123,7 +123,7 @@ func testTenantCellsAndRecipeJobs(t *testing.T, srv *Server) {
 		doJSON[errorResponse](t, invalidRestart, http.StatusBadRequest)
 	}
 	// Seed a recorded outcome using the runtime API; Cortex itself runs no workers.
-	ctx := context.Background()
+	ctx := testjobdb.Context(context.Background())
 	lease, err := srv.engine.GetJobLease(ctx, jobdb.GetJobLeaseRequest{
 		JobKey:   jobdb.JobKey{TenantId: "42", JobId: "job-alpha-1"},
 		WorkerID: "cortex-test", Routes: []jobdb.Route{{JobType: "recipe"}},
@@ -190,12 +190,12 @@ func testTenantCellsAndRecipeJobs(t *testing.T, srv *Server) {
 	if completed["completion_status"] != "success" || completed["completion_detail"] != "Finished successfully" {
 		t.Fatalf("completion fields missing: %#v", completed)
 	}
-	all := getJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs?cell=alpha&status=all")
+	all := getJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs?cellNames=alpha&status=all")
 	allJobs := all["jobs"].([]interface{})
 	if len(allJobs) != 1 || allJobs[0].(map[string]interface{})["completion_status"] != "success" {
 		t.Fatalf("all statuses must include completion data for archived jobs: %#v", all)
 	}
-	active := getJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs?cell=alpha&status=READY")
+	active := getJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs?cellNames=alpha&status=READY")
 	if len(active["jobs"].([]interface{})) != 0 {
 		t.Fatalf("ready filter included archived job: %#v", active)
 	}
@@ -248,10 +248,11 @@ dependents:
   - github.com/acme/boo-alpha
   - github.com/acme/boo-beta
 self:
+  cell: self
   repo: github.com/acme/boo-self
   ref: release
 root:
-  repo: root
+  repo: github.com/acme/root
 `
 	if err := os.WriteFile(configPath, []byte(configYAML), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -299,56 +300,4 @@ func doJSON[T any](t *testing.T, req *http.Request, wantStatus int) T {
 		t.Fatalf("Decode(): %v", err)
 	}
 	return out
-}
-
-// Exercise the existing submission contract independently of browser mocks.
-func TestGoalTargetResolution(t *testing.T) {
-	for _, mode := range []string{"toy", "remote"} {
-		t.Run(mode, func(t *testing.T) {
-			cfg := Config{WorkingDir: writeC2JConfig(t), DefaultTenantID: "1"}
-			var srv *Server
-			var err error
-			if mode == "remote" {
-				backend := httptest.NewServer(remote.NewServer(toy.New()))
-				t.Cleanup(backend.Close)
-				cfg.JobDBURL = backend.URL
-				srv, err = NewRemoteServer(cfg)
-			} else {
-				srv, err = NewUITestServer(cfg)
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			api := httptest.NewServer(srv)
-			t.Cleanup(api.Close)
-			cells := getJSON[[]Cell](t, api.URL+"/api/projects/targets/cells")
-			for i, target := range []struct{ cell, repo string }{
-				{"alpha", cells[1].RepositorySource},
-				{cells[1].RepositorySource, cells[1].RepositorySource},
-				{"", cells[0].RepositorySource},
-			} {
-				job := postJSON[map[string]interface{}](t, api.URL+"/api/projects/targets/jobs", map[string]interface{}{
-					"cell": target.cell, "recipe": "build", "inputs": map[string]interface{}{"prompt": "Build a tool", "type": "build"},
-				})
-				stored := getJSON[map[string]interface{}](t, api.URL+"/api/projects/targets/jobs/"+job["job_id"].(string))
-				if stored["repo"] != target.repo || stored["tenant_id"] != "targets" || stored["prompt"] != "Build a tool" {
-					t.Fatalf("target %d resolved incorrectly: %#v", i, stored)
-				}
-			}
-			before := getJSON[map[string]interface{}](t, api.URL+"/api/projects/targets/jobs?status=all")
-			response, err := http.Post(api.URL+"/api/projects/targets/jobs", "application/json", bytes.NewBufferString(`{"cell":"git+https://github.com/colony-2/cortex.git//recipes/build.yaml@main","inputs":{"prompt":"invalid","type":"build"}}`))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer response.Body.Close()
-			if response.StatusCode != http.StatusBadRequest {
-				body, _ := io.ReadAll(response.Body)
-				t.Fatalf("invalid target: status %d: %s", response.StatusCode, body)
-			}
-			after := getJSON[map[string]interface{}](t, api.URL+"/api/projects/targets/jobs?status=all")
-			if len(before["jobs"].([]interface{})) != len(after["jobs"].([]interface{})) {
-				t.Fatal("invalid target created a job")
-			}
-		})
-	}
 }

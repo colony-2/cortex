@@ -5,7 +5,7 @@ new decomponentized model:
 
 - projects in routes are JobDB tenant IDs, defaulting to the tenant in the configured JobDB URI
 - jobs are the primary work item
-- cells are the current cell plus c2j-discovered dependents
+- cells are tenant-scoped JobDB registry records with stable generated IDs
 - pending inputs are job input requests
 
 Do not reintroduce removed legacy work-item screens, recipe management screens,
@@ -38,5 +38,6 @@ Primary routes:
 - `/project/:projectId/jobs/:jobId/story`
 - `/project/:projectId/reviews`
 - `/project/:projectId/cells`
+- `/project/:projectId/cells/:cellId`
 
 Use `@colony2/shared` for API calls and input activity state.

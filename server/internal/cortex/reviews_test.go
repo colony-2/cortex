@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/colony-2/colony2/server/internal/testjobdb"
 	"mime/multipart"
 	"net/http/httptest"
 	"strings"
@@ -139,7 +140,7 @@ func TestReviewHTTPAdapters(t *testing.T) {
 		if w.Code != 200 || !ok || runtime.actor.ID != "reviewer@example.com" || runtime.actor.Kind != "human" || runtime.tenant != "tenant-a" {
 			t.Fatalf("%d %s submission=%+v actor=%+v", w.Code, w.Body.String(), runtime.submission, runtime.actor)
 		}
-		data, err := attachment.Bytes(context.Background())
+		data, err := attachment.Bytes(testjobdb.Context(context.Background()))
 		if err != nil || string(data) != "# Annotation" {
 			t.Fatalf("%s %v", data, err)
 		}

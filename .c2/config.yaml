@@ -20,6 +20,7 @@ packages:
 # Playwright uses Chromium and FFmpeg from PATH; no browser download or apt setup.
 
 self:
+  cell: cortex
   repo: https://github.com/colony-2/cortex.git
 
 root:

@@ -1,123 +1,54 @@
-import { useCompact } from '../hooks/useCompact';
-import { useEffect, useMemo, useState } from 'react';
-import { Card, Empty, Input, Space, Spin, Table, Tag, Typography, message } from 'antd';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Alert, Button, Card, Empty, Input, Select, Space, Table, Tag, Typography } from 'antd';
 import { listCells } from '@colony2/shared/api';
-import type { CortexCell } from '@colony2/shared/types';
+import type { CortexCell, ListCellsOptions } from '@colony2/shared/types';
+import { useCompact } from '../hooks/useCompact';
+import { cellGoalsPath, cellPath } from '../utils/goalTarget';
+import CreateCellDialog from './CreateCellDialog';
 
-interface CellsListProps {
-  projectId: string;
-}
-
-const { Text, Title } = Typography;
-
-export default function CellsList({ projectId }: CellsListProps) {
+export default function CellsList({ projectId }: { projectId: string }) {
   const compact = useCompact();
+  const navigate = useNavigate();
   const [cells, setCells] = useState<CortexCell[]>([]);
+  const [options, setOptions] = useState<ListCellsOptions>({ state: 'ACTIVE' });
+  const [nextPage, setNextPage] = useState<string>();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-
+  const [error, setError] = useState<string>();
+  const [revision, setRevision] = useState(0);
+  const [creating, setCreating] = useState(false);
   useEffect(() => {
     let current = true;
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await listCells(projectId);
-        if (current) setCells(result);
-      } catch (err) {
-        if (!current) return;
-        console.error('Failed to load cells', err);
-        const messageText = err instanceof Error ? err.message : 'Failed to load cells';
-        setError(messageText);
-        message.error(messageText);
-      } finally {
-        if (current) setLoading(false);
-      }
-    };
-
-    setCells([]);
-    if (projectId) {
-      load();
-    }
+    setLoading(true); setError(undefined); setCells([]); setNextPage(undefined);
+    listCells(projectId, { ...options, pageSize: 50 }).then(page => {
+      if (current) { setCells(page.cells); setNextPage(page.nextPageToken); }
+    }).catch(reason => { if (current) setError(reason.message); }).finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
-  }, [projectId]);
-
-  const filteredCells = useMemo(() => {
-    if (!search) return cells;
-    const needle = search.toLowerCase();
-    return cells.filter(
-      (cell) =>
-        cell.name.toLowerCase().includes(needle) ||
-        cell.repository_source.toLowerCase().includes(needle) ||
-        cell.kind.toLowerCase().includes(needle),
-    );
-  }, [cells, search]);
-
-  return (
-    <div className="app-page" style={{ padding: 24 }}>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <div className="goal-toolbar">
-          <div>
-            <Title level={3} style={{ margin: 0 }}>
-              Cells
-            </Title>
-            <Text type="secondary">This cell and its c2j-discovered dependents</Text>
-          </div>
-          <Input.Search
-            placeholder="Search cells"
-            allowClear
-            onSearch={setSearch}
-            onChange={(event) => setSearch(event.target.value)}
-            style={{ width: 320, maxWidth: '100%' }}
-          />
-        </div>
-
-        {loading ? (
-          <div style={{ minHeight: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Spin size="large" />
-          </div>
-        ) : error ? (
-          <Empty description={error} />
-        ) : compact ? <div className="compact-cards" aria-label="Cells">{filteredCells.map(cell => <Card key={cell.id} size="small">
-          <Text strong>{cell.name}</Text> <Tag>{cell.kind}</Tag>
-          <p>Repository: <Text code>{cell.repository_source}</Text></p><Text>Ref: {cell.git_ref || '—'}</Text>
-        </Card>)}{!filteredCells.length && <Empty description="No cells found" />}</div> : (
-          <Table
-            rowKey="id"
-            dataSource={filteredCells}
-            pagination={false}
-            locale={{ emptyText: 'No cells found' }}
-            columns={[
-              {
-                title: 'Name',
-                dataIndex: 'name',
-                key: 'name',
-                width: 180,
-                render: (name: string, cell: CortexCell) => (
-                  <Space>
-                    <Text strong>{name}</Text>
-                    <Tag color={cell.kind === 'self' ? 'blue' : 'default'}>{cell.kind}</Tag>
-                  </Space>
-                ),
-              },
-              {
-                title: 'Repository',
-                dataIndex: 'repository_source',
-                key: 'repository_source',
-                render: (repo: string) => <Text code>{repo}</Text>,
-              },
-              {
-                title: 'Ref',
-                dataIndex: 'git_ref',
-                key: 'git_ref',
-                width: 140,
-                render: (ref?: string) => ref || <Text type="secondary">-</Text>,
-              },
-            ]}
-          />
-        )}
-      </Space>
-    </div>
-  );
+  }, [projectId, options, revision]);
+  const change = (filter: Partial<ListCellsOptions>) => setOptions(previous => ({ ...previous, ...filter, pageToken: undefined }));
+  const links = (cell: CortexCell) => <Link className="compact-touch-link" to={cellGoalsPath(projectId, cell.id)}>Goals for this cell</Link>;
+  return <div className="app-page" style={{ padding: 24 }}><Space direction="vertical" size="large" style={{ width: '100%' }}>
+    <div className="goal-toolbar"><div><Typography.Title level={3}>Cells</Typography.Title><Typography.Text type="secondary">Registered cells in this tenant</Typography.Text></div>
+      <Button type="primary" onClick={() => setCreating(true)}>Create cell</Button></div>
+    <Space wrap>
+      <Input.Search aria-label="Find cell by name" placeholder="Exact name or alias" allowClear onSearch={name => change({ name: name.trim() })} />
+      <Select aria-label="Cell state" value={options.state} onChange={state => change({ state })} options={[
+        { value: 'ACTIVE', label: 'Active' }, { value: 'RETIRED', label: 'Retired' }, { value: 'ALL', label: 'All states' },
+      ]} />
+      <Button onClick={() => setRevision(value => value + 1)}>Refresh</Button>
+    </Space>
+    {error && <Alert type="error" showIcon message={error} action={<Button onClick={() => setRevision(value => value + 1)}>Retry cells</Button>} />}
+    {compact ? <div className="compact-cards" aria-label="Cells" aria-busy={loading}>{cells.map(cell => <Card key={cell.id} size="small">
+      <Link to={cellPath(projectId, cell.id)}>{cell.name}</Link>  <Tag>{cell.state}</Tag>
+      <p>{cell.description}</p><p><Typography.Text code>{cell.repo}</Typography.Text></p>{links(cell)}
+    </Card>)}{!cells.length && !loading && <Empty description="No cells found"><Button onClick={() => setCreating(true)}>Create cell</Button></Empty>}</div>
+      : <Table rowKey="id" dataSource={cells} loading={loading} pagination={false} scroll={{ x: 700 }} locale={{ emptyText: 'No cells found' }} columns={[
+        { title: 'Name', key: 'name', render: (_, cell) => <Space><Link to={cellPath(projectId, cell.id)}>{cell.name}</Link></Space> },
+        { title: 'State', dataIndex: 'state' }, { title: 'Repository', dataIndex: 'repo' }, { title: 'Description', dataIndex: 'description' },
+        { title: 'Goals', key: 'goals', render: (_, cell) => links(cell) },
+      ]} />}
+    <Space>{options.pageToken && <Button onClick={() => change({})}>First page</Button>}{nextPage && <Button disabled={loading} onClick={() => setOptions(previous => ({ ...previous, pageToken: nextPage }))}>Next cells</Button>}</Space>
+  </Space>{creating && <CreateCellDialog projectId={projectId} onClose={() => setCreating(false)} onCreated={cell => {
+    setCreating(false); navigate(cellPath(projectId, cell.id));
+  }} />}</div>;
 }

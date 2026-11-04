@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/colony-2/colony2/server/internal/testjobdb"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -29,8 +30,9 @@ func compactJobs(count int) []jobdb.JobSummary {
 	jobs := make([]jobdb.JobSummary, count)
 	for i := range jobs {
 		jobs[i] = jobdb.JobSummary{JobKey: jobdb.JobKey{TenantId: "tenant", JobId: fmt.Sprint(i)},
+			Cell: "platform", CellID: "cell-platform", CellRepo: "github.com/acme/platform",
 			JobType: "recipe", Status: jobdb.JobStatusReady, ClientPayloadRevision: 8,
-			Metadata:  json.RawMessage(`{"cell_name":"platform","prompt":"Build it"}`),
+			Metadata:  json.RawMessage(`{"prompt":"Build it"}`),
 			NextRoute: &jobdb.Route{JobType: "recipe", TaskType: "input:collect_user_input"},
 		}
 	}
@@ -68,7 +70,7 @@ func TestPendingSummariesTraversePagesWithoutInspection(t *testing.T) {
 		"empty": {NextPageToken: "last"}, "last": {Jobs: compactJobs(1)},
 	}}
 	s := &Server{engine: engine}
-	inputs, err := s.pendingInputSummaries(context.Background(), "tenant")
+	inputs, err := s.pendingInputSummaries(testjobdb.Context(context.Background()), "tenant")
 	if err != nil || len(inputs) != 201 || len(engine.requests) != 3 {
 		t.Fatalf("inputs=%d calls=%d err=%v", len(inputs), len(engine.requests), err)
 	}

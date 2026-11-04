@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
-import { getJob } from '@colony2/shared/api';
+import { jobIdentity, registryCell } from '../test/cellFixtures';
+import { getCell, listCells, getJob } from '@colony2/shared/api';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -13,15 +14,17 @@ vi.mock('@colony2/shared', async (importOriginal) => ({
 }));
 vi.mock('@colony2/shared/api', async (importOriginal) => ({
   ...await importOriginal<typeof import('@colony2/shared/api')>(),
-  getJob: vi.fn().mockResolvedValue({ goal_id: 'goal' }),
+  listCells: vi.fn(), getCell: vi.fn(),
+  getJob: vi.fn().mockResolvedValue({ ...jobIdentity, goal_id: 'goal' }),
 }));
 vi.mock('react-json-view', () => ({ default: ({ src }: { src: unknown }) => <pre>{JSON.stringify(src)}</pre> }));
 
-beforeEach(() => { vi.mocked(getJob).mockReset().mockResolvedValue({ goal_id: 'goal', job_id: 'job', status: 'READY', store: 'ACTIVE' } as RecipeJob); });
+beforeEach(() => { vi.mocked(listCells).mockResolvedValue({ cells: ['platform', 'app', 'alpha', 'zeta', 'middle'].map(name => registryCell(name)) });
+ vi.mocked(getCell).mockImplementation(async (tenant, id) => registryCell(id.replace(/^cell-/, ''), tenant)); vi.mocked(getJob).mockReset().mockResolvedValue({ ...jobIdentity, goal_id: 'goal', job_id: 'job', status: 'READY', store: 'ACTIVE' } as RecipeJob); });
 afterEach(() => vi.unstubAllGlobals());
 
 it.each(['cancel', 'delete'] as const)('confirms selected jobs and keeps failed %s operations available for retry', async action => {
-  const jobs = ['first', 'second', 'unselected'].map(job_id => ({ job_id, status: 'READY', store: 'ACTIVE' }));
+  const jobs = ['first', 'second', 'unselected'].map(job_id => ({ ...jobIdentity, job_id, status: 'READY', store: 'ACTIVE' }));
   const changes: string[] = [];
   let failSecond = true;
   vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
@@ -60,7 +63,7 @@ it.each(['cancel', 'delete'] as const)('confirms selected jobs and keeps failed 
 });
 
 it('clears job selections when switching tenants', async () => {
-  vi.stubGlobal('fetch', vi.fn(async (input: string) => (new Response(JSON.stringify(input.includes('/cells') ? [] : { jobs: [{ job_id: 'same-id', status: 'READY', store: 'ACTIVE' }] })))));
+  vi.stubGlobal('fetch', vi.fn(async (input: string) => (new Response(JSON.stringify(input.includes('/cells') ? [] : { jobs: [{ ...jobIdentity, job_id: 'same-id', status: 'READY', store: 'ACTIVE' }] })))));
   const { rerender } = render(<MemoryRouter><JobsListPage projectId="first-tenant" /></MemoryRouter>);
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Select job same-id' }));
   expect(screen.getByText('1 selected')).toBeVisible();
@@ -71,16 +74,16 @@ it('clears job selections when switching tenants', async () => {
 
 it('shows restored fields immediately and inspects only after expansion', async () => {
   const job: RecipeJob = {
-    tenant_id: 'tenant', job_id: 'failed-job', job_type: 'recipe', recipe: 'build',
+    ...jobIdentity, tenant_id: 'tenant', job_id: 'failed-job', job_type: 'recipe', recipe: 'build',
     status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'failed_system',
     completion_detail: 'Container failed: missing temporary directory',
     created_at: '2026-10-04T01:00:00Z', available_at: '2026-10-04T01:00:00Z',
     archived_at: '2026-10-04T02:00:00Z',
-    parent: { job_id: 'parent-job', tenant_id: 'parent-tenant' },
+    parent: { ...jobIdentity, job_id: 'parent-job', tenant_id: 'parent-tenant' },
     wait_for: ['dependency-job'],
     task_wait: { inputOrdinal: 0, outputOrdinal: 12, inputHash: 'hash', resumeJobType: 'recipe' },
     client_payload: { example: 'saved payload' },
-    execution: { status: 'not_waiting', source: 'unavailable', published: false },
+    execution: { ...jobIdentity, status: 'not_waiting', source: 'unavailable', published: false },
   };
   const fetch = vi.fn(async (input: string) => {
     const url = new URL(input, 'http://localhost');
@@ -98,7 +101,7 @@ it('shows restored fields immediately and inspects only after expansion', async 
   const row = screen.getByRole('link', { name: 'Job failed-job: Failed (system)' }).closest('tr')!;
   fireEvent.click(within(row).getByRole('button', { name: 'Expand row' }));
   expect(await screen.findByRole('link', { name: 'View parent execution' })).toHaveAttribute('href', '/project/parent-tenant/jobs/parent-job/story');
-  expect(screen.getByRole('link', { name: 'Dependency 1' })).toHaveAttribute('href', '/project/tenant/jobs/dependency-job/story?expanded=job%3Afailed-job');
+  expect(screen.getByRole('link', { name: 'Dependency 1' })).toHaveAttribute('href', '/project/tenant/jobs/dependency-job/story?executionState=cells-v1&expanded=job%3Afailed-job');
   fireEvent.click(screen.getByText('Technical details'));
   expect(screen.getByText('Task input ordinal')).toBeVisible();
   expect(screen.getByText('0')).toBeVisible();
@@ -116,16 +119,16 @@ function Location() {
   return <output data-testid="location">{location.pathname}{location.search}</output>;
 }
 
-it.each(['', '?status=ACTIVE&status=READY&cell=platform', '?status=success&status=failed_app&status=CANCEL_REQUESTED&cell=platform', '?status=READY&cell=platform&cell=app', '?q=search+term&sort=submitted&order=descend'])('preserves list filters through story navigation: %s', async (query) => {
+it.each(['', '?status=ACTIVE&status=READY&cellId=cell-platform', '?status=success&status=failed_app&status=CANCEL_REQUESTED&cellId=cell-platform', '?status=READY&cellId=cell-platform&cellId=cell-app', '?q=search+term&sort=submitted&order=descend'])('preserves list filters through story navigation: %s', async (query) => {
   const listReads: URL[] = [];
   vi.stubGlobal('fetch', vi.fn(async (input: string) => {
     const url = new URL(input, 'http://localhost');
     let data: unknown;
     if (url.pathname.endsWith('/story')) {
-      data = { job_id: 'job', status: 'completed', root: { id: 'root', kind: 'recipe', title: 'recipe build', status: 'succeeded', path: [] } };
+      data = { ...jobIdentity, job_id: 'job', status: 'completed', root: { id: 'root', kind: 'recipe', title: 'recipe build', status: 'succeeded', path: [] } };
     } else if (url.pathname.endsWith('/jobs')) {
       listReads.push(url);
-      data = { jobs: [{ job_id: 'job', prompt: 'Search term in the full prompt', cell_name: 'platform', status: 'READY', recipe: 'build', store: 'ACTIVE' }] };
+      data = { jobs: [{ ...jobIdentity, job_id: 'job', prompt: 'Search term in the full prompt', cell_name: 'platform', status: 'READY', recipe: 'build', store: 'ACTIVE' }] };
     } else data = [];
     return new Response(JSON.stringify(data));
   }));
@@ -137,7 +140,7 @@ it.each(['', '?status=ACTIVE&status=READY&cell=platform', '?status=success&statu
     </Routes>
   </MemoryRouter>);
   const link = await screen.findByRole('link', { name: 'Job job: Ready', exact: true });
-  expect(link).toHaveAttribute('href', `/project/tenant/jobs/job/story${query}`);
+  expect(link).toHaveAttribute('href', `/project/tenant/jobs/job/story?executionState=cells-v1${query ? '&' + query.slice(1) : ''}`);
   fireEvent.click(link);
   await screen.findByText('Run Summary');
   fireEvent.click(screen.getByRole('button', { name: /Back to Goals/ }));
@@ -156,10 +159,10 @@ it.each(['', '?status=ACTIVE&status=READY&cell=platform', '?status=success&statu
 
 it('searches full prompts across attempts without fetching and clears hidden selections', async () => {
   const jobs = [
-    { job_id: 'new', goal_id: 'grouped', title: 'Short title', prompt: `${'Long preamble '.repeat(12)}deep\n  needle`, status: 'READY', store: 'ACTIVE', created_at: '2026-10-29T12:00:00Z' },
-    { job_id: 'old', goal_id: 'grouped', prompt: 'Earlier attempt contains an older requirement', status: 'COMPLETED', completion_status: 'failed_app', store: 'ARCHIVED', created_at: '2026-10-28T12:00:00Z' },
-    { job_id: 'unrelated', prompt: 'Different work', status: 'READY', store: 'ACTIVE' },
-    { job_id: 'missing', status: 'READY', store: 'ACTIVE' },
+    { ...jobIdentity, job_id: 'new', goal_id: 'grouped', title: 'Short title', prompt: `${'Long preamble '.repeat(12)}deep\n  needle`, status: 'READY', store: 'ACTIVE', created_at: '2026-10-29T12:00:00Z' },
+    { ...jobIdentity, job_id: 'old', goal_id: 'grouped', prompt: 'Earlier attempt contains an older requirement', status: 'COMPLETED', completion_status: 'failed_app', store: 'ARCHIVED', created_at: '2026-10-28T12:00:00Z' },
+    { ...jobIdentity, job_id: 'unrelated', prompt: 'Different work', status: 'READY', store: 'ACTIVE' },
+    { ...jobIdentity, job_id: 'missing', status: 'READY', store: 'ACTIVE' },
   ];
   const fetch = vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs })));
   vi.stubGlobal('fetch', fetch);
@@ -194,9 +197,9 @@ it('searches full prompts across attempts without fetching and clears hidden sel
 
 it('sorts goal, status, cell, and submission columns locally in both directions', async () => {
   const jobs = [
-    { job_id: 'z', title: 'Zebra', status: 'READY', store: 'ACTIVE', cell_name: 'alpha', submitted_at: '2026-10-29T08:00:00Z', created_at: '2026-10-30T00:00:00Z' },
-    { job_id: 'a', title: 'Alpha', status: 'COMPLETED', completion_status: 'success', store: 'ARCHIVED', cell_name: 'zeta', created_at: '2026-10-29T09:00:00Z' },
-    { job_id: 'm', title: 'Middle', status: 'COMPLETED', completion_status: 'failed_app', store: 'ARCHIVED', cell_name: 'middle', created_at: '2026-10-29T10:00:00Z' },
+    { ...jobIdentity, job_id: 'z', title: 'Zebra', status: 'READY', store: 'ACTIVE', cell_name: 'alpha', submitted_at: '2026-10-29T08:00:00Z', created_at: '2026-10-30T00:00:00Z' },
+    { ...jobIdentity, job_id: 'a', title: 'Alpha', status: 'COMPLETED', completion_status: 'success', store: 'ARCHIVED', cell_name: 'zeta', created_at: '2026-10-29T09:00:00Z' },
+    { ...jobIdentity, job_id: 'm', title: 'Middle', status: 'COMPLETED', completion_status: 'failed_app', store: 'ARCHIVED', cell_name: 'middle', created_at: '2026-10-29T10:00:00Z' },
   ];
   const fetch = vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs })));
   vi.stubGlobal('fetch', fetch);
@@ -229,7 +232,7 @@ it('starts status checkboxes selected and distinguishes selecting none from sele
     const url = new URL(input);
     if (url.pathname.endsWith('/cells')) return new Response('[]');
     reads.push(url);
-    return new Response(JSON.stringify({ jobs: [{ job_id: 'job', status: 'READY', store: 'ACTIVE' }] }));
+    return new Response(JSON.stringify({ jobs: [{ ...jobIdentity, job_id: 'job', status: 'READY', store: 'ACTIVE' }] }));
   }));
   render(<MemoryRouter><Location /><JobsListPage projectId="tenant" /></MemoryRouter>);
   await screen.findByRole('link', { name: 'Job job: Ready', exact: true });
@@ -260,9 +263,9 @@ function GoalRoute() {
 
 it('groups attempts and restores expanded details through goal navigation and browser back/forward with selected detail queries', async () => {
   const jobs: Partial<RecipeJob>[] = [
-    { job_id: 'first', goal_id: 'goal-a', prompt: 'Build a useful feature', status: 'READY', store: 'ACTIVE', cell_name: 'platform', execution: { status: 'specified', source: 'yield', published: true, demand: { effective: { cpu: 4 } } } },
-    { job_id: 'second', goal_id: 'goal-a', prompt: 'Build a useful feature', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'failed_app' },
-    { job_id: 'single', goal_id: 'goal-b', status: 'READY', store: 'ACTIVE' },
+    { ...jobIdentity, job_id: 'first', goal_id: 'goal-a', prompt: 'Build a useful feature', status: 'READY', store: 'ACTIVE', cell_name: 'platform', execution: { ...jobIdentity, status: 'specified', source: 'yield', published: true, demand: { effective: { cpu: 4 } } } },
+    { ...jobIdentity, job_id: 'second', goal_id: 'goal-a', prompt: 'Build a useful feature', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'failed_app' },
+    { ...jobIdentity, job_id: 'single', goal_id: 'goal-b', status: 'READY', store: 'ACTIVE' },
   ];
   const fetch = vi.fn(async (input: string) => {
     const url = new URL(input, 'http://localhost');
@@ -302,15 +305,15 @@ it('groups attempts and restores expanded details through goal navigation and br
 
 it('uses compact wait indicators until dependency targets are inspected', async () => {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => (new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs: [
-    { job_id: 'review', goal_id: 'g1', status: 'READY', store: 'ACTIVE', next_route: { jobType: 'recipe', taskType: 'input:collect_user_input' } },
-    { job_id: 'waiting', goal_id: 'g2', status: 'PENDING_JOBS', store: 'ACTIVE', blocking_wait_summary: { waitId: 'wait' } },
+    { ...jobIdentity, job_id: 'review', goal_id: 'g1', status: 'READY', store: 'ACTIVE', next_route: { jobType: 'recipe', taskType: 'input:collect_user_input' } },
+    { ...jobIdentity, job_id: 'waiting', goal_id: 'g2', status: 'PENDING_JOBS', store: 'ACTIVE', blocking_wait_summary: { waitId: 'wait' } },
   ] })))));
   render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
   expect(await screen.findByRole('link', { name: 'Open input/review' })).toHaveAttribute('href', '/project/tenant/reviews/review');
   expect(screen.getByText('Waiting for dependencies')).toBeVisible();
   expect(getJob).not.toHaveBeenCalled();
   expect(screen.queryByRole('link', { name: 'Execution 3' })).not.toBeInTheDocument();
-  vi.mocked(getJob).mockResolvedValue({ job_id: 'waiting', status: 'PENDING_JOBS', store: 'ACTIVE', blocking_wait: {
+  vi.mocked(getJob).mockResolvedValue({ ...jobIdentity, job_id: 'waiting', status: 'PENDING_JOBS', store: 'ACTIVE', blocking_wait: {
     waitId: 'wait', state: 'PENDING', dependencies: [
       { target: { goalId: 'target-goal' }, state: 'PENDING', condition: 'success' },
       { target: { jobId: 'target-job' }, state: 'PENDING', condition: 'complete' },
@@ -323,29 +326,31 @@ it('uses compact wait indicators until dependency targets are inspected', async 
   expect(getJob).toHaveBeenCalledExactlyOnceWith('tenant', 'waiting');
 });
 
-it('submits a prompt-only goal and opens the returned goal identity', async () => {
+it('submits a goal to a selected cell and opens the returned goal identity', async () => {
   const fetch = vi.fn(async (_: string, init?: RequestInit) => (new Response(JSON.stringify(init?.method === 'POST'
-    ? { tenant_id: 'tenant', goal_id: 'created-goal', job_id: 'created-job' } : _.includes('/cells') ? [] : { jobs: [] }))));
+    ? { ...jobIdentity, tenant_id: 'tenant', goal_id: 'created-goal', job_id: 'created-job' } : _.includes('/cells') ? [] : { jobs: [] }))));
   vi.stubGlobal('fetch', fetch);
   render(<MemoryRouter><Location /><JobsListPage projectId="tenant" /></MemoryRouter>);
   fireEvent.click(screen.getByRole('button', { name: 'New goal' }));
   const dialog = screen.getByRole('dialog');
   expect(within(dialog).queryByLabelText('Recipe')).not.toBeInTheDocument();
   expect(within(dialog).queryByLabelText('Job ID')).not.toBeInTheDocument();
+  fireEvent.mouseDown(within(dialog).getByRole('combobox', { name: 'Cell' }));
+  fireEvent.click(await screen.findByText('platform · github.com/acme/platform'));
   fireEvent.change(within(dialog).getByLabelText('Prompt'), { target: { value: 'Build a small tool' } });
   fireEvent.click(within(dialog).getByRole('button', { name: 'Create goal' }));
   await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/project/tenant/goals/created-goal'));
   const call = fetch.mock.calls.find(([, init]) => init?.method === 'POST')!;
-  expect(JSON.parse(call[1]!.body as string)).toEqual({ inputs: { prompt: 'Build a small tool', type: 'build' } });
+  expect(JSON.parse(call[1]!.body as string)).toEqual({ cell: 'platform', job_id: expect.any(String), inputs: { prompt: 'Build a small tool', type: 'build' } });
 });
 
-it.each([undefined, '', ' \n ', 'self', 'platform'])('uses explicit cell identity or Unknown cell in list and attempts (%j)', async cell_name => {
-  const jobs = ['first', 'second'].map(job_id => ({ job_id, goal_id: 'goal', prompt: 'Goal prompt', cell_name,
+it.each(['self', 'platform'])('uses explicit cell identity in list and attempts (%j)', async cell_name => {
+  const jobs = ['first', 'second'].map(job_id => ({ ...jobIdentity, job_id, goal_id: 'goal', prompt: 'Goal prompt', cell_name,
     status: 'READY', store: 'ACTIVE', repo: 'https://example.test/not-a-cell', parent: { cell_name: 'parent-cell' } }));
   vi.stubGlobal('fetch', vi.fn(async (input: string) => (new Response(JSON.stringify(input.includes('/cells') ? [{ name: 'configured-cell', kind: 'self' }] : { jobs })))));
   render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
   const row = (await screen.findByRole('link', { name: 'Goal prompt', exact: true })).closest('tr')!;
-  const label = cell_name?.trim() ? cell_name : 'Unknown cell';
+  const label = cell_name;
   expect(within(row).getByText(label, { exact: true })).toBeVisible();
   fireEvent.click(within(row).getByRole('button', { name: 'Expand row' }));
   const attempts = await screen.findByRole('region', { name: 'Attempts' });
@@ -360,9 +365,9 @@ function compact(job: Partial<RecipeJob>) {
 it('renders escaped multiline completion and ordered prerequisites from the list without inspection', async () => {
   const completion = '  <img src=x onerror=alert(1)> 雪\n\tsecond line & more\n';
   vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs: [
-    { job_id: 'failed', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'future_outcome', completion_detail: completion },
-    { job_id: 'retrying', status: 'READY', store: 'ACTIVE' },
-    { job_id: 'waiting', status: 'PENDING_JOBS', store: 'ACTIVE', wait_for: ['second/id', 'first'], blocking_wait_summary: { waitId: 'wait', deadline: '2027-01-01T00:00:00Z' } },
+    { ...jobIdentity, job_id: 'failed', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'future_outcome', completion_detail: completion },
+    { ...jobIdentity, job_id: 'retrying', status: 'READY', store: 'ACTIVE' },
+    { ...jobIdentity, job_id: 'waiting', status: 'PENDING_JOBS', store: 'ACTIVE', wait_for: ['second/id', 'first'], blocking_wait_summary: { waitId: 'wait', deadline: '2027-01-01T00:00:00Z' } },
   ] }))));
   render(<MemoryRouter><JobsListPage projectId="tenant /雪" /></MemoryRouter>);
   const row = (await screen.findByRole('link', { name: 'Job failed: Finished (future_outcome)' })).closest('tr')!;
@@ -378,8 +383,8 @@ it('renders escaped multiline completion and ordered prerequisites from the list
 });
 
 it('replaces requirements on refresh and never shows stale demand or diagnostics for active or terminal jobs', async () => {
-  const job = { job_id: 'job', status: 'READY', store: 'ACTIVE', execution: {
-    status: 'specified', source: 'yield', published: true, demand: { effective: { resources: { cpu: '4', memory: '4Gi' }, image: 'example/image' } },
+  const job = { ...jobIdentity, job_id: 'job', status: 'READY', store: 'ACTIVE', execution: {
+    ...jobIdentity, status: 'specified', source: 'yield', published: true, demand: { effective: { resources: { cpu: '4', memory: '4Gi' }, image: 'example/image' } },
   } };
   const fetch = vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs: [job] })));
   vi.stubGlobal('fetch', fetch);
@@ -404,7 +409,7 @@ it('replaces requirements on refresh and never shows stale demand or diagnostics
 });
 
 it('shows restored selected fields even while inspection is unavailable', async () => {
-  const raw = `{"jobs":[{"job_id":"job","status":"READY","store":"ACTIVE","client_payload":{"other":9007199254740993},"client_payload_revision":7,"task_wait":{"inputOrdinal":0,"outputOrdinal":9007199254740995,"inputHash":"occurrence-hash","resumeJobType":"recipe"},"blocking_wait_summary":{"waitId":"wait-identity","deadline":"2027-01-01T00:00:00Z"}}]}`;
+  const raw = `{"jobs":[{"cell_id":"cell-platform","cell_name":"platform","repo":"github.com/acme/platform","job_id":"job","status":"READY","store":"ACTIVE","client_payload":{"other":9007199254740993},"client_payload_revision":7,"task_wait":{"inputOrdinal":0,"outputOrdinal":9007199254740995,"inputHash":"occurrence-hash","resumeJobType":"recipe"},"blocking_wait_summary":{"waitId":"wait-identity","deadline":"2027-01-01T00:00:00Z"}}]}`;
   vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(url.includes('/cells') ? '[]' : raw)));
   vi.mocked(getJob).mockRejectedValue(new Error('Inspection unavailable'));
   render(<MemoryRouter initialEntries={['/?expanded=job:job']}><JobsListPage projectId="tenant" /></MemoryRouter>);
@@ -419,18 +424,18 @@ it('shows restored selected fields even while inspection is unavailable', async 
 });
 
 it('inspects only visible selections, revalidates on refresh/reopen, and ignores late attempts', async () => {
-  const jobs = ['first', 'second'].map(job_id => ({ tenant_id: 'tenant', job_id, goal_id: 'goal',
+  const jobs = ['first', 'second'].map(job_id => ({ ...jobIdentity, tenant_id: 'tenant', job_id, goal_id: 'goal',
     prompt: 'Grouped goal', status: 'READY', store: 'ACTIVE', client_payload_revision: 9 }));
   vi.stubGlobal('fetch', vi.fn(async (url: string) => (new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs })))));
   let resolveFirst!: (job: RecipeJob) => void;
   vi.mocked(getJob).mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
-    .mockImplementation(async (tenant, id) => ({ tenant_id: tenant, job_id: id, other_goal_ids: [`${id} inspected`] } as RecipeJob));
+    .mockImplementation(async (tenant, id) => ({ ...jobIdentity, tenant_id: tenant, job_id: id, other_goal_ids: [`${id} inspected`] } as RecipeJob));
   render(<StrictMode><MemoryRouter initialEntries={['/?expanded=goal:goal']}><JobsListPage projectId="tenant" /></MemoryRouter></StrictMode>);
   const attempts = await screen.findByRole('region', { name: 'Attempts' });
   await waitFor(() => expect(getJob).toHaveBeenCalledExactlyOnceWith('tenant', 'first'));
   fireEvent.click(within(attempts).getAllByRole('button', { name: 'Details' })[1]);
   expect((await screen.findAllByText('second inspected'))[0]).toBeVisible();
-  await act(async () => resolveFirst({ job_id: 'first', other_goal_ids: ['LATE first'] } as RecipeJob));
+  await act(async () => resolveFirst({ ...jobIdentity, job_id: 'first', other_goal_ids: ['LATE first'] } as RecipeJob));
   expect(screen.queryByText('LATE first')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   await waitFor(() => expect(getJob).toHaveBeenCalledTimes(3));
@@ -445,7 +450,7 @@ it('inspects only visible selections, revalidates on refresh/reopen, and ignores
 });
 
 it('retries failed inspection and never reuses another tenant’s details', async () => {
-  const job = { job_id: 'same', goal_id: 'goal', prompt: 'Same ID', status: 'READY', store: 'ACTIVE' };
+  const job = { ...jobIdentity, job_id: 'same', goal_id: 'goal', prompt: 'Same ID', status: 'READY', store: 'ACTIVE' };
   vi.stubGlobal('fetch', vi.fn(async (url: string) => (new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs: [job] })))));
   vi.mocked(getJob).mockRejectedValueOnce(new Error('Unavailable'))
     .mockImplementation(async (tenant) => ({ ...job, other_goal_ids: [`${tenant} details`] } as RecipeJob));
@@ -462,7 +467,7 @@ it('retries failed inspection and never reuses another tenant’s details', asyn
 it('keeps collapsed summaries compact and follows an empty page cursor in StrictMode', async () => {
   // The browser suite covers 200-row rendering. This test controls each response
   // to verify request deduplication and pagination without a large jsdom render.
-  const jobs = Array.from({ length: 3 }, (_, index) => ({ job_id: `job-${index}`, goal_id: `goal-${index}`,
+  const jobs = Array.from({ length: 3 }, (_, index) => ({ ...jobIdentity, job_id: `job-${index}`, goal_id: `goal-${index}`,
     status: 'PENDING_JOBS', store: 'ACTIVE', client_payload_revision: 5, blocking_wait_summary: { waitId: `wait-${index}` } }));
   const requests: { url: URL; resolve: (response: Response) => void }[] = [];
   vi.stubGlobal('fetch', vi.fn((url: string) => new Promise<Response>(resolve => requests.push({ url: new URL(url), resolve }))));
@@ -488,7 +493,7 @@ it('keeps collapsed summaries compact and follows an empty page cursor in Strict
 
 it('groups only primary membership while honoring a server-filtered secondary goal', async () => {
   // Compatibility fields from an older backend must not restore secondary groups.
-  const job = { job_id: 'member', goal_id: 'primary', other_goal_ids: ['secondary'], prompt: 'Member', status: 'READY', store: 'ACTIVE' };
+  const job = { ...jobIdentity, job_id: 'member', goal_id: 'primary', other_goal_ids: ['secondary'], prompt: 'Member', status: 'READY', store: 'ACTIVE' };
   vi.stubGlobal('fetch', vi.fn(async (url: string) => (new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs: [job] })))));
   const { rerender } = render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
   await screen.findByRole('link', { name: 'Member', exact: true });

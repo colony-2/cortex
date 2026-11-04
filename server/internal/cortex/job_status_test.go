@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/colony-2/colony2/server/internal/testjobdb"
 	"net/http/httptest"
 	"net/url"
 	"reflect"
@@ -163,13 +164,13 @@ func TestInvalidDisplayStatuses(t *testing.T) {
 }
 
 func TestDisplayStatusFilteringWithRemoteSQLite(t *testing.T) {
-	ctx := context.Background()
+	ctx := testjobdb.Context(context.Background())
 	runtime, err := sqliteruntime.StartEmbeddedRuntime(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer runtime.Shutdown()
-	backend := httptest.NewServer(remote.NewServer(runtime.Runtime))
+	backend := httptest.NewServer(testjobdb.Handler(remote.NewServer(runtime.Runtime)))
 	defer backend.Close()
 	server, err := NewRemoteServer(Config{WorkingDir: writeC2JConfig(t), JobDBURL: backend.URL})
 	if err != nil {
@@ -178,11 +179,12 @@ func TestDisplayStatusFilteringWithRemoteSQLite(t *testing.T) {
 	api := httptest.NewServer(server)
 	defer api.Close()
 	base := api.URL + "/api/projects/tenant/jobs"
+	postJSON[jobdb.Cell](t, api.URL+"/api/projects/tenant/cells", map[string]string{"name": "alpha", "repo": "github.com/acme/boo-alpha"})
 	var goal string
 	outcomes := []string{"failed_app", "success", "failed_app", "success", ""}
 	for i := range outcomes {
 		id := fmt.Sprintf("job-%d", i)
-		job := postJSON[recipejob.RecipeJob](t, base, map[string]any{"job_id": id, "cell": "alpha", "recipe": "smoke"})
+		job := postJSON[recipejob.RecipeJob](t, base, map[string]any{"job_id": id, "cell": "alpha", "repo": "github.com/acme/boo-alpha", "recipe": "smoke"})
 		if i == 0 {
 			goal = job.GoalID
 		} else {
@@ -216,7 +218,7 @@ func TestDisplayStatusFilteringWithRemoteSQLite(t *testing.T) {
 		}
 	}
 	for _, statuses := range [][]string{{"failed_app"}, {"READY", "failed_app"}, {"success"}} {
-		query := url.Values{"displayStatus": statuses, "pageSize": {"1"}, "cell": {"alpha"}, "goal": {goal}}
+		query := url.Values{"displayStatus": statuses, "pageSize": {"1"}, "cellNames": {"alpha"}, "goal": {goal}}
 		seen := make(map[string]bool)
 		for pages := 0; ; pages++ {
 			if pages > 6 {
@@ -248,7 +250,8 @@ func TestDisplayStatusFilteringWithRemoteSQLite(t *testing.T) {
 			t.Fatalf("statuses=%v got=%v want=%v", statuses, seen, want)
 		}
 	}
-	for _, query := range []string{"displayStatus=success&cell=beta", "displayStatus=success&goal=missing"} {
+	postJSON[jobdb.Cell](t, api.URL+"/api/projects/tenant/cells", map[string]string{"name": "beta", "repo": "github.com/acme/beta"})
+	for _, query := range []string{"displayStatus=success&cellNames=beta", "displayStatus=success&goal=missing"} {
 		if page := getJSON[recipejob.ListRecipeJobsResponse](t, base+"?"+query); len(page.Jobs) != 0 {
 			t.Fatalf("scope ignored: %+v", page)
 		}

@@ -621,7 +621,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
     setRestartSubmitting(true);
     try {
       const payload = { ...(restartScopeID ? { scope_id: restartScopeID } : { chapter_ordinal: restartChapterOrdinal }), goal: { mode: restartGoalMode }, ...(contextPatch ? { patch: contextPatch } : {}) };
-      const storageKey = `cortex:restart:${projectId}:${jobId}`;
+      const storageKey = 'cells-v1:' + `cortex:restart:${projectId}:${jobId}`;
       const serialized = JSON.stringify(payload);
       const stored = sessionStorage.getItem(storageKey);
       const previous = stored ? JSON.parse(stored) : null;

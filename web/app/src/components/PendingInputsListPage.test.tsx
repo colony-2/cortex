@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { setupServer } from 'msw/node';
 import { InputActivityProvider, inputActivityService } from '@colony2/shared';
@@ -55,6 +55,21 @@ describe('PendingInputsListPage', () => {
     expect(screen.getByText('Job ID: review')).toBeVisible();
     expect(screen.getAllByRole('button', { name: 'Open Review' })).toHaveLength(2);
     expect(reads).not.toHaveBeenCalled();
+  });
+
+  it('surfaces missing cell ownership from SSE and recovers through a fresh registry-era summary', async () => {
+    setupMockInputs(projectId, [{ id: 'review' }], []);
+    renderComponent();
+    const sse = await waitForSSEConnection();
+    sse.emitConnected();
+    await screen.findByText('Job ID: review');
+    act(() => sse.dispatchEvent(new MessageEvent('inputs_changed', { data: JSON.stringify({ inputs: [{ id: 'invalid' }] }) })));
+    expect(await screen.findByRole('alert')).toHaveTextContent('required cell_id is missing');
+    expect(screen.queryByText('Job ID: review')).not.toBeInTheDocument();
+    expect(screen.queryByText('No pending reviews')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry reviews' }));
+    await screen.findByText('Job ID: review');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('should show empty state when no pending inputs', async () => {

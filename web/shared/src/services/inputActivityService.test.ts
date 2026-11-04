@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { inputActivityService } from './inputActivityService';
+const identity = { cell_id: 'cell-1', cell_name: 'platform', repo: 'github.com/acme/platform' };
 import { stringifyJobJSON } from '../jobJSON';
 
 // Create mock EventSource instance
@@ -71,13 +72,13 @@ describe('InputActivityService', () => {
 
   describe('SSE Connection', () => {
     it('preserves exact payloads with their revision through HTTP caching and streamed replacement', async () => {
-      const raw = '{"id":"job","client_payload":{"other":9007199254740993},"client_payload_revision":7}';
+      const raw = '{"cell_id":"cell-1","cell_name":"platform","repo":"github.com/acme/platform","id":"job","client_payload":{"other":9007199254740993},"client_payload_revision":7}';
       vi.mocked(fetch).mockResolvedValueOnce(new Response(`[${raw}]`));
       expect(stringifyJobJSON((await inputActivityService.getPendingInputs(projectId))[0])).toBe(raw);
       inputActivityService.connect(projectId);
       const source = EventSourceMock.mock.results[0].value;
       const snapshot = source.addEventListener.mock.calls.find(([name]: [string]) => name === 'inputs_changed')[1];
-      const replacement = '{"id":"job","client_payload":null,"client_payload_revision":8}';
+      const replacement = '{"cell_id":"cell-1","cell_name":"platform","repo":"github.com/acme/platform","id":"job","client_payload":null,"client_payload_revision":8}';
       snapshot({ data: `{"inputs":[${replacement}]}` });
       expect(stringifyJobJSON((await inputActivityService.getPendingInputs(projectId))[0])).toBe(replacement);
       expect(fetch).toHaveBeenCalledTimes(1);
@@ -87,7 +88,7 @@ describe('InputActivityService', () => {
       inputActivityService.connect(projectId);
       const source = EventSourceMock.mock.results[0].value;
       const snapshot = source.addEventListener.mock.calls.find(([name]: [string]) => name === 'inputs_changed')[1];
-      const inputs = Array.from({ length: 200 }, (_, i) => ({ id: String(i), client_payload_revision: 1 }));
+      const inputs = Array.from({ length: 200 }, (_, i) => ({ ...identity, id: String(i), client_payload_revision: 1 }));
       snapshot({ data: JSON.stringify({ inputs }) });
       expect(await inputActivityService.getPendingInputs(projectId)).toEqual(inputs);
       expect(fetch).not.toHaveBeenCalled();
@@ -98,7 +99,7 @@ describe('InputActivityService', () => {
       expect((await inputActivityService.getInputDetails(projectId, '0')).form.question).toBe('Next?');
       expect(fetch).toHaveBeenCalledTimes(2);
       inputActivityService.connect('other');
-      snapshot({ data: JSON.stringify({ inputs: [{ id: 'wrong-tenant' }] }) });
+      snapshot({ data: JSON.stringify({ inputs: [{ ...identity, id: 'wrong-tenant' }] }) });
       expect((inputActivityService as any).pendingInputsCache.has('other')).toBe(false);
     });
 
@@ -109,10 +110,10 @@ describe('InputActivityService', () => {
       const pending = inputActivityService.getPendingInputs(projectId, true);
       const source = EventSourceMock.mock.results[0].value;
       const snapshot = source.addEventListener.mock.calls.find(([name]: [string]) => name === 'inputs_changed')[1];
-      snapshot({ data: JSON.stringify({ inputs: [{ id: 'new' }] }) });
-      resolve(new Response(JSON.stringify([{ id: 'old' }])) as Response);
-      expect(await pending).toEqual([{ id: 'new' }]);
-      expect(await inputActivityService.getPendingInputs(projectId)).toEqual([{ id: 'new' }]);
+      snapshot({ data: JSON.stringify({ inputs: [{ ...identity, id: 'new' }] }) });
+      resolve(new Response(JSON.stringify([{ ...identity, id: 'old' }])) as Response);
+      expect(await pending).toEqual([{ ...identity, id: 'new' }]);
+      expect(await inputActivityService.getPendingInputs(projectId)).toEqual([{ ...identity, id: 'new' }]);
     });
 
     it('refreshes cached requests and details when another tab completes an input', async () => {
@@ -120,7 +121,7 @@ describe('InputActivityService', () => {
       const completed = vi.fn();
       inputActivityService.on('input_completed', completed);
       try {
-        vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify([{ id: 'job-1' }])) as Response);
+        vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify([{ ...identity, id: 'job-1' }])) as Response);
         await inputActivityService.getPendingInputs(projectId);
         await inputActivityService.getInputDetails(projectId, 'job-1');
 
@@ -144,7 +145,7 @@ describe('InputActivityService', () => {
       await inputActivityService.getInputDetails(projectId, 'job-1');
       const source = EventSourceMock.mock.results[0].value;
       const listener = source.addEventListener.mock.calls.find(([name]: [string]) => name === 'input_pending')[1];
-      listener({ data: JSON.stringify({ id: 'job-1', task_ordinal: 9 }) });
+      listener({ data: JSON.stringify({ ...identity, id: 'job-1', task_ordinal: 9 }) });
       vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify(({ form: { question: 'Second?' } }))) as Response);
       expect(await inputActivityService.getInputDetails(projectId, 'job-1')).toMatchObject({ form: { question: 'Second?' } });
       expect(fetch).toHaveBeenCalledTimes(2);
@@ -221,7 +222,7 @@ describe('InputActivityService', () => {
   describe('getPendingInputs', () => {
     it('should fetch pending inputs for a project', async () => {
       const mockInputs = [
-        { id: 'job-1' }
+        { ...identity, id: 'job-1' }
       ];
 
       ((globalThis as any).fetch as any).mockResolvedValueOnce(new Response(JSON.stringify(mockInputs)));
@@ -235,7 +236,7 @@ describe('InputActivityService', () => {
     });
 
     it('should cache results', async () => {
-      const mockInputs = [{ id: 'job-1' }];
+      const mockInputs = [{ ...identity, id: 'job-1' }];
 
       ((globalThis as any).fetch as any).mockImplementation(async () => new Response(JSON.stringify(mockInputs)));
 
@@ -342,11 +343,11 @@ describe('InputActivityService', () => {
       const callback = vi.fn();
 
       inputActivityService.on('custom-event', callback);
-      (inputActivityService as any).emit('custom-event', { id: 'job-1' });
-      expect(callback).toHaveBeenCalledWith({ id: 'job-1' });
+      (inputActivityService as any).emit('custom-event', { ...identity, id: 'job-1' });
+      expect(callback).toHaveBeenCalledWith({ ...identity, id: 'job-1' });
 
       inputActivityService.off('custom-event', callback);
-      (inputActivityService as any).emit('custom-event', { id: 'job-2' });
+      (inputActivityService as any).emit('custom-event', { ...identity, id: 'job-2' });
       expect(callback).toHaveBeenCalledTimes(1);
     });
   });

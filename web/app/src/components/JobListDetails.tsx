@@ -22,6 +22,7 @@ export default function JobListDetails({ job, inspection, projectId, showPrompt 
   const isOpen = (section: string) => searchParams.getAll('detail').includes(detailKey(section));
   const toggle = (section: string) => setSearchParams(previous => {
     const next = new URLSearchParams(previous);
+    next.set('executionState', 'cells-v1');
     const values = new Set(next.getAll('detail'));
     const key = detailKey(section);
     if (values.has(key)) values.delete(key); else values.add(key);

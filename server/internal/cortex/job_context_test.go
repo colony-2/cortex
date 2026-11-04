@@ -2,6 +2,7 @@ package cortex
 
 import (
 	"context"
+	"github.com/colony-2/colony2/server/internal/testjobdb"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -16,13 +17,13 @@ import (
 // Exercise persisted context across SQLite, HTTP JobDB, c2j's projection, and
 // Cortex's real detail endpoint rather than injecting browser-shaped responses.
 func TestJobContextDetail(t *testing.T) {
-	ctx := context.Background()
+	ctx := testjobdb.Context(context.Background())
 	runtime, err := sqliteruntime.StartEmbeddedRuntime(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer runtime.Shutdown()
-	backend := httptest.NewServer(remote.NewServer(runtime.Runtime))
+	backend := httptest.NewServer(testjobdb.Handler(remote.NewServer(runtime.Runtime)))
 	defer backend.Close()
 	srv, err := NewRemoteServer(Config{WorkingDir: writeC2JConfig(t), JobDBURL: backend.URL})
 	if err != nil {
@@ -31,11 +32,12 @@ func TestJobContextDetail(t *testing.T) {
 	api := httptest.NewServer(srv)
 	defer api.Close()
 	base := api.URL + "/api/projects/context/jobs"
+	postJSON[jobdb.Cell](t, api.URL+"/api/projects/context/cells", map[string]string{"name": "alpha", "repo": "github.com/acme/boo-alpha"})
 	const prompt = "  Build <a useful tool> 雪\n\tKeep the whole prompt.  "
 	const detail = "  diagnostic <script>literal</script> 雪\n\tsecond line  "
 	for _, outcome := range []string{"failed_app", "failed_system", "failed_timeout"} {
 		t.Run(outcome, func(t *testing.T) {
-			postJSON[recipejob.RecipeJob](t, base, map[string]any{"job_id": outcome, "cell": "alpha", "recipe": "smoke", "inputs": map[string]any{"prompt": prompt}})
+			postJSON[recipejob.RecipeJob](t, base, map[string]any{"job_id": outcome, "cell": "alpha", "repo": "github.com/acme/boo-alpha", "recipe": "smoke", "inputs": map[string]any{"prompt": prompt}})
 			active := getJSON[recipejob.RecipeJob](t, base+"/"+outcome)
 			if active.Prompt != prompt || active.Store != jobdb.JobStoreActive || active.CompletionStatus != "" || active.CompletionDetail != "" {
 				t.Fatalf("active context: %+v", active)
@@ -66,7 +68,7 @@ func TestJobContextDetail(t *testing.T) {
 			}
 		})
 	}
-	postJSON[recipejob.RecipeJob](t, base, map[string]any{"job_id": "empty", "cell": "alpha", "recipe": "smoke"})
+	postJSON[recipejob.RecipeJob](t, base, map[string]any{"job_id": "empty", "cell": "alpha", "repo": "github.com/acme/boo-alpha", "recipe": "smoke"})
 	empty := getJSON[recipejob.RecipeJob](t, base+"/empty")
 	if empty.Prompt != "" || empty.CompletionStatus != "" || empty.CompletionDetail != "" {
 		t.Fatalf("invented context: %+v", empty)

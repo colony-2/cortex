@@ -6,6 +6,7 @@ interface InputActivityContextValue {
   pendingCount: number;
   isConnected: boolean;
   connectionError: boolean;
+  loadError?: string;
   currentProjectId: string | null;
   setCurrentProjectId: (projectId: string | null) => void;
   refresh: () => Promise<void>;
@@ -23,6 +24,8 @@ export function InputActivityProvider({ children }: InputActivityProviderProps) 
   // Never expose an old tenant's snapshot during the render before effect cleanup.
   const pendingInputs = snapshot.projectId === currentProjectId ? snapshot.inputs : [];
   const setPendingInputs = (inputs: PendingInput[], projectId: string | null = null) => setSnapshot({ projectId, inputs });
+  const [failure, setFailure] = useState<{ projectId: string; message: string }>();
+  const loadError = failure?.projectId === currentProjectId ? failure.message : undefined;
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState(false);
 
@@ -37,10 +40,13 @@ export function InputActivityProvider({ children }: InputActivityProviderProps) 
     const version = ++loadVersion.current;
     try {
       const inputs = await inputActivityService.getPendingInputs(projectId, force);
-      if (projectRef.current === projectId && version === loadVersion.current) setPendingInputs(inputs, projectId);
+      if (projectRef.current === projectId && version === loadVersion.current) { setPendingInputs(inputs, projectId); setFailure(undefined); }
     } catch (error) {
       console.error('Failed to load pending inputs:', error);
-      if (projectRef.current === projectId && version === loadVersion.current) setPendingInputs([]);
+      if (projectRef.current === projectId && version === loadVersion.current) {
+        setPendingInputs([]);
+        setFailure({ projectId, message: error instanceof Error ? error.message : 'Could not load pending reviews' });
+      }
     }
   };
 
@@ -94,8 +100,14 @@ export function InputActivityProvider({ children }: InputActivityProviderProps) 
     const handleSnapshot = ({ projectId, inputs }: { projectId: string; inputs: PendingInput[] }) => {
       if (projectRef.current !== projectId) return;
       loadVersion.current++;
-      setPendingInputs(inputs, projectId);
+      setPendingInputs(inputs, projectId); setFailure(undefined);
     };
+    const handleInputError = ({ projectId, error }: { projectId: string; error: unknown }) => {
+      if (projectRef.current !== projectId) return;
+      loadVersion.current++; setPendingInputs([]);
+      setFailure({ projectId, message: error instanceof Error ? error.message : 'Invalid pending review response' });
+    };
+    inputActivityService.on('inputs_error', handleInputError);
     inputActivityService.on('inputs_changed', handleSnapshot);
     inputActivityService.on('connected', handleConnected);
     inputActivityService.on('disconnected', handleDisconnected);
@@ -111,6 +123,7 @@ export function InputActivityProvider({ children }: InputActivityProviderProps) 
     }
 
     return () => {
+      inputActivityService.off('inputs_error', handleInputError);
       inputActivityService.off('inputs_changed', handleSnapshot);
       inputActivityService.off('connected', handleConnected);
       inputActivityService.off('disconnected', handleDisconnected);
@@ -130,6 +143,7 @@ export function InputActivityProvider({ children }: InputActivityProviderProps) 
         pendingCount,
         isConnected,
         connectionError,
+        loadError,
         currentProjectId,
         setCurrentProjectId,
         refresh,

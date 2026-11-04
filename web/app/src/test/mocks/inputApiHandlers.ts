@@ -1,4 +1,5 @@
 import { http, HttpResponse } from 'msw';
+import { jobIdentity } from '../cellFixtures';
 import type { PendingInput, UserInputDetails, InputFormConfig } from '@colony2/shared';
 
 const API_BASE = 'http://localhost:8080/api';
@@ -9,7 +10,7 @@ export const mockInputDetailsStore = new Map<string, UserInputDetails>();
 
 // Helper to create mock data
 export function createMockPendingInput(jobId: string): PendingInput {
-  return { id: jobId };
+  return { ...jobIdentity, id: jobId };
 }
 
 export function createMockSingleQuestionDetails(jobId: string): UserInputDetails {
@@ -69,7 +70,7 @@ export function resetMockInputStore() {
 
 // Setup initial mock data for a project
 export function setupMockInputs(projectId: string, inputs: PendingInput[], details: UserInputDetails[]) {
-  mockPendingInputsStore.set(projectId, inputs);
+  mockPendingInputsStore.set(projectId, inputs.map(input => ({ ...jobIdentity, ...input })));
   details.forEach((detail) => {
     mockInputDetailsStore.set(`${projectId}:${detail.jobId}`, detail);
   });

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/colony-2/c2j/pkg/jobdbschema"
+	"github.com/colony-2/colony2/server/internal/testjobdb"
 	"github.com/colony-2/jobdb/pkg/jobdb/runtime/remote"
 	"github.com/colony-2/jobdb/pkg/jobdb/runtime/toy"
 	jobworkflow "github.com/colony-2/jobdb/pkg/workflow"
@@ -45,6 +46,7 @@ func NewUITestServer(cfg Config) (*Server, error) {
 	}
 	server, err := NewServer(cfg, jobdbschema.WorkflowEngine{Engine: engine, Registry: runtime})
 	if err == nil {
+		server.router = testjobdb.Handler(server.router)
 		server.jobDeletion = runtime
 		server.chapters = runtime
 	}

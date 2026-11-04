@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/colony-2/c2j/pkg/cellref"
 	"github.com/colony-2/c2j/pkg/jobref"
 	"github.com/colony-2/c2j/pkg/recipejob"
-	"github.com/colony-2/c2j/pkg/starter"
 	"github.com/colony-2/c2j/pkg/story"
 	coretask "github.com/colony-2/c2j/pkg/task"
 	"github.com/colony-2/jobdb/pkg/jobdb"
@@ -34,6 +34,7 @@ func (s nativeSubmitter) SubmitJobRef(ctx context.Context, job jobdb.SubmitJob) 
 
 type errorResponse struct {
 	Error string `json:"error"`
+	Code  string `json:"code,omitempty"`
 }
 
 type healthResponse struct {
@@ -47,14 +48,6 @@ type submitJobRequest struct {
 	Recipe string                 `json:"recipe,omitempty"`
 	Inputs map[string]interface{} `json:"inputs,omitempty"`
 	JobID  string                 `json:"job_id,omitempty"`
-}
-
-type submitJobResponse struct {
-	GoalID   string                   `json:"goal_id"`
-	TenantID string                   `json:"tenant_id"`
-	JobID    string                   `json:"job_id"`
-	Target   recipejob.ResolvedTarget `json:"target"`
-	Recipe   string                   `json:"recipe"`
 }
 
 type restartJobRequest struct {
@@ -89,24 +82,6 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handleListCells(w http.ResponseWriter, r *http.Request) {
-	cells, err := s.cells.Cells(r.Context(), s.tenantID(r))
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, cells)
-}
-
-func (s *Server) handleSelfCell(w http.ResponseWriter, r *http.Request) {
-	cell, err := s.cells.SelfCell(r.Context(), s.tenantID(r))
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, cell)
-}
-
 func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 	tenantID := s.tenantID(r)
 	statuses, allStatuses, err := parseStatuses(r.URL.Query()["status"])
@@ -131,7 +106,7 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 		statuses, allStatuses = nil, true
 	}
 
-	repo, err := s.jobListRepositoryFilter(r, tenantID)
+	cells, err := jobListCellFilter(r)
 	if err != nil {
 		writeHTTPError(w, http.StatusBadRequest, err)
 		return
@@ -146,13 +121,13 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 		stores = []jobdb.JobStore{jobdb.JobStoreActive, jobdb.JobStoreArchived}
 	}
 	resp, err := listJobsByDisplayStatus(r.Context(), s.engine, recipejob.ListRecipeJobsRequest{
-		GoalIDs:        r.URL.Query()["goal"],
-		TenantID:       tenantID,
-		MetadataFilter: repo,
-		Statuses:       statuses,
-		Stores:         stores,
-		PageSize:       pageSize,
-		PageToken:      r.URL.Query().Get("pageToken"),
+		GoalIDs:   r.URL.Query()["goal"],
+		TenantID:  tenantID,
+		CellNames: cells,
+		Statuses:  statuses,
+		Stores:    stores,
+		PageSize:  pageSize,
+		PageToken: r.URL.Query().Get("pageToken"),
 	}, displayStatuses)
 	if err != nil {
 		writeError(w, err)
@@ -163,23 +138,20 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 	var req submitJobRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeRequest(w, r, &req); err != nil {
 		writeHTTPError(w, http.StatusBadRequest, err)
 		return
 	}
 	tenantID := s.tenantID(r)
-	cell := strings.TrimSpace(req.Cell)
-	if cell == "" {
-		cell = strings.TrimSpace(req.Repo)
+	if err := jobdb.ValidateCellName(req.Cell); err != nil {
+		writeError(w, err)
+		return
 	}
-	target, err := recipejob.ResolveTarget(r.Context(), recipejob.ResolveTargetRequest{
-		WorkingDir: s.cfg.WorkingDir,
-		Cell:       cell,
-		Self:       cell == "",
-		TenantID:   tenantID,
-	})
+	target, err := recipejob.ResolveRegisteredTarget(r.Context(), recipejob.ResolvedTarget{
+		CellName: req.Cell, CellRepo: req.Repo, TenantID: tenantID, DefaultRef: cellref.DefaultRef,
+	}, cellref.Registry(s.cells, tenantID))
 	if err != nil {
-		writeHTTPError(w, http.StatusBadRequest, err)
+		writeError(w, err)
 		return
 	}
 	key, err := recipejob.SubmitRecipeJob(r.Context(), recipejob.BuildStartJobRequest{
@@ -193,20 +165,14 @@ func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	job, err := recipejob.GetRecipeJob(r.Context(), s.engine, recipejob.GetRecipeJobRequest{
-		TenantID: tenantID,
-		JobID:    key.JobID,
-	})
-	if err == nil {
+	if job, err := recipejob.GetRecipeJob(r.Context(), s.engine, recipejob.GetRecipeJobRequest{TenantID: tenantID, JobID: key.JobID}); err == nil {
 		writeJSON(w, http.StatusCreated, job)
 		return
 	}
-	writeJSON(w, http.StatusCreated, submitJobResponse{
-		GoalID:   key.GoalID,
-		TenantID: tenantID,
-		JobID:    key.JobID,
-		Target:   target,
-		Recipe:   req.Recipe,
+	// Submission identity is complete even if a subsequent inspection is unavailable.
+	writeJSON(w, http.StatusCreated, map[string]string{
+		"goal_id": key.GoalID, "tenant_id": key.TenantID, "job_id": key.JobID,
+		"cell_id": key.CellID, "cell_name": key.Cell, "repo": key.CellRepo,
 	})
 }
 
@@ -395,43 +361,17 @@ func (s *Server) tenantID(r *http.Request) string {
 	return s.cfg.DefaultTenantID
 }
 
-func (s *Server) jobListRepositoryFilter(r *http.Request, tenantID string) (jobdb.MetadataFilter, error) {
-	query := r.URL.Query()
-	cells := make([]string, 0, len(query["cell"]))
-	for _, value := range query["cell"] {
-		if cell := strings.TrimSpace(value); cell != "" {
-			cells = append(cells, cell)
-		}
+func jobListCellFilter(r *http.Request) ([]string, error) {
+	q := r.URL.Query()
+	if q.Has("cell") || q.Has("repo") {
+		return nil, fmt.Errorf("use cellNames to filter jobs by cell name")
 	}
-	if len(cells) == 0 {
-		if repo := strings.TrimSpace(query.Get("repo")); repo != "" {
-			cells = append(cells, repo)
-		}
-	}
-	var filter jobdb.MetadataFilter
-	for _, cell := range cells {
-		target, err := recipejob.ResolveTarget(r.Context(), recipejob.ResolveTargetRequest{
-			WorkingDir: s.cfg.WorkingDir,
-			Cell:       cell,
-			TenantID:   tenantID,
-		})
-		if err != nil {
+	for _, name := range q["cellNames"] {
+		if err := jobdb.ValidateCellName(name); err != nil {
 			return nil, err
 		}
-		candidate, err := jobdb.Metadata().EqualFilter(starter.MetaFieldRepo, target.RepositorySource)
-		if err != nil {
-			return nil, err
-		}
-		if filter == nil {
-			filter = candidate
-		} else {
-			filter, err = filter.OrFilter(candidate)
-			if err != nil {
-				return nil, err
-			}
-		}
 	}
-	return filter, nil
+	return q["cellNames"], nil
 }
 
 func parsePositiveInt(value string, fallback int) int {
@@ -494,6 +434,10 @@ func writeHTTPError(w http.ResponseWriter, status int, err error) {
 }
 
 func writeError(w http.ResponseWriter, err error) {
+	if status, code, ok := jobdb.CellErrorStatus(err); ok {
+		writeJSON(w, status, errorResponse{Error: err.Error(), Code: code})
+		return
+	}
 	switch {
 	case errors.Is(err, story.ErrInvalidRestartBoundary), errors.Is(err, story.ErrInvalidProject):
 		writeHTTPError(w, http.StatusBadRequest, err)

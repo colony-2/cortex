@@ -1,32 +1,10 @@
+import { jobIdentity, mockCells, cellFixture } from './helpers/cells';
 import { test, expect } from '@playwright/test';
-
-const sampleCells = [
-  {
-    id: 'self',
-    project_id: '1',
-    tenant_id: '1',
-    name: 'platform',
-    repo: 'https://github.com/colony-2/platform.git',
-    repository_source: 'https://github.com/colony-2/platform.git',
-    git_ref: 'main',
-    kind: 'self',
-  },
-  {
-    id: 'dependent-api',
-    project_id: '1',
-    tenant_id: '1',
-    name: 'api',
-    repo: 'https://github.com/colony-2/api.git',
-    repository_source: 'https://github.com/colony-2/api.git',
-    git_ref: 'main',
-    kind: 'dependent',
-  },
-];
 
 const sampleJobs = {
   jobs: [
     {
-      tenant_id: '1',
+      ...jobIdentity, tenant_id: '1',
       job_id: 'job-console-1',
       prompt: 'Build the platform',
       status: 'READY',
@@ -62,13 +40,7 @@ test.describe('Console cleanliness', () => {
       } as any;
     });
 
-    await page.route(/\/api\/projects\/[^/]+\/cells$/, async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(sampleCells),
-      });
-    });
+    await mockCells(page, ['platform', 'api']);
 
     await page.route(/\/api\/projects\/[^/]+\/jobs(\?.*)?$/, async (route) => {
       await route.fulfill({
@@ -104,10 +76,10 @@ test.describe('Console cleanliness', () => {
     await page.getByRole('link', { name: 'Cells' }).click();
 
     await expect(page.getByRole('heading', { name: 'Cells' })).toBeVisible();
-    const rows = page.locator('.ant-table-tbody > tr');
+    const rows = page.locator('.ant-table-tbody > tr[data-row-key]');
     await expect(rows).toHaveCount(2, { timeout: 5000 });
     await expect(rows.first().getByText('platform', { exact: true })).toBeVisible();
-    await expect(page.getByRole('table').getByText('https://github.com/colony-2/api.git')).toBeVisible();
+    await expect(page.getByRole('table').getByText('github.com/acme/api')).toBeVisible();
 
     expect(consoleErrors).toEqual([]);
   });

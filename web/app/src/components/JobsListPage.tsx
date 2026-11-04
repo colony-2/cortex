@@ -1,11 +1,11 @@
-import { cellFilterValue, cellLabel } from '../utils/cellPresentation';
+import { cellLabel } from '../utils/cellPresentation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, Button, Card, Checkbox, Empty, Input, Space, Spin, Table, Typography, theme } from 'antd';
 import { DownOutlined, UpOutlined, FilterFilled, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType, TableProps } from 'antd/es/table';
 import type { SortOrder } from 'antd/es/table/interface';
-import { getJob, listJobs } from '@colony2/shared/api';
+import { getCell, getJob, listJobs } from '@colony2/shared/api';
 import type { RecipeJobSummary } from '@colony2/shared/types';
 import { jobStatus, jobStatusOptions } from '../utils/jobStatus';
 import { jobTime } from './JobListDetails';
@@ -20,6 +20,7 @@ import './JobsListPage.css';
 import NewGoalDialog from './NewGoalDialog';
 import CompactFilter from './CompactFilter';
 import { useCompact } from '../hooks/useCompact';
+import { useCells } from '../hooks/useCells';
 
 const { Text, Title } = Typography;
 type Props = { projectId: string; goalId?: string };
@@ -50,12 +51,14 @@ function JobsList({ projectId, goalId }: Props) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [operation, setOperation] = useState<{ action: JobAction; jobIds: string[] } | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const registry = useCells(projectId, 'ALL', refresh);
   const loadVersion = useRef(0);
+  const loadedScope = useRef<string>();
   const inspectionRequests = useRef(new Map<string, ReturnType<typeof getJob>>());
   const listRequest = useRef<{ key: string; promise: ReturnType<typeof listJobs> }>();
   const [params, setParams] = useSearchParams();
   const filters = useMemo(() => readJobFilters(params), [params]);
-  const pageToken = params.get('pageToken') || undefined;
+  const pageToken = params.get('executionState') === 'cells-v1' ? params.get('pageToken') || undefined : undefined;
   const statusesKey = JSON.stringify(filters.status);
   const cellsKey = JSON.stringify(filters.cell);
   const noStatuses = !goalId && filters.status?.length === 0;
@@ -66,7 +69,7 @@ function JobsList({ projectId, goalId }: Props) {
     && (params.get('order') === 'ascend' || params.get('order') === 'descend') ? params.get('order') as SortOrder : null;
   const expanded = params.getAll('expanded');
   const changeQuery = (change: (query: URLSearchParams) => void, replace = false) => setParams(previous => {
-    const query = new URLSearchParams(previous); change(query); return query;
+    const query = new URLSearchParams(previous); query.set('executionState', 'cells-v1'); change(query); return query;
   }, { replace });
 
   // Also clear selections when browser history restores a different local filter.
@@ -75,27 +78,34 @@ function JobsList({ projectId, goalId }: Props) {
   useEffect(() => {
     const version = ++loadVersion.current;
     setLoading(true); setError(undefined);
+    const scope = JSON.stringify([projectId, goalId, statusesKey, cellsKey]);
+    if (loadedScope.current !== scope) {
+      setJobs([]); setNextPage(undefined); setSelectedIds([]);
+      loadedScope.current = scope;
+    }
     (async () => {
-      const key = JSON.stringify([projectId, goalId, statusesKey, pageToken, refresh]);
-      if (listRequest.current?.key !== key) listRequest.current = { key, promise: noStatuses ? Promise.resolve({ jobs: [] })
-        : listJobs(projectId, { goal: goalId, displayStatus: goalId ? [] : JSON.parse(statusesKey) || [], pageToken }) };
+      const cellNames = !goalId && filters.cell?.length ? await Promise.all(filters.cell.map(async id => (await getCell(projectId, id)).name)) : undefined;
+      if (version !== loadVersion.current) return;
+      const key = JSON.stringify([projectId, goalId, statusesKey, cellsKey, cellNames, pageToken, refresh]);
+      if (listRequest.current?.key !== key) listRequest.current = { key, promise: noStatuses || noCells ? Promise.resolve({ jobs: [] })
+        : listJobs(projectId, { cellNames, goal: goalId, displayStatus: goalId ? [] : JSON.parse(statusesKey) || [], pageToken }) };
       const page = await listRequest.current.promise;
       if (version !== loadVersion.current) return;
       setJobs(page.jobs); setNextPage(page.next_page_token);
       setSelectedIds(previous => previous.filter(id => page.jobs.some(job => job.job_id === id)));
     })().catch(reason => {
-      if (version === loadVersion.current) setError(reason instanceof Error ? reason.message : 'Could not load goals');
+      if (version === loadVersion.current) {
+        setJobs([]); setNextPage(undefined); setSelectedIds([]);
+        setError(reason instanceof Error ? reason.message : 'Could not load goals');
+      }
     }).finally(() => { if (version === loadVersion.current) setLoading(false); });
     return () => { loadVersion.current++; };
-  }, [projectId, goalId, pageToken, statusesKey, noStatuses, refresh]);
+  }, [projectId, goalId, pageToken, statusesKey, cellsKey, noStatuses, noCells, refresh]);
 
-  // Cell choices come from the loaded jobs, independent of local configuration.
-  // Filter attempts before grouping, matching the status filter's grouping behavior.
-  // A goal link lists all its attempts; a page is not an authoritative goal count or state.
+  // The backend applies cell selection before pagination and goal grouping.
   const groups = useMemo(() => {
     const grouped = new Map<string, JobGroup>();
     for (const job of jobs) {
-      if (!goalId && filters.cell !== null && !filters.cell.includes(cellFilterValue(job.cell_name))) continue;
       const goals = goalId ? [goalId] : job.goal_id ? [job.goal_id] : [];
       for (const id of goals.length ? goals : [undefined]) {
         const key = id ? `goal:${id}` : `job:${job.job_id}`;
@@ -105,17 +115,15 @@ function JobsList({ projectId, goalId }: Props) {
       }
     }
     return [...grouped.values()];
-  }, [jobs, goalId, filters.cell]);
+  }, [jobs, goalId]);
   // Search complete prompts (including other attempts), even when the row uses
   // a title or an abbreviated prompt. Keep the entire matching goal together.
   const rows: Row[] = noStatuses || noCells ? [] : groups.filter(group => !searchTerm || group.jobs.some(job =>
     [job.prompt, job.title].some(text => text?.replace(/\s+/g, ' ').toLocaleLowerCase().includes(searchTerm)),
   )).map(group => ({ key: group.key, group, job: latestActiveJob(group.jobs) }));
   const statusOptions = jobStatusOptions(jobs, filters.status || []);
-  // Use the unfiltered page so unchecked cells stay available; preserve selections
-  // from saved links even when another page/status has no jobs in those cells.
-  const cellOptions = [...new Set([...jobs.map(job => cellFilterValue(job.cell_name)), ...filters.cell || []])]
-    .sort((a, b) => cellLabel(a).localeCompare(cellLabel(b))).map(value => ({ value, label: cellLabel(value) }));
+  const cellOptions = registry.cells.map(cell => ({ value: cell.id, label: `${cell.name}${cell.state === 'RETIRED' ? ' (retired)' : ''}` }));
+  for (const id of filters.cell || []) if (!cellOptions.some(option => option.value === id)) cellOptions.push({ value: id, label: `Selected cell (${id})` });
   const checkboxFilter = (label: string, options: { value: string; label: string }[], selected: string[] | null) => ({
     filters: options.map(option => ({ text: option.label, value: option.value })),
     filteredValue: selected ?? options.map(option => option.value), filtered: selected !== null,
@@ -135,12 +143,12 @@ function JobsList({ projectId, goalId }: Props) {
       setSelectedIds([]);
       changeQuery(query => {
         if (JSON.stringify(selectedStatuses) !== statusesKey) query.delete('pageToken');
-        query.delete('status'); query.delete('cell'); query.delete('cellSelection');
+        query.delete('status'); query.delete('cellId'); query.delete('cellSelection');
         if (selectedStatuses?.length === 0) query.set('status', 'none');
         selectedStatuses?.forEach(status => query.append('status', status));
         if (selectedCells?.length === 0) query.set('cellSelection', 'none');
-        selectedCells?.forEach(cell => query.append('cell', cell));
-        if (JSON.stringify(selectedCells) !== cellsKey) query.delete('expanded');
+        selectedCells?.forEach(cell => query.append('cellId', cell));
+        if (JSON.stringify(selectedCells) !== cellsKey) { query.delete('expanded'); query.delete('pageToken'); }
       });
     } else if (extra.action === 'sort') {
       const active = Array.isArray(sorter) ? sorter[0] : sorter;
@@ -223,7 +231,8 @@ function JobsList({ projectId, goalId }: Props) {
           <Button type="primary" icon={<PlusOutlined aria-hidden />} onClick={() => setSubmitOpen(true)}>New goal</Button>
         </Space>
       </div>
-      {!goalId && !compact && <Text type="secondary">Search, cell filtering, and sorting apply to the current page.</Text>}
+      {!goalId && !compact && <Text type="secondary">Cell filtering applies across pages. Search and sorting apply to the current page.</Text>}
+      {registry.error && <Alert type="error" showIcon message={registry.error} action={<Button onClick={registry.reload}>Retry cells</Button>} />}
       {error && <Alert type="error" showIcon message={error} />}
       {goalId ? <Spin spinning={loading}>
         <section aria-label="Goal overview">
@@ -253,7 +262,7 @@ function JobsList({ projectId, goalId }: Props) {
             </select>
             <select className="compact-sort" aria-label="Sort direction" value={params.get('order') || 'ascend'} disabled={!params.get('sort')} onChange={event => setSort(params.get('sort') || '', event.target.value)}><option value="ascend">Ascending</option><option value="descend">Descending</option></select>
             <Button icon={<ReloadOutlined aria-hidden />} onClick={() => setRefresh(value => value + 1)}>Refresh</Button>
-          </Space><p>Search, cell filtering, and sorting apply to the current page.</p></div>
+          </Space><p>Cell filtering applies across pages. Search and sorting apply to the current page.</p></div>
           {!!rows.length && <Checkbox disabled={loading} checked={rows.every(row => row.group.jobs.every(job => selectedIds.includes(job.job_id)))} indeterminate={!!selectedIds.length && !rows.every(row => row.group.jobs.every(job => selectedIds.includes(job.job_id)))} onChange={event => setSelection(rows.flatMap(row => row.group.jobs.map(job => job.job_id)), event.target.checked)}>Select all goals on this page</Checkbox>}
           <div className="compact-cards" aria-label="Goals">
             {mobileRows.map((row, index) => <Card key={row.key} size="small" className="goal-card">
@@ -304,7 +313,7 @@ function JobsList({ projectId, goalId }: Props) {
     {operation && <JobActionDialog projectId={projectId} {...operation} onClose={() => setOperation(null)} onComplete={async succeeded => {
       setSelectedIds(previous => previous.filter(id => !succeeded.includes(id))); setRefresh(value => value + 1);
     }} />}
-    {submitOpen && <NewGoalDialog projectId={projectId} jobs={jobs} filters={filters.cell} onClose={() => setSubmitOpen(false)} onCreated={id => {
+    {submitOpen && <NewGoalDialog projectId={projectId} filters={filters.cell} onClose={() => setSubmitOpen(false)} onCreated={id => {
       setSubmitOpen(false); navigate(goalPath(projectId, id), { state: { goalsReturnTo } });
     }} />}
   </div>;
@@ -312,7 +321,8 @@ function JobsList({ projectId, goalId }: Props) {
 
 export function RepositoryLink({ repo }: { repo: string }) {
   // Never turn arbitrary git selectors into executable browser URLs.
-  const url = repo.replace(/^git\+/, '');
+  const source = repo.replace(/^git\+/, '');
+  const url = /^[A-Za-z0-9.-]+\/[^\s?#]+$/.test(source) ? `https://${source}` : source;
   const label = repo.replace(/\/$/, '').split('/').slice(-1)[0]?.replace(/\.git$/, '') || repo;
   return /^https?:\/\//i.test(url) ? <a className="compact-touch-link" href={url} target="_blank" rel="noreferrer" title={repo}>{label}</a> : <Text title={repo}>{label}</Text>;
 }

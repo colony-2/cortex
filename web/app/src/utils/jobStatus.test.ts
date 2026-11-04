@@ -46,7 +46,7 @@ describe('job display status', () => {
   });
 
   it('preserves mixed display filters and unknown outcomes through navigation', () => {
-    const params = new URLSearchParams('status=READY&status=success&status=failed_app&status=CANCEL_REQUESTED&status=OUTCOME_UNAVAILABLE&status=completion%3Afuture_outcome&status=constructor&cell=platform&pageToken=next');
+    const params = new URLSearchParams('status=READY&status=success&status=failed_app&status=CANCEL_REQUESTED&status=OUTCOME_UNAVAILABLE&status=completion%3Afuture_outcome&status=constructor&cellId=platform&pageToken=next&executionState=cells-v1');
     expect(readJobFilters(params)).toEqual({ status: ['READY', 'success', 'failed_app', 'CANCEL_REQUESTED', 'OUTCOME_UNAVAILABLE', 'completion:future_outcome'], cell: ['platform'] });
     const restored = new URLSearchParams(jobFilterSearch(params));
     expect(readJobFilters(restored)).toEqual(readJobFilters(params));
@@ -60,17 +60,17 @@ describe('job display status', () => {
   it('distinguishes all statuses from none and retains local search and sorting in links', () => {
     expect(readJobFilters(new URLSearchParams()).status).toBeNull();
     expect(readJobFilters(new URLSearchParams('status=none')).status).toEqual([]);
-    const params = new URLSearchParams('status=none&q=full+prompt&sort=submitted&order=descend&pageToken=next');
-    expect(jobFilterSearch(params)).toBe('?status=none&q=full+prompt&sort=submitted&order=descend&pageToken=next');
+    const params = new URLSearchParams('status=none&q=full+prompt&sort=submitted&order=descend&pageToken=next&executionState=cells-v1');
+    expect(jobFilterSearch(params)).toBe('?executionState=cells-v1&status=none&q=full+prompt&sort=submitted&order=descend&pageToken=next');
   });
 
   it('preserves multiple cells and distinguishes no selection from a cell named none', () => {
     expect(readJobFilters(new URLSearchParams()).cell).toBeNull();
     for (const [query, cells] of [
-      ['cell=alpha&cell=beta', ['alpha', 'beta']],
+      ['cellId=alpha&cellId=beta', ['alpha', 'beta']],
       ['cellSelection=none', []],
-      ['cell=none', ['none']],
-      ['cell=', ['']],
+      ['cellId=none', ['none']],
+      ['cellId=', ['']],
     ] as const) {
       const params = new URLSearchParams(query);
       expect(readJobFilters(params).cell).toEqual(cells);

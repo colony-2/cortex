@@ -1,3 +1,4 @@
+import { jobIdentity } from '../test/cellFixtures';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import InputDetailPage from './InputDetailPage';
@@ -19,13 +20,13 @@ const view = (projectId = 'tenant') => <MemoryRouter><InputActivityProvider><Pen
 
 it('refreshes compact labels without job detail requests', async () => {
   const prompt = 'Build ' + '🌱'.repeat(80);
-  setupMockInputs('tenant', [{ id: 'a', prompt, cell_name: 'platform', client_payload_revision: 1 }], []);
+  setupMockInputs('tenant', [{ ...jobIdentity, id: 'a', prompt, cell_name: 'platform', client_payload_revision: 1 }], []);
   const reads = vi.fn();
   server.use(http.get('http://localhost:8080/api/projects/:tenant/jobs/:job', () => { reads(); return HttpResponse.error(); }));
   render(view()); (await waitForSSEConnection()).emitConnected();
   expect(await screen.findByText('Cell: platform')).toBeVisible();
   expect(screen.getByText(abbreviatePrompt(prompt))).toBeVisible();
-  setupMockInputs('tenant', [{ id: 'a', title: 'Updated title', cell_name: 'other', client_payload_revision: 2 }], []);
+  setupMockInputs('tenant', [{ ...jobIdentity, id: 'a', title: 'Updated title', cell_name: 'other', client_payload_revision: 2 }], []);
   fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
   expect(await screen.findByText('Updated title')).toBeVisible();
   expect(screen.getByText('Cell: other')).toBeVisible();
@@ -37,11 +38,11 @@ it('applies streamed summaries without per-entry requests and isolates tenants',
   const { rerender } = render(view('first'));
   (await waitForSSEConnection()).emitConnected();
   const fetch = vi.spyOn(globalThis, 'fetch');
-  inputActivityService.emit('inputs_changed', { projectId: 'first', inputs: Array.from({ length: 200 }, (_, i) => ({ id: String(i), title: `Request ${i}` })) });
+  inputActivityService.emit('inputs_changed', { projectId: 'first', inputs: Array.from({ length: 200 }, (_, i) => ({ ...jobIdentity, id: String(i), title: `Request ${i}` })) });
   expect(await screen.findByText('Request 199')).toBeVisible();
   expect(fetch.mock.calls.filter(([url]) => String(url).includes('/jobs/'))).toHaveLength(0);
   rerender(view('second'));
-  inputActivityService.emit('inputs_changed', { projectId: 'first', inputs: [{ id: 'old', title: 'Stale tenant' }] });
+  inputActivityService.emit('inputs_changed', { projectId: 'first', inputs: [{ ...jobIdentity, id: 'old', title: 'Stale tenant' }] });
   expect(screen.queryByText('Request 199')).toBeNull();
   expect(screen.queryByText('Stale tenant')).toBeNull();
   fetch.mockRestore();
@@ -50,8 +51,8 @@ it('applies streamed summaries without per-entry requests and isolates tenants',
 it.each([404, 503, 'network'] as const)('preserves review draft and submission through metadata failure %s and retry', async failure => {
   setupMockInputs('tenant', [], [{ jobId: 'a', status: 'pending', startTime: '2026-10-25T10:00:00Z', form: {
     kind: 'review', title: 'Review phase', request_id: 'original-request', fields: [
-      { id: 'decision', type: 'multiple_choice', question: 'Response question', required: true, options: [{ value: 'approve', label: 'Approve' }] },
-      { id: 'feedback', type: 'paragraph_text', question: 'Feedback', required: true },
+      { ...jobIdentity, id: 'decision', type: 'multiple_choice', question: 'Response question', required: true, options: [{ value: 'approve', label: 'Approve' }] },
+      { ...jobIdentity, id: 'feedback', type: 'paragraph_text', question: 'Feedback', required: true },
     ],
   } }]);
   let reads = 0;
@@ -60,7 +61,7 @@ it.each([404, 503, 'network'] as const)('preserves review draft and submission t
   server.use(
     http.get('http://localhost:8080/api/projects/tenant/jobs/a', () => {
       if (++reads === 1) return failure === 'network' ? HttpResponse.error() : new HttpResponse(null, { status: failure });
-      return HttpResponse.json({ status: 'READY', store: 'ACTIVE', cell_name: 'platform', prompt: 'Complete goal prompt' });
+      return HttpResponse.json({ ...jobIdentity, status: 'READY', store: 'ACTIVE', cell_name: 'platform', prompt: 'Complete goal prompt' });
     }),
     http.post('http://localhost:8080/api/projects/tenant/reviews/a/respond', async ({ request }) => {
       await request.text(); received = true; return HttpResponse.json({ ok: true });

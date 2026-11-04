@@ -3,6 +3,7 @@ package cortexcli
 import (
 	"bytes"
 	"context"
+	"github.com/colony-2/colony2/server/internal/testjobdb"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -85,7 +86,7 @@ func TestUsesC2JConfigDiscoveryAndCommandResolution(t *testing.T) {
 	if err := os.MkdirAll(nested, 0755); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := resolveConnection(context.Background(), cortex.Config{WorkingDir: nested}, "", "")
+	cfg, err := resolveConnection(testjobdb.Context(context.Background()), cortex.Config{WorkingDir: nested}, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,12 +100,12 @@ func TestOverridesDoNotEvaluateConfigCommands(t *testing.T) {
 	root := configDir(t, "jobdb:\n  command: exit 99\n")
 	for _, explicit := range []string{"http://localhost:9047/flag", ""} {
 		t.Setenv("C2J_JOBDB", "http://localhost:9047/env")
-		if _, err := resolveConnection(context.Background(), cortex.Config{WorkingDir: root}, explicit, ""); err != nil {
+		if _, err := resolveConnection(testjobdb.Context(context.Background()), cortex.Config{WorkingDir: root}, explicit, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
 	t.Setenv("C2J_JOBDB", "")
-	if _, err := resolveConnection(context.Background(), cortex.Config{WorkingDir: root}, "", ""); err == nil {
+	if _, err := resolveConnection(testjobdb.Context(context.Background()), cortex.Config{WorkingDir: root}, "", ""); err == nil {
 		t.Fatal("config command failure was ignored")
 	}
 }
@@ -151,7 +152,7 @@ func TestHelpAndVersionDoNotRequireConfig(t *testing.T) {
 
 func TestTenantURIReachesRealJobDBEndpoints(t *testing.T) {
 	cleanEnv(t)
-	jobdb := httptest.NewServer(remote.NewServer(toy.New()))
+	jobdb := httptest.NewServer(testjobdb.Handler(remote.NewServer(toy.New())))
 	defer jobdb.Close()
 	cmd := newCommand(Options{}, func(_ *cobra.Command, cfg cortex.Config) error {
 		server, err := cortex.NewRemoteServer(cfg)

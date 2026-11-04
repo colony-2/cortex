@@ -34,7 +34,7 @@ type Server struct {
 	router      http.Handler
 	story       storyService
 	inputs      inputRuntime
-	cells       *cellCatalog
+	cells       jobdb.CellRuntime
 	logger      *slog.Logger
 	started     time.Time
 }

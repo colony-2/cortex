@@ -29,6 +29,7 @@ export default function GoalJobOverview({ jobs, projectId, navigationState, show
   const selected = jobs.find(job => params.getAll('inspect').includes(job.job_id)) || current;
   const choose = (job: RecipeJobSummary) => setParams(previous => {
     const next = new URLSearchParams(previous);
+    next.set('executionState', 'cells-v1');
     const other = next.getAll('inspect').filter(id => !jobs.some(candidate => candidate.job_id === id));
     next.delete('inspect'); [...other, job.job_id].forEach(id => next.append('inspect', id));
     return next;

@@ -2,6 +2,7 @@ package cortex
 
 import (
 	"context"
+	"github.com/colony-2/colony2/server/internal/testjobdb"
 	"github.com/colony-2/jobdb/pkg/jobdb"
 	"net/http"
 	"net/http/httptest"
@@ -18,7 +19,7 @@ func TestJobActions(t *testing.T) {
 			var srv *Server
 			var err error
 			if mode == "remote" {
-				backend := httptest.NewServer(remote.NewServer(toy.New()))
+				backend := httptest.NewServer(testjobdb.Handler(remote.NewServer(toy.New())))
 				t.Cleanup(backend.Close)
 				cfg.JobDBURL = backend.URL
 				srv, err = NewRemoteServer(cfg)
@@ -31,8 +32,9 @@ func TestJobActions(t *testing.T) {
 			ts := httptest.NewServer(srv)
 			defer ts.Close()
 			for _, tenant := range []string{"a", "b"} {
+				postJSON[jobdb.Cell](t, ts.URL+"/api/projects/"+tenant+"/cells", map[string]string{"name": "self", "repo": "github.com/acme/boo-self"})
 				for _, id := range []string{"first", "second", "untouched"} {
-					postJSON[map[string]interface{}](t, ts.URL+"/api/projects/"+tenant+"/jobs", map[string]interface{}{"job_id": id, "recipe": "smoke"})
+					postJSON[map[string]interface{}](t, ts.URL+"/api/projects/"+tenant+"/jobs", map[string]interface{}{"job_id": id, "recipe": "smoke", "cell": "self", "repo": "github.com/acme/boo-self"})
 				}
 			}
 			action := func(method, path string, want int) {
@@ -67,7 +69,7 @@ func TestJobActions(t *testing.T) {
 			// Deletion hides both archived and unfinished jobs; JobDB retains history.
 			for _, id := range []string{"first", "second"} {
 				action(http.MethodDelete, "a/jobs/"+id, http.StatusNoContent)
-				job, err := srv.engine.GetJobRun(context.Background(), jobdb.GetJobRunRequest{JobKey: jobdb.JobKey{TenantId: "a", JobId: id}})
+				job, err := srv.engine.GetJobRun(testjobdb.Context(context.Background()), jobdb.GetJobRunRequest{JobKey: jobdb.JobKey{TenantId: "a", JobId: id}})
 				if err != nil {
 					t.Fatal(err)
 				}
