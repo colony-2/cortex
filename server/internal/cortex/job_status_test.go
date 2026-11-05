@@ -109,7 +109,7 @@ func TestDisplayStatusPaginationAcrossEmptyPages(t *testing.T) {
 		"cursor+/=": {Jobs: jobs[2:]},
 	}}
 	server := &Server{engine: engine}
-	query := url.Values{"displayStatus": {"failed_app"}, "pageSize": {"2"}, "goal": {"goal"}}
+	query := url.Values{"displayStatus": {"failed_app"}, "pageSize": {"2"}, "goal": {"goal"}, "includeHidden": {"true"}}
 	first := displayStatusPage(t, server, query)
 	if len(first.Jobs) != 2 || first.Jobs[0].JobID != "0" || first.Jobs[1].JobID != "1" || first.NextPageToken != "cursor+/=" {
 		t.Fatalf("first page: %+v", first)
@@ -120,7 +120,7 @@ func TestDisplayStatusPaginationAcrossEmptyPages(t *testing.T) {
 		t.Fatalf("last page: %+v", last)
 	}
 	for i, req := range engine.requests {
-		if !reflect.DeepEqual(req.TenantIds, []string{"tenant"}) || !reflect.DeepEqual(req.GoalIDs, []string{"goal"}) {
+		if !req.IncludeHidden || !reflect.DeepEqual(req.TenantIds, []string{"tenant"}) || !reflect.DeepEqual(req.GoalIDs, []string{"goal"}) {
 			t.Fatalf("lost scope on request %d: %+v", i, req)
 		}
 	}
@@ -154,7 +154,7 @@ func TestDisplayStatusScanLimitPreservesContinuation(t *testing.T) {
 }
 
 func TestInvalidDisplayStatuses(t *testing.T) {
-	for _, query := range []string{"displayStatus=COMPLETED", "displayStatus=constructor", "displayStatus=completion:", "displayStatus=success&status=READY"} {
+	for _, query := range []string{"displayStatus=COMPLETED", "displayStatus=constructor", "displayStatus=completion:", "displayStatus=success&status=READY", "includeHidden=", "includeHidden=invalid", "includeHidden=true&includeHidden=false"} {
 		w := httptest.NewRecorder()
 		(&Server{}).handleListJobs(w, httptest.NewRequest("GET", "/jobs?"+query, nil))
 		if w.Code != 400 {
@@ -258,5 +258,46 @@ func TestDisplayStatusFilteringWithRemoteSQLite(t *testing.T) {
 	}
 	if page := getJSON[recipejob.ListRecipeJobsResponse](t, api.URL+"/api/projects/another/jobs?displayStatus=success"); len(page.Jobs) != 0 {
 		t.Fatalf("tenant leaked: %+v", page)
+	}
+
+	// Inbox membership is separate from the execution archive: completed jobs
+	// remain in the inbox until the user archives them through DeleteJobs.
+	if _, err := server.jobDeletion.DeleteJobs(ctx, jobdb.DeleteJobsRequest{TenantID: "tenant", JobIDs: []string{"job-0"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, includeHidden := range []string{"false", "true"} {
+		for _, statusFilter := range []url.Values{{"status": {"all"}}, {"displayStatus": {"failed_app"}}} {
+			query := url.Values{"includeHidden": {includeHidden}, "pageSize": {"1"}, "cellNames": {"alpha"}, "goal": {goal}}
+			for key, values := range statusFilter {
+				query[key] = values
+			}
+			seen := make(map[string]bool)
+			for pages := 0; ; pages++ {
+				if pages > 6 {
+					t.Fatal("visibility pagination did not finish")
+				}
+				page := getJSON[recipejob.ListRecipeJobsResponse](t, base+"?"+query.Encode())
+				for _, job := range page.Jobs {
+					if seen[job.JobID] {
+						t.Fatalf("duplicate job %s", job.JobID)
+					}
+					seen[job.JobID] = true
+				}
+				if page.NextPageToken == "" {
+					break
+				}
+				query.Set("pageToken", page.NextPageToken)
+			}
+			want := map[string]bool{"job-2": true}
+			if query.Get("status") == "all" {
+				want["job-1"], want["job-3"], want["job-4"] = true, true, true
+			}
+			if includeHidden == "true" {
+				want["job-0"] = true
+			}
+			if !reflect.DeepEqual(seen, want) {
+				t.Fatalf("query=%v got=%v want=%v", query, seen, want)
+			}
+		}
 	}
 }

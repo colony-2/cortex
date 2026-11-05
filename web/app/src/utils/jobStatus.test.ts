@@ -47,14 +47,14 @@ describe('job display status', () => {
 
   it('preserves mixed display filters and unknown outcomes through navigation', () => {
     const params = new URLSearchParams('status=READY&status=success&status=failed_app&status=CANCEL_REQUESTED&status=OUTCOME_UNAVAILABLE&status=completion%3Afuture_outcome&status=constructor&cellId=platform&pageToken=next&executionState=cells-v1');
-    expect(readJobFilters(params)).toEqual({ status: ['READY', 'success', 'failed_app', 'CANCEL_REQUESTED', 'OUTCOME_UNAVAILABLE', 'completion:future_outcome'], cell: ['platform'] });
+    expect(readJobFilters(params)).toEqual({ status: ['READY', 'success', 'failed_app', 'CANCEL_REQUESTED', 'OUTCOME_UNAVAILABLE', 'completion:future_outcome'], cell: ['platform'], view: 'inbox' });
     const restored = new URLSearchParams(jobFilterSearch(params));
     expect(readJobFilters(restored)).toEqual(readJobFilters(params));
     expect(restored.get('pageToken')).toBe('next');
   });
 
   it('keeps the outcome-unavailable selection in links created by the old dropdown', () => {
-    expect(readJobFilters(new URLSearchParams('status=COMPLETED'))).toEqual({ status: ['OUTCOME_UNAVAILABLE'], cell: null });
+    expect(readJobFilters(new URLSearchParams('status=COMPLETED'))).toEqual({ status: ['OUTCOME_UNAVAILABLE'], cell: null, view: 'inbox' });
   });
 
   it('distinguishes all statuses from none and retains local search and sorting in links', () => {

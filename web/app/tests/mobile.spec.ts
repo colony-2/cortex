@@ -273,7 +273,7 @@ test.describe('native browser zoom', () => {
     await page.keyboard.press('Enter');
     await expect(newGoal).toBeFocused();
     await page.getByRole('checkbox', { name: 'Select all goals on this page', exact: true }).check();
-    for (const action of ['Cancel', 'Delete']) {
+    for (const action of ['Cancel', 'Archive']) {
       const trigger = page.getByRole('button', { name: `${action} selected`, exact: true });
       await trigger.click();
       dialog = page.getByRole('dialog');

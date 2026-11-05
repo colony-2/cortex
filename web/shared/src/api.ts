@@ -72,6 +72,7 @@ export async function listJobs(
     pageSize?: number;
     pageToken?: string;
     goal?: string;
+    includeHidden?: boolean;
   } = {},
 ): Promise<ListRecipeJobsResponse> {
   const params = new URLSearchParams();
@@ -83,6 +84,7 @@ export async function listJobs(
   for (const status of options.displayStatus || []) params.append('displayStatus', status);
   for (const cell of options.cellNames || []) params.append('cellNames', cell);
   if (options.goal) params.set('goal', options.goal);
+  if (options.includeHidden !== undefined) params.set('includeHidden', String(options.includeHidden));
   if (options.pageSize) params.set('pageSize', String(options.pageSize));
   if (options.pageToken) params.set('pageToken', options.pageToken);
   const query = params.toString();
@@ -128,12 +130,13 @@ export async function cancelJob(projectId: string, jobId: string): Promise<void>
   await handleResponse(response, 'Cancel job');
 }
 
-export async function deleteJob(projectId: string, jobId: string): Promise<void> {
+// The existing deletion API hides jobs and cancels unfinished work; it retains history.
+export async function archiveJob(projectId: string, jobId: string): Promise<void> {
   const response = await fetch(
     `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}`,
     { method: 'DELETE' },
   );
-  await handleResponse(response, 'Delete job');
+  await handleResponse(response, 'Archive job');
 }
 
 export async function submitJob(projectId: string, input: SubmitRecipeJobRequest): Promise<SubmittedJob> {

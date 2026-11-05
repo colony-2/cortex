@@ -61,6 +61,8 @@ function JobsList({ projectId, goalId }: Props) {
   const pageToken = params.get('executionState') === 'cells-v1' ? params.get('pageToken') || undefined : undefined;
   const statusesKey = JSON.stringify(filters.status);
   const cellsKey = JSON.stringify(filters.cell);
+  // Goal overview is history for that goal, including attempts archived from the inbox.
+  const includeHidden = !!goalId || filters.view === 'all';
   const noStatuses = !goalId && filters.status?.length === 0;
   const noCells = !goalId && filters.cell?.length === 0;
   const search = params.get('q') || '';
@@ -78,7 +80,7 @@ function JobsList({ projectId, goalId }: Props) {
   useEffect(() => {
     const version = ++loadVersion.current;
     setLoading(true); setError(undefined);
-    const scope = JSON.stringify([projectId, goalId, statusesKey, cellsKey]);
+    const scope = JSON.stringify([projectId, goalId, statusesKey, cellsKey, includeHidden]);
     if (loadedScope.current !== scope) {
       setJobs([]); setNextPage(undefined); setSelectedIds([]);
       loadedScope.current = scope;
@@ -86,9 +88,9 @@ function JobsList({ projectId, goalId }: Props) {
     (async () => {
       const cellNames = !goalId && filters.cell?.length ? await Promise.all(filters.cell.map(async id => (await getCell(projectId, id)).name)) : undefined;
       if (version !== loadVersion.current) return;
-      const key = JSON.stringify([projectId, goalId, statusesKey, cellsKey, cellNames, pageToken, refresh]);
+      const key = JSON.stringify([projectId, goalId, statusesKey, cellsKey, cellNames, includeHidden, pageToken, refresh]);
       if (listRequest.current?.key !== key) listRequest.current = { key, promise: noStatuses || noCells ? Promise.resolve({ jobs: [] })
-        : listJobs(projectId, { cellNames, goal: goalId, displayStatus: goalId ? [] : JSON.parse(statusesKey) || [], pageToken }) };
+        : listJobs(projectId, { cellNames, goal: goalId, includeHidden, displayStatus: goalId ? [] : JSON.parse(statusesKey) || [], pageToken }) };
       const page = await listRequest.current.promise;
       if (version !== loadVersion.current) return;
       setJobs(page.jobs); setNextPage(page.next_page_token);
@@ -100,7 +102,7 @@ function JobsList({ projectId, goalId }: Props) {
       }
     }).finally(() => { if (version === loadVersion.current) setLoading(false); });
     return () => { loadVersion.current++; };
-  }, [projectId, goalId, pageToken, statusesKey, cellsKey, noStatuses, noCells, refresh]);
+  }, [projectId, goalId, pageToken, statusesKey, cellsKey, includeHidden, noStatuses, noCells, refresh]);
 
   // The backend applies cell selection before pagination and goal grouping.
   const groups = useMemo(() => {
@@ -226,6 +228,14 @@ function JobsList({ projectId, goalId }: Props) {
       <div className="goal-toolbar">
         <Title level={3} style={{ margin: 0 }}>{goalId ? 'Goal overview' : 'Goals'}</Title>
         <Space wrap>
+          {!goalId && <select className="compact-sort" aria-label="Job visibility" value={filters.view} onChange={event => {
+            const view = event.target.value;
+            setSelectedIds([]);
+            changeQuery(query => {
+              if (view === 'all') query.set('view', 'all'); else query.delete('view');
+              for (const key of ['pageToken', 'expanded', 'inspect']) query.delete(key);
+            });
+          }}><option value="inbox">Inbox</option><option value="all">All jobs</option></select>}
           {goalId && <Link className="compact-touch-link" to={goalsReturnTo}>Back to Goals</Link>}
           {!compact && <Button icon={<ReloadOutlined aria-hidden />} onClick={() => setRefresh(value => value + 1)}>Refresh</Button>}
           <Button type="primary" icon={<PlusOutlined aria-hidden />} onClick={() => setSubmitOpen(true)}>New goal</Button>
@@ -244,7 +254,7 @@ function JobsList({ projectId, goalId }: Props) {
           {(!compact || selectedIds.length > 0) && <Space wrap>
             <Text>{selectedIds.length} selected</Text>
             <Button danger disabled={loading || !selectedIds.length} onClick={() => setOperation({ action: 'cancel', jobIds: selectedIds })}>Cancel selected</Button>
-            <Button danger disabled={loading || !selectedIds.length} onClick={() => setOperation({ action: 'delete', jobIds: selectedIds })}>Delete selected</Button>
+            <Button danger disabled={loading || !selectedIds.length} onClick={() => setOperation({ action: 'archive', jobIds: selectedIds })}>Archive selected</Button>
             {!!selectedIds.length && <Button onClick={() => setSelectedIds([])}>Clear selection</Button>}
           </Space>}
           <div hidden={compact && !controlsOpen} className="goal-search-control"><Input className="goal-search" aria-label="Search goals" placeholder="Search full prompts" prefix={<SearchOutlined aria-hidden />} allowClear value={search}

@@ -24,7 +24,14 @@ status filters run on the backend before pagination. URLs store stable cell IDs;
 renames preserve selections and refresh displayed names. Missing required cell
 fields produce a protocol error rather than an inferred identity.
 
-Search full prompts at the right of the Cancel/Delete row, including text beyond the shortened row
+The **Inbox / All jobs** selector controls visibility independently of execution
+status. Inbox is the default and includes finished jobs until they are archived.
+**Archive selected** removes jobs from the inbox and cancels unfinished work;
+history and artifacts remain available through All jobs and goal overview.
+Restoring jobs to the inbox is not currently supported. The selected view stays
+in the URL; switching views clears pagination and selected jobs.
+
+Search full prompts at the right of the Cancel/Archive row, including text beyond the shortened row
 label and prompts from other loaded attempts. Click the Goal, Status, Cell, or
 Submitted column header to sort ascending or descending; click again to restore
 the original order. Search and sorting run in the browser on the current page.
@@ -39,6 +46,9 @@ can still have a `next_page_token`; use **Next jobs** to continue.
 Repeated `cellNames` parameters (for example `?cellNames=alpha&cellNames=beta`)
 match jobs owned by either named cell before pagination. Repository selectors and
 the old `cell` query parameter are no longer accepted.
+`includeHidden=true` includes jobs archived from the inbox; omitted or `false`
+keeps the inbox view. It composes with status, cell and goal filters before
+pagination. Goal overview includes archived attempts.
 
 ## Review document previews
 

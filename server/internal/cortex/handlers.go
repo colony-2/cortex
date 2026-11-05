@@ -84,6 +84,14 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 	tenantID := s.tenantID(r)
+	includeHidden := false
+	if values, ok := r.URL.Query()["includeHidden"]; ok {
+		if len(values) != 1 || (values[0] != "true" && values[0] != "false") {
+			writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("includeHidden must be true or false"))
+			return
+		}
+		includeHidden = values[0] == "true"
+	}
 	statuses, allStatuses, err := parseStatuses(r.URL.Query()["status"])
 	if err != nil {
 		writeHTTPError(w, http.StatusBadRequest, err)
@@ -121,13 +129,14 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 		stores = []jobdb.JobStore{jobdb.JobStoreActive, jobdb.JobStoreArchived}
 	}
 	resp, err := listJobsByDisplayStatus(r.Context(), s.engine, recipejob.ListRecipeJobsRequest{
-		GoalIDs:   r.URL.Query()["goal"],
-		TenantID:  tenantID,
-		CellNames: cells,
-		Statuses:  statuses,
-		Stores:    stores,
-		PageSize:  pageSize,
-		PageToken: r.URL.Query().Get("pageToken"),
+		IncludeHidden: includeHidden,
+		GoalIDs:       r.URL.Query()["goal"],
+		TenantID:      tenantID,
+		CellNames:     cells,
+		Statuses:      statuses,
+		Stores:        stores,
+		PageSize:      pageSize,
+		PageToken:     r.URL.Query().Get("pageToken"),
 	}, displayStatuses)
 	if err != nil {
 		writeError(w, err)

@@ -328,7 +328,7 @@ test('searches complete prompts and sorts locally while preserving the view thro
   await expect(names).toHaveText(['Zeta task', 'Alpha task', 'Middle task']);
   const search = page.getByRole('textbox', { name: 'Search goals' });
   const searchBox = await page.locator('.goal-search').boundingBox();
-  const actionBox = await page.getByRole('button', { name: 'Delete selected', exact: true }).boundingBox();
+  const actionBox = await page.getByRole('button', { name: 'Archive selected', exact: true }).boundingBox();
   const toolbarBox = await page.locator('.goal-list-actions').boundingBox();
   expect(Math.abs(searchBox!.y + searchBox!.height / 2 - actionBox!.y - actionBox!.height / 2)).toBeLessThan(2);
   expect(Math.abs(searchBox!.x + searchBox!.width - toolbarBox!.x - toolbarBox!.width)).toBeLessThan(2);

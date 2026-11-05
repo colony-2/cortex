@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Modal, Space, Typography, message } from 'antd';
-import { cancelJob, deleteJob } from '@colony2/shared/api';
+import { cancelJob, archiveJob } from '@colony2/shared/api';
 
-export type JobAction = 'cancel' | 'delete';
+export type JobAction = 'cancel' | 'archive';
 
 interface Props {
   projectId: string;
@@ -23,7 +23,7 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
   const [pending, setPending] = useState(jobIds);
   const [busy, setBusy] = useState(false);
   const [failures, setFailures] = useState<{ id: string; error: string }[]>([]);
-  const verb = action === 'cancel' ? 'Cancel' : 'Delete';
+  const verb = action === 'cancel' ? 'Cancel' : 'Archive';
   const label = `${verb} ${pending.length === 1 ? 'job' : `${pending.length} jobs`}`;
 
   const submit = async () => {
@@ -38,7 +38,7 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
       for (let offset = 0; offset < pending.length; offset += 5) {
         const ids = pending.slice(offset, offset + 5);
         const results = await Promise.allSettled(ids.map(id =>
-          (action === 'cancel' ? cancelJob : deleteJob)(projectId, id)));
+          (action === 'cancel' ? cancelJob : archiveJob)(projectId, id)));
         results.forEach((result, index) => {
           if (result.status === 'fulfilled') succeeded.push(ids[index]);
           else failed.push({ id: ids[index], error: result.reason instanceof Error ? result.reason.message : String(result.reason) });
@@ -49,7 +49,7 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
       if (succeeded.length) {
         message.success(action === 'cancel'
           ? `Cancellation requested for ${succeeded.length} job${succeeded.length === 1 ? '' : 's'}`
-          : `Deleted ${succeeded.length} job${succeeded.length === 1 ? '' : 's'}`);
+          : `Archived ${succeeded.length} job${succeeded.length === 1 ? '' : 's'}`);
         await onComplete(succeeded);
       }
       if (!failed.length) onClose();
@@ -67,7 +67,7 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
       <Typography.Paragraph>
         {action === 'cancel'
           ? 'Cancel these jobs outright, including any pending review or input. Finished jobs remain unchanged.'
-          : 'Remove these jobs from job lists and cancel any unfinished work. JobDB retains history and artifacts; deletion does not reclaim storage.'}
+          : 'Move these jobs out of the inbox and cancel any unfinished work. History and artifacts remain available in All jobs. Jobs cannot currently be restored to the inbox.'}
       </Typography.Paragraph>
       <ul style={{ maxHeight: 200, overflow: 'auto', overflowWrap: 'anywhere' }}>
         {pending.map(id => <li key={id}>{id}</li>)}

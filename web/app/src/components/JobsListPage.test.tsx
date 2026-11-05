@@ -23,7 +23,7 @@ beforeEach(() => { vi.mocked(listCells).mockResolvedValue({ cells: ['platform', 
  vi.mocked(getCell).mockImplementation(async (tenant, id) => registryCell(id.replace(/^cell-/, ''), tenant)); vi.mocked(getJob).mockReset().mockResolvedValue({ ...jobIdentity, goal_id: 'goal', job_id: 'job', status: 'READY', store: 'ACTIVE' } as RecipeJob); });
 afterEach(() => vi.unstubAllGlobals());
 
-it.each(['cancel', 'delete'] as const)('confirms selected jobs and keeps failed %s operations available for retry', async action => {
+it.each(['cancel', 'archive'] as const)('confirms selected jobs and keeps failed %s operations available for retry', async action => {
   const jobs = ['first', 'second', 'unselected'].map(job_id => ({ ...jobIdentity, job_id, status: 'READY', store: 'ACTIVE' }));
   const changes: string[] = [];
   let failSecond = true;
@@ -39,7 +39,7 @@ it.each(['cancel', 'delete'] as const)('confirms selected jobs and keeps failed 
   render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Select job first' }));
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select job second' }));
-  const verb = action === 'cancel' ? 'Cancel' : 'Delete';
+  const verb = action === 'cancel' ? 'Cancel' : 'Archive';
   fireEvent.click(screen.getByRole('button', { name: `${verb} selected` }));
   let dialog = screen.getByRole('dialog');
   expect(changes).toEqual([]);
@@ -69,7 +69,7 @@ it('clears job selections when switching tenants', async () => {
   expect(screen.getByText('1 selected')).toBeVisible();
   rerender(<MemoryRouter><JobsListPage projectId="other-tenant" /></MemoryRouter>);
   expect(await screen.findByRole('checkbox', { name: 'Select job same-id' })).not.toBeChecked();
-  expect(screen.getByRole('button', { name: 'Delete selected' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Archive selected' })).toBeDisabled();
 });
 
 it('shows restored fields immediately and inspects only after expansion', async () => {
@@ -119,7 +119,7 @@ function Location() {
   return <output data-testid="location">{location.pathname}{location.search}</output>;
 }
 
-it.each(['', '?status=ACTIVE&status=READY&cellId=cell-platform', '?status=success&status=failed_app&status=CANCEL_REQUESTED&cellId=cell-platform', '?status=READY&cellId=cell-platform&cellId=cell-app', '?q=search+term&sort=submitted&order=descend'])('preserves list filters through story navigation: %s', async (query) => {
+it.each(['', '?view=all', '?status=ACTIVE&status=READY&cellId=cell-platform', '?status=success&status=failed_app&status=CANCEL_REQUESTED&cellId=cell-platform', '?status=READY&cellId=cell-platform&cellId=cell-app', '?q=search+term&sort=submitted&order=descend'])('preserves list filters through story navigation: %s', async (query) => {
   const listReads: URL[] = [];
   vi.stubGlobal('fetch', vi.fn(async (input: string) => {
     const url = new URL(input, 'http://localhost');
@@ -174,7 +174,7 @@ it('searches full prompts across attempts without fetching and clears hidden sel
   expect(screen.getByText('2 attempts on this page')).toBeVisible();
   expect(screen.queryByRole('link', { name: 'Different work', exact: true })).not.toBeInTheDocument();
   expect(screen.getByText('0 selected')).toBeVisible();
-  expect(screen.getByRole('button', { name: 'Delete selected' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Archive selected' })).toBeDisabled();
   fireEvent.change(search, { target: { value: 'older requirement' } });
   expect(screen.getByRole('link', { name: 'Short title', exact: true })).toBeVisible();
   fireEvent.change(search, { target: { value: 'not present' } });
@@ -261,6 +261,40 @@ function GoalRoute() {
   return <JobsListPage projectId="tenant" goalId={useParams().goalId} />;
 }
 
+it('switches inbox visibility on the backend and resets pagination and selection through history', async () => {
+  const jobs = ['visible', 'hidden'].map(job_id => ({ ...jobIdentity, job_id, status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'failed_app' }));
+  const reads: URL[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+    const url = new URL(input);
+    reads.push(url);
+    return new Response(JSON.stringify({ jobs: url.searchParams.get('includeHidden') === 'true' ? jobs : jobs.slice(0, 1) }));
+  }));
+  render(<MemoryRouter initialEntries={['/project/tenant/goals?executionState=cells-v1&status=failed_app&cellId=cell-platform&pageToken=old']}>
+    <Navigation /><Location /><JobsListPage projectId="tenant" />
+  </MemoryRouter>);
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Select job visible' }));
+  expect(screen.getByLabelText('Job visibility')).toHaveValue('inbox');
+  fireEvent.change(screen.getByLabelText('Job visibility'), { target: { value: 'all' } });
+  expect(await screen.findByRole('checkbox', { name: 'Select job hidden' })).not.toBeChecked();
+  expect(screen.getByRole('checkbox', { name: 'Select job visible' })).not.toBeChecked();
+  expect(screen.getByRole('button', { name: 'Archive selected' })).toBeDisabled();
+  expect(screen.getByTestId('location')).toHaveTextContent('view=all');
+  expect(screen.getByTestId('location')).not.toHaveTextContent('pageToken');
+  const all = reads.at(-1)!.searchParams;
+  expect(all.get('includeHidden')).toBe('true');
+  expect(all.get('displayStatus')).toBe('failed_app');
+  expect(all.get('cellNames')).toBe('platform');
+  expect(all.has('pageToken')).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
+  await waitFor(() => expect(screen.queryByRole('checkbox', { name: 'Select job hidden' })).not.toBeInTheDocument());
+  expect(screen.getByLabelText('Job visibility')).toHaveValue('inbox');
+  await waitFor(() => expect(reads.at(-1)!.searchParams.get('pageToken')).toBe('old'));
+  expect(reads.at(-1)!.searchParams.get('includeHidden')).toBe('false');
+  fireEvent.click(screen.getByRole('button', { name: 'Browser forward' }));
+  expect(await screen.findByRole('checkbox', { name: 'Select job hidden' })).toBeVisible();
+  expect(screen.getByLabelText('Job visibility')).toHaveValue('all');
+});
+
 it('groups attempts and restores expanded details through goal navigation and browser back/forward with selected detail queries', async () => {
   const jobs: Partial<RecipeJob>[] = [
     { ...jobIdentity, job_id: 'first', goal_id: 'goal-a', prompt: 'Build a useful feature', status: 'READY', store: 'ACTIVE', cell_name: 'platform', execution: { ...jobIdentity, status: 'specified', source: 'yield', published: true, demand: { effective: { cpu: 4 } } } },
@@ -293,6 +327,10 @@ it('groups attempts and restores expanded details through goal navigation and br
   expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Expand row' })).not.toBeInTheDocument();
   expect(await screen.findByText('Execution requirements')).toBeVisible();
+  expect(fetch.mock.calls.some(([input]) => {
+    const query = new URL(input).searchParams;
+    return query.get('goal') === 'goal-a' && query.get('includeHidden') === 'true';
+  })).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
   expect(await screen.findByText('Execution requirements')).toBeVisible();
   expect(within(screen.getByText('Execution requirements').closest('details')!).getByText(/"cpu": 4/)).toBeVisible();

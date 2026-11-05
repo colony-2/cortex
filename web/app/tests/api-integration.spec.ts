@@ -9,7 +9,7 @@ import { jobIdentity, registerCell } from './helpers/cells';
 import { fixtureGitTransport } from './helpers/gitTransport';
 
 for (const width of [1440, 390]) {
-test(`confirms cancellation on job details and bulk cancel/delete at ${width}px`, async ({ page, request, context, baseURL }) => {
+test(`confirms cancellation on job details and bulk cancel/archive at ${width}px`, async ({ page, request, context, baseURL }) => {
   await page.setViewportSize({ width, height: 844 });
   const tenant = `actions-${randomUUID()}`;
   await registerCell(request, tenant);
@@ -48,18 +48,41 @@ test(`confirms cancellation on job details and bulk cancel/delete at ${width}px`
     expect((await (await request.get(`${base}/${id}`)).json()).status).toBe('CANCELLED');
     await page.getByRole('checkbox', { name: `Select job ${id}`, exact: true }).check();
   }
-  await page.getByRole('button', { name: 'Delete selected' }).click();
-  await expect(dialog.getByText(/JobDB retains history and artifacts/)).toBeVisible();
+  await page.getByRole('button', { name: 'Archive selected' }).click();
+  await expect(dialog.getByText(/History and artifacts remain available/)).toBeVisible();
   await dialog.getByRole('button', { name: 'Keep jobs' }).click();
   expect((await (await request.get(`${base}?status=all`)).json()).jobs).toHaveLength(4);
-  await page.getByRole('button', { name: 'Delete selected' }).click();
-  await dialog.getByRole('button', { name: 'Delete 2 jobs', exact: true }).click();
+  await page.getByRole('button', { name: 'Archive selected' }).click();
+  await dialog.getByRole('button', { name: 'Archive 2 jobs', exact: true }).click();
   await expect(dialog).not.toBeVisible();
   await expect(page.getByRole('link', { name: 'bulk-one', exact: true })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'bulk-two', exact: true })).toHaveCount(0);
   const remaining = (await (await request.get(`${base}?status=all`)).json()).jobs;
   expect(remaining.map((job: { job_id: string }) => job.job_id).sort()).toEqual(['detail-job', 'untouched']);
   expect(remaining.find((job: { job_id: string }) => job.job_id === 'untouched').status).toBe('READY');
+  expect(mutations).toHaveLength(5);
+  const visibility = page.getByLabel('Job visibility', { exact: true });
+  await expect(visibility).toHaveValue('inbox');
+  await visibility.selectOption('all');
+  await expect(page).toHaveURL(/view=all/);
+  await expect(page.getByRole('checkbox', { name: 'Select job bulk-one', exact: true })).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: 'Select job bulk-two', exact: true })).toBeVisible();
+  await page.reload();
+  await expect(visibility).toHaveValue('all');
+  const archivedJob = page.getByRole('link', { name: 'Job bulk-one: Cancelled', exact: true });
+  await archivedJob.click();
+  await expect(page).toHaveURL(/bulk-one\/story/);
+  await page.getByRole('button', { name: 'Back to Goals' }).click();
+  await expect(visibility).toHaveValue('all');
+  await page.getByRole('checkbox', { name: 'Select job bulk-one', exact: true }).check();
+  await visibility.selectOption('inbox');
+  await expect(page.getByRole('checkbox', { name: 'Select job bulk-one', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('checkbox', { name: 'Select job bulk-two', exact: true })).toHaveCount(0);
+  if (width === 1440) await expect(page.getByRole('button', { name: 'Archive selected' })).toBeDisabled();
+  else await expect(page.getByRole('button', { name: 'Archive selected' })).toHaveCount(0);
+  await page.goBack();
+  await expect(visibility).toHaveValue('all');
+  await expect(page.getByRole('checkbox', { name: 'Select job bulk-one', exact: true })).not.toBeChecked();
   expect(mutations).toHaveLength(5);
 });
 

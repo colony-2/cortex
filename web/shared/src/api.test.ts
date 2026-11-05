@@ -43,6 +43,20 @@ it('sends multiple cells as a union alongside status and pagination', async () =
   expect(query.get('pageToken')).toBe('cursor');
 });
 
+it('forwards inbox visibility independently of status, cells and pagination', async () => {
+  const fetch = vi.fn(async () => new Response('{"jobs":[]}'));
+  vi.stubGlobal('fetch', fetch);
+  for (const includeHidden of [false, true]) {
+    await listJobs('tenant', { includeHidden, displayStatus: ['failed_app'], cellNames: ['app'], goal: 'goal', pageToken: 'next' });
+    const query = new URL(fetch.mock.calls.at(-1)![0] as string).searchParams;
+    expect(query.get('includeHidden')).toBe(String(includeHidden));
+    expect(query.get('displayStatus')).toBe('failed_app');
+    expect(query.get('cellNames')).toBe('app');
+    expect(query.get('goal')).toBe('goal');
+    expect(query.get('pageToken')).toBe('next');
+  }
+});
+
 it('sends mixed display statuses to the API and retains pagination and scoping', async () => {
   const fetch = vi.fn(async () => new Response(JSON.stringify({ jobs: [] })));
   vi.stubGlobal('fetch', fetch);
