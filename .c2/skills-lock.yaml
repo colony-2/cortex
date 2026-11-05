@@ -13,7 +13,7 @@ skills:
       skill_path: skills/c2j-recipes
       scope: project
       path: .agents/skills/c2j-recipes
-      digest: sha256:785d55e21aa3771dac0959966a57f1b4d583ea7da12521872870f963a3e9c590
+      digest: sha256:a38199a69338ea6f69563cafa383b9d6942024f788307a74acc2dbd305f50b24
     - name: c2ops-extension-ops
       source: c2j
       ref: bundled

@@ -1,13 +1,14 @@
 # Cortex cell registry upgrade
 
-Implemented 2026-11-04. This document updates the migration design in
+Implemented 2026-11-04; dependencies refreshed 2026-11-05. This document updates
+the migration design in
 [GUIDE-CORTEX-CELLS.md](../GUIDE-CORTEX-CELLS.md) for the current upstream
 contract. In particular, root cells have no special role and submitting a job
 cannot implicitly register a cell.
 
 ## Dependency baseline and scope
 
-Cortex pins c2j `v0.0.118-0.20261104214226-dc36b1bdf6c9` and JobDB `v0.0.70`.
+Cortex pins c2j `v0.0.119-0.20261105021124-d6553a246827` and JobDB `v0.0.71`.
 The bundled c2j skills are refreshed from the pinned worker. This pair includes
 the remote route-validation fix described in
 [JobDB-Cell-Route-Validation-Bug.md](JobDB-Cell-Route-Validation-Bug.md).

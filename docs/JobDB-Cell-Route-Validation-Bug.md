@@ -10,7 +10,7 @@ They cover tenant/job identifiers beginning with `cells`, escaped path separator
 job listing, pending-input queries, lease acquisition, and cell resolution, while
 retaining strict validation on actual cell routes.
 
-Cortex now pins JobDB `v0.0.70` and c2j
+Cortex adopted the fix with JobDB `v0.0.70` and c2j
 `v0.0.118-0.20261104214226-dc36b1bdf6c9`. The UI and submission flow also adopt
 ordinary `root` names and explicit cell registration.
 `TestCellRouteValidationDoesNotMatchTenantOrJobNames` exercises Cortex against
