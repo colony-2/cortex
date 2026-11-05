@@ -38,12 +38,16 @@ func TestRestartContextHTTP(t *testing.T) {
 	inspection := &contextInspectionService{storyService: srv.story}
 	srv.story = inspection
 	base := ts.URL + "/api/projects/tenant/jobs/source/restart-context"
-	for _, query := range []string{"", "?chapter_ordinal=invalid", "?chapter_ordinal=1.5"} {
+	for _, query := range []string{"", "?chapter_ordinal=invalid", "?chapter_ordinal=1.5", "?chapter_ordinal=-1"} {
 		req, _ := http.NewRequest(http.MethodGet, base+query, nil)
 		doJSON[errorResponse](t, req, http.StatusBadRequest)
 	}
 	if inspection.request.JobID != "" {
 		t.Fatal("invalid query reached inspection")
+	}
+	getJSON[story.RestartContext](t, base+"?chapter_ordinal=0")
+	if inspection.request != (story.GetRestartContextRequest{ProjectID: "tenant", JobID: "source", ChapterOrdinal: 0}) {
+		t.Fatalf("submission inspection request = %#v", inspection.request)
 	}
 	result := getJSON[story.RestartContext](t, base+"?chapter_ordinal=17")
 	if inspection.request != (story.GetRestartContextRequest{ProjectID: "tenant", JobID: "source", ChapterOrdinal: 17}) {

@@ -8,7 +8,7 @@ cannot implicitly register a cell.
 
 ## Dependency baseline and scope
 
-Cortex pins c2j `v0.0.119-0.20261105021124-d6553a246827` and JobDB `v0.0.71`.
+Cortex pins c2j `v0.0.120-0.20261105194138-0252e9b3c1da` and JobDB `v0.0.71`.
 The bundled c2j skills are refreshed from the pinned worker. This pair includes
 the remote route-validation fix described in
 [JobDB-Cell-Route-Validation-Bug.md](JobDB-Cell-Route-Validation-Bug.md).

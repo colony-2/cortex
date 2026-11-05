@@ -242,6 +242,41 @@ describe('job story history', () => {
     expect(screen.queryByRole('tab', { name: /^Attempt / })).not.toBeInTheDocument();
   });
 
+  it('restarts from submission without carrying over a recipe context patch', async () => {
+    const fetchMock = mount('', { ...story,
+      root: { ...jobAttempt(1), restart_chapter_ordinal: 4 },
+      restart_scopes: [
+        { chapter_ordinal: 0, scope_id: 'opaque-submission-id', title: 'Job submission', started_at: '' },
+        { chapter_ordinal: 4, scope_id: 'root', title: 'Recipe body', started_at: '' },
+      ],
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Restart job' }));
+    const dialog = screen.getByRole('dialog');
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({
+      project_id: 'tenant', job_id: 'job', chapter_ordinal: 4, scope_id: 'root', job: {}, visible: {}, redacted_paths: [],
+    }) });
+    fireEvent.click(within(dialog).getByRole('switch'));
+    await within(dialog).findByRole('region', { name: 'Context before patching' });
+    fireEvent.click(within(dialog).getAllByRole('button', { name: 'Add line' })[0]);
+    fireEvent.change(within(dialog).getByPlaceholderText('e.g. git.author'), { target: { value: 'answer' } });
+    fireEvent.change(within(dialog).getByPlaceholderText('e.g. "james@example.com"'), { target: { value: 'patched' } });
+    fireEvent.mouseDown(within(dialog).getByRole('combobox', { name: 'Restart point' }));
+    fireEvent.click(await screen.findByText(text => text.startsWith('Job submission · Chapter 0 ·')));
+    expect(within(dialog).getByRole('switch')).toBeDisabled();
+    expect(within(dialog).getByRole('switch')).not.toBeChecked();
+    expect(within(dialog).getByText('Submission context is read-only. No context patch will be applied.')).toBeVisible();
+    expect(within(dialog).queryByPlaceholderText('e.g. git.author')).not.toBeInTheDocument();
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ job_id: 'resubmitted' }) });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Restart', exact: true }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/jobs/job/restart'), expect.objectContaining({ method: 'POST' }),
+    ));
+    const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/jobs/job/restart'))!;
+    expect(JSON.parse(call[1]!.body as string)).toEqual({
+      scope_id: 'opaque-submission-id', goal: { mode: 'continue' }, request_id: expect.any(String),
+    });
+  });
+
   it('does not offer restarts without recorded scopes', async () => {
     mount();
     await screen.findByText('Development.Design.Task 3.2');

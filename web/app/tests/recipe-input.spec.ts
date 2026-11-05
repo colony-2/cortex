@@ -334,7 +334,12 @@ for (const multiField of [false, true]) {
         expect(await beforeView.innerText()).toBe(beforeText);
         // Invalid selectors and cross-tenant reads must never become snapshots.
         expect((await request.get(`/api/projects/other-${tenant}/jobs/${jobID}/restart-context?chapter_ordinal=${expectedChapter}`)).status()).toBe(404);
-        expect((await request.get(`/api/projects/${tenant}/jobs/${jobID}/restart-context?chapter_ordinal=0`)).status()).toBe(400);
+        expect((await request.get(`/api/projects/${tenant}/jobs/${jobID}/restart-context?chapter_ordinal=-1`)).status()).toBe(400);
+        const submissionScope = story.restart_scopes.find((scope: { chapter_ordinal: number }) => scope.chapter_ordinal === 0);
+        expect(submissionScope).toBeTruthy();
+        const submissionContext = await request.get(`/api/projects/${tenant}/jobs/${jobID}/restart-context?chapter_ordinal=0`);
+        expect(submissionContext.status(), await submissionContext.text()).toBe(200);
+        expect(await submissionContext.json()).toMatchObject({ chapter_ordinal: 0, scope_id: submissionScope.scope_id });
         expect((await request.post(`/api/projects/${tenant}/jobs/${jobID}/restart`, { data: { chapter_ordinal: expectedChapter, scope_id: 'also-supplied' } })).status()).toBe(400);
         await expect(restartDialog.getByTitle('Start a new goal', { exact: true })).toBeVisible();
         for (const width of [320, 390, 768, 1440]) {

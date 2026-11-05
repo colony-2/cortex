@@ -259,8 +259,8 @@ func (s *Server) handleRestartContext(w http.ResponseWriter, r *http.Request) {
 	if chapter != "" {
 		var err error
 		ordinal, err = strconv.ParseInt(chapter, 10, 64)
-		if err != nil || ordinal <= 0 {
-			writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("chapter_ordinal must be a positive integer"))
+		if err != nil || ordinal < 0 {
+			writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("chapter_ordinal must be a non-negative integer"))
 			return
 		}
 	}

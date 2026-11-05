@@ -592,6 +592,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   const scopeKey = (scope: RestartScope) => JSON.stringify([scope.scope_id, scope.chapter_ordinal]);
   const restartScope = restartScopes.find(scope => scopeKey(scope) === restartSelection);
   const restartChapterOrdinal = restartScope?.chapter_ordinal;
+  const submissionRestart = restartChapterOrdinal === 0;
   const restartScopeID = restartScope && restartScopes.filter(scope => scope.scope_id === restartScope.scope_id).length === 1 ? restartScope.scope_id : undefined;
   const restartable = !!restartScope;
 
@@ -616,7 +617,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   const submitRestart = async () => {
     if (!jobId || !restartable) return;
 
-    const contextPatch = applyPatch ? buildContextPatch(jobPatchLines, scopePatchLines) : null;
+    const contextPatch = applyPatch && !submissionRestart ? buildContextPatch(jobPatchLines, scopePatchLines) : null;
 
     setRestartSubmitting(true);
     try {
@@ -1301,7 +1302,9 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
               message="This will create a new job"
               description={
                 <div>
-                  Choose where to resume execution. Completed work before that point is retained. The source job is not cancelled. A new patch replaces any previous patch at this same restart point.
+                  {submissionRestart
+                    ? 'Restart from the original submission and inputs. Setup and recipe resolution run again, so floating recipe references may resolve to a newer version. The source job is not cancelled.'
+                    : 'Choose where to resume execution. Completed work before that point is retained. The source job is not cancelled. A new patch replaces any previous patch at this same restart point.'}
                 </div>
               }
             />
@@ -1337,11 +1340,13 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                   </Text>
                   <Space>
                     <Text type="secondary">Enable</Text>
-                    <Switch checked={applyPatch} onChange={setApplyPatch} />
+                    <Switch checked={applyPatch && !submissionRestart} disabled={submissionRestart} onChange={setApplyPatch} />
                   </Space>
                 </Space>
 
-                {!applyPatch ? (
+                {submissionRestart ? (
+                  <Text type="secondary">Submission context is read-only. No context patch will be applied.</Text>
+                ) : !applyPatch ? (
                   <Text type="secondary">No context patch will be applied.</Text>
                 ) : (
                   <Space direction="vertical" style={{ width: '100%' }} size="large">
