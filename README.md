@@ -275,6 +275,13 @@ extension exists only during testing and is never bundled into the app.
 The Nix Chromium package targets Linux workers; macOS developers can use the
 Playwright installation command above.
 
+The image-review recipes also require a full `ffmpeg` executable on `PATH`,
+with PNG, JPEG, GIF, WebP, AVIF and BMP encoding support. Playwright's bundled
+video recorder does not satisfy this requirement. CI installs the pinned
+`imageio-ffmpeg==0.8.1` binary distribution for Linux x64/ARM64 and macOS ARM64
+and checks all fixture encoders before running the suite. Local Nix workers
+already declare full FFmpeg in `.c2/config.yaml`.
+
 Setting `CORTEX_PLAYWRIGHT_BROWSERS_PATH` selects that Playwright installation
 even when system browsers are on `PATH`, as in CI. Otherwise, system executables
 are used only when both Chromium and FFmpeg are available; an incomplete pair

@@ -17,6 +17,7 @@ sequence:
     inputs:
       working_directory: "{{ context.environment.op.outbox }}"
       run: |
+        set -eu
         printf '{"n":9007199254740993,"n":1e+40}' > data.json
         printf 'diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-old\n+new\n' > changes.patch
         printf 'first line\nneedle\nlast line\n' > checks.log

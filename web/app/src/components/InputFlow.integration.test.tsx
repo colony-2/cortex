@@ -7,6 +7,7 @@ import { http, HttpResponse } from 'msw';
 import { InputActivityProvider, inputActivityService } from '@colony2/shared';
 import PendingInputsListPage from './PendingInputsListPage';
 import JobStoryPage from './JobStoryPage';
+import { jobIdentity } from '../test/cellFixtures';
 import {
   inputApiHandlers,
   resetMockInputStore,
@@ -58,7 +59,9 @@ describe('Input Flow - Complete E2E Integration', () => {
   });
 
   afterEach(() => {
+    inputActivityService.disconnect();
     inputActivityService.clearCaches(); // Clear caches between tests
+    server.resetHandlers();
     server.close();
     eventSourceMock.restore();
     vi.clearAllMocks();
@@ -68,6 +71,18 @@ describe('Input Flow - Complete E2E Integration', () => {
     const user = userEvent.setup();
 
     server.use(
+      http.get('http://localhost:8080/api/projects/:projectId/jobs/:jobId', ({ params }) =>
+        HttpResponse.json({
+          ...jobIdentity,
+          tenant_id: params.projectId,
+          job_id: params.jobId,
+          status: 'ACTIVE',
+          store: 'ACTIVE',
+          job_type: 'recipe',
+          recipe: 'test-recipe',
+          prompt: 'Complete the input flow',
+        })
+      ),
       http.get('http://localhost:8080/api/projects/:projectId/jobs/:jobId/story', ({ params }) => {
         const { jobId: requestedJobId } = params;
         return HttpResponse.json({
@@ -178,6 +193,8 @@ describe('Input Flow - Complete E2E Integration', () => {
     );
 
     // User sees form
+    expect(await screen.findByRole('region', { name: 'Job prompt' })).toHaveTextContent('Complete the input flow');
+    expect(screen.queryByText('Job details unavailable')).not.toBeInTheDocument();
     await waitFor(
       () => {
       expect(screen.getAllByText('How old are you?').length).toBeGreaterThan(0);

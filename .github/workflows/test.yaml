@@ -50,6 +50,35 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Playwright's bundled encoder records video but cannot generate the
+      # recipe's image fixtures. Pin a full distribution for all runner families;
+      # Ubuntu 22.04's system FFmpeg predates AVIF output support.
+      - name: Set up Python for FFmpeg installation
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install full FFmpeg for review fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --only-binary=:all: imageio-ffmpeg==0.8.1
+          mkdir -p "$RUNNER_TEMP/ffmpeg-bin"
+          python -c 'import imageio_ffmpeg, shutil, sys; shutil.copy2(imageio_ffmpeg.get_ffmpeg_exe(), sys.argv[1])' "$RUNNER_TEMP/ffmpeg-bin/ffmpeg"
+          echo "$RUNNER_TEMP/ffmpeg-bin" >> "$GITHUB_PATH"
+
+      - name: Verify review image encoders
+        shell: bash
+        run: |
+          set -euo pipefail
+          ffmpeg -version
+          fixture_dir="$(mktemp -d)"
+          trap 'rm -rf "$fixture_dir"' EXIT
+          ffmpeg -v error -f lavfi -i color=c=blue:s=1280x900 -frames:v 1 -y "$fixture_dir/wide.png"
+          for format in jpg gif webp avif bmp; do
+            ffmpeg -v error -f lavfi -i color=c=blue:s=2x2 -frames:v 1 -y "$fixture_dir/sample.$format"
+          done
+
       - name: Install Playwright browser and dependencies
         run: pnpm --filter @colony2/app exec playwright install --with-deps chromium
         env:
