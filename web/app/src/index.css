@@ -313,3 +313,15 @@ body {
 
 .story-artifact-modal .ant-modal-body { max-height: 70vh; overflow: auto; }
 .story-artifact-modal .review-markdown { overflow-wrap: anywhere; }
+
+.review-artifact-link {
+  color: #1677ff;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.review-artifact-link:focus-visible { outline: 2px solid #1677ff; outline-offset: 2px; }

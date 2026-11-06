@@ -1,3 +1,4 @@
+import { resolveArtifactLink, type NavigationIntent } from './review/artifactLinks';
 import ArtifactContents from './ArtifactContents';
 import './JobStoryPage.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -289,6 +290,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   const [refreshIntervalMs, setRefreshIntervalMs] = useState<number>(5000);
   const refreshTimerRef = useRef<number | null>(null);
 
+  const [artifactNavigation, setArtifactNavigation] = useState<NavigationIntent>();
   const [selectedArtifact, setSelectedArtifact] = useState<ArtifactKey | null>(null);
   const artifactOpener = useRef<HTMLElement | null>(null);
   const [artifactOwner, setArtifactOwner] = useState('');
@@ -520,6 +522,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
 
   const openArtifact = (artifact: ArtifactKey) => {
     artifactOpener.current = document.activeElement as HTMLElement;
+    setArtifactNavigation(undefined);
     setArtifactOwner(artifactIdentity);
     setArtifactAttachments((selectedNode?.artifact_keys || []).map(a => ({ ...a })));
     setSelectedArtifact(artifact);
@@ -1237,6 +1240,18 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
         {activeArtifact && <ArtifactContents
           key={JSON.stringify([projectId, jobId, activeArtifact.taskOrdinal, activeArtifact.name])}
           url={artifactUrl(projectId, jobId, activeArtifact)} name={activeArtifact.name}
+          navigationIntent={artifactNavigation}
+          navigation={{
+            resolve: reference => resolveArtifactLink(reference, activeArtifact.name, artifactAttachments.map(a => ({key: JSON.stringify([a.taskOrdinal, a.name]), path: a.name}))),
+            open: (key, fragment) => {
+              if (artifactOwner !== artifactIdentity) return false;
+              const target = artifactAttachments.find(a => JSON.stringify([a.taskOrdinal, a.name]) === key);
+              if (!target) return false;
+              setSelectedArtifact(target);
+              setArtifactNavigation(previous => ({token: (previous?.token || 0) + 1, fragment}));
+              return true;
+            },
+          }}
           resolveAttachment={reference => {
             const matches = artifactAttachments.filter(a => a.name === reference);
             const identities = new Map(matches.map(a => [JSON.stringify([a.taskOrdinal, a.name]), a]));

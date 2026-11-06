@@ -848,3 +848,45 @@ describe('SAV-021 route identity cancellation', () => {
     expect(screen.queryByRole('heading',{name:'stale route'})).not.toBeInTheDocument();
   });
 });
+
+describe('MAL node-local navigation', () => {
+  const keys=[{name:'docs/bar.md',taskOrdinal:1},{name:'docs/foo.md',taskOrdinal:2},{name:'docs/data.json',taskOrdinal:3},{name:'dup.md',taskOrdinal:4},{name:'dup.md',taskOrdinal:5}];
+  const current={...story,root:{id:'root',kind:'opStep',title:'Links',status:'success',path:[],artifact_keys:keys,children:[{id:'foreign',kind:'opStep',title:'Other node',status:'success',path:[],artifact_keys:[{name:'docs/foo.md',taskOrdinal:999},{name:'docs/new.md',taskOrdinal:998}]}]}};
+  async function start() {
+    let refreshed=false;
+    const mock=mount('?nodeId=root',current);
+    mock.mockImplementation(async(url:string)=>{
+      if(url.includes('/artifacts/')) return new Response(url.includes('bar.md')?'# Bar\n[next](foo.md#target) [ambiguous](../dup.md)':url.includes('foo.md')?'# Target\n[self](foo.md#target) [outside](new.md) [json](data.json)':'{"n":42}');
+      return {ok:true,json:async()=>refreshed?{...current,root:{...current.root,artifact_keys:[...keys,{name:'docs/new.md',taskOrdinal:9}]}}:current};
+    });
+    fireEvent.click(await screen.findByRole('tab',{name:'Artifacts (5)'}));
+    fireEvent.click(screen.getByRole('link',{name:'docs/bar.md'}));
+    await screen.findByRole('heading',{name:'Bar'});
+    return {mock,refresh:()=>{refreshed=true;}};
+  }
+  it('MAL-017,018,019,021,022,023,028,031 keeps the original snapshot through refresh and chained navigation', async()=>{
+    const {mock,refresh}=await start();
+    fireEvent.click(screen.getByRole('button',{name:'ambiguous'}));expect(within(screen.getByRole('dialog')).getByRole('status')).toHaveTextContent('ambiguous');
+    refresh();fireEvent.click(screen.getByRole('button',{name:/Refresh/,exact:true}));await screen.findByRole('tab',{name:'Artifacts (6)'});
+    fireEvent.click(screen.getByText('Other node', {selector:'strong'}));await screen.findByRole('tab',{name:'Artifacts (2)'});
+    fireEvent.click(screen.getByRole('button',{name:'next'}));await screen.findByRole('heading',{name:'Target'});
+    expect(within(screen.getByRole('dialog')).getByText('docs/foo.md')).toBeInTheDocument();
+    const count=mock.mock.calls.filter(c=>String(c[0]).includes('/artifacts/')).length;
+    fireEvent.click(screen.getByRole('button',{name:'self'}));fireEvent.click(screen.getByRole('button',{name:'outside'}));
+    expect(within(screen.getByRole('dialog')).getByRole('status')).toHaveTextContent('missing');
+    expect(mock.mock.calls.filter(c=>String(c[0]).includes('/artifacts/'))).toHaveLength(count);
+    const click=vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(function(this:HTMLAnchorElement){expect(this.href).toContain('/tasks/2/artifacts/docs%2Ffoo.md');expect(this.download).toBe('docs/foo.md');});
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:/Download/}));expect(click).toHaveBeenCalled();click.mockRestore();
+    fireEvent.click(screen.getByRole('button',{name:'json'}));await screen.findByLabelText('Formatted JSON');
+    expect(mock.mock.calls.filter(c=>String(c[0]).includes('/artifacts/')).map(c=>c[0])).toEqual([
+      expect.stringContaining('/tasks/1/artifacts/docs%2Fbar.md'),expect.stringContaining('/tasks/2/artifacts/docs%2Ffoo.md'),expect.stringContaining('/tasks/3/artifacts/docs%2Fdata.json')]);
+  });
+  it('MAL-033 retries a linked target without closing the modal',async()=>{
+    const {mock}=await start();let recovered=false;
+    mock.mockImplementation(async()=>new Response(recovered?'# Recovered':'bad',{status:recovered?200:503}));
+    fireEvent.click(screen.getByRole('button',{name:'next'}));await screen.findByText(/Could not load/);
+    expect(screen.getByRole('dialog')).toHaveTextContent('docs/foo.md');
+    recovered=true;fireEvent.click(screen.getByRole('button',{name:'Retry'}));await screen.findByRole('heading',{name:'Recovered'});
+    expect(mock.mock.calls.at(-1)?.[0]).toContain('/tasks/2/artifacts/docs%2Ffoo.md');
+  });
+});

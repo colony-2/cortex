@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ReviewDocuments from './ReviewDocuments';
 import type { ReviewDocument } from '@colony2/shared';
 
@@ -15,7 +15,7 @@ describe('review documents', () => {
     const { container } = render(<ReviewDocuments projectId="tenant" jobId="job" requestId="request" documents={documents} />);
     expect(await screen.findByRole('heading', { name: 'Design' })).toBeInTheDocument();
     expect(container.querySelector('script')).toBeNull();
-    expect(screen.getByText('bad').getAttribute('href')).not.toMatch(/^javascript:/);
+    expect(screen.getByText('bad')).not.toHaveAttribute('href', expect.stringMatching(/^javascript:/));
     expect(container.querySelector('[contenteditable]')).toBeNull();
     fireEvent.click(screen.getByRole('radio', { name: 'Markdown', exact: true }));
     expect(screen.getByLabelText('Markdown source').textContent).toBe(source);
@@ -62,4 +62,169 @@ describe('SAV-019 review attachment membership', () => {
     await waitFor(()=>expect(mock.mock.calls.filter(c=>String(c[0]).includes('document_id=imageID'))).toHaveLength(3));
     expect(mock.mock.calls.some(c=>/document_id=zconflict/.test(String(c[0])))).toBe(false);
   });
+});
+
+describe('MAL review file navigation', () => {
+  const linked = {
+    a: {kind:'stored' as const,name:'display.md',stored:{key:{jobId:'producer-A',taskOrdinal:4,name:'docs/bar.md'}}},
+    'b/雪': {kind:'stored' as const,name:'foo.md',stored:{key:{jobId:'producer-B',taskOrdinal:99,name:'docs/foo.md'}}},
+    z: {kind:'stored' as const,name:'data.json',stored:{key:{jobId:'producer-C',taskOrdinal:3,name:'docs/data.json'}}},
+  };
+  it('MAL-013,015,021,022,028,031 navigates by canonical path through review-owned encoded IDs', async () => {
+    const mock=vi.fn(async(url:string)=>new Response(url.includes('document_id=a')?'# Bar\n[next](foo.md?ignored=1#target)':url.includes('document_id=z')?'{"n":42}':'# Target\n[self](foo.md#target) [json](data.json) [missing](outside.md)'));
+    vi.stubGlobal('fetch',mock);
+    render(<ReviewDocuments projectId="tenant" jobId="job" requestId="request" documents={linked}/>);
+    fireEvent.click(await screen.findByRole('button',{name:'next'}));
+    await screen.findByRole('heading',{name:'Target'});
+    expect(screen.getByRole('link',{name:'Download'})).toHaveAttribute('download','foo.md');
+    expect(screen.getByRole('link',{name:'Download'}).getAttribute('href')).toContain('document_id=b%2F%E9%9B%AA');
+    expect(screen.getByText('b/雪 · foo.md')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button',{name:'self'}));expect(mock).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole('button',{name:'missing'}));expect(mock).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('status')).toHaveTextContent('missing');
+    fireEvent.click(screen.getByRole('button',{name:'json'}));
+    await screen.findByLabelText('Formatted JSON');expect(mock).toHaveBeenCalledTimes(3);
+    for(const [url] of mock.mock.calls) {expect(url).toContain('/projects/tenant/reviews/job/');expect(url).not.toMatch(/producer|ignored/);}
+  });
+  it('MAL-023 rejects ambiguous and escaping links without fetching', async () => {
+    const mock=vi.fn(async()=>new Response('[ambiguous](same) [escape](../../x.md) [bad](bad%FF)'));
+    vi.stubGlobal('fetch',mock);
+    render(<ReviewDocuments projectId="tenant" jobId="job" requestId="r" documents={{...linked,'b/雪':{...linked['b/雪'],name:'same'},z:{...linked.z,name:'same'}}}/>);
+    for(const name of ['ambiguous','escape','bad']) {fireEvent.click(await screen.findByRole('button',{name}));expect(screen.getByRole('status')).toHaveTextContent('Artifact unavailable');}
+    expect(mock).toHaveBeenCalledTimes(1);
+  });
+  it('MAL-033 keeps failed target selected and retries only its endpoint', async () => {
+    let recover=false;
+    const mock=vi.fn(async(url:string)=>url.includes('document_id=a')?new Response('[next](foo.md)'):new Response(recover?'# Recovered':'failure',{status:recover?200:503}));
+    vi.stubGlobal('fetch',mock);render(<ReviewDocuments projectId="tenant" jobId="job" requestId="r" documents={linked}/>);
+    fireEvent.click(await screen.findByRole('button',{name:'next'}));await screen.findByText(/Could not load/);
+    expect(screen.getByRole('link',{name:'Download'})).toHaveAttribute('download','foo.md');
+    recover=true;fireEvent.click(screen.getByRole('button',{name:'Retry'}));await screen.findByRole('heading',{name:'Recovered'});
+    expect(mock.mock.calls.at(-1)?.[0]).toContain('document_id=b%2F%E9%9B%AA');
+  });
+  it('MAL-032 suppresses pending navigation content after context change', async () => {
+    let finish!:(r:Response)=>void;let signal!:AbortSignal;
+    const mock=vi.fn(async(url:string,options:RequestInit)=>{
+      if(url.includes('document_id=b')) {signal=options.signal as AbortSignal;return new Promise<Response>(r=>{finish=r;});}
+      return new Response(url.includes('request_id=new')?'# New':'[next](foo.md)');
+    });
+    vi.stubGlobal('fetch',mock);
+    const {rerender}=render(<ReviewDocuments projectId="tenant" jobId="job" requestId="old" documents={linked}/>);
+    fireEvent.click(await screen.findByRole('button',{name:'next'}));await screen.findByLabelText('Loading document');
+    rerender(<ReviewDocuments projectId="tenant" jobId="job" requestId="new" documents={linked}/>);
+    await screen.findByRole('heading',{name:'New'});expect(signal.aborted).toBe(true);
+    finish(new Response('# Stale'));await waitFor(()=>expect(screen.queryByRole('heading',{name:'Stale'})).toBeNull());
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+});
+
+it('MAL-032 cancels a pending linked target when selecting another document and suppresses its late error', async()=>{
+  const docs={a:{kind:'stored' as const,stored:{key:{jobId:'p',taskOrdinal:1,name:'a.md'}}},b:{kind:'stored' as const,stored:{key:{jobId:'p',taskOrdinal:2,name:'b.md'}}},c:{kind:'stored' as const,stored:{key:{jobId:'p',taskOrdinal:3,name:'c.md'}}}};
+  let fail!:(e:Error)=>void;let signal!:AbortSignal;
+  vi.stubGlobal('fetch',vi.fn((url:string,options:RequestInit)=>{
+    if(url.includes('document_id=b')) {signal=options.signal as AbortSignal;return new Promise<Response>((_,reject)=>{fail=reject;});}
+    return Promise.resolve(new Response(url.includes('document_id=c')?'# Current C':'[next](b.md#stale)'));
+  }));
+  render(<ReviewDocuments projectId="tenant" jobId="job" requestId="r" documents={docs}/>);
+  fireEvent.click(await screen.findByRole('button',{name:'next'}));await screen.findByLabelText('Loading document');
+  fireEvent.mouseDown(screen.getByRole('combobox',{name:'Review document'}));fireEvent.click(await screen.findByTitle('c · c.md'));
+  await screen.findByRole('heading',{name:'Current C'});expect(signal.aborted).toBe(true);
+  fail(new Error('Obsolete failure'));await waitFor(()=>expect(screen.queryByText('Obsolete failure')).toBeNull());
+  expect(screen.queryByRole('status')).toBeNull();
+});
+
+it('MAL-020 revalidates review membership after an attached target is removed',async()=>{
+  const doc=(name:string)=>({kind:'stored' as const,stored:{key:{jobId:'p',taskOrdinal:1,name}}});
+  const mock=vi.fn(async()=>new Response('[next](foo.md)'));vi.stubGlobal('fetch',mock);
+  const {rerender}=render(<ReviewDocuments projectId="tenant" jobId="job" requestId="r" documents={{a:doc('bar.md'),b:doc('foo.md')}}/>);
+  await screen.findByRole('button',{name:'next'});
+  rerender(<ReviewDocuments projectId="tenant" jobId="job" requestId="r" documents={{a:doc('bar.md')}}/>);
+  fireEvent.click(screen.getByRole('button',{name:'next'}));expect(screen.getByRole('status')).toHaveTextContent('missing');
+  expect(mock).toHaveBeenCalledTimes(1);
+});
+
+describe('CTX-001 cancelled review navigation intent', () => {
+  const a = {kind:'stored' as const,stored:{key:{jobId:'producer',taskOrdinal:1,name:'a.md'}}};
+  const b = {kind:'stored' as const,stored:{key:{jobId:'producer',taskOrdinal:2,name:'b.md'}}};
+  it.each(['pending', 'loaded'] as const)('MAL-026,032 clears intent when the %s target disappears', async phase => {
+    let finishB!: (response: Response) => void;
+    let finishFallback!: (response: Response) => void;
+    let signalB!: AbortSignal;
+    let aLoads = 0;
+    const scroll = vi.fn();
+    const previousScroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView');
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {configurable:true,value:scroll});
+    const mock = vi.fn((url:string, options:RequestInit) => {
+      if (url.includes('document_id=b')) {
+        signalB = options.signal as AbortSignal;
+        return new Promise<Response>(resolve => { finishB = resolve; });
+      }
+      if (++aLoads === 1) return Promise.resolve(new Response('# Initial A\n[next](b.md#only-b)'));
+      return new Promise<Response>(resolve => { finishFallback = resolve; });
+    });
+    vi.stubGlobal('fetch', mock);
+    const reader = (documents: Record<string, ReviewDocument>) => <>
+      <input aria-label="Response draft" defaultValue="Keep my response" />
+      <ReviewDocuments projectId="tenant" jobId="job" requestId="r" documents={documents}/>
+    </>;
+    try {
+      const {rerender} = render(reader({a,b}));
+      fireEvent.click(await screen.findByRole('button', {name:'next'}));
+      await screen.findByLabelText('Loading document');
+      if (phase === 'loaded') {
+        await act(async () => finishB(new Response('# Only B')));
+        await screen.findByRole('heading', {name:'Only B'});
+        expect(scroll).toHaveBeenCalledTimes(1);
+      }
+      rerender(reader({a}));
+      expect(signalB.aborted).toBe(true);
+      const response = screen.getByRole('textbox', {name:'Response draft'});
+      response.focus();
+      scroll.mockClear();
+      // The loaded variant deliberately shares B's heading ID; stale intent must not scroll to it.
+      await act(async () => finishFallback(new Response('# Fallback A\n'+(phase === 'loaded' ? '## Only B' : ''))));
+      await screen.findByRole('heading', {name:'Fallback A'});
+      await act(async () => finishB(new Response('# Stale B')));
+      expect(screen.queryByRole('heading', {name:'Stale B'})).toBeNull();
+      expect(screen.queryByRole('status')).toBeNull();
+      expect(scroll).not.toHaveBeenCalled();
+      expect(response).toHaveFocus();
+      expect(response).toHaveValue('Keep my response');
+      // Reattaching B must not resurrect the cancelled selection or its fragment/focus work.
+      rerender(reader({a,b}));
+      expect(screen.getByRole('heading', {name:'Fallback A'})).toBeInTheDocument();
+      expect(mock).toHaveBeenCalledTimes(3);
+      expect(response).toHaveFocus();
+    } finally {
+      if (previousScroll) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', previousScroll);
+      else delete (HTMLElement.prototype as {scrollIntoView?:unknown}).scrollIntoView;
+    }
+  });
+});
+
+it('CTX-001 MAL-026,028,033 preserves valid target focus and fragment through a retry', async () => {
+  const doc = (name:string) => ({kind:'stored' as const,stored:{key:{jobId:'producer',taskOrdinal:1,name}}});
+  let recovered = false;
+  const mock = vi.fn(async (url:string) => url.includes('document_id=a')
+    ? new Response('[next](b.md#only-b)')
+    : new Response(recovered ? '# Only B' : 'Unavailable', {status:recovered ? 200 : 503}));
+  const scroll = vi.fn();
+  const previousScroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView');
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {configurable:true,value:scroll});
+  vi.stubGlobal('fetch', mock);
+  try {
+    render(<ReviewDocuments projectId="tenant" jobId="job" requestId="r" documents={{a:doc('a.md'),b:doc('b.md')}}/>);
+    fireEvent.click(await screen.findByRole('button', {name:'next'}));
+    await screen.findByText(/Could not load/);
+    recovered = true;
+    fireEvent.click(screen.getByRole('button', {name:'Retry'}));
+    await screen.findByRole('heading', {name:'Only B'});
+    expect(screen.getByLabelText('Document preview')).toHaveFocus();
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(mock.mock.calls.at(-1)?.[0]).toContain('document_id=b');
+  } finally {
+    if (previousScroll) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', previousScroll);
+    else delete (HTMLElement.prototype as {scrollIntoView?:unknown}).scrollIntoView;
+  }
 });

@@ -182,3 +182,44 @@ describe('SAV-023 attachment cancellation', () => {
     unmount(); expect(signal.aborted).toBe(true);
   });
 });
+
+describe('MAL local Markdown controls', () => {
+  it('MAL-023,024,025,034,035 preserves browser links and blocks unresolved local actions', () => {
+    const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher);
+    render(<DocumentPreview {...props} data={data('[local](foo.md) [web](https://example.com) [mail](mailto:a@b) [root](/foo.md) [protocol](//example.com) [unsafe](javascript:alert(1))','bar.md')} />);
+    fireEvent.click(screen.getByRole('button',{name:'local'}),{ctrlKey:true});
+    expect(screen.getByRole('status')).toHaveTextContent('Artifact unavailable: missing');
+    expect(fetcher).not.toHaveBeenCalled();
+    for(const name of ['web','mail','root','protocol']) {
+      expect(screen.getByRole('link',{name})).toHaveAttribute('target','_blank');
+      expect(screen.getByRole('link',{name})).toHaveAttribute('rel','noopener noreferrer');
+    }
+    expect(screen.getByText('unsafe')).not.toHaveAttribute('href', expect.stringMatching(/^javascript:/));
+  });
+  it('MAL-027,028,029,030 generates stable headings, scopes scroll and decodes fragments once', () => {
+    const scroll=vi.fn();Object.defineProperty(HTMLElement.prototype,'scrollIntoView',{configurable:true,value:scroll});
+    const document=data('# Hello, World!\n# Hello, World!\n# Hello, World!-1\n[go](#hello-world-1) [missing](#hello%2520world) [selector](#%5Bx%5D)','bar.md');
+    render(<DocumentPreview {...props} data={document}/>);
+    expect(screen.getAllByRole('heading').map(e=>e.id)).toEqual(['hello-world','hello-world-1','hello-world-1-1']);
+    fireEvent.click(screen.getByRole('button',{name:'go'}));expect(scroll).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button',{name:'missing'}));expect(screen.getByRole('status')).toHaveTextContent('hello%20world');
+    fireEvent.click(screen.getByRole('button',{name:'selector'}));expect(screen.getByRole('status')).toHaveTextContent('[x]');
+    expect(scroll).toHaveBeenCalledTimes(1);
+    delete (HTMLElement.prototype as {scrollIntoView?:unknown}).scrollIntoView;
+  });
+  it('MAL-020 re-resolves links on activation against changed membership', () => {
+    let available=true;const open=vi.fn();
+    render(<DocumentPreview {...props} data={data('[target](foo.md)','bar.md')} navigation={{resolve:()=>available?{kind:'target',key:'foo'}:{kind:'unavailable',reason:'missing'},open}} />);
+    available=false;fireEvent.click(screen.getByRole('button',{name:'target'}));
+    expect(open).not.toHaveBeenCalled();expect(screen.getByRole('status')).toHaveTextContent('missing');
+  });
+});
+
+it('MAL-026 focuses explicit navigation but preserves focus during background rerenders',()=>{
+  const document=data('# Document','bar.md');const intent={token:1};
+  const {rerender}=render(<><button>Outside</button><DocumentPreview {...props} data={document} navigationIntent={intent}/></>);
+  expect(screen.getByLabelText('Document preview')).toHaveFocus();
+  screen.getByRole('button',{name:'Outside'}).focus();
+  rerender(<><button>Outside</button><DocumentPreview {...props} data={document} navigationIntent={intent} navigation={{resolve:()=>({kind:'unavailable',reason:'missing'}),open:()=>false}}/></>);
+  expect(screen.getByRole('button',{name:'Outside'})).toHaveFocus();
+});

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter, MemoryRouter, Routes, Route } from 'react-router-dom';
 import { setupServer } from 'msw/node';
@@ -7,6 +7,7 @@ import { http, HttpResponse } from 'msw';
 import { InputActivityProvider, inputActivityService } from '@colony2/shared';
 import PendingInputsListPage from './PendingInputsListPage';
 import JobStoryPage from './JobStoryPage';
+import InputDetailPage from './InputDetailPage';
 import { jobIdentity } from '../test/cellFixtures';
 import {
   inputApiHandlers,
@@ -341,5 +342,28 @@ describe('Input Flow - Complete E2E Integration', () => {
 
     // Count should be 1 (would show in badge)
     // This is verified by the presence of the input in the list
+  });
+});
+
+
+describe('MAL review draft preservation', () => {
+  it('MAL-014 preserves draft and request identity without submitting on document navigation', async () => {
+    const details = {...createMockSingleQuestionDetails('review-job'),form:{kind:'review' as const,request_id:'request-1',fields:[{id:'notes',question:'Notes',type:'paragraph_text' as const,required:true}],documents:{
+      a:{kind:'stored' as const,stored:{key:{jobId:'producer',taskOrdinal:1,name:'bar.md'}}},
+      b:{kind:'stored' as const,stored:{key:{jobId:'producer',taskOrdinal:2,name:'foo.md'}}},
+    }}};
+    const getDetails=vi.spyOn(inputActivityService,'getInputDetails').mockResolvedValue(details);
+    const submit=vi.spyOn(inputActivityService,'submitReview');
+    const fetcher=vi.fn(async(url:string)=>url.includes('/documents?')?new Response(url.includes('document_id=a')?'[next](foo.md)':'# Foo'):new Response('{}',{headers:{'Content-Type':'application/json'}}));
+    vi.stubGlobal('fetch',fetcher);
+    try {
+      render(<MemoryRouter initialEntries={['/project/tenant/reviews/review-job']}><Routes><Route path="/project/:projectId/reviews/:jobId" element={<InputDetailPage projectId="tenant"/>}/></Routes></MemoryRouter>);
+      await userEvent.setup().type(await screen.findByRole('textbox',{name:'Notes'}),'Keep this draft');
+      fireEvent.click(await screen.findByRole('button',{name:'next'}));await screen.findByRole('heading',{name:'Foo'});
+      expect(screen.getByRole('textbox',{name:'Notes'})).toHaveValue('Keep this draft');
+      expect(submit).not.toHaveBeenCalled();expect(mockNavigate).not.toHaveBeenCalled();
+      expect(fetcher.mock.calls.filter(([url])=>url.includes('/documents?')).every(([url])=>url.includes('request_id=request-1'))).toBe(true);
+      expect(screen.queryByText('Required')).toBeNull();expect(getDetails).toHaveBeenCalledTimes(1);
+    } finally {getDetails.mockRestore();submit.mockRestore();vi.unstubAllGlobals();}
   });
 });

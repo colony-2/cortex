@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Alert, Button, Radio, Space } from 'antd';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -8,6 +8,7 @@ import { formatJSON, jsonLineErrors } from './structured';
 import SourceView from './SourceView';
 import DiffView from './DiffView';
 import ImageView from './ImageView';
+import { artifactHeadingIds, resolveArtifactLink, type PreviewNavigation, type NavigationIntent } from './artifactLinks';
 
 function AttachedImage({ id, name, url }: { id: string; name: string; url: string }) {
   const [data, setData] = useState<DocumentData>();
@@ -21,8 +22,21 @@ function AttachedImage({ id, name, url }: { id: string; name: string; url: strin
 }
 export type PreviewAttachment = { key: string; name: string; url: string };
 export type ResolvePreviewAttachment = (reference: string) => PreviewAttachment | undefined;
-interface Props { markdownSource?: boolean; setMarkdownSource?: (source: boolean) => void; data: DocumentData; name: string; dual: boolean; setDual: (value: boolean) => void; resolveAttachment?: ResolvePreviewAttachment }
-export default function DocumentPreview({ data, name, markdownSource = false, setMarkdownSource, dual, setDual, resolveAttachment }: Props) {
+interface Props { markdownSource?: boolean; setMarkdownSource?: (source: boolean) => void; data: DocumentData; name: string; dual: boolean; setDual: (value: boolean) => void; resolveAttachment?: ResolvePreviewAttachment; navigation?: PreviewNavigation; navigationIntent?: NavigationIntent }
+export default function DocumentPreview({ data, name, markdownSource = false, setMarkdownSource, dual, setDual, resolveAttachment, navigation, navigationIntent }: Props) {
+  const root = useRef<HTMLDivElement>(null);
+  const [linkNotice, setLinkNotice] = useState('');
+  const scrollToFragment = (fragment: string) => {
+    const heading = [...(root.current?.querySelectorAll('.review-markdown [id]') || [])].find(el => el.id === fragment);
+    if (heading) { heading.scrollIntoView?.({ block: 'start' }); setLinkNotice(''); }
+    else setLinkNotice(`Anchor unavailable: ${fragment || '(empty)'}`);
+  };
+  useEffect(() => {
+    setLinkNotice('');
+    if (!navigationIntent) return;
+    root.current?.focus({ preventScroll: true });
+    if (navigationIntent.fragment !== undefined) scrollToFragment(navigationIntent.fragment);
+  }, [data, navigationIntent]);
   const [mode, setMode] = useState('rendered');
   const [textOverride, setTextOverride] = useState(false);
   const structured = structuredAllowed(data);
@@ -35,7 +49,8 @@ export default function DocumentPreview({ data, name, markdownSource = false, se
   const overrideLimited = textOverride && data.bytes.length > TEXT_LIMIT;
   const overrideText = useMemo(() => textOverride ? decodeText(data.bytes.subarray(0, TEXT_LIMIT)) : data.text, [data, textOverride]);
   const source = <SourceView text={overrideText} label={format === 'markdown' ? 'Markdown source' : 'Document source'} />;
-  return <div className="review-document-preview">
+  return <div ref={root} tabIndex={-1} aria-label="Document preview" className="review-document-preview">
+    {linkNotice && <div role="status">{linkNotice}</div>}
     <Space wrap><span>{format} · {data.bytes.length.toLocaleString()} loaded bytes</span>
       <Button onClick={() => setTextOverride(v => !v)}>{textOverride ? 'Detect format' : 'View as text'}</Button>
       {format === 'markdown' && <Radio.Group aria-label="Document display" value={markdownSource ? 'source' : 'rendered'} onChange={e => setMarkdownSource?.(e.target.value === 'source')} optionType="button" options={[{ label: 'Rendered', value: 'rendered' },{ label: 'Markdown', value: 'source' }]} />}
@@ -48,9 +63,19 @@ export default function DocumentPreview({ data, name, markdownSource = false, se
       : format === 'image' ? <ImageView data={data} name={name} />
       : format === 'binary' ? <><p>Binary preview: first 64 KiB at most.</p><SourceView text={hexDump(data.bytes)} label="Binary bytes" /></>
       : format === 'markup' ? <><Alert type="info" message="HTML and SVG are shown as source only; active markup is not rendered." />{source}</>
-      : format === 'markdown' && !markdownSource && structured ? <article tabIndex={0} className="review-markdown" aria-label="Rendered document"><Markdown remarkPlugins={[remarkGfm]} skipHtml components={{
+      : format === 'markdown' && !markdownSource && structured ? <article tabIndex={0} className="review-markdown" aria-label="Rendered document"><Markdown remarkPlugins={[remarkGfm, artifactHeadingIds]} skipHtml components={{
         p: ({ children }) => <div className="review-markdown-paragraph">{children}</div>,
-        a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
+        a: ({ children, href }) => {
+          // href has already passed react-markdown's default URL sanitization.
+          const resolution = navigation?.resolve(href || '') || resolveArtifactLink(href || '', name, []);
+          if (resolution.kind === 'browser') return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+          return <button type="button" className="review-artifact-link" onClick={() => {
+            const current = navigation?.resolve(href || '') || resolveArtifactLink(href || '', name, []);
+            if (current.kind === 'fragment') { scrollToFragment(current.fragment); return; }
+            if (current.kind === 'target' && navigation?.open(current.key, current.fragment)) { setLinkNotice(''); return; }
+            setLinkNotice(`Artifact unavailable: ${current.kind === 'unavailable' ? current.reason : 'outside-context'}`);
+          }}>{children}</button>;
+        },
         img: ({ src, alt }) => {
           const attachment = src && !/^(?:[a-z][a-z\d+.-]*:|\/\/|\/)/i.test(src) ? resolveAttachment?.(src) : undefined;
           if (!attachment) return <span>Blocked external or ambiguous image: {alt || src}</span>;
