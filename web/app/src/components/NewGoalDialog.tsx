@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Form, Input, Modal, Radio, Select, Typography } from 'antd';
+import { Alert, Button, Form, Input, Modal, Radio, Select, Typography, Upload } from 'antd';
 import { createCell, getCell, submitJob } from '@colony2/shared/api';
 import { createRequestId } from '@colony2/shared/cellProtocol';
 import type { CortexCell, SubmitRecipeJobRequest } from '@colony2/shared/types';
 import { cellNameRules, goalTargets } from '../utils/goalTarget';
+import { validateGoalAttachments } from '../utils/goalAttachments';
 import { useCells } from '../hooks/useCells';
 
 type Props = { projectId: string; filters: string[] | null; onClose: () => void; onCreated: (goalId: string) => void };
@@ -15,10 +16,12 @@ export default function NewGoalDialog({ projectId, filters, onClose, onCreated }
   const [error, setError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
   const [registered, setRegistered] = useState<CortexCell>();
+  const [attachments, setAttachments] = useState<{ id: string; file: File }[]>([]);
+  const [fileError, setFileError] = useState<string>();
   const pending = useRef(false);
   const active = useRef(true);
   const registration = useRef<{ payload: string; requestId: string; cell?: CortexCell }>();
-  const attempt = useRef<{ payload: string; input: SubmitRecipeJobRequest }>();
+  const attempt = useRef<{ payload: string; input: SubmitRecipeJobRequest; files: File[] }>();
   const [form] = Form.useForm<{ prompt: string; name?: string; repo?: string; target?: string }>();
   const initialId = filters?.length === 1 ? filters[0] : undefined;
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
@@ -35,9 +38,10 @@ export default function NewGoalDialog({ projectId, filters, onClose, onCreated }
     pending.current = true;
     try {
       const values = await form.validateFields();
+      validateGoalAttachments(attachments.map(item => item.file));
       if (!active.current) return;
       setSubmitting(true); setError(undefined);
-      const payload = JSON.stringify({ mode, ...values });
+      const payload = JSON.stringify({ mode, ...values, attachments: attachments.map(item => item.id) });
       if (attempt.current?.payload !== payload) {
         let current: CortexCell;
         if (mode === 'known') {
@@ -60,16 +64,16 @@ export default function NewGoalDialog({ projectId, filters, onClose, onCreated }
         if (active.current) setSelected(current);
         const cell = current.name;
         const repo = mode === 'new' ? registration.current!.cell!.repo : undefined;
-        attempt.current = { payload, input: { cell, ...(repo ? { repo } : {}), job_id: createRequestId(), inputs: { prompt: values.prompt, type: 'build' } } };
+        attempt.current = { payload, files: attachments.map(item => item.file), input: { cell, ...(repo ? { repo } : {}), job_id: createRequestId(), inputs: { prompt: values.prompt, type: 'build' } } };
       }
       if (!active.current) return;
-      const job = await submitJob(projectId, attempt.current.input);
+      const job = await (attempt.current.files.length ? submitJob(projectId, attempt.current.input, attempt.current.files) : submitJob(projectId, attempt.current.input));
       if (active.current) onCreated(job.goal_id);
     } catch (reason) {
       if (active.current && reason instanceof Error) setError(reason.message);
     } finally { pending.current = false; if (active.current) setSubmitting(false); }
   };
-  return <Modal title="New goal" open={open} onCancel={() => { if (!pending.current) { active.current = false; setOpen(false); } }} afterClose={onClose} onOk={submit} okText="Create goal" confirmLoading={submitting} cancelButtonProps={{ disabled: submitting }} closable={!submitting} maskClosable={!submitting}
+  return <Modal title="New goal" open={open} onCancel={() => { if (!pending.current) { active.current = false; setOpen(false); } }} afterClose={onClose} onOk={submit} okText={submitting ? 'Creating goal…' : 'Create goal'} confirmLoading={submitting} cancelButtonProps={{ disabled: submitting }} closable={!submitting} maskClosable={!submitting}
     okButtonProps={{ disabled: mode === 'known' && !!registry.error }}>
     {registry.error && <Alert type="error" message={registry.error} action={<Button onClick={registry.reload}>Retry cells</Button>} />}
     {error && <Alert type="error" showIcon message={error} />}
@@ -88,6 +92,22 @@ export default function NewGoalDialog({ projectId, filters, onClose, onCreated }
         <Form.Item label="Repository" name="repo" rules={[{ required: true, whitespace: true, message: 'Enter a repository locator' }]}><Input placeholder="github.com/organization/repository" /></Form.Item>
       </>}
       <Form.Item label="Prompt" name="prompt" rules={[{ required: true, whitespace: true, message: 'Enter a prompt' }]}><Input.TextArea rows={6} /></Form.Item>
+      <Form.Item label="Attachments" extra="Files are provided to the goal as input artifacts. Up to 10 files, 25 MiB total.">
+        <Upload multiple disabled={submitting} fileList={[]} beforeUpload={(file, batch) => {
+          if (pending.current) return false;
+          if (file === batch[0]) {
+            const next = [...attachments, ...batch.map(item => ({ id: createRequestId(), file: item }))];
+            try { validateGoalAttachments(next.map(item => item.file)); setAttachments(next); setFileError(undefined); }
+            catch (reason) { setFileError((reason as Error).message); }
+          }
+          return false;
+        }}><Button disabled={submitting}>Attach files</Button></Upload>
+        {fileError && <Alert type="error" showIcon message={fileError} />}
+        <ul>{attachments.map(item => <li key={item.id}>
+          {item.file.name} · {item.file.size < 1024 ? `${item.file.size} B` : item.file.size < 1024 * 1024 ? `${(item.file.size / 1024).toFixed(1)} KiB` : `${(item.file.size / 1024 / 1024).toFixed(2)} MiB`}
+          <Button type="text" disabled={submitting} aria-label={`Remove ${item.file.name}`} onClick={() => { if (!pending.current) { setAttachments(items => items.filter(value => value.id !== item.id)); setFileError(undefined); } }}>Remove</Button>
+        </li>)}</ul>
+      </Form.Item>
     </Form>
   </Modal>;
 }

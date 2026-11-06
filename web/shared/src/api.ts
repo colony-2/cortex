@@ -139,11 +139,20 @@ export async function archiveJob(projectId: string, jobId: string): Promise<void
   await handleResponse(response, 'Archive job');
 }
 
-export async function submitJob(projectId: string, input: SubmitRecipeJobRequest): Promise<SubmittedJob> {
+export async function submitJob(projectId: string, input: SubmitRecipeJobRequest, files?: readonly File[]): Promise<SubmittedJob> {
+  let body: BodyInit = JSON.stringify(input);
+  if (files?.length) {
+    const form = new FormData();
+    form.append('submission', JSON.stringify(input));
+    // MIME filename quoting is lossy in browsers; JSON preserves original names.
+    form.append('filenames', JSON.stringify(files.map(file => file.name)));
+    files.forEach((file, index) => form.append('files', file, String(index)));
+    body = form;
+  }
   const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
+    ...(files?.length ? {} : { headers: { 'Content-Type': 'application/json' } }),
+    body,
   });
   await handleResponse(response, 'Submit job');
   const job = parseJobJSON(await response.text()) as SubmittedJob;

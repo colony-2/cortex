@@ -147,8 +147,9 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 	var req submitJobRequest
-	if err := decodeRequest(w, r, &req); err != nil {
-		writeHTTPError(w, http.StatusBadRequest, err)
+	artifacts, status, err := decodeGoalSubmission(w, r, &req)
+	if err != nil {
+		writeHTTPError(w, status, err)
 		return
 	}
 	tenantID := s.tenantID(r)
@@ -164,11 +165,12 @@ func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key, err := recipejob.SubmitRecipeJob(r.Context(), recipejob.BuildStartJobRequest{
-		TenantID: tenantID,
-		JobID:    req.JobID,
-		Target:   target,
-		Recipe:   req.Recipe,
-		Inputs:   req.Inputs,
+		TenantID:  tenantID,
+		JobID:     req.JobID,
+		Target:    target,
+		Recipe:    req.Recipe,
+		Inputs:    req.Inputs,
+		Artifacts: artifacts,
 	}, nativeSubmitter{s.engine})
 	if err != nil {
 		writeError(w, err)

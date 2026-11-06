@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { getJob, listJobs, listCells, getCell, createCell } from './api';
+import { submitJob, getJob, listJobs, listCells, getCell, createCell } from './api';
 import { stringifyJobJSON } from './jobJSON';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -126,4 +126,28 @@ it.each(['cell_id', 'cell_name', 'repo'])('rejects missing %s instead of inventi
   vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(JSON.stringify(url.endsWith('/job') ? job : { jobs: [job] }))));
   await expect(listJobs('tenant')).rejects.toThrow(`required ${field}`);
   await expect(getJob('tenant', 'job')).rejects.toThrow(`required ${field}`);
+});
+
+ it('ATT-021 ATT-022 RET-009 sends ordered multipart files and retains JSON without files', async () => {
+  const fetch = vi.fn(async () => new Response(JSON.stringify({ tenant_id: 'tenant', job_id: 'job', goal_id: 'goal', cell_id: 'cell', cell_name: 'platform', repo: 'github.com/acme/platform' })));
+  vi.stubGlobal('fetch', fetch);
+  const input = { cell: 'platform', inputs: { prompt: 'hello', type: 'build' }, job_id: 'job' };
+  const files = [new File(['binary'], '雪.bin'), new File([], 'empty')];
+  await submitJob('tenant', input, files);
+  const options = (fetch.mock.calls[0] as unknown as [string, RequestInit])[1];
+  expect(options.headers).toBeUndefined();
+  const body = options.body as FormData;
+  expect(body.getAll('submission')).toEqual([JSON.stringify(input)]);
+  expect(body.getAll('files').map(file => (file as File).name)).toEqual(['0', '1']);
+  expect(body.getAll('filenames')).toEqual([JSON.stringify(['雪.bin', 'empty'])]);
+  expect((body.getAll('files')[0] as File).size).toBe(files[0].size);
+  await submitJob('tenant', input);
+  const plain = (fetch.mock.calls[1] as unknown as [string, RequestInit])[1];
+  expect(plain.headers).toEqual({ 'Content-Type': 'application/json' });
+  expect(plain.body).toBe(JSON.stringify(input));
+ });
+it.each([{}, { tenant_id: 'other', job_id: 'job', goal_id: 'goal', cell_id: 'cell', cell_name: 'platform', repo: 'github.com/acme/platform' }, { tenant_id: 'tenant', job_id: 'job', cell_id: 'cell', cell_name: 'platform', repo: 'github.com/acme/platform' }])('RET-009 rejects invalid submission identity: %#', async identity => {
+ vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(identity))));
+ await expect(submitJob('tenant', { cell: 'platform' })).rejects.toThrow();
+ await expect(submitJob('tenant', { cell: 'platform' }, [new File([], 'empty')])).rejects.toThrow();
 });
