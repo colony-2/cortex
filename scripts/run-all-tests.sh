@@ -7,3 +7,4 @@ pnpm test:api
 pnpm typecheck:web
 pnpm test:web
 pnpm test:e2e
+pnpm --filter @colony2/app test:e2e --config playwright.artifact.config.ts

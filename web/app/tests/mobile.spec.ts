@@ -320,8 +320,12 @@ for (const width of [320, 390]) {
       },
     } }));
     const artifactRequests: string[] = [];
+    // The shared viewer loads in an effect. Development Strict Mode aborts
+    // its first mount; count completed loads, not the cancelled request.
+    page.on('requestfinished', request => {
+      if (new URL(request.url()).pathname.endsWith('/jobs/one/tasks/1/artifacts/a')) artifactRequests.push(request.url());
+    });
     await page.route('**/jobs/one/tasks/1/artifacts/a', route => {
-      artifactRequests.push(route.request().url());
       return route.fulfill({ contentType: 'text/plain', body: 'Artifact body' });
     });
     await page.goto('/project/phone/jobs/one/story');
@@ -350,7 +354,7 @@ for (const width of [320, 390]) {
     await artifact.click({ position: { x: 2, y: 2 } });
     const viewer = page.getByRole('dialog', { name: 'a', exact: true });
     await expect(viewer.getByText('Artifact body', { exact: true })).toBeVisible();
-    expect(artifactRequests).toHaveLength(1);
+    await expect.poll(() => artifactRequests.length).toBe(1);
     await noOverflow(page);
     await viewer.locator('.ant-modal-footer').getByRole('button', { name: 'Close', exact: true }).click();
     await expect(viewer).toHaveCount(0);
