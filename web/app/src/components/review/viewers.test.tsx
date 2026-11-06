@@ -5,7 +5,7 @@ import ReviewDocuments from '../ReviewDocuments';
 import SourceView from './SourceView';
 import ImageView from './ImageView';
 import { type DocumentData, classify, TEXT_LIMIT } from './document';
-const props = { name: 'sample', dual: false, setDual: vi.fn(), documents: {}, projectId: 'tenant',jobId:'job',requestId:'request' };
+const props = { name: 'sample', dual: false, setDual: vi.fn() };
 const data = (text: string,name='sample'): DocumentData => { const bytes = new TextEncoder().encode(text); return { text,bytes,format:classify(name,bytes),truncated:false }; };
 const docs = { design: {kind:'stored' as const,name:'design.md',stored:{key:{jobId:'producer',taskOrdinal:1,name:'design.md',sizeBytes:10}}},log:{kind:'stored' as const,name:'tests.log',stored:{key:{jobId:'producer',taskOrdinal:1,name:'tests.log',sizeBytes:10}}} };
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -169,5 +169,16 @@ describe('L02 unambiguous identity boundaries', () => {
     fireEvent.click(screen.getByRole('radio',{name:'Markdown',exact:true}));expect(screen.getByLabelText('Markdown source')).toBeInTheDocument();
     rerender(<ReviewDocuments projectId="a" jobId="b/c" requestId="r" documents={docs} />);
     await screen.findByRole('heading',{name:'Identity'});expect(screen.queryByLabelText('Markdown source')).toBeNull();
+  });
+});
+
+describe('SAV-023 attachment cancellation', () => {
+  it('aborts an attachment fetch when the shared preview unmounts', async () => {
+    const mock = vi.fn(() => new Promise<Response>(() => {}));
+    vi.stubGlobal('fetch', mock);
+    const {unmount} = render(<DocumentPreview {...props} data={data('![attachment](image.png)','notes.md')} resolveAttachment={() => ({key:'image',name:'image.png',url:'/trusted/image'})} />);
+    await screen.findByText('Loading attached image…');
+    const signal = (mock.mock.calls[0] as unknown as [string,{signal:AbortSignal}])[1].signal;
+    unmount(); expect(signal.aborted).toBe(true);
   });
 });

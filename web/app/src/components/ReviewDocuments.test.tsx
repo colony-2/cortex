@@ -44,3 +44,22 @@ describe('review documents', () => {
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Stale' })).not.toBeInTheDocument());
   });
 });
+
+describe('SAV-019 review attachment membership', () => {
+  it('preserves IDs, display names, stored names and blocks ambiguous membership', async () => {
+    const docs = {
+      ...documents,
+      imageID: {kind:'stored' as const,name:'display.png',stored:{key:{jobId:'child',taskOrdinal:5,name:'stored.png'}}},
+      zconflict: {kind:'stored' as const,name:'duplicate.png',stored:{key:{jobId:'child',taskOrdinal:6,name:'other.png'}}},
+      zconflict2: {kind:'stored' as const,name:'duplicate.png',stored:{key:{jobId:'child',taskOrdinal:7,name:'different.png'}}},
+    };
+    const source = '![id](imageID)\n![display](display.png)\n![stored](stored.png)\n![blocked](duplicate.png)';
+    const mock = vi.fn(async (url:string) => String(url).includes('document_id=design') ? new Response(source) : new Response('not raster'));
+    vi.stubGlobal('fetch',mock);
+    render(<ReviewDocuments projectId="tenant" jobId="job" requestId="request" documents={docs} />);
+    // Select design explicitly because document IDs sort independently of insertion order.
+    await screen.findByText(/Blocked external or ambiguous image/);
+    await waitFor(()=>expect(mock.mock.calls.filter(c=>String(c[0]).includes('document_id=imageID'))).toHaveLength(3));
+    expect(mock.mock.calls.some(c=>/document_id=zconflict/.test(String(c[0])))).toBe(false);
+  });
+});

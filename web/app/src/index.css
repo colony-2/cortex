@@ -310,3 +310,6 @@ body {
 .review-image-scroll img { display: block; }
 .review-reader .review-source-body, .review-reader .review-image-scroll, .review-reader .review-diff-scroll { max-height: none; }
 .review-markdown-paragraph { margin: 1em 0; }
+
+.story-artifact-modal .ant-modal-body { max-height: 70vh; overflow: auto; }
+.story-artifact-modal .review-markdown { overflow-wrap: anywhere; }

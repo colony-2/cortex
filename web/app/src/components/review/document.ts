@@ -37,7 +37,7 @@ export function structuredAllowed(data: DocumentData): boolean {
 }
 export async function loadDocument(url: string, name: string, signal: AbortSignal): Promise<DocumentData> {
   const response = await fetch(url, { signal });
-  if (!response.ok) throw new Error('Could not load this document. It may be unavailable or the review may have changed.');
+  if (!response.ok) throw new Error('Could not load this document. Retry or download the original.');
   if (!response.body) throw new Error('Document streaming is unavailable. Download the original file.');
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];

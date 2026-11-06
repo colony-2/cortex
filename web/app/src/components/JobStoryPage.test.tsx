@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import JobStoryPage from './JobStoryPage';
 import { getJob } from '@colony2/shared/api';
@@ -52,7 +52,7 @@ function mount(search = '', response: unknown = story) {
   return fetchMock;
 }
 beforeEach(() => { vi.mocked(getJob).mockReset().mockResolvedValue({ goal_id: 'goal' } as RecipeJob); });
-afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('job story history', () => {
   it('preserves the expanded goal return location after selecting a node and a detail tab', async () => {
@@ -707,3 +707,144 @@ function renderContext(stub = true) {
     <Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId="tenant" />} /></Routes>
   </MemoryRouter>);
 }
+
+describe('SAV story artifact contents', () => {
+  const artifacts = [{ taskOrdinal: 7, name: 'design.md' }, { taskOrdinal: 8, name: '雪/data.bin' }];
+  const artifactStory = { ...story, root: { id: 'root', kind: 'opStep', title: 'Artifacts', status: 'success', path: [], artifact_keys: artifacts } };
+  async function open(body: string | Uint8Array, name = 'design.md') {
+    const fetchMock = mount('?nodeId=root', artifactStory);
+    fetchMock.mockImplementation(async (url: string) => url.includes('/artifacts/') ? new Response(body) : { ok: true, json: async () => artifactStory });
+    fireEvent.click(await screen.findByRole('tab', { name: 'Artifacts (2)' }));
+    fireEvent.click(screen.getByRole('link', { name, exact: true }));
+    return fetchMock;
+  }
+  it('SAV-001,003 renders shared Markdown and source without refetching', async () => {
+    const fetchMock = await open('# Story contents\n\n**bold**');
+    await screen.findByRole('heading', { name: 'Story contents' });
+    const calls = fetchMock.mock.calls.length;
+    fireEvent.click(screen.getByRole('radio', { name: 'Markdown', exact: true }));
+    expect(screen.getByLabelText('Markdown source').textContent).toBe('# Story contents\n\n**bold**');
+    expect(fetchMock.mock.calls.length).toBe(calls);
+  });
+  it('SAV-002,010 renders raw binary bytes and retains encoded download identity', async () => {
+    const fetchMock = await open(new Uint8Array([255, 0, 254, 65]), '雪/data.bin');
+    expect(await screen.findByLabelText('Binary bytes')).toHaveTextContent('ff 00 fe 41');
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/tasks/8/artifacts/%E9%9B%AA%2Fdata.bin'), expect.anything());
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function(this: HTMLAnchorElement) {
+      expect(this.download).toBe('雪/data.bin');
+      expect(this.href).toContain('/tasks/8/artifacts/%E9%9B%AA%2Fdata.bin');
+    });
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Download/ }));
+    expect(click).toHaveBeenCalled(); click.mockRestore();
+  });
+  it('SAV-009 displays an empty artifact', async () => {
+    await open(''); await screen.findByText('Empty document');
+  });
+  it('SAV-020 retries inline errors without closing the modal', async () => {
+    const fetchMock = await open('# recovered');
+    await screen.findByRole('heading', { name: 'recovered' });
+    fireEvent.click(within(screen.getByRole('dialog')).getAllByRole('button', { name: 'Close', exact: true }).at(-1)!);
+    fetchMock.mockImplementation(async (url: string) => url.includes('/artifacts/') ? { ok: false } : { ok: true, json: async () => artifactStory });
+    fireEvent.click(screen.getByRole('link', { name: 'design.md' }));
+    await screen.findByText(/Could not load this document/);
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: /Download/ })).toBeEnabled();
+    fetchMock.mockImplementation(async () => new Response('# retried'));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByRole('heading', { name: 'retried' });
+  });
+  it('SAV-021,022 aborts closed loads and reopens with fresh state', async () => {
+    const fetchMock = await open('# initial');
+    await screen.findByRole('heading', { name: 'initial' });
+    fireEvent.click(within(screen.getByRole('dialog')).getAllByRole('button', { name: 'Close', exact: true }).at(-1)!);
+    let resolve!: (r: Response) => void;
+    fetchMock.mockImplementation(() => new Promise(r => { resolve = r; }));
+    fireEvent.click(screen.getByRole('link', { name: 'design.md' }));
+    await screen.findByLabelText('Loading artifact');
+    const signal = (fetchMock.mock.calls.at(-1) as unknown as [string, {signal: AbortSignal}])[1].signal;
+    fireEvent.click(within(screen.getByRole('dialog')).getAllByRole('button', { name: 'Close', exact: true }).at(-1)!);
+    expect(signal.aborted).toBe(true);
+    await act(async () => resolve(new Response('# stale')));
+    expect(screen.queryByRole('heading', { name: 'stale' })).not.toBeInTheDocument();
+    fetchMock.mockImplementation(async () => new Response('# fresh'));
+    fireEvent.click(screen.getByRole('link', { name: 'design.md' }));
+    await screen.findByRole('heading', { name: 'fresh' });
+  });
+});
+
+describe('SAV rich story formats and attachment boundaries', () => {
+  const keys = [{name:'notes.md',taskOrdinal:1},{name:'image.png',taskOrdinal:2},{name:'duplicate.png',taskOrdinal:3},{name:'duplicate.png',taskOrdinal:4}];
+  const node = { id:'root',kind:'opStep',title:'Contents',status:'success',path:[],artifact_keys:keys };
+  async function start(name: string, content: string | Uint8Array) {
+    const current = {...story,root:{...node,artifact_keys:[{name,taskOrdinal:1},...keys.slice(1)]}};
+    const mock = mount('?nodeId=root',current);
+    mock.mockImplementation(async (url:string) => url.includes('/artifacts/') ? new Response(content) : {ok:true,json:async()=>current});
+    fireEvent.click(await screen.findByRole('tab',{name:'Artifacts (4)'}));
+    fireEvent.click(screen.getByRole('link',{name,exact:true}));
+    return mock;
+  }
+  it.each([
+    ['data.json','{"n":9007199254740993}','Formatted JSON'],
+    ['data.json','{"n":bad}', 'JSON preview unavailable'],
+    ['data.jsonl','{}\nbad','Line 2: invalid JSON'],
+    ['file.patch','--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new\n','Unified'],
+    ['index.html','<script>bad()</script>','HTML and SVG are shown as source only'],
+    ['data.zip','PK\x03\x04','Archives are not extracted'],
+  ])('SAV-004,005,006,011 shared %s behavior',async(name,content,expected)=>{
+    await start(name,content);
+    expect((await screen.findAllByText(new RegExp(expected)))[0]).toBeInTheDocument();
+  });
+  it('SAV-012 truncates streamed text and retains original download',async()=>{
+    await start('large.log','a'.repeat(2*1024*1024+1));
+    await screen.findByText(/Preview truncated/);
+    expect(within(screen.getByRole('dialog')).getByRole('button',{name:/Download/})).toBeEnabled();
+  });
+  it('SAV-016,017 loads only unique same-node attachments',async()=>{
+    const OriginalURL = URL;
+    vi.stubGlobal('URL', class extends OriginalURL { static createObjectURL = vi.fn(() => 'blob:test'); static revokeObjectURL = vi.fn(); });
+    const mock = await start('notes.md','![valid](image.png)\n![duplicate](duplicate.png)\n![missing](outside.png)\n![external](https://evil.test/a.png)\n![absolute](/image.png)');
+    const png = new Uint8Array(24); png.set([137,80,78,71]); const view=new DataView(png.buffer); view.setUint32(16,2);view.setUint32(20,2);
+    mock.mockImplementation(async(url:string)=>new Response(url.includes('image.png')?png:'unexpected'));
+    const attachedImage = await screen.findByRole('img',{name:'image.png'});
+    fireEvent.click(screen.getByRole('button', {name:'Actual size'}));
+    expect(attachedImage).toHaveAttribute('width', '2');
+    fireEvent.error(attachedImage);
+    expect(screen.getByText(/Could not decode this image/)).toBeInTheDocument();
+    expect(within(screen.getByRole('dialog')).getByRole('button', {name:/Download/})).toBeEnabled();
+    expect(screen.getAllByText(/Blocked external or ambiguous image/)).toHaveLength(4);
+    const requests=mock.mock.calls.map(c=>String(c[0])).filter(u=>u.includes('/artifacts/'));
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toContain('/tasks/2/artifacts/image.png');
+  });
+  it('SAV-018 retains the opened attachment snapshot after refresh',async()=>{
+    const mock = await start('notes.md','![missing](new.png)');
+    await screen.findByText(/Blocked external or ambiguous image/);
+    mock.mockImplementation(async()=>({ok:true,json:async()=>({...story,root:{...node,artifact_keys:[...keys,{name:'new.png',taskOrdinal:9}]}})}));
+    fireEvent.click(screen.getByRole('button',{name:/Refresh/,exact:true}));
+    await screen.findByRole('tab', {name:'Artifacts (5)'});
+    expect(screen.getByText(/Blocked external or ambiguous image/)).toBeInTheDocument();
+    expect(mock.mock.calls.filter(c=>String(c[0]).includes('/artifacts/'))).toHaveLength(1);
+  });
+});
+
+describe('SAV-021 route identity cancellation', () => {
+  it.each(['/project/other/jobs/job/story?nodeId=root', '/project/tenant/jobs/other/story?nodeId=root'])('aborts an old artifact on %s', async destination => {
+    let navigate!: ReturnType<typeof useNavigate>;
+    let resolve!: (r:Response)=>void;
+    let signal!: AbortSignal;
+    const current = {...story,root:{id:'root',kind:'opStep',title:'Contents',status:'success',path:[],artifact_keys:[{name:'notes.md',taskOrdinal:1}]}};
+    vi.stubGlobal('fetch',vi.fn((url:string,options?:{signal:AbortSignal})=>{
+      if(url.includes('/artifacts/')) {signal=options!.signal;return new Promise(r=>{resolve=r;});}
+      return Promise.resolve({ok:true,json:async()=>current});
+    }));
+    function Host(){navigate=useNavigate();const project=useLocation().pathname.split('/')[2];return <JobStoryPage projectId={project}/>;}
+    render(<MemoryRouter initialEntries={['/project/tenant/jobs/job/story?nodeId=root']}><Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<Host/>}/></Routes></MemoryRouter>);
+    fireEvent.click(await screen.findByRole('tab',{name:'Artifacts (1)'}));
+    fireEvent.click(screen.getByRole('link',{name:'notes.md'}));
+    await screen.findByLabelText('Loading artifact');
+    await act(async()=>navigate(destination));
+    expect(signal.aborted).toBe(true);
+    await act(async()=>resolve(new Response('# stale route')));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading',{name:'stale route'})).not.toBeInTheDocument();
+  });
+});

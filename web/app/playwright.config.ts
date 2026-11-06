@@ -61,7 +61,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      testIgnore: 'recipe-input.spec.ts',
+      testIgnore: ['recipe-input.spec.ts', 'artifact-viewer.spec.ts'],
       use: { ...devices['Desktop Chrome'] },
     },
     {

@@ -1,3 +1,4 @@
+import ArtifactContents from './ArtifactContents';
 import './JobStoryPage.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
@@ -10,7 +11,6 @@ import {
   Input,
   List,
   Modal,
-  Radio,
   Select,
   Space,
   Spin,
@@ -122,31 +122,6 @@ function statusTagColor(status: string): string {
 
 function artifactUrl(projectId: string, jobId: string, artifact: ArtifactKey): string {
   return `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/tasks/${artifact.taskOrdinal}/artifacts/${encodeURIComponent(artifact.name)}`;
-}
-
-function formatHex(text: string): string {
-  const bytes = new TextEncoder().encode(text);
-  let hex = '';
-  let offset = 0;
-
-  for (let i = 0; i < bytes.length; i += 16) {
-    hex += offset.toString(16).padStart(8, '0') + '  ';
-
-    const chunk = bytes.slice(i, i + 16);
-    const hexBytes = Array.from(chunk)
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join(' ');
-    hex += hexBytes.padEnd(48, ' ') + '  ';
-
-    const ascii = Array.from(chunk)
-      .map((b) => (b >= 32 && b <= 126 ? String.fromCharCode(b) : '.'))
-      .join('');
-    hex += ascii + '\n';
-
-    offset += 16;
-  }
-
-  return hex;
 }
 
 function kindLabel(kind: StoryKind): string {
@@ -314,9 +289,9 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   const refreshTimerRef = useRef<number | null>(null);
 
   const [selectedArtifact, setSelectedArtifact] = useState<ArtifactKey | null>(null);
-  const [artifactContent, setArtifactContent] = useState<string | null>(null);
-  const [artifactLoading, setArtifactLoading] = useState(false);
-  const [viewMode, setViewMode] = useState<'text' | 'hex'>('text');
+  const artifactOpener = useRef<HTMLElement | null>(null);
+  const [artifactOwner, setArtifactOwner] = useState('');
+  const [artifactAttachments, setArtifactAttachments] = useState<ArtifactKey[]>([]);
 
   const [restartOpen, setRestartOpen] = useState(false);
   const [restartSelection, setRestartSelection] = useState<string>();
@@ -331,6 +306,8 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   const [pendingInputSubmitting, setPendingInputSubmitting] = useState(false);
 
   const jobId = routeJobId || '';
+  const artifactIdentity = JSON.stringify([projectId, jobId]);
+  const activeArtifact = artifactOwner === artifactIdentity ? selectedArtifact : null;
 
   const wantInput = searchParams.get('input') === '1';
   const taskOrdinalParamRaw = searchParams.get('taskOrdinal');
@@ -540,27 +517,14 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRefresh, refreshIntervalMs, story?.status, projectId, jobId, selectedKey]);
 
-  const openArtifact = async (artifact: ArtifactKey) => {
+  const openArtifact = (artifact: ArtifactKey) => {
+    artifactOpener.current = document.activeElement as HTMLElement;
+    setArtifactOwner(artifactIdentity);
+    setArtifactAttachments((selectedNode?.artifact_keys || []).map(a => ({ ...a })));
     setSelectedArtifact(artifact);
-    setArtifactLoading(true);
-    setArtifactContent(null);
-    setViewMode('text');
-
-    try {
-      const url = artifactUrl(projectId, jobId, artifact);
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Failed to fetch artifact');
-      const blob = await response.blob();
-      const text = await blob.text();
-      setArtifactContent(text);
-    } catch (e) {
-      console.error('Failed to load artifact', e);
-      message.error('Failed to load artifact content');
-      setSelectedArtifact(null);
-    } finally {
-      setArtifactLoading(false);
-    }
   };
+  useEffect(() => { setSelectedArtifact(null); }, [artifactIdentity]);
+  useEffect(() => { if (!activeArtifact) artifactOpener.current?.focus(); }, [activeArtifact]);
 
   const downloadArtifact = (artifact: ArtifactKey) => {
     const url = artifactUrl(projectId, jobId, artifact);
@@ -1221,66 +1185,29 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
         </div>
       </Space>
 
-      <Modal
-        title={selectedArtifact?.name || 'Artifact Viewer'}
-        open={selectedArtifact !== null}
-        onCancel={() => {
-          setSelectedArtifact(null);
-          setArtifactContent(null);
-        }}
+      {activeArtifact && <Modal
+        title={activeArtifact?.name || 'Artifact Viewer'}
+        open={activeArtifact !== null}
+        onCancel={() => setSelectedArtifact(null)}
         width={1000}
+        className="story-artifact-modal"
         footer={[
-          <Button
-            key="download"
-            icon={<DownloadOutlined />}
-            onClick={() => selectedArtifact && downloadArtifact(selectedArtifact)}
-          >
-            Download
-          </Button>,
-          <Button key="close" onClick={() => setSelectedArtifact(null)}>
-            Close
-          </Button>,
+          <Button key="download" icon={<DownloadOutlined />} onClick={() => activeArtifact && downloadArtifact(activeArtifact)}>Download</Button>,
+          <Button key="close" onClick={() => setSelectedArtifact(null)}>Close</Button>,
         ]}
       >
-        {artifactLoading ? (
-          <div style={{ textAlign: 'center', padding: 32 }}>
-            <Spin />
-          </div>
-        ) : (
-          <>
-            <Space style={{ marginBottom: 16 }}>
-              <Text>View mode:</Text>
-              <Radio.Group value={viewMode} onChange={(e) => setViewMode(e.target.value)}>
-                <Radio.Button value="text">Text</Radio.Button>
-                <Radio.Button value="hex">Hex</Radio.Button>
-              </Radio.Group>
-            </Space>
-            <div
-              style={{
-                backgroundColor: '#f5f5f5',
-                padding: 16,
-                borderRadius: 4,
-                maxHeight: 500,
-                overflow: 'auto',
-                fontFamily: 'monospace',
-                fontSize: 12,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-all',
-              }}
-            >
-              {artifactContent ? (
-                viewMode === 'text' ? (
-                  artifactContent
-                ) : (
-                  formatHex(artifactContent)
-                )
-              ) : (
-                <Text type="secondary">No content available</Text>
-              )}
-            </div>
-          </>
-        )}
-      </Modal>
+        {activeArtifact && <ArtifactContents
+          key={JSON.stringify([projectId, jobId, activeArtifact.taskOrdinal, activeArtifact.name])}
+          url={artifactUrl(projectId, jobId, activeArtifact)} name={activeArtifact.name}
+          resolveAttachment={reference => {
+            const matches = artifactAttachments.filter(a => a.name === reference);
+            const identities = new Map(matches.map(a => [JSON.stringify([a.taskOrdinal, a.name]), a]));
+            if (identities.size !== 1) return undefined;
+            const [key, a] = [...identities][0];
+            return { key, name: a.name, url: artifactUrl(projectId, jobId, a) };
+          }}
+        />}
+      </Modal>}
 
       <Modal
         title="Restart Job"

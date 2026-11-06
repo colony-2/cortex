@@ -44,7 +44,12 @@ function ReviewReader({ projectId, jobId, requestId, documents }: Props) {
   </div>;
   const preview = error ? <Alert type="error" showIcon message={error} action={<Button onClick={() => { cached.current = undefined; setContent(undefined); setRetry(v => v + 1); }}>Retry</Button>} />
     : !content || content.url !== url ? <Spin aria-label="Loading document" />
-    : <DocumentPreview key={url} data={content.data} name={name} markdownSource={markdownSource} setMarkdownSource={setMarkdownSource} dual={dual} setDual={setDual} documents={documents} projectId={projectId} jobId={jobId} requestId={requestId} />;
+    : <DocumentPreview key={url} data={content.data} name={name} markdownSource={markdownSource} setMarkdownSource={setMarkdownSource} dual={dual} setDual={setDual} resolveAttachment={reference => {
+      const matches = Object.entries(documents).filter(([id, d]) => reference === id || reference === d.name || reference === d.stored.key.name);
+      if (matches.length !== 1) return undefined;
+      const [id, d] = matches[0];
+      return { key: id, name: d.name || d.stored.key.name, url: inputActivityService.reviewDocumentURL(projectId, jobId, requestId, id) };
+    }} />;
   return <>
     <Card title={`Documents (${ids.length})`} extra={<Typography.Text type="secondary">Read only</Typography.Text>}>
       {!selected ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents attached" />

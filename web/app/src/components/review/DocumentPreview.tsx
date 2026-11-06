@@ -2,8 +2,6 @@ import { useMemo, useState } from 'react';
 import { Alert, Button, Radio, Space } from 'antd';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { ReviewDocument } from '@colony2/shared';
-import { inputActivityService } from '@colony2/shared';
 import { useEffect } from 'react';
 import { decodeText, TEXT_LIMIT, hexDump, loadDocument, structuredAllowed, type DocumentData } from './document';
 import { formatJSON, jsonLineErrors } from './structured';
@@ -21,8 +19,10 @@ function AttachedImage({ id, name, url }: { id: string; name: string; url: strin
   }, [url, name]);
   return error ? <span>{error}</span> : data ? <ImageView data={data} name={name || id} /> : <span>Loading attached image…</span>;
 }
-interface Props { markdownSource?: boolean; setMarkdownSource?: (source: boolean) => void; data: DocumentData; name: string; dual: boolean; setDual: (value: boolean) => void; documents: Record<string, ReviewDocument>; projectId: string; jobId: string; requestId: string }
-export default function DocumentPreview({ data, name, markdownSource = false, setMarkdownSource, dual, setDual, documents, projectId, jobId, requestId }: Props) {
+export type PreviewAttachment = { key: string; name: string; url: string };
+export type ResolvePreviewAttachment = (reference: string) => PreviewAttachment | undefined;
+interface Props { markdownSource?: boolean; setMarkdownSource?: (source: boolean) => void; data: DocumentData; name: string; dual: boolean; setDual: (value: boolean) => void; resolveAttachment?: ResolvePreviewAttachment }
+export default function DocumentPreview({ data, name, markdownSource = false, setMarkdownSource, dual, setDual, resolveAttachment }: Props) {
   const [mode, setMode] = useState('rendered');
   const [textOverride, setTextOverride] = useState(false);
   const structured = structuredAllowed(data);
@@ -52,11 +52,9 @@ export default function DocumentPreview({ data, name, markdownSource = false, se
         p: ({ children }) => <div className="review-markdown-paragraph">{children}</div>,
         a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
         img: ({ src, alt }) => {
-          // Resolve only exact current-review IDs or unambiguous stored names. Never load external URLs.
-          const matches = Object.entries(documents).filter(([id, d]) => src === id || src === d.name || src === d.stored.key.name);
-          if (!src || /^(?:[a-z][a-z\d+.-]*:|\/\/|\/)/i.test(src) || matches.length !== 1) return <span>Blocked external or ambiguous image: {alt || src}</span>;
-          const [id, d] = matches[0];
-          return <AttachedImage key={id} id={id} name={d.name || d.stored.key.name} url={inputActivityService.reviewDocumentURL(projectId,jobId,requestId,id)} />;
+          const attachment = src && !/^(?:[a-z][a-z\d+.-]*:|\/\/|\/)/i.test(src) ? resolveAttachment?.(src) : undefined;
+          if (!attachment) return <span>Blocked external or ambiguous image: {alt || src}</span>;
+          return <AttachedImage key={JSON.stringify([attachment.key, attachment.url])} id={attachment.key} name={attachment.name} url={attachment.url} />;
         },
       }}>{data.text}</Markdown></article>
       : format === 'diff' && structured && mode !== 'source' ? <DiffView text={data.text} dual={dual} />
