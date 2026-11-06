@@ -75,6 +75,9 @@ func TestAdminConfigurationAndCellPolicies(t *testing.T) {
 	doJSON[errorResponse](t, req, 404)
 	adminRequest(t, ts, "/api/projects/other/admin/hooks?cellId="+cell.ID, map[string]any{"name": ".c2/hooks/build.yaml", "operation": "clear", "revision": cs.Revision}, 404)
 	adminRequest(t, ts, base+"/hooks", map[string]any{"name": ".c2/hooks/bad.yaml", "operation": "set", "value": map[string]any{"perms": entry["perms"]}, "revision": cs.Revision}, 400)
+	// Recipe callsites may inherit permissions; administrative hook policies
+	// must remain complete grants, separate from cell-to-tenant inheritance.
+	adminRequest(t, ts, base+"/hooks", map[string]any{"name": ".c2/hooks/inherit.yaml", "operation": "set", "value": map[string]any{"perms": map[string]any{"inherit": true}}, "revision": cs.Revision}, 400)
 	profile := map[string]any{"version": 1, "entries": []any{map[string]string{"url": "https://github.com/acme/", "username": "git", "secret_ref": "git_token"}}}
 	adminRequest(t, ts, base+"/git", map[string]any{"name": "read", "operation": "set", "value": profile, "revision": cs.Revision}, 200)
 	snap = get()
