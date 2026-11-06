@@ -77,3 +77,50 @@ it('preserves an explicit null configuration and rejects accidental duplicate ad
  await screen.findByText('This name already exists. Use Edit to change it.');
  expect(updateAdmin).not.toHaveBeenCalled();
 });
+it('edits hook grants through fields while preserving restrictions and source trust', async () => {
+ const policy = {
+  perms: { jobdb: { secrets: { resolve: ['token'] }, jobs: { submit: true, cellNames: ['app'] }, cells: { create: true, cellNames: ['new-app'] } }, limit: { jobdb: { secrets: { resolve: ['token', 'extra'] }, jobs: { submit: true }, cells: { create: true } } } },
+  source_trust: { 'jobdb.secrets.resolve': { token: { mode: 'commit', commit: 'a'.repeat(40) } }, 'jobdb.jobs.submit': { mode: 'candidate' }, 'jobdb.cells.create': { mode: 'commit', commit: 'b'.repeat(40) } },
+ };
+ vi.mocked(getAdmin).mockResolvedValue({ ...snapshot, hooks: [{ name: 'hooks/build.yaml', value: policy, source: 'cell' }] });
+ render(<MemoryRouter><AdminPanel projectId="tenant" cellId="cell-1" kind="hooks" /></MemoryRouter>);
+ expect(await screen.findByText(/Only commit aaaaa/)).toBeVisible();
+ expect(document.querySelector('pre')).toBeNull();
+ fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+ const dialog = screen.getByRole('dialog');
+ expect(within(dialog).queryByLabelText('Value (JSON)')).not.toBeInTheDocument();
+ expect(within(dialog).getByLabelText('Submit jobs — cell names')).toHaveValue('app');
+ expect(within(dialog).getByLabelText('Create cells — commit SHA')).toHaveValue('b'.repeat(40));
+ fireEvent.change(within(dialog).getByLabelText('Secret 1 — commit SHA'), { target: { value: 'c'.repeat(40) } });
+ fireEvent.click(within(dialog).getByRole('button', { name: 'Save', exact: true }));
+ await waitFor(() => expect(updateAdmin).toHaveBeenCalledWith('tenant', 'hooks', {
+  name: 'hooks/build.yaml', operation: 'set', revision: 'rev1', value: { ...policy, source_trust: { ...policy.source_trust, 'jobdb.secrets.resolve': { token: { mode: 'commit', commit: 'c'.repeat(40) } } } },
+ }, 'cell-1'));
+});
+it('requires commit trust on new secret grants and retains the form on invalid input', async () => {
+ render(<MemoryRouter><AdminPanel projectId="tenant" kind="hooks" /></MemoryRouter>);
+ fireEvent.click(await screen.findByRole('button', { name: 'Add hook policy' }));
+ fireEvent.change(screen.getByLabelText('Hook path'), { target: { value: 'hooks/new.yaml' } });
+ fireEvent.click(screen.getByRole('button', { name: 'Add secret access' }));
+ fireEvent.change(screen.getByLabelText('Secret 1 name'), { target: { value: 'token' } });
+ fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+ await screen.findByText(/Enter a full 40-character/);
+ expect(updateAdmin).not.toHaveBeenCalled();
+ expect(screen.getByLabelText('Secret 1 name')).toHaveValue('token');
+});
+it('edits Git destinations and credentials without JSON or retrieving secret values', async () => {
+ const profile = { version: 1, entries: [{ url: 'https://github.com/acme/', rewrite_from: ['git@github.com:acme/'], username: 'git', secret_ref: 'token' }, { url: 'https://public.example/' }] };
+ vi.mocked(getAdmin).mockResolvedValue({ ...snapshot, git: [{ name: 'read', value: profile }] });
+ render(<MemoryRouter><AdminPanel projectId="tenant" kind="git" /></MemoryRouter>);
+ await screen.findByText(/Credential secret: token/);
+ expect(document.querySelector('pre')).toBeNull();
+ fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+ expect(screen.queryByLabelText('Value (JSON)')).not.toBeInTheDocument();
+ expect(screen.getByLabelText('Destination 1 — rewrite from')).toHaveValue('git@github.com:acme/');
+ fireEvent.click(screen.getByRole('button', { name: 'Remove destination 1' }));
+ expect(screen.getByLabelText('Destination 1 URL')).toHaveValue('https://public.example/');
+ fireEvent.click(screen.getByRole('button', { name: 'Add repository destination' }));
+ fireEvent.change(screen.getByLabelText('Destination 2 URL'), { target: { value: 'https://other.example/' } });
+ fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+ await waitFor(() => expect(updateAdmin).toHaveBeenCalledWith('tenant', 'git', { name: 'read', operation: 'set', revision: 'rev1', value: { version: 1, entries: [{ url: 'https://public.example/' }, { url: 'https://other.example/' }] } }, undefined));
+});

@@ -8,6 +8,8 @@ for (const width of [390, 1440]) {
   const cell = await registerCell(request, tenant);
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
   await page.setViewportSize({ width, height: 844 });
+  // LAN deployments may use plain HTTP, where randomUUID is unavailable.
+  await page.addInitScript(() => Object.defineProperty(window.crypto, 'randomUUID', { value: undefined, configurable: true }));
   await page.goto(`/project/${tenant}/cells`);
   if (width < 768) await page.getByRole('button', { name: 'Open navigation' }).click();
   await page.getByRole('link', { name: 'Admin', exact: true }).click();
@@ -29,7 +31,11 @@ for (const width of [390, 1440]) {
   await page.getByRole('tab', { name: 'Hook permissions' }).click();
   await page.getByRole('button', { name: 'Add hook policy' }).click();
   await page.getByLabel('Hook path', { exact: true }).fill('.c2/hooks/build.yaml');
-  await page.getByLabel('Value (JSON)', { exact: true }).fill(JSON.stringify({ perms: { jobdb: { secrets: { resolve: ['token'] } } }, source_trust: { 'jobdb.secrets.resolve': { token: { mode: 'candidate' } } } }));
+  await expect(page.getByLabel('Value (JSON)')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Add secret access' }).click();
+  await page.getByLabel('Secret 1 name', { exact: true }).fill('token');
+  await page.getByLabel('Secret 1 — commit SHA', { exact: true }).fill('a'.repeat(40));
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('dialog')).not.toBeVisible();
   await expect(page.getByText('.c2/hooks/build.yaml', { exact: true })).toBeVisible();
@@ -46,10 +52,21 @@ for (const width of [390, 1440]) {
   await page.getByRole('tab', { name: 'Git', exact: true }).click();
   await page.getByRole('button', { name: 'Add Git profile' }).click();
   await page.getByLabel('Name', { exact: true }).fill('read');
-  await page.getByLabel('Value (JSON)', { exact: true }).fill(JSON.stringify({ version: 1, entries: [{ url: 'https://github.com/acme/', username: 'git', secret_ref: 'git_token' }] }));
+  await expect(page.getByLabel('Value (JSON)')).toHaveCount(0);
+  await page.getByLabel('Destination 1 URL', { exact: true }).fill('https://github.com/acme/');
+  await page.getByLabel('Destination 1 — rewrite from', { exact: true }).fill('git@github.com:acme/');
+  await page.getByLabel('Destination 1 — username', { exact: true }).fill('git');
+  await page.getByLabel('Destination 1 — credential secret name', { exact: true }).fill('git_token');
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('dialog')).not.toBeVisible();
   await expect(page.getByText('read', { exact: true })).toBeVisible();
+  await expect(page.locator('pre')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await expect(page.getByLabel('Destination 1 — rewrite from', { exact: true })).toHaveValue('git@github.com:acme/');
+  await page.getByLabel('Destination 1 — username', { exact: true }).fill('git-user');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('dialog')).not.toBeVisible();
   await page.getByRole('tab', { name: 'Secrets', exact: true }).click();
   await expect(page.getByText('git_token', { exact: true })).toBeVisible();
   await expect(page.getByText('token', { exact: true })).toBeVisible();

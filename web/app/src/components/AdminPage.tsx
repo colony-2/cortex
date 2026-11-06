@@ -4,13 +4,13 @@ import { Alert, Button, Empty, Form, Input, Modal, Space, Spin, Tabs, Tag, Typog
 import { getAdmin, updateAdmin } from '@colony2/shared';
 import type { AdminEntry, AdminKind, AdminMutation, AdminSnapshot } from '@colony2/shared';
 
+import { GitFields, GitSummary, HookFields, HookSummary } from './admin/StructuredSettings';
+import { gitDraft, gitValue, hookDraft, hookValue } from './admin/models';
+import type { GitProfile, HookPolicy } from './admin/models';
+
 const labels: Record<AdminKind, string> = { hooks: 'Hook permissions', configs: 'Configs', git: 'Git', secrets: 'Secrets' };
 const kinds = Object.keys(labels) as AdminKind[];
-const examples = {
-  hooks: { perms: { jobdb: { secrets: { resolve: ['token_name'] } } }, source_trust: { 'jobdb.secrets.resolve': { token_name: { mode: 'commit', commit: 'FULL_LOWERCASE_COMMIT_SHA' } } } },
-  configs: 'value',
-  git: { version: 1, entries: [{ url: 'https://github.com/your-org/', username: 'x-access-token', secret_ref: 'github_token' }] },
-};
+
 
 export default function AdminPage({ projectId }: { projectId: string }) {
   return <div className="app-page" style={{ padding: 24 }}>
@@ -79,7 +79,9 @@ export function AdminPanel({ projectId, cellId, kind }: { projectId: string; cel
         <Space wrap><Typography.Text strong style={{ overflowWrap: 'anywhere' }}>{entry.name}</Typography.Text>
           {entry.source && <Tag>{entry.source === 'cell' ? 'Cell override' : 'Tenant'}</Tag>}
         </Space>
-        {kind !== 'secrets' && <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 240, overflow: 'auto' }}>{JSON.stringify((entry as AdminEntry).value, null, 2)}</pre>}
+        {kind === 'hooks' && <HookSummary value={entry.value as HookPolicy} />}
+        {kind === 'git' && <GitSummary value={entry.value as GitProfile} />}
+        {kind === 'configs' && <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 240, overflow: 'auto' }}>{JSON.stringify((entry as AdminEntry).value, null, 2)}</pre>}
         {!readOnly && <Space wrap style={{ marginTop: 8 }}>
           <Button disabled={kind === 'secrets' && !data.secretWrites} onClick={() => setEditor({ entry })}>{kind === 'secrets' ? 'Replace value' : 'Edit'}</Button>
           {kind === 'hooks' && <Button onClick={() => setPending({ name: entry.name, operation: 'clear' })}>Clear permissions</Button>}
@@ -100,14 +102,16 @@ export function AdminPanel({ projectId, cellId, kind }: { projectId: string; cel
 
 function AdminEditor({ kind, entry, onClose, onSave }: { kind: AdminKind; entry?: AdminEntry; onClose: () => void; onSave: (input: AdminMutation) => Promise<void> }) {
   const [name, setName] = useState(entry?.name || '');
-  const [value, setValue] = useState(kind === 'secrets' ? '' : JSON.stringify(entry ? entry.value : (kind === 'hooks' ? { perms: { jobdb: {} } } : examples[kind]), null, 2));
+  const [value, setValue] = useState(kind === 'configs' ? JSON.stringify(entry ? entry.value : 'value', null, 2) : '');
+  const [hook, setHook] = useState(() => hookDraft(kind === 'hooks' ? entry?.value as HookPolicy | undefined : undefined));
+  const [git, setGit] = useState(() => gitDraft(kind === 'git' ? entry?.value as GitProfile | undefined : undefined));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const secret = kind === 'secrets';
   const save = async () => {
     let parsed: unknown;
-    try { parsed = secret ? value : JSON.parse(value); }
-    catch { setError('Enter valid JSON.'); return; }
+    try { parsed = secret ? value : kind === 'hooks' ? hookValue(hook) : kind === 'git' ? gitValue(git) : JSON.parse(value); }
+    catch (reason) { setError(kind === 'configs' ? 'Enter valid JSON.' : (reason as Error).message); return; }
     setBusy(true); setError(undefined);
     // Keep secret drafts only in this mounted form, and discard after any send.
     if (secret) setValue('');
@@ -117,13 +121,12 @@ function AdminEditor({ kind, entry, onClose, onSave }: { kind: AdminKind; entry?
   };
   return <Modal open title={secret ? 'Add or replace secret' : `${entry ? 'Edit' : 'Add'} ${labels[kind].toLowerCase()}`} width={720} okText="Save" onOk={save} confirmLoading={busy} okButtonProps={{ disabled: !name.trim() || (secret && !value) }} onCancel={() => { if (!busy) onClose(); }} closable={!busy} maskClosable={!busy}>
     {error && <Alert type="error" showIcon message={error} />}
-    <Form layout="vertical">
+    <Form layout="vertical" disabled={busy}>
       <Form.Item label={kind === 'hooks' ? 'Hook path' : 'Name'}><Input aria-label={kind === 'hooks' ? 'Hook path' : 'Name'} value={name} disabled={!!entry || busy} onChange={event => setName(event.target.value)} placeholder={kind === 'hooks' ? '.c2/hooks/build.yaml' : undefined} /></Form.Item>
-      <Form.Item label={secret ? 'New secret value' : 'Value (JSON)'}>{secret
+      {kind === 'hooks' ? <HookFields value={hook} onChange={setHook} /> : kind === 'git' ? <GitFields value={git} onChange={setGit} /> : <Form.Item label={secret ? 'New secret value' : 'Value (JSON)'}>{secret
         ? <Input.Password aria-label="New secret value" autoComplete="new-password" visibilityToggle={false} value={value} disabled={busy} onChange={event => setValue(event.target.value)} />
-        : <Input.TextArea aria-label="Value (JSON)" rows={12} value={value} disabled={busy} onChange={event => setValue(event.target.value)} style={{ fontFamily: 'monospace' }} />}</Form.Item>
+        : <Input.TextArea aria-label="Value (JSON)" rows={12} value={value} disabled={busy} onChange={event => setValue(event.target.value)} style={{ fontFamily: 'monospace' }} />}</Form.Item>}
     </Form>
-    {secret ? <Typography.Paragraph type="secondary">The existing value is never retrieved. Saving replaces it. The value is discarded from this form after submission.</Typography.Paragraph>
-      : <details><summary>Example {labels[kind].toLowerCase()}</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(examples[kind], null, 2)}</pre>{kind === 'hooks' && <Typography.Paragraph>Use a full commit SHA for commit-bound grants. Candidate trust grants access to any candidate code. Policies also support job submission and cell creation grants with matching source_trust entries.</Typography.Paragraph>}</details>}
+    {secret && <Typography.Paragraph type="secondary">The existing value is never retrieved. Saving replaces it. The value is discarded from this form after submission.</Typography.Paragraph>}
   </Modal>;
 }
