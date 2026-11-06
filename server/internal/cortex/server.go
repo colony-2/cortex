@@ -88,6 +88,8 @@ func (s *Server) buildRouter(inputService ops.ManagementService) http.Handler {
 	api.HandleFunc("/projects/{projectId}/cells", s.handleListCells).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/cells", s.handleCreateCell).Methods(http.MethodPost, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/cells/{cellId}", s.handleGetCell).Methods(http.MethodGet, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/admin", s.handleAdminRead).Methods(http.MethodGet, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/admin/{kind}", s.handleAdminWrite).Methods(http.MethodPost, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs", s.handleListJobs).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs", s.handleSubmitJob).Methods(http.MethodPost, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}", s.handleGetJob).Methods(http.MethodGet, http.MethodOptions)

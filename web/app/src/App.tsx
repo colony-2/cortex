@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { FileSearchOutlined, MenuOutlined, LogoutOutlined, OrderedListOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { FileSearchOutlined, MenuOutlined, LogoutOutlined, OrderedListOutlined, PlayCircleOutlined, SettingOutlined } from '@ant-design/icons';
 import { Alert, Badge, Button, Drawer, Empty, Input, Layout, Menu, Spin, Typography } from 'antd';
 import {
   InputActivityProvider,
@@ -11,6 +11,7 @@ import {
 } from '@colony2/shared';
 import CellsList from './components/CellsList';
 import CellPage from './components/CellPage';
+import AdminPage from './components/AdminPage';
 import JobsListPage from './components/JobsListPage';
 import PendingInputsListPage from './components/PendingInputsListPage';
 import InputDetailPage from './components/InputDetailPage';
@@ -87,6 +88,7 @@ function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
     const path = location.pathname;
     if (path.includes('/reviews')) return 'reviews';
     if (path.includes('/cells')) return 'cells';
+    if (path.includes('/admin')) return 'admin';
     return 'jobs';
   }, [location.pathname]);
 
@@ -136,6 +138,11 @@ function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
                 label: <Link className="compact-touch-link" to={`/project/${tenantId}/cells`}>Cells</Link>,
                 icon: <OrderedListOutlined />,
               },
+              {
+                key: 'admin',
+                label: <Link className="compact-touch-link" to={`/project/${encodeURIComponent(tenantId)}/admin`}>Admin</Link>,
+                icon: <SettingOutlined />,
+              },
             ]}
             style={{ height: '100%', borderRight: 0 }}
           />
@@ -174,6 +181,7 @@ function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
             <Route path="/cells" element={<CellsList key={tenantId} projectId={tenantId} />} />
             <Route path="/project/:projectId/cells/:cellId" element={<CellRoute fallbackProjectId={tenantId} />} />
             <Route path="/project/:projectId/cells" element={<CellsRoute fallbackProjectId={tenantId} />} />
+            <Route path="/project/:projectId/admin" element={<AdminRoute fallbackProjectId={tenantId} />} />
             <Route path="*" element={<Navigate to={`/project/${tenantId}/jobs`} replace />} />
           </Routes>
         </Content>
@@ -206,6 +214,11 @@ function InputRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
 function CellsRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
   const projectId = useRouteProjectId(fallbackProjectId);
   return <CellsList key={projectId} projectId={projectId} />;
+}
+
+function AdminRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
+  const projectId = useRouteProjectId(fallbackProjectId);
+  return <AdminPage key={projectId} projectId={projectId} />;
 }
 
 function CellRoute({ fallbackProjectId }: { fallbackProjectId: string }) {

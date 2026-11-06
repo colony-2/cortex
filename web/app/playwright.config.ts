@@ -72,7 +72,7 @@ export default defineConfig({
     },
     {
       name: 'production',
-      testMatch: ['api-integration.spec.ts', 'recipe-input.spec.ts'],
+      testMatch: ['api-integration.spec.ts', 'recipe-input.spec.ts', 'admin.spec.ts'],
       use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:18083' },
     },
   ],

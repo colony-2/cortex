@@ -13,6 +13,7 @@ and the removed UI packages. Keep API calls aligned with the Go Cortex server:
 - `/api/projects/:projectId/jobs`
 - `/api/projects/:projectId/jobs/:jobId`
 - `/api/projects/:projectId/user-inputs/...`
+- `/api/projects/:projectId/admin` and `/admin/:kind` (tenant settings and existing cell hook overrides)
 
 `projectId` values are JobDB tenant IDs in the current UI.
 

@@ -9,8 +9,12 @@ new decomponentized model:
 - pending inputs are job input requests
 
 Do not reintroduce removed legacy work-item screens, recipe management screens,
-project editing/admin pages, graph traversal UI, old task-runner commands, or
+legacy project editing/admin pages, graph traversal UI, old task-runner commands, or
 the retired auxiliary UI packages.
+
+Tenant administration is available under Admin for hook policies, configuration,
+Git profiles, and write-only secrets. Cell tabs expose existing hook overrides;
+other settings remain tenant-wide. Never fetch or display stored secret values.
 
 ## Commands
 
@@ -39,5 +43,6 @@ Primary routes:
 - `/project/:projectId/reviews`
 - `/project/:projectId/cells`
 - `/project/:projectId/cells/:cellId`
+- `/project/:projectId/admin`
 
 Use `@colony2/shared` for API calls and input activity state.

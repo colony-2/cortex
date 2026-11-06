@@ -27,16 +27,18 @@ type Config struct {
 }
 
 type Server struct {
-	cfg         Config
-	engine      jobworkflow.Engine
-	jobDeletion jobdb.JobDeletionRuntime
-	chapters    chapterReader
-	router      http.Handler
-	story       storyService
-	inputs      inputRuntime
-	cells       jobdb.CellRuntime
-	logger      *slog.Logger
-	started     time.Time
+	cfg           Config
+	engine        jobworkflow.Engine
+	jobDeletion   jobdb.JobDeletionRuntime
+	chapters      chapterReader
+	router        http.Handler
+	story         storyService
+	inputs        inputRuntime
+	cells         jobdb.CellRuntime
+	configuration jobdb.ConfigurationAdmin
+	secretAdmin   secretAdmin
+	logger        *slog.Logger
+	started       time.Time
 }
 
 func normalizeConfig(cfg Config) Config {
