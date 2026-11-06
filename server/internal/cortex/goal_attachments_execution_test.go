@@ -44,13 +44,20 @@ func (emptyAttachmentSecrets) ResolveSecrets(_ context.Context, _ jobdb.SecretRe
 // End at the first consuming operation; never invoke an external model or publish.
 func runGoalAttachmentConsumer(t *testing.T, selector string, embedded ...recipe.Recipe) {
 	t.Helper()
-	repoRoot, e := filepath.Abs("../../..")
-	if e != nil {
-		t.Fatal(e)
-	}
 	git, e := exec.LookPath("git")
 	if e != nil {
 		t.Fatal(e)
+	}
+	// Use an isolated source repository. Cloning Cortex itself also loads its
+	// .c2/config.yaml and installs build tools unrelated to attachment delivery.
+	repoRoot := t.TempDir()
+	for _, args := range [][]string{
+		{"init", "--initial-branch=main", repoRoot},
+		{"-C", repoRoot, "-c", "user.name=Cortex Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--allow-empty", "-m", "Attachment fixture"},
+	} {
+		if output, err := exec.Command(git, args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, output)
+		}
 	}
 	bin := t.TempDir()
 	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
@@ -125,12 +132,7 @@ func runGoalAttachmentConsumer(t *testing.T, selector string, embedded ...recipe
 	if err := engine.RegisterWorkers(workers); err != nil {
 		t.Fatal(err)
 	}
-	// Reuse the existing repository as read-only Git source; no commits or refs change.
-	repo, err := filepath.Abs("../../..")
-	if err != nil {
-		t.Fatal(err)
-	}
-	key, err := starter.StartRecipeJob(ctx, workflowctl.StartJob{Cell: "platform", CellRepo: "github.com/acme/platform", TenantId: "attachment-execution", RecipeName: selector, Inputs: map[string]any{"prompt": "Read attached requirements", "type": "build"}, GitRef: "HEAD", Artifacts: []jobdb.Artifact{jobdb.NewArtifactFromBytes("brief.bin", []byte{0, 255, 1}), jobdb.NewArtifactFromBytes("雪.txt", []byte("snow")), jobdb.NewArtifactFromBytes("empty", nil)}, JobContext: contextual.JobContext{Workflow: contextual.WorkflowContext{CellName: "platform"}, GitBase: contextual.GitBaseContext{BaseRepo: repo, BaseRef: "HEAD"}, CellResolution: &cellref.Context{SelfCell: "platform", SelfRepo: "github.com/acme/platform"}}}, engine, embedded...)
+	key, err := starter.StartRecipeJob(ctx, workflowctl.StartJob{Cell: "platform", CellRepo: "github.com/acme/platform", TenantId: "attachment-execution", RecipeName: selector, Inputs: map[string]any{"prompt": "Read attached requirements", "type": "build"}, GitRef: "HEAD", Artifacts: []jobdb.Artifact{jobdb.NewArtifactFromBytes("brief.bin", []byte{0, 255, 1}), jobdb.NewArtifactFromBytes("雪.txt", []byte("snow")), jobdb.NewArtifactFromBytes("empty", nil)}, JobContext: contextual.JobContext{Workflow: contextual.WorkflowContext{CellName: "platform"}, GitBase: contextual.GitBaseContext{BaseRepo: repoRoot, BaseRef: "HEAD"}, CellResolution: &cellref.Context{SelfCell: "platform", SelfRepo: "github.com/acme/platform"}}}, engine, embedded...)
 	if err != nil {
 		t.Fatal(err)
 	}
