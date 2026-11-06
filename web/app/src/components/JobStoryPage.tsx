@@ -266,6 +266,7 @@ interface JobStoryPageProps {
 }
 
 export default function JobStoryPage({ projectId }: JobStoryPageProps) {
+  const [activeTreeKey, setActiveTreeKey] = useState<string | null>(null);
   const { jobId: routeJobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
@@ -620,6 +621,28 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
     }
   };
 
+  const selectedTreeKey = selectedNode?.kind === 'recipe' && selectedKey ? selectedKey
+    : latestAttempt ? visibleKeyByKey.get(latestAttempt.key) || latestAttempt.key : null;
+  const focusStoryTarget = (details: boolean) => {
+    const region = document.getElementById('execution-story-tree');
+    const selected = region?.querySelector<HTMLElement>('.ant-tree-node-selected');
+    if (!details && selected) {
+      setActiveTreeKey(selectedTreeKey);
+      // rc-tree routes keyboard navigation through its controller input. The
+      // activeKey prop makes that controller resume at the selected visible row.
+      region?.querySelector<HTMLInputElement>('.ant-tree input')?.focus({ preventScroll: true });
+      selected.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'instant' });
+      return;
+    }
+    const target = details ? document.getElementById('selected-story-details') : region;
+    if (!target) return;
+    if (details) target.tabIndex = -1;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'instant' });
+  };
+  const detailsLink = <a className="story-navigation-link" href="#selected-story-details"
+    onClick={(event) => { event.preventDefault(); focusStoryTarget(true); }}>View selected details</a>;
+
   const detailsHeader = (
     <Space direction="vertical" style={{ width: '100%' }} size="small">
       <Space style={{ width: '100%', justifyContent: 'space-between' }}>
@@ -842,9 +865,9 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
           ) : null}
         </Card>
 
-        <a className="compact-details-link" href="#selected-story-details">View selected details</a>
+        {detailsLink}
         <div className="story-panels">
-          <Card title={isPastJob ? `Story · job attempt ${selectedRef?.jobAttempt}` : 'Story'} className="story-tree-panel" styles={{ body: { padding: 12, overflowX: 'auto' } }}
+          <Card title={isPastJob ? `Story · job attempt ${selectedRef?.jobAttempt}` : 'Story'} className="story-tree-panel" styles={{ body: { padding: 12 } }}
             extra={<Space>
               {!!story?.root?.past_attempts?.length && <Button size="small" onClick={() => {
                 setSelectedFromNode(displayedRoot || story.root!);
@@ -852,43 +875,58 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
               <Button size="small" onClick={() => setExpandedKeys(Array.from(keyToParent.keys()))}>Expand all</Button>
               <Button size="small" onClick={() => setExpandedKeys([])}>Collapse all</Button>
             </Space>}>
-            {!story?.root ? (
-              <Empty description={story && story.status !== 'running'
-                ? 'The story API returned no steps for this finished job.'
-                : 'No story available yet'} />
-            ) : (
-              <div role="region" aria-label="Execution story tree" className="technical-region" tabIndex={0}><Tree
-                showLine
-                treeData={treeData}
-                expandedKeys={expandedKeys}
-                selectedKeys={selectedNode?.kind === 'recipe' && selectedKey ? [selectedKey]
-                  : latestAttempt ? [visibleKeyByKey.get(latestAttempt.key) || latestAttempt.key] : []}
-                onExpand={(keys) => setExpandedKeys(keys as string[])}
-                onSelect={(_, info) => {
-                  const key = String(info.node.key);
-                  const ref = keyToRef.get(key);
-                  if (!ref) return;
-                  if (ref.type === 'node') {
-                    const ancestors = ancestorKeysForKey(key, keyToParent);
-                    setExpandedKeys((prev) => unionKeys(prev, ancestors));
+            <div role="region" aria-label="Execution story tree" id="execution-story-tree" className="story-tree-region" tabIndex={0}>
+              {!story?.root ? (
+                <Empty description={story && story.status !== 'running'
+                  ? 'The story API returned no steps for this finished job.'
+                  : 'No story available yet'} />
+              ) : (
+                <Tree
+                  activeKey={activeTreeKey}
+                  onActiveChange={(key) => setActiveTreeKey(String(key))}
+                  onFocus={() => {
+                    const selected = document.querySelector('#execution-story-tree .ant-tree-node-selected');
+                    if (selected) {
+                      setActiveTreeKey(selectedTreeKey);
+                      selected.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'instant' });
+                    }
+                  }}
+                  showLine
+                  treeData={treeData}
+                  expandedKeys={expandedKeys}
+                  selectedKeys={selectedNode?.kind === 'recipe' && selectedKey ? [selectedKey]
+                    : latestAttempt ? [visibleKeyByKey.get(latestAttempt.key) || latestAttempt.key] : []}
+                  onExpand={(keys) => setExpandedKeys(keys as string[])}
+                  onSelect={(_, info) => {
+                    const key = String(info.node.key);
+                    const ref = keyToRef.get(key);
+                    if (!ref) return;
+                    if (ref.type === 'node') {
+                      const ancestors = ancestorKeysForKey(key, keyToParent);
+                      setExpandedKeys((prev) => unionKeys(prev, ancestors));
+                      setSelectedKey(key);
+                      setActiveDetailsTab('overview');
+                      setSearchParams((prev) => {
+                        const next = new URLSearchParams(prev);
+                        next.set('nodeId', key);
+                        next.set('path', ref.node.path.join('/'));
+                        next.set('attempt', String(ref.attempt));
+                        return next;
+                      });
+                      return;
+                    }
                     setSelectedKey(key);
-                    setActiveDetailsTab('overview');
-                    setSearchParams((prev) => {
-                      const next = new URLSearchParams(prev);
-                      next.set('nodeId', key);
-                      next.set('path', ref.node.path.join('/'));
-                      next.set('attempt', String(ref.attempt));
-                      return next;
-                    });
-                    return;
-                  }
-                  setSelectedKey(key);
-                }}
-              /></div>
-            )}
+                  }}
+                />
+              )}
+            </div>
+            {detailsLink}
           </Card>
 
-          <Card title={detailsHeader} id="selected-story-details" tabIndex={-1} className="story-details-panel" styles={{ body: { padding: 12, overflowWrap: 'anywhere' } }}>
+          <Card title={detailsHeader} id="selected-story-details" tabIndex={-1} className="story-details-panel"
+            extra={<a className="story-navigation-link" href="#execution-story-tree"
+              onClick={(event) => { event.preventDefault(); focusStoryTarget(false); }}>Back to selected node</a>}
+            styles={{ body: { padding: 12, overflowWrap: 'anywhere' } }}>
             {!selectedNode ? (
               <Empty description="Select a node from the story tree" />
             ) : (

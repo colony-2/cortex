@@ -10,3 +10,72 @@
   white-space: normal;
   overflow-wrap: anywhere;
 }
+
+/* The page owns vertical scrolling; only this region pans horizontally.
+   Inline containment makes cqw use the panel, independent of deep row width. */
+.story-tree-panel .ant-card-body { min-width: 0; overflow: visible; }
+.story-tree-region {
+  min-width: 0;
+  container-type: inline-size;
+  overflow-x: auto;
+}
+.story-tree-region .ant-tree { width: max-content; min-width: 100%; }
+.story-tree-panel .ant-tree-treenode { width: max-content; min-width: 0; }
+.story-tree-panel .ant-tree-indent { display: inline-flex; flex: none; }
+.story-tree-panel .ant-tree-indent-unit { flex: 0 0 24px; }
+.story-tree-panel .ant-tree-switcher { flex: none; }
+.story-tree-panel .ant-tree-node-content-wrapper {
+  flex: none;
+  min-width: 0;
+  /* Switcher, icon and wrapper padding; indentation adds width separately. */
+  max-width: min(32rem, calc(100cqw - 56px));
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 768px) {
+  .story-tree-panel .ant-tree-node-content-wrapper {
+    max-width: min(32rem, calc(100cqw - 96px));
+  }
+}
+.story-tree-panel .ant-tree-title,
+.story-tree-panel .ant-space,
+.story-tree-panel .ant-space-item {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.story-tree-panel .ant-tag { white-space: normal; overflow-wrap: anywhere; }
+.story-navigation-link { display: none; }
+@media (max-width: 1100px) {
+  .story-navigation-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    min-width: 44px;
+    scroll-margin-top: 12px;
+  }
+}
+.story-navigation-link:focus-visible,
+.story-tree-panel .ant-tree-node-content-wrapper:focus-visible,
+.story-tree-region:focus-visible { outline: 2px solid #1677ff; outline-offset: 2px; }
+
+/* Connector lines follow variable-height rows without inline baseline overflow. */
+.story-tree-panel .ant-tree-indent-unit { height: auto; }
+.story-tree-panel .ant-tree-indent-unit::before { bottom: 0; }
+.story-tree-panel .ant-tree-switcher-leaf-line {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+}
+.story-tree-panel .ant-tree-switcher-leaf-line::before { bottom: 0; }
+.story-tree-panel .ant-tree-treenode-leaf-last .ant-tree-switcher-leaf-line::before {
+  top: 0 !important;
+}
+.story-tree-panel .ant-tree-focused .ant-tree-treenode-active .ant-tree-node-content-wrapper {
+  outline: 2px solid #1677ff;
+  outline-offset: -2px;
+}
+/* This read-only tree does not need Ant Design's out-of-row drop target. */
+.story-tree-panel .ant-tree-treenode[draggable="false"]::before { display: none; }

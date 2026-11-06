@@ -153,7 +153,7 @@ test('phone story stacks panels, provides selected details access, and preserves
   await tree.getByText('Task name ' + 'x'.repeat(200), { exact: true }).click();
   await expect(page).toHaveURL(/nodeId=/);
   const selectedURL = page.url();
-  const link = page.getByRole('link', { name: 'View selected details' });
+  const link = page.getByRole('link', { name: 'View selected details' }).first();
   await link.click();
   await expect(page.locator('#selected-story-details')).toBeInViewport();
   await page.setViewportSize({ width: 1440, height: 900 });

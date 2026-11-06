@@ -190,7 +190,7 @@ body {
 .compact-filter-options { display: flex; flex-direction: column; max-height: 45dvh; overflow: auto; width: 100%; }
 .goal-card-field { margin-block: 8px; }
 .goal-target-summary { overflow-wrap: anywhere; }
-.story-panels { display: flex; gap: 16px; align-items: stretch; min-width: 0; }
+.story-panels { display: flex; gap: 16px; align-items: flex-start; min-width: 0; }
 .story-tree-panel { flex: 1; min-width: 0; }
 .story-details-panel { flex: 1.2; min-width: 0; scroll-margin-top: 12px; }
 .technical-region { max-width: 100%; min-width: 0; overflow: auto; }
