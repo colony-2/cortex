@@ -62,3 +62,10 @@ export function canArchiveImmediately(ids: string[], jobs: RecipeJobSummary[]): 
     return !!job && ['failed_app', 'failed_system', 'success', 'CANCELLED'].includes(jobStatusValue(job));
   });
 }
+
+// Terminal classification is broader than the existing immediate-archive policy.
+export function isFinishedJob(job: RecipeJobSummary): boolean {
+  const status = jobStatusValue(job);
+  return status === 'CANCELLED' || status === 'OUTCOME_UNAVAILABLE'
+    || status.startsWith('completion:') || ['success', 'failed_app', 'failed_system', 'failed_timeout'].includes(status);
+}

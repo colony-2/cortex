@@ -41,24 +41,66 @@ it.each(['cancel', 'archive'] as const)('confirms selected jobs and keeps failed
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select job second' }));
   const verb = action === 'cancel' ? 'Cancel' : 'Archive';
   fireEvent.click(screen.getByRole('button', { name: `${verb} selected` }));
-  let dialog = screen.getByRole('dialog');
+  const dialog = screen.getByRole('dialog');
   expect(changes).toEqual([]);
+  expect(within(dialog).queryByLabelText('Cancellation message (optional)')).not.toBeInTheDocument();
   expect(within(dialog).queryByText('unselected')).not.toBeInTheDocument();
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Keep jobs' }));
-  expect(changes).toEqual([]);
-  fireEvent.click(screen.getByRole('button', { name: `${verb} selected` }));
-  dialog = screen.getByRole('dialog');
   fireEvent.click(within(dialog).getByRole('button', { name: `${verb} 2 jobs` }));
   expect(await within(dialog).findByText('1 job operation failed')).toBeVisible();
+  expect(within(dialog).queryByLabelText('Cancellation message (optional)')).not.toBeInTheDocument();
   await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Select job first' })).not.toBeChecked());
   expect(screen.getByRole('checkbox', { name: 'Select job second' })).toBeChecked();
   const suffix = action === 'cancel' ? '/cancel' : '';
   expect(changes).toEqual([`/api/projects/tenant/jobs/first${suffix}`, `/api/projects/tenant/jobs/second${suffix}`]);
   failSecond = false;
-  fireEvent.click(within(dialog).getByRole('button', { name: `${verb} job`, exact: true }));
+  const retry = within(dialog).getByRole('button', { name: `${verb} job`, exact: true });
+  await waitFor(() => {
+    expect(retry).toBeEnabled();
+    expect(retry).not.toHaveClass('ant-btn-loading');
+  });
+  fireEvent.click(retry);
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(changes.at(-1)).toBe(`/api/projects/tenant/jobs/second${suffix}`);
   expect(changes).toHaveLength(3);
+  expect(screen.getByText('0 selected')).toBeVisible();
+});
+
+// Keep dismissal separate from partial-failure retries: both behaviors remain
+// covered without combining reopening and partial retries in one timed test.
+it.each(['cancel', 'archive'] as const)('keeps selected jobs without mutation when dismissing %s confirmation', async action => {
+  const jobs = ['first', 'second', 'unselected'].map(job_id => ({ ...jobIdentity, job_id, status: 'READY', store: 'ACTIVE' }));
+  const changes: string[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+    if (init?.method === 'POST' || init?.method === 'DELETE') {
+      changes.push(new URL(input, 'http://localhost').pathname);
+      return new Response(null, { status: 204 });
+    }
+    return new Response(JSON.stringify({ jobs }));
+  }));
+  render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Select job first' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select job second' }));
+  const verb = action === 'cancel' ? 'Cancel' : 'Archive';
+  const trigger = screen.getByRole('button', { name: `${verb} selected` });
+  trigger.focus();
+  fireEvent.click(trigger);
+  const dialog = screen.getByRole('dialog');
+  expect(within(dialog).queryByText('unselected')).not.toBeInTheDocument();
+  expect(changes).toEqual([]);
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Keep jobs' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(changes).toEqual([]);
+  expect(screen.getByRole('checkbox', { name: 'Select job first' })).toBeChecked();
+  expect(screen.getByRole('checkbox', { name: 'Select job second' })).toBeChecked();
+  expect(trigger).toHaveFocus();
+  fireEvent.click(trigger);
+  const reopened = screen.getByRole('dialog');
+  expect(reopened).toBeVisible();
+  expect(changes).toEqual([]);
+  fireEvent.click(within(reopened).getByRole('button', { name: `${verb} 2 jobs`, exact: true }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  const suffix = action === 'cancel' ? '/cancel' : '';
+  expect(changes).toEqual([`/api/projects/tenant/jobs/first${suffix}`, `/api/projects/tenant/jobs/second${suffix}`]);
   expect(screen.getByText('0 selected')).toBeVisible();
 });
 
@@ -711,4 +753,23 @@ it('archives only the eligible attempt individually selected within a mixed grou
   fireEvent.click(screen.getByRole('button', { name: 'Archive selected' }));
   await waitFor(() => expect(changes).toEqual(['finished']));
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+
+it.each(['cancel', 'archive'] as const)('prompts for a single selected job on %s', async action => {
+  const jobs = [{ ...jobIdentity, job_id:'one', status:'READY',store:'ACTIVE' }];
+  const mutations: RequestInit[] = [];
+  vi.stubGlobal('fetch',vi.fn(async (_input: string, init?: RequestInit) => {
+    if (init?.method === 'POST' || init?.method === 'DELETE') { mutations.push(init); return new Response(null,{status:204}); }
+    return new Response(JSON.stringify({jobs}));
+  }));
+  render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('checkbox',{name:'Select job one'}));
+  fireEvent.click(screen.getByRole('button',{name:action === 'cancel' ? 'Cancel selected' : 'Archive selected'}));
+  const dialog = screen.getByRole('dialog');
+  const input = within(dialog).getByRole('textbox',{name:'Cancellation message (optional)'});
+  expect(mutations).toEqual([]);
+  fireEvent.change(input,{target:{value:'  chosen 雪\nreason  '}});
+  fireEvent.click(within(dialog).getByRole('button',{name: action === 'cancel' ? 'Cancel job' : 'Archive job',exact:true}));
+  await waitFor(() => expect(mutations).toHaveLength(1));
+  expect(JSON.parse(mutations[0].body as string)).toEqual({reason:'chosen 雪\nreason'});
 });

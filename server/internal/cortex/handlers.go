@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/colony-2/c2j/pkg/cellref"
 	"github.com/colony-2/c2j/pkg/jobref"
@@ -187,8 +189,17 @@ func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Explicit detail/history reads must include jobs hidden from the inbox. The
+// pinned recipejob helper otherwise uses the default visible-only list query.
+type archivedJobReader struct{ jobworkflow.Engine }
+
+func (e archivedJobReader) ListJobs(ctx context.Context, req jobdb.ListJobsRequest) (jobdb.ListJobsResponse, error) {
+	req.IncludeHidden = true
+	return e.Engine.ListJobs(ctx, req)
+}
+
 func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
-	job, err := recipejob.GetRecipeJob(r.Context(), s.engine, recipejob.GetRecipeJobRequest{
+	job, err := recipejob.GetRecipeJob(r.Context(), archivedJobReader{s.engine}, recipejob.GetRecipeJobRequest{
 		TenantID: s.tenantID(r),
 		JobID:    mux.Vars(r)["jobId"],
 	})
@@ -202,8 +213,20 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 // Verify tenant-scoped existence before replay/control calls. Remote replay can
 // return an empty story for a missing job instead of a typed not-found error.
 func (s *Server) requireJob(next http.HandlerFunc) http.HandlerFunc {
+	return s.requireJobVisibility(next, false)
+}
+
+func (s *Server) requireArchivedJob(next http.HandlerFunc) http.HandlerFunc {
+	return s.requireJobVisibility(next, true)
+}
+
+func (s *Server) requireJobVisibility(next http.HandlerFunc, includeHidden bool) http.HandlerFunc {
+	reader := s.engine
+	if includeHidden {
+		reader = archivedJobReader{s.engine}
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		page, err := recipejob.ListRecipeJobs(r.Context(), s.engine, recipejob.ListRecipeJobsRequest{
+		page, err := recipejob.ListRecipeJobs(r.Context(), reader, recipejob.ListRecipeJobsRequest{
 			TenantID: s.tenantID(r),
 			JobIDs:   []string{mux.Vars(r)["jobId"]},
 			Stores:   []jobdb.JobStore{jobdb.JobStoreActive, jobdb.JobStoreArchived},
@@ -277,10 +300,55 @@ func (s *Server) handleRestartContext(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+const defaultCancellationReason = "Cancelled from Cortex"
+
+// Validate the entire bounded body before performing any mutation. A supplied
+// reason must be a string; null is intentionally distinct from an absent field.
+func cancellationReason(w http.ResponseWriter, r *http.Request) (string, bool, bool) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64*1024))
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeHTTPError(w, http.StatusRequestEntityTooLarge, err)
+		} else {
+			writeHTTPError(w, http.StatusBadRequest, err)
+		}
+		return "", false, false
+	}
+	var fields map[string]json.RawMessage
+	if len(strings.TrimSpace(string(body))) != 0 {
+		if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
+			writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("expected a JSON object"))
+			return "", false, false
+		}
+	}
+	raw, supplied := fields["reason"]
+	reason := ""
+	if supplied {
+		if string(raw) == "null" || json.Unmarshal(raw, &reason) != nil {
+			writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("reason must be a string"))
+			return "", false, false
+		}
+	}
+	reason = strings.TrimSpace(reason)
+	if utf8.RuneCountInString(reason) > 4000 {
+		writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("reason must be at most 4,000 Unicode code points"))
+		return "", false, false
+	}
+	if reason == "" {
+		reason = defaultCancellationReason
+	}
+	return reason, supplied, true
+}
+
 func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
+	reason, _, valid := cancellationReason(w, r)
+	if !valid {
+		return
+	}
 	err := s.engine.CancelJob(r.Context(), jobdb.CancelJob{
 		JobKey: jobdb.JobKey{TenantId: s.tenantID(r), JobId: mux.Vars(r)["jobId"]},
-		Reason: "Cancelled from Cortex",
+		Reason: reason,
 	})
 	if err != nil {
 		writeError(w, err)
@@ -290,15 +358,60 @@ func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
+	reason, supplied, valid := cancellationReason(w, r)
+	if !valid {
+		return
+	}
 	if s.jobDeletion == nil {
 		writeHTTPError(w, http.StatusNotImplemented, jobdb.ErrJobDeletionUnsupported)
 		return
 	}
-	_, err := s.jobDeletion.DeleteJobs(r.Context(), jobdb.DeleteJobsRequest{
-		TenantID: s.tenantID(r), JobIDs: []string{mux.Vars(r)["jobId"]},
-	})
+	key := jobdb.JobKey{TenantId: s.tenantID(r), JobId: mux.Vars(r)["jobId"]}
+	cancellationAccepted := false
+	if supplied {
+		run, err := s.engine.GetJobRun(r.Context(), jobdb.GetJobRunRequest{JobKey: key})
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		// Archived runtime rows include completed cancellations. Never replace their
+		// accepted detail, including on a retry from a different browser session.
+		cancellationAccepted = run.Job.ArchivedAt != nil && run.Job.CompletionStatus == "cancelled"
+		if run.Job.ArchivedAt == nil {
+			listed, err := s.engine.ListJobs(r.Context(), jobdb.ListJobsRequest{TenantIds: []string{key.TenantId}, JobKeys: []jobdb.JobKey{key}, IncludeHidden: true})
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			if len(listed.Jobs) != 1 {
+				writeError(w, jobdb.ErrJobNotFound)
+				return
+			}
+			cancellationAccepted = cancellationAccepted || listed.Jobs[0].CancelRequested
+		}
+		if run.Job.ArchivedAt == nil && run.Job.Status != jobdb.JobStatusCompleted && run.Job.Status != jobdb.JobStatusCancelled && !cancellationAccepted {
+			if err := s.engine.CancelJob(r.Context(), jobdb.CancelJob{JobKey: key, Reason: reason}); err != nil {
+				writeError(w, err)
+				return
+			}
+			// A completion can win the race with CancelJob. Read the persisted
+			// state before deciding whether an archive failure is a partial cancel.
+			listed, err := s.engine.ListJobs(r.Context(), jobdb.ListJobsRequest{TenantIds: []string{key.TenantId}, JobKeys: []jobdb.JobKey{key}, IncludeHidden: true})
+			if err != nil || len(listed.Jobs) != 1 {
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "Cancellation request accepted; unable to inspect job before archiving", Code: "archive_failed_after_cancel"})
+				return
+			}
+			row := listed.Jobs[0]
+			cancellationAccepted = (row.ArchivedAt == nil && row.CancelRequested) || (row.ArchivedAt != nil && row.CompletionStatus == "cancelled")
+		}
+	}
+	_, err := s.jobDeletion.DeleteJobs(r.Context(), jobdb.DeleteJobsRequest{TenantID: key.TenantId, JobIDs: []string{key.JobId}})
 	if err != nil {
-		writeError(w, err)
+		if cancellationAccepted {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "Cancellation succeeded; archiving failed: " + err.Error(), Code: "archive_failed_after_cancel"})
+		} else {
+			writeError(w, err)
+		}
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

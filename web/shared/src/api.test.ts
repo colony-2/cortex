@@ -174,3 +174,17 @@ it('REL-021 rejects malformed children and surfaces HTTP errors', async () => {
   fetch.mockResolvedValueOnce(new Response('{"error":"offline"}', { status: 503 }));
   await expect(listJobChildren('tenant','job')).rejects.toThrow(/503.*offline/);
 });
+
+it('sends optional cancellation/archive reasons as JSON and keeps bodyless callers compatible', async () => {
+  const { cancelJob, archiveJob } = await import('./api');
+  const fetch = vi.fn().mockResolvedValue({ok:true,status:204});
+  vi.stubGlobal('fetch',fetch);
+  await cancelJob('tenant','one','雪\nmessage');
+  await archiveJob('tenant','one','Cancelled from Cortex');
+  await cancelJob('tenant','bulk');
+  await archiveJob('tenant','finished');
+  expect(fetch.mock.calls[0][1]).toEqual({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason:'雪\nmessage'})});
+  expect(fetch.mock.calls[1][1]).toEqual({method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason:'Cancelled from Cortex'})});
+  expect(fetch.mock.calls[2][1]).toEqual({method:'POST'});
+  expect(fetch.mock.calls[3][1]).toEqual({method:'DELETE'});
+});

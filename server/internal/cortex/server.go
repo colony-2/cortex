@@ -99,9 +99,9 @@ func (s *Server) buildRouter(inputService ops.ManagementService) http.Handler {
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/restart", s.requireJob(s.handleRestartJob)).Methods(http.MethodPost, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/restart-context", s.requireJob(s.handleRestartContext)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/chapters/download", s.requireJob(s.handleChapterDownload)).Methods(http.MethodGet, http.MethodOptions)
-	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/story", s.requireJob(s.handleJobStory)).Methods(http.MethodGet, http.MethodOptions)
-	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/outcome", s.requireJob(s.handleJobOutcome)).Methods(http.MethodGet, http.MethodOptions)
-	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/tasks/{taskOrdinal}/artifacts/{artifactName:.+}", s.requireJob(s.handleArtifactByOrdinal)).Methods(http.MethodGet, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/story", s.requireArchivedJob(s.handleJobStory)).Methods(http.MethodGet, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/outcome", s.requireArchivedJob(s.handleJobOutcome)).Methods(http.MethodGet, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/tasks/{taskOrdinal}/artifacts/{artifactName:.+}", s.requireArchivedJob(s.handleArtifactByOrdinal)).Methods(http.MethodGet, http.MethodOptions)
 
 	api.HandleFunc("/projects/{projectId}/user-inputs/stream", s.handleInputStream).Methods(http.MethodGet, http.MethodOptions)
 

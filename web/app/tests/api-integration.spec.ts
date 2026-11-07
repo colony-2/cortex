@@ -10,6 +10,7 @@ import { fixtureGitTransport } from './helpers/gitTransport';
 
 for (const width of [1440, 390]) {
 test(`confirms cancellation and active archive, immediately archives cancelled jobs at ${width}px`, async ({ page, request, context, baseURL }) => {
+  page.on('pageerror', error => console.error('Browser error:', error));
   await page.setViewportSize({ width, height: 844 });
   const tenant = `actions-${randomUUID()}`;
   await registerCell(request, tenant);
@@ -33,19 +34,25 @@ test(`confirms cancellation and active archive, immediately archives cancelled j
   await dialog.getByRole('button', { name: 'Keep jobs' }).click();
   expect(mutations).toEqual([]);
   await page.getByRole('button', { name: 'Cancel job', exact: true }).click();
+  const customReason = 'Operator 雪🧪\n<script>window.cancelTextExecuted = true</script>';
+  await dialog.getByLabel('Cancellation message (optional)').fill(`  ${customReason}  `);
   await dialog.getByRole('button', { name: 'Cancel job', exact: true }).click();
   await expect(dialog).not.toBeVisible();
-  expect((await (await request.get(`${base}/detail-job`)).json()).status).toBe('CANCELLED');
+  expect((await (await request.get(`${base}/detail-job`)).json())).toMatchObject({status:'CANCELLED', completion_detail:customReason});
+  await page.reload();
+  expect((await (await request.get(`${base}/detail-job`)).json()).completion_detail).toBe(customReason);
+  expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).cancelTextExecuted)).toBeUndefined();
   await page.getByRole('button', { name: 'Back to Goals' }).click();
   await page.getByRole('checkbox', { name: 'Select job bulk-one', exact: true }).check();
   await page.getByRole('checkbox', { name: 'Select job bulk-two', exact: true }).check();
   await page.getByRole('button', { name: 'Cancel selected' }).click();
   dialog = page.getByRole('dialog');
   expect(mutations).toEqual([`${base}/detail-job/cancel`]);
+  await expect(dialog.getByLabel('Cancellation message (optional)')).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Cancel 2 jobs', exact: true }).click();
   await expect(dialog).not.toBeVisible();
   for (const id of ['bulk-one', 'bulk-two']) {
-    expect((await (await request.get(`${base}/${id}`)).json()).status).toBe('CANCELLED');
+    expect((await (await request.get(`${base}/${id}`)).json())).toMatchObject({status:'CANCELLED',completion_detail:'Cancelled from Cortex'});
     await expect(page.getByRole('link', { name: `Job ${id}: Cancelled`, exact: true })).toBeVisible();
     await page.getByRole('checkbox', { name: `Select job ${id}`, exact: true }).check();
   }
@@ -90,6 +97,64 @@ test(`confirms cancellation and active archive, immediately archives cancelled j
   await expect(visibility).toHaveValue('all');
   await expect(page.getByRole('checkbox', { name: 'Select job bulk-one', exact: true })).not.toBeChecked();
   expect(mutations).toHaveLength(5);
+  // A single queued archive captures its reason and retains it in All jobs.
+  await visibility.selectOption('inbox');
+  await page.getByRole('checkbox', { name:'Select job untouched', exact:true }).check();
+  await page.getByRole('button', { name:'Archive selected' }).click();
+  await dialog.getByLabel('Cancellation message (optional)').fill('  Archive 雪🧪\nrequested by operator  ');
+  await dialog.getByRole('button', { name:'Archive job', exact:true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByRole('checkbox', { name:'Select job untouched', exact:true })).toHaveCount(0);
+  await page.reload();
+  const saved = await (await request.get(`${base}/untouched`)).json();
+  expect(saved).toMatchObject({ status:'CANCELLED', completion_detail:'Archive 雪🧪\nrequested by operator' });
+  await visibility.selectOption('all');
+  await expect(page.getByRole('checkbox', { name:'Select job untouched', exact:true })).toBeVisible();
+  await page.getByRole('link', { name:'Job untouched: Cancelled', exact:true }).click();
+  await expect(page.getByRole('heading', { name:'Job Story', exact:true })).toBeVisible();
+  expect((await (await request.get(`${base}/untouched`)).json()).completion_detail).toBe(saved.completion_detail);
+});
+
+test(`confirms cancellation messages for leased archive and terminal race at ${width}px`, async ({ page, request, context, baseURL }, testInfo) => {
+  test.skip(testInfo.project.name !== 'production', 'Requires the production SQLite HTTP runtime');
+  await page.setViewportSize({width,height:844});
+  const tenant = `leased-actions-${randomUUID()}`;
+  await registerCell(request,tenant);
+  const base = `/api/projects/${tenant}/jobs`;
+  const leases = new Map<string, {path:string; headers:Record<string,string>}>();
+  for (const id of ['leased','blank','race']) {
+    const submitted = await request.post(base,{data:{cell:'platform',repo:'github.com/cortex-test/platform',job_id:id,recipe:'smoke'}});
+    expect(submitted.status(),await submitted.text()).toBe(201);
+    const backend = `http://127.0.0.1:18082/v1/tenants/${tenant}/jobs/${id}`;
+    const acquired = await request.post(`${backend}/lease`,{data:{workerId:'held-browser-fixture',routes:[{jobType:'recipe'}],leaseDuration:'5m'}});
+    expect(acquired.ok(),await acquired.text()).toBeTruthy();
+    const {lease} = await acquired.json(); expect(lease).toBeTruthy();
+    leases.set(id,{path:`${backend}/leases/${lease.leaseId}`,headers:{'X-JobDB-Lease-Token':lease.leaseToken}});
+  }
+  await context.addCookies([{name:'colony2:user:email',value:'browser@example.com',url:baseURL!}]);
+  await page.goto(`/project/${tenant}/jobs`);
+  for (const id of ['leased','blank','race']) {
+    await page.getByRole('checkbox',{name:`Select job ${id}`,exact:true}).check();
+    await page.getByRole('button',{name:'Archive selected'}).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByLabel('Cancellation message (optional)')).toBeVisible();
+    const reason = id === 'blank' ? '' : `Archive ${id} 雪🧪\noperator message`;
+    await dialog.getByLabel('Cancellation message (optional)').fill(reason);
+    if (id === 'race') {
+      const lease = leases.get(id)!;
+      const complete = await request.post(`${lease.path}/complete`,{headers:lease.headers,data:{status:'success',detail:'completed while confirming',chapter:{ordinal:1,taskType:'recipe',createdAt:new Date().toISOString(),body:{kind:'jobAttemptOutcome',outcome:{kind:'success',output:{ok:true}}},artifacts:[]}}});
+      expect(complete.status(),await complete.text()).toBe(204);
+    }
+    await dialog.getByRole('button',{name:'Archive job',exact:true}).click();
+    await expect(dialog).not.toBeVisible();
+    await expect(page.getByRole('checkbox',{name:`Select job ${id}`,exact:true})).toHaveCount(0);
+    await page.reload();
+    const saved = await (await request.get(`${base}/${id}`)).json();
+    expect(saved.completion_detail).toBe(id === 'race' ? 'completed while confirming' : reason || 'Cancelled from Cortex');
+    expect(saved.completion_status).toBe(id === 'race' ? 'success' : 'cancelled');
+  }
+  await page.getByLabel('Job visibility',{exact:true}).selectOption('all');
+  for (const id of leases.keys()) await expect(page.getByRole('checkbox',{name:`Select job ${id}`,exact:true})).toBeVisible();
 });
 
 }

@@ -49,14 +49,14 @@ function JobsList({ projectId, goalId }: Props) {
   const [controlsOpen, setControlsOpen] = useState(false);
   const [submitOpen, setSubmitOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [operation, setOperation] = useState<{ action: JobAction; jobIds: string[]; immediate: boolean } | null>(null);
+  const [operation, setOperation] = useState<{ action: JobAction; jobIds: string[]; immediate: boolean; job?: RecipeJobSummary } | null>(null);
   const operationActive = useRef(false);
   const [operationBusy, setOperationBusy] = useState(false);
   const startOperation = (action: JobAction) => {
     if (operationActive.current || loading || !selectedIds.length) return;
     operationActive.current = true;
     const jobIds = [...selectedIds];
-    setOperation({ action, jobIds, immediate: action === 'archive' && canArchiveImmediately(jobIds, jobs) });
+    setOperation({ action, jobIds, job: jobIds.length === 1 ? jobs.find(job => job.job_id === jobIds[0]) : undefined, immediate: action === 'archive' && canArchiveImmediately(jobIds, jobs) });
   };
   const [refresh, setRefresh] = useState(0);
   const registry = useCells(projectId, 'ALL', refresh);

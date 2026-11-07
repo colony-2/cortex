@@ -137,19 +137,26 @@ export async function getRestartContext(projectId: string, jobId: string, bounda
   return context;
 }
 
-export async function cancelJob(projectId: string, jobId: string): Promise<void> {
+export const DEFAULT_CANCELLATION_REASON = 'Cancelled from Cortex';
+function reasonBody(reason?: string): RequestInit {
+  return reason === undefined ? {} : {
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }),
+  };
+}
+
+export async function cancelJob(projectId: string, jobId: string, reason?: string): Promise<void> {
   const response = await fetch(
     `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/cancel`,
-    { method: 'POST' },
+    { method: 'POST', ...reasonBody(reason) },
   );
   await handleResponse(response, 'Cancel job');
 }
 
 // The existing deletion API hides jobs and cancels unfinished work; it retains history.
-export async function archiveJob(projectId: string, jobId: string): Promise<void> {
+export async function archiveJob(projectId: string, jobId: string, reason?: string): Promise<void> {
   const response = await fetch(
     `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}`,
-    { method: 'DELETE' },
+    { method: 'DELETE', ...reasonBody(reason) },
   );
   await handleResponse(response, 'Archive job');
 }

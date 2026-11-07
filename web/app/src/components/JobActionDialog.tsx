@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Modal, Space, Typography, message } from 'antd';
-import { cancelJob, archiveJob } from '@colony2/shared/api';
+import { Alert, Input, Modal, Space, Typography, message } from 'antd';
+import { APIError, cancelJob, archiveJob, getJob, DEFAULT_CANCELLATION_REASON } from '@colony2/shared/api';
+
+import type { RecipeJobSummary } from '@colony2/shared/types';
+import { isFinishedJob } from '../utils/jobStatus';
 
 export type JobAction = 'cancel' | 'archive';
 
@@ -11,26 +14,47 @@ interface Props {
   onClose: () => void;
   onComplete: (succeeded: string[]) => void | Promise<void>;
   immediate?: boolean;
+  job?: RecipeJobSummary;
   onBusyChange?: (busy: boolean) => void;
 }
 
 // Mount a fresh dialog for each action so its confirmed IDs cannot change with
 // filtering, selection, or a background list refresh.
-export default function JobActionDialog({ projectId, jobIds, action, onClose, onComplete, onBusyChange, immediate = false }: Props) {
+export default function JobActionDialog({ projectId, jobIds, action, onClose, onComplete, onBusyChange, immediate = false, job }: Props) {
   const trigger = useRef(document.activeElement as HTMLElement | null);
   useEffect(() => () => {
     if (trigger.current?.isConnected) trigger.current.focus({ preventScroll: true });
   }, []);
   const started = useRef(false);
   const submitting = useRef(false);
-  const [pending, setPending] = useState(jobIds);
+  const [pending, setPending] = useState([...jobIds]);
   const [busy, setBusy] = useState(false);
   const [failures, setFailures] = useState<{ id: string; error: string }[]>([]);
+  const [single] = useState(jobIds.length === 1);
+  const [reason, setReason] = useState('');
+  const [accepted, setAccepted] = useState(!!job?.status && (isFinishedJob(job) ? job.completion_status === 'cancelled' : !!job.cancel_requested));
+  const [needsReason, setNeedsReason] = useState(action === 'cancel' || !job?.status || !isFinishedJob(job));
+  const [resolving, setResolving] = useState(single && action === 'archive' && !job?.status);
+  const [statusError, setStatusError] = useState<string>();
+  const resolveStatus = async () => {
+    setResolving(true);
+    setStatusError(undefined);
+    try {
+      const detail = await getJob(projectId, jobIds[0]);
+      if (!detail.status) throw new Error('Job status is unavailable. Retry before archiving.');
+      setNeedsReason(!isFinishedJob(detail));
+      setAccepted(isFinishedJob(detail) ? detail.completion_status === 'cancelled' : !!detail.cancel_requested);
+    } catch (error) { setStatusError(error instanceof Error ? error.message : String(error)); }
+    finally { setResolving(false); }
+  };
+  useEffect(() => { if (single && action === 'archive' && !job?.status) void resolveStatus(); }, []);
+  const showReason = single && needsReason && !resolving && !statusError;
+  const count = Array.from(reason.trim()).length;
   const verb = action === 'cancel' ? 'Cancel' : 'Archive';
   const label = `${verb} ${pending.length === 1 ? 'job' : `${pending.length} jobs`}`;
 
   const submit = async () => {
-    if (submitting.current || !pending.length) return;
+    if (submitting.current || !pending.length || resolving || statusError || (showReason && count > 4000)) return;
     submitting.current = true;
     setBusy(true);
     onBusyChange?.(true);
@@ -42,10 +66,13 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
       for (let offset = 0; offset < pending.length; offset += 5) {
         const ids = pending.slice(offset, offset + 5);
         const results = await Promise.allSettled(ids.map(id =>
-          (action === 'cancel' ? cancelJob : archiveJob)(projectId, id)));
+          (action === 'cancel' ? cancelJob : archiveJob)(projectId, id, showReason ? reason.trim() || DEFAULT_CANCELLATION_REASON : undefined)));
         results.forEach((result, index) => {
           if (result.status === 'fulfilled') succeeded.push(ids[index]);
-          else failed.push({ id: ids[index], error: result.reason instanceof Error ? result.reason.message : String(result.reason) });
+          else {
+            if (result.reason instanceof APIError && result.reason.code === 'archive_failed_after_cancel') setAccepted(true);
+            failed.push({ id: ids[index], error: result.reason instanceof Error ? result.reason.message : String(result.reason) });
+          }
         });
       }
       setFailures(failed);
@@ -75,7 +102,7 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
 
   return <Modal open title={failures.length ? `${verb} failed jobs` : `${label}?`} okText={label} cancelText={failures.length ? "Close" : "Keep jobs"}
     onOk={submit} onCancel={onClose} closable={!busy} maskClosable={!busy} keyboard={!busy}
-    okButtonProps={{ danger: true, loading: busy, disabled: busy || !pending.length, 'aria-label': label }}
+    okButtonProps={{ danger: true, loading: busy, disabled: busy || resolving || !!statusError || (showReason && count > 4000) || !pending.length, 'aria-label': label }}
     cancelButtonProps={{ disabled: busy }}>
     <Space direction="vertical" style={{ width: '100%' }}>
       <Typography.Paragraph>
@@ -83,6 +110,14 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
           ? 'Cancel these jobs outright, including any pending review or input. Finished jobs remain unchanged.'
           : 'Move these jobs out of the inbox and cancel any unfinished work. History and artifacts remain available in All jobs. Jobs cannot currently be restored to the inbox.'}
       </Typography.Paragraph>
+      {resolving && <Typography.Paragraph role="status">Checking job status…</Typography.Paragraph>}
+      {statusError && <Alert type="error" message={statusError} action={<button onClick={resolveStatus}>Retry status check</button>} />}
+      {showReason && <div>
+        <label htmlFor="cancellation-reason">Cancellation message (optional)</label>
+        <Input.TextArea id="cancellation-reason" value={reason} onChange={event => setReason(event.target.value)} disabled={busy || (action === 'archive' && accepted)} autoSize={{ minRows: 3, maxRows: 8 }} />
+        <Typography.Paragraph type="secondary">Saved with the cancellation. Leave blank to use the default message. {count.toLocaleString()} / 4,000</Typography.Paragraph>
+      </div>}
+      {single && action === 'archive' && accepted && <Alert type="info" message="Cancellation has already been accepted. Its saved message is retained; only archiving remains." />}
       <ul style={{ maxHeight: 200, overflow: 'auto', overflowWrap: 'anywhere' }}>
         {pending.map(id => <li key={id}>{id}</li>)}
       </ul>

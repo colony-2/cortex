@@ -76,6 +76,10 @@ func TestJobActions(t *testing.T) {
 				if job.Job.Status != jobdb.JobStatusCancelled {
 					t.Fatalf("deleted job = %#v", job)
 				}
+				archived := getJSON[map[string]interface{}](t, ts.URL+"/api/projects/a/jobs/"+id)
+				if archived["status"] != "CANCELLED" || archived["completion_detail"] != job.Job.CompletionDetail {
+					t.Fatalf("archived detail unavailable or changed: %#v", archived)
+				}
 				other := getJSON[map[string]interface{}](t, ts.URL+"/api/projects/b/jobs/"+id)
 				if other["status"] != "READY" {
 					t.Fatalf("other tenant changed: %#v", other)

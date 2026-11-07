@@ -192,6 +192,18 @@ func TestChapterDownloadRuntimeIntegration(t *testing.T) {
 			if resp.StatusCode != 404 || resp.Header.Get("Content-Disposition") != "" {
 				t.Fatalf("deleted: %v", resp)
 			}
+
+			// The existing chapter-download policy stays intact, while archived
+			// story artifacts remain readable through their normal endpoint.
+			resp, err = http.Get(api.URL + "/api/projects/a/jobs/same/tasks/3/artifacts/%E9%9B%AA.txt")
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, err := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil || resp.StatusCode != 200 || string(body) != "artifact-body-must-not-be-exported" {
+				t.Fatalf("archived artifact: status=%d body=%q error=%v", resp.StatusCode, body, err)
+			}
 		})
 	}
 }

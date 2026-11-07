@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RecipeJob } from '@colony2/shared/types';
-import { jobStatus, jobStatusOptions, canArchiveImmediately } from './jobStatus';
+import { jobStatus, jobStatusOptions, canArchiveImmediately, isFinishedJob } from './jobStatus';
 import { jobFilterSearch, nextFilterSelection, readJobFilters } from './jobFilters';
 
 const job: RecipeJob = {
@@ -90,4 +90,11 @@ it('fails closed for empty or unresolved selected summaries', () => {
   expect(canArchiveImmediately([], [job])).toBe(false);
   expect(canArchiveImmediately(['missing'], [job])).toBe(false);
   expect(canArchiveImmediately(['job', 'missing'], [{ ...job, completion_status: 'success' }])).toBe(false);
+});
+
+it('classifies terminal outcomes without treating stale completion detail as finished', () => {
+  expect(isFinishedJob({...job,status:'ACTIVE',store:'ACTIVE',completion_status:'cancelled'})).toBe(false);
+  expect(isFinishedJob({...job,status:'ACTIVE',store:'ACTIVE',cancel_requested:true})).toBe(false);
+  expect(isFinishedJob({...job,status:'COMPLETED',completion_status:'future_status'})).toBe(true);
+  expect(isFinishedJob({...job,status:'COMPLETED',completion_status:undefined})).toBe(true);
 });
