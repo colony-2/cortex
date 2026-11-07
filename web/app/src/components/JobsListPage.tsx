@@ -163,6 +163,12 @@ function JobsList({ projectId, goalId }: Props) {
     }
   };
   const columns: ColumnsType<Row> = [
+    { title: 'Cell', key: 'cell', width: 140, sorter: (a, b) => cellLabel(a.job.cell_name).localeCompare(cellLabel(b.job.cell_name)), sortOrder: sortOrder('cell'),
+      ...checkboxFilter('Filter cells', cellOptions, filters.cell), render: (_, { job }) => cellLabel(job.cell_name) },
+    { title: 'Status', key: 'status', width: 180,
+      sorter: (a, b) => jobStatus(a.job).label.localeCompare(jobStatus(b.job).label), sortOrder: sortOrder('status'),
+      ...checkboxFilter('Filter statuses', statusOptions, filters.status),
+      render: (_, { job, group }) => <Link className="compact-touch-link" to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)} aria-label={`Job ${job.job_id}: ${jobStatus(job).label}`}><AttemptStatus job={job} /></Link> },
     { title: 'Goal', key: 'prompt', sorter: (a, b) => (fullPrompt(a.group) || 'Untitled goal').localeCompare(fullPrompt(b.group) || 'Untitled goal'), sortOrder: sortOrder('prompt'), render: (_, { group, job }) => <Space direction="vertical" size={2}>
       <Link className="goal-prompt compact-touch-link" to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)}>
         {abbreviatePrompt(fullPrompt(group) || 'Untitled goal')}
@@ -172,12 +178,6 @@ function JobsList({ projectId, goalId }: Props) {
       <JobCompletionMessage job={job} />
       <JobExecutionRequirements execution={job.execution} />
     </Space> },
-    { title: 'Status', key: 'status', width: 180,
-      sorter: (a, b) => jobStatus(a.job).label.localeCompare(jobStatus(b.job).label), sortOrder: sortOrder('status'),
-      ...checkboxFilter('Filter statuses', statusOptions, filters.status),
-      render: (_, { job, group }) => <Link className="compact-touch-link" to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)} aria-label={`Job ${job.job_id}: ${jobStatus(job).label}`}><AttemptStatus job={job} /></Link> },
-    { title: 'Cell', key: 'cell', width: 140, sorter: (a, b) => cellLabel(a.job.cell_name).localeCompare(cellLabel(b.job.cell_name)), sortOrder: sortOrder('cell'),
-      ...checkboxFilter('Filter cells', cellOptions, filters.cell), render: (_, { job }) => cellLabel(job.cell_name) },
     { title: 'Submitted', key: 'submitted', width: 185, sorter: (a, b) => jobTimestamp(a.job) - jobTimestamp(b.job), sortOrder: sortOrder('submitted'), render: (_, { job }) => jobTime(job.submitted_at || job.created_at) || '—' },
     { title: 'Links', width: 180, render: (_, { job, group }) => <Space direction="vertical" size={2}>
       {group.goalId && <Link className="compact-touch-link" to={goalPath(projectId, group.goalId)} state={{ goalsReturnTo }}>Goal overview</Link>}

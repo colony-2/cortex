@@ -370,6 +370,11 @@ test('phone goals start with concise cards and disclose existing controls and me
   await expect(page.getByRole('button', { name: 'Cancel selected', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeHidden();
   const card = page.locator('.goal-card').first();
+  // JC-014: the desktop swap must preserve the compact summary and secondary fields.
+  await expect(card.locator('.goal-card-title')).toHaveCount(1);
+  await expect(card.locator('.goal-card-meta .ant-tag')).toHaveCount(1);
+  await expect(card.locator('.goal-card-meta').getByText('platform', { exact: true })).toHaveCount(1);
+  await expect(card.locator('.goal-card-meta')).toContainText('2 attempts on this page');
   await expect(card.getByRole('link', { name: 'Goal overview', exact: true })).toHaveCount(0);
   expect((await card.boundingBox())!.height).toBeLessThan(210);
   expect((await card.boundingBox())!.y).toBeLessThan(410);
@@ -384,6 +389,9 @@ test('phone goals start with concise cards and disclose existing controls and me
   await expect(page.getByRole('link', { name: 'Another goal', exact: true })).toBeVisible();
   await page.locator('.goal-card').getByRole('button', { name: 'Expand goal details' }).click();
   await expect(page.getByRole('link', { name: 'Goal overview', exact: true })).toBeVisible();
+  await expect(page.locator('.goal-card-secondary .goal-card-field')).toHaveCount(2);
+  await expect(page.locator('.goal-card-secondary .goal-card-field').nth(0)).toContainText('Submitted:');
+  await expect(page.locator('.goal-card-secondary .goal-card-field').nth(1)).toContainText('Links:');
   await noOverflow(page);
 });
 

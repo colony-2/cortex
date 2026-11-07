@@ -67,6 +67,17 @@ test('renders a single compact row or grouped attempts with metadata and waiting
   await expect(page.getByRole('link', { name: first.prompt, exact: true })).toHaveCount(1);
   await expect(page.getByRole('link', { name: 'Wait for deployment approval', exact: true })).toBeVisible();
   const row = page.getByRole('link', { name: first.prompt, exact: true }).locator('xpath=ancestor::tr');
+  // JC-011: inspect both actual headers and aligned values, excluding control columns.
+  const headers = page.getByRole('columnheader');
+  const labels = (await headers.allTextContents()).map(text => text.trim()).filter(Boolean);
+  expect(labels).toEqual(['Cell', 'Status', 'Goal', 'Submitted', 'Links']);
+  const values = row.locator('td:not(.ant-table-selection-column):not(.ant-table-row-expand-icon-cell)');
+  await expect(values.nth(0)).toHaveText('platform');
+  await expect(values.nth(1)).toContainText('Ready');
+  await expect(values.nth(2)).toContainText(first.prompt);
+  await expect(values.nth(3)).not.toBeEmpty();
+  await expect(values.nth(4).getByRole('link', { name: 'Goal overview' })).toBeVisible();
+
   await expect(row.getByRole('link', { name: 'Open input/review' })).toHaveAttribute('href', '/project/goal-layout/reviews/first');
   await expect(row.getByRole('link', { name: 'Parent' })).toHaveAttribute('href', '/project/goal-layout/jobs/coordinator/story');
   await expect(row.getByRole('link', { name: 'platform' })).toHaveAttribute('href', first.repo);

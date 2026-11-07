@@ -342,3 +342,32 @@ for (const size of [{width:320,height:568},{width:768,height:1024},{width:1100,h
     expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
   });
 }
+
+for (const width of [1280, 390]) {
+  test(`JC-016 long job cell wraps between heading and prompt at ${width}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    const cell_name = 'cell' + 'x'.repeat(240);
+    await page.route('**/api/projects/phone/jobs/one', route => route.fulfill({ json: {
+      ...jobIdentity, cell_name, job_id: 'one', title: 'Cell wrapping', prompt: 'Job prompt text', status: 'COMPLETED', store: 'ARCHIVED',
+    } }));
+    await page.goto('/project/phone/jobs/one/story');
+    const cell = page.getByLabel('Job cell', { exact: true });
+    await expect(cell).toHaveText(`Cell: ${cell_name}`);
+    const heading = await page.getByRole('heading', { name: 'Job Story: Cell wrapping' }).boundingBox();
+    const box = await cell.boundingBox();
+    const prompt = await page.getByRole('region', { name: 'Job prompt' }).boundingBox();
+    expect(box!.y).toBeGreaterThanOrEqual(heading!.y + heading!.height);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(prompt!.y);
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+    const dimensions = await cell.evaluate(element => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return { client: element.clientWidth, scroll: element.scrollWidth,
+        lines: new Set(Array.from(range.getClientRects(), rect => Math.round(rect.top))).size };
+    });
+    expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
+    expect(dimensions.lines).toBeGreaterThan(1);
+    await page.screenshot({ path: testInfo.outputPath(`job-cell-${width}.png`), fullPage: true });
+  });
+}

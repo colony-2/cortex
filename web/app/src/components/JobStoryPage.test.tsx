@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import JobStoryPage from './JobStoryPage';
+import { jobIdentity } from '../test/cellFixtures';
 import { getJob } from '@colony2/shared/api';
 import type { RecipeJob } from '@colony2/shared/types';
 import DownloadChaptersButton from './DownloadChaptersButton';
@@ -12,7 +13,7 @@ vi.mock('@colony2/shared', async (importOriginal) => ({
 }));
 vi.mock('@colony2/shared/api', async (importOriginal) => ({
   ...await importOriginal<typeof import('@colony2/shared/api')>(),
-  getJob: vi.fn().mockResolvedValue({ goal_id: 'goal' }),
+  getJob: vi.fn(),
 }));
 vi.mock('react-json-view', () => ({ default: ({ src }: { src: unknown }) => <pre>{JSON.stringify(src)}</pre> }));
 
@@ -51,7 +52,7 @@ function mount(search = '', response: unknown = story) {
   </MemoryRouter>);
   return fetchMock;
 }
-beforeEach(() => { vi.mocked(getJob).mockReset().mockResolvedValue({ goal_id: 'goal' } as RecipeJob); });
+beforeEach(() => { vi.mocked(getJob).mockReset().mockResolvedValue({ ...jobIdentity, goal_id: 'goal' } as RecipeJob); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('job story history', () => {
@@ -454,7 +455,7 @@ describe('chapter download action', () => {
 });
 
 function metadata(overrides: Partial<RecipeJob> = {}): RecipeJob {
-  return { tenant_id: 'tenant', job_id: 'job', status: 'COMPLETED', store: 'ARCHIVED',
+  return { ...jobIdentity, tenant_id: 'tenant', job_id: 'job', status: 'COMPLETED', store: 'ARCHIVED',
     job_type: 'recipe', recipe: 'build', created_at: '', available_at: '', ...overrides };
 }
 function deferred<T>() {
@@ -464,6 +465,31 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 describe('job story context', () => {
+  it.each(['ACTIVE', 'COMPLETED'] as const)('JC-001,003,010 displays literal canonical cell for %s', async status => {
+    const cell_name = '<img src=x> 雪 self';
+    vi.mocked(getJob).mockResolvedValue(metadata({ status, cell_name, title: 'Title', prompt: 'Prompt text' }));
+    const fetchMock = mount();
+    const cell = await screen.findByLabelText('Job cell');
+    expect(cell.textContent).toBe(`Cell: ${cell_name}`);
+    const heading = screen.getByRole('heading', { name: 'Job Story: Title' });
+    const prompt = screen.getByRole('region', { name: 'Job prompt' });
+    expect(heading.compareDocumentPosition(cell) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(cell.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(cell.querySelector('img')).toBeNull();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/cells'))).toBe(false);
+  });
+  it.each(['cell_id', 'cell_name', 'repo'].flatMap(field => [undefined, '  '].map(value => ({ field, value }))))(
+    'JC-009 rejects invalid $field=$value through real API validation', async ({ field, value }) => {
+      const actual = await vi.importActual<typeof import('@colony2/shared/api')>('@colony2/shared/api');
+      vi.mocked(getJob).mockImplementation(actual.getJob);
+      const invalid = metadata({ [field]: value });
+      vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(JSON.stringify(url.endsWith('/story') ? story : invalid))));
+      renderContext(false);
+      await screen.findByText('Job details unavailable');
+      expect(screen.getByText(new RegExp(`required ${field}`))).toBeVisible();
+      expect(screen.queryByLabelText('Job cell')).toBeNull();
+      expect(screen.queryByText('Unknown cell')).toBeNull();
+    });
   it('shows normalized title and literal full prompt below the heading', async () => {
     const prompt = '<img src=x onerror=alert(1)>\n雪 ' + 'long '.repeat(150);
     vi.mocked(getJob).mockResolvedValue(metadata({ title: '<Title>', metadata: { title: 'wrong' }, prompt }));
@@ -479,6 +505,7 @@ describe('job story context', () => {
     mount();
     await screen.findByText('Development.Design.Task 3.2');
     expect(screen.getByRole('heading', { name: 'Job Story', exact: true })).toBeVisible();
+    expect(screen.getByLabelText('Job cell')).toHaveTextContent(`Cell: ${jobIdentity.cell_name}`); // JC-002
     expect(screen.getByRole('region', { name: 'Job prompt' })).toHaveTextContent('No prompt recorded for this job.');
   });
   it('does not manufacture a prompt from other context', async () => {
@@ -523,12 +550,13 @@ describe('job story context', () => {
     expect(await screen.findByText('Failure 3.2: temporary directory missing')).toBeVisible();
   });
   it('keeps context independent of historical task selection', async () => {
-    vi.mocked(getJob).mockResolvedValue(metadata({ title: 'Current', prompt: 'Current prompt', completion_status: 'failed_app', completion_detail: 'Current failure' }));
+    vi.mocked(getJob).mockResolvedValue(metadata({ cell_name: 'owning-cell', parent: { job_id: 'parent', cell_name: 'parent-cell' }, metadata: { workspace_cell: 'workspace-cell' }, title: 'Current', prompt: 'Current prompt', completion_status: 'failed_app', completion_detail: 'Current failure' }));
     mount();
     fireEvent.click(await screen.findByRole('tab', { name: 'Job attempt 1' }));
     fireEvent.click(screen.getByText('Development.Design.Task 1.2'));
     expect(await screen.findByText('Failure 1.2: temporary directory missing')).toBeVisible();
     expect(screen.getByText('Current failure')).toBeVisible();
+    expect(screen.getByLabelText('Job cell')).toHaveTextContent('Cell: owning-cell'); // JC-004
     expect(screen.getByRole('heading', { name: 'Job Story: Current' })).toBeVisible();
   });
   it('loads metadata despite navigation goal state and preserves its precedence', async () => {
@@ -547,8 +575,11 @@ describe('job story context', () => {
     await screen.findByText('Development.Design.Task 3.2');
     expect(screen.getByRole('status', { name: 'Job details loading' })).toHaveTextContent('Loading job details...');
     expect(screen.queryByText('No prompt recorded for this job.')).toBeNull();
+    expect(screen.queryByLabelText('Job cell')).toBeNull(); // JC-005
     await act(async () => { pending.reject(new Error('metadata unavailable')); });
     expect(screen.getByText('Job details unavailable')).toBeVisible();
+    expect(screen.getByText('Cell, prompt, and completion information could not be loaded.')).toBeVisible();
+    expect(screen.queryByLabelText('Job cell')).toBeNull();
     expect(screen.getByRole('heading', { name: 'Job Story' })).toBeVisible();
     expect(screen.queryByText('Failed to load job story')).toBeNull();
     vi.mocked(getJob).mockResolvedValue(metadata({ title: 'Recovered', prompt: 'New prompt', completion_status: 'failed_system', completion_detail: 'New detail' }));
@@ -576,12 +607,13 @@ describe('job story context', () => {
     mount();
     await screen.findByRole('heading', { name: 'Job Story: Initial' });
     const old = deferred<RecipeJob>();
-    vi.mocked(getJob).mockReturnValueOnce(old.promise).mockResolvedValue(metadata({ title: 'Newest' }));
+    vi.mocked(getJob).mockReturnValueOnce(old.promise).mockResolvedValue(metadata({ title: 'Newest', cell_name: 'newest-cell' }));
     fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
     fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
     await screen.findByRole('heading', { name: 'Job Story: Newest' });
-    await act(async () => { if (outcome === 'success') old.resolve(metadata({ title: 'Obsolete' })); else old.reject(new Error('obsolete')); });
+    await act(async () => { if (outcome === 'success') old.resolve(metadata({ title: 'Obsolete', cell_name: 'obsolete-cell' })); else old.reject(new Error('obsolete')); });
     expect(screen.getByRole('heading', { name: 'Job Story: Newest' })).toBeVisible();
+    expect(screen.getByLabelText('Job cell')).toHaveTextContent('Cell: newest-cell'); // JC-008
   });
   it('retries only metadata and escapes its diagnostic', async () => {
     const diagnostic = '<img src=x onerror=alert(1)> 雪\n second line';
@@ -594,6 +626,7 @@ describe('job story context', () => {
     vi.mocked(getJob).mockResolvedValue(metadata({ title: 'Recovered', prompt: 'Recovered prompt', completion_status: 'failed_app', completion_detail: 'Recovered diagnostic' }));
     fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
     expect(await screen.findByText('Recovered prompt')).toBeVisible();
+    expect(screen.getByLabelText('Job cell')).toHaveTextContent(`Cell: ${jobIdentity.cell_name}`); // JC-006
     expect(screen.getByText('Recovered diagnostic')).toBeVisible();
     expect(getJob).toHaveBeenLastCalledWith('tenant', 'job');
     expect(fetchMock.mock.calls.length).toBe(reads);
@@ -607,6 +640,7 @@ describe('job story context', () => {
     fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
     await screen.findByText('Job details unavailable');
     expect(screen.queryByText('Old prompt')).toBeNull();
+    expect(screen.queryByLabelText('Job cell')).toBeNull(); // JC-007,008
     expect(screen.queryByText('Old diagnostic')).toBeNull();
     expect(screen.getByRole('heading', { name: 'Job Story', exact: true })).toBeVisible();
     vi.mocked(getJob).mockResolvedValue(metadata({ prompt: 'Fresh prompt' }));
@@ -624,6 +658,7 @@ describe('job story context', () => {
     vi.mocked(getJob).mockResolvedValue(metadata({ prompt: 'Loaded prompt' }));
     fireEvent.click(screen.getByText('Job details unavailable').closest('[role="alert"]')!.querySelector('button')!);
     expect(await screen.findByText('Loaded prompt')).toBeVisible();
+    expect(screen.getByLabelText('Job cell')).toHaveTextContent(`Cell: ${jobIdentity.cell_name}`); // JC-006
     expect(screen.getByText('Failed to load job story')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
     log.mockRestore();
@@ -694,11 +729,14 @@ describe('job story context', () => {
     vi.mocked(getJob).mockReturnValueOnce(current.promise);
     act(() => navigate(change === 'job' ? '/project/tenant/jobs/new/story' : '/project/other/jobs/job/story'));
     expect(screen.queryByText('Old prompt')).toBeNull();
-    await act(async () => { if (outcome === 'success') old.resolve(metadata({ title: 'Obsolete', prompt: 'Leaked' })); else old.reject(new Error('Leaked warning')); });
+    expect(screen.queryByLabelText('Job cell')).toBeNull(); // JC-007,008
+    await act(async () => { if (outcome === 'success') old.resolve(metadata({ title: 'Obsolete', prompt: 'Leaked', cell_name: 'leaked-cell' })); else old.reject(new Error('Leaked warning')); });
     expect(screen.queryByText('Leaked warning')).toBeNull();
     expect(screen.queryByText('Leaked')).toBeNull();
-    await act(async () => { current.resolve(metadata({ title: 'Current' })); });
+    expect(screen.queryByLabelText('Job cell')).toBeNull(); // JC-007
+    await act(async () => { current.resolve(metadata({ title: 'Current', cell_name: 'current-cell' })); });
     expect(screen.getByRole('heading', { name: 'Job Story: Current' })).toBeVisible();
+    expect(screen.getByLabelText('Job cell')).toHaveTextContent('Cell: current-cell');
   });
 });
 function renderContext(stub = true) {

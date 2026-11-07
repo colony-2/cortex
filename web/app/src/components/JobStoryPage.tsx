@@ -1,3 +1,4 @@
+import { cellLabel } from '../utils/cellPresentation';
 import { resolveArtifactLink, type NavigationIntent } from './review/artifactLinks';
 import ArtifactContents from './ArtifactContents';
 import './JobStoryPage.css';
@@ -749,10 +750,13 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
         {!job && (!metadata || metadata.status === 'loading') && <Text role="status" aria-label="Job details loading">Loading job details...</Text>}
         {metadata?.status === 'failed' && <Alert type="warning" showIcon message="Job details unavailable"
           description={<div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-            <div>Prompt and completion information could not be loaded.</div>
+            <div>Cell, prompt, and completion information could not be loaded.</div>
             <div>{metadata.error}</div>
           </div>}
           action={<Button size="small" onClick={loadMetadata}>Retry</Button>} />}
+        {job && <div aria-label="Job cell" style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+          <Text strong>Cell: </Text>{cellLabel(job.cell_name)}
+        </div>}
         {job && <section aria-label="Job prompt">
           <Text strong>Prompt</Text>
           <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginBottom: 0 }}>{prompt || 'No prompt recorded for this job.'}</Typography.Paragraph>
