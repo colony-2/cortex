@@ -149,3 +149,37 @@ correlation identifiers, not an idempotency guarantee. Historical receipt lookup
 is not implemented, and the separate
 [JobDB completion investigation](JOBDB_EXTERNAL_TASK_COMPLETION_DISCUSSION.md)
 remains deferred.
+
+## Describe attached documents
+
+Presentation metadata is optional and sits alongside `documents`; keys and source
+references are document IDs in that same map:
+
+```yaml
+kind: review
+overview_document_id: design
+documents:
+  design: '${{ sequence.draft.artifacts["design.md"] }}'
+  checks: '${{ sequence.draft.artifacts["checks.txt"] }}'
+document_metadata:
+  design:
+    title: Proposed design
+    description: Read the proposed behavior and tradeoffs first.
+    role: primary
+    order: 0
+    source_document_ids: [checks]
+  checks:
+    title: Validation evidence
+    description: Supporting check output.
+    role: diagnostic
+    order: 1
+```
+
+Cortex selects the overview initially, falling back to the first document ordered
+by ascending `order`, with absent orders last and document IDs breaking ties.
+The mobile reader starts with descriptive cards and opens when a file is chosen.
+Titles, descriptions, and Primary/Supporting/Diagnostic roles explain each file;
+filenames remain visible. Source links open attached files without recursively
+expanding their sources. Metadata grants no additional artifact access and does
+not alter file contents or download names. Omitted metadata retains filename-based
+labels and document-ID ordering. Zero is a valid order, distinct from absence.

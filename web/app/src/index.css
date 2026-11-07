@@ -325,3 +325,21 @@ body {
   text-decoration: underline;
 }
 .review-artifact-link:focus-visible { outline: 2px solid #1677ff; outline-offset: 2px; }
+
+.review-document-layout { display: grid; grid-template-columns: minmax(12rem, 18rem) minmax(0, 1fr); gap: 20px; }
+.review-document-list { min-width: 0; max-height: 75vh; overflow: auto; }
+.review-document-entry { margin-bottom: 12px; }
+.review-document-entry > button { width: 100%; text-align: left; padding: 12px; border: 1px solid #d9d9d9; border-radius: 8px; background: white; cursor: pointer; color: inherit; font: inherit; }
+.review-document-entry > button[aria-current=true] { border-color: #1677ff; background: #e6f4ff; }
+.review-document-summary { overflow-wrap: anywhere; min-width: 0; }
+.review-document-summary strong { margin-right: 8px; }
+.review-document-summary > .ant-typography { display: block; }
+.review-document-summary p { margin: 8px 0; white-space: pre-wrap; }
+.review-document-content { min-width: 0; }
+.review-document-sources { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; overflow-wrap: anywhere; }
+.review-document-sources > * { min-width: 0; max-width: 100%; }
+.review-document-cards .review-document-list { max-height: none; overflow: visible; }
+.review-document-cards .review-document-entry { border: 1px solid #d9d9d9; border-radius: 8px; padding: 12px; }
+.review-document-cards .review-document-entry > button { text-align: center; margin-top: 8px; }
+.review-document-cards .review-document-entry > button { white-space: normal; height: auto; min-height: 44px; overflow-wrap: anywhere; }
+.review-reader .ant-drawer-title { overflow-wrap: anywhere; }

@@ -136,7 +136,7 @@ for (const viewport of [{width:1280,height:800},{width:390,height:844}]) {
       const next=scope.getByRole('button',{name:'next',exact:true});await next.focus();await page.keyboard.press('Enter');
       await expect(scope.getByRole('heading',{name:'Target',exact:true}).nth(1)).toBeInViewport();
       await expect(page.getByLabel('Document preview',{exact:true})).toBeFocused();
-      if(viewer==='review'&&viewport.width>=600)await expect(page.getByRole('combobox',{name:'Review document'}).locator('xpath=ancestor::div[contains(@class,"ant-select")][1]')).toBeAttached();
+      if(viewer==='review'&&viewport.width>=600)await expect(page.getByRole('navigation',{name:'Review documents'})).toBeAttached();
       await page.screenshot({path:testInfo.outputPath(`${viewer}-${viewport.width}-target.png`)});
       expect(new Set(requested).size).toBe(2);const targetRequests=requested.length;expect(requested.at(-1)).not.toContain('ignored');
       await scope.getByRole('button',{name:'missing anchor',exact:true}).click();await expect(scope.getByRole('status')).toContainText('Anchor unavailable: unknown');
@@ -152,4 +152,85 @@ for (const viewport of [{width:1280,height:800},{width:390,height:844}]) {
       expect(requested.every(url=>url.includes('/projects/tenant/'))).toBe(true);
     });
   }
+}
+
+for (const width of [375, 767, 768, 1280]) {
+  test(`RDM metadata cards and list ${width}`, async ({page,context,baseURL}, testInfo) => {
+    await context.addCookies([{name:'colony2:user:email',value:'reviewer@example.com',url:baseURL!}]);
+    await page.setViewportSize({width,height:844});
+    const reads:string[]=[];
+    const longName='long-filename-'.repeat(12)+'.md';
+    const documents=Object.fromEntries(['z','a','雪/target',...Array.from({length:24},(_,i)=>`other-${i}`)].map((id,i)=>[id,{kind:'stored',name:id==='z'?longName:`${id}.md`,stored:{key:{jobId:'child',taskOrdinal:i+1,name:`${id}.md`,sizeBytes:100}}}]));
+    const metadata={z:{title:'Overview',description:'Description '.repeat(20),role:'primary',order:10,source_document_ids:['雪/target','missing']},a:{title:'Supporting',role:'supporting',order:0},'雪/target':{title:'Diagnostic',role:'diagnostic',order:2,source_document_ids:['z']}};
+    await page.route('**/api/**',async route=>{
+      const url=new URL(route.request().url());let body:unknown=[];
+      if(url.pathname.includes('/documents')) {reads.push(url.toString());return route.fulfill({contentType:'text/plain',body:url.searchParams.get('document_id')==='z'?'# Large overview\n\n'+'Review paragraph.\n\n'.repeat(350)+'Last paragraph.':'# Target contents'});}
+      if(url.pathname==='/api/projects')body=[{tenant_id:'tenant',name:'Tenant'}];
+      else if(url.pathname.endsWith('/user-inputs/job'))body={jobId:'job',status:'pending',form:{kind:'review',request_id:'r',overview_document_id:'z',document_metadata:metadata,documents,fields:[{id:'notes',type:'paragraph_text',question:'Notes',required:true}]}};
+      else if(url.pathname.includes('/events'))return route.fulfill({contentType:'text/event-stream',body:': fixture\n\n'});
+      await route.fulfill({json:body});
+    });
+    await page.goto('/project/tenant/reviews/job');
+    const notes=page.getByRole('textbox',{name:'Notes'});await notes.fill('Keep this draft');
+    const nav=page.getByRole('navigation',{name:'Review documents'});
+    const compact=width<768;
+    await expect(nav).toContainText('Overview');
+    await expect(nav).toContainText(longName);
+    await expect(nav).toContainText('Description');
+    await expect(nav).toContainText('Primary');
+    await expect(nav).toContainText('Supporting');
+    await expect(nav).toContainText('Diagnostic');
+    expect(await nav.locator('.review-document-entry strong').allTextContents()).toEqual(['Supporting','Diagnostic','Overview',...Array.from({length:24},(_,i)=>`other-${i}`).sort().map(id=>`${id}.md`)]);
+    if(compact) {
+      expect(reads).toHaveLength(0);await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(nav.getByText('Starting document')).toBeVisible();
+      const read=page.getByRole('button',{name:'Read Overview',exact:true});await read.focus();await page.keyboard.press('Enter');
+      const dialog=page.getByRole('dialog');await expect(dialog.getByRole('heading',{name:'Large overview'})).toBeVisible();
+      await expect(dialog.getByLabel('Rendered document')).toContainText('Last paragraph.');
+      expect(await dialog.getByLabel('Rendered document').evaluate(el=>el.scrollHeight<=el.clientHeight+1)).toBe(true);
+      await dialog.getByText('Document options',{exact:true}).click();
+      await expect(dialog.getByRole('link',{name:'Download',exact:true})).toHaveAttribute('download',longName);
+      await dialog.getByRole('button',{name:'Back to review'}).click();await expect(read).toBeFocused();
+      expect(reads).toHaveLength(1);
+      await read.click();expect(reads).toHaveLength(1);
+    } else {
+      await expect(page.getByRole('heading',{name:'Large overview'})).toBeVisible();
+      expect(reads.length).toBeGreaterThan(0);
+      expect(reads.every(url=>new URL(url).searchParams.get('document_id')==='z')).toBe(true);
+      await expect(nav.locator('[aria-current=true]')).toContainText('Overview');
+      expect(await nav.locator('.review-document-entry').first().textContent()).toContain('Supporting');
+      await expect(nav.locator('button').last()).toBeAttached();await nav.locator('button').last().scrollIntoViewIfNeeded();
+    }
+    const scope=compact?page.getByRole('dialog'):page.getByRole('region',{name:'Selected document'});
+    const source=scope.getByRole('link',{name:'Diagnostic · 雪/target.md (雪/target)',exact:true});
+    await expect(source).toHaveAttribute('href',/document_id=%E9%9B%AA%2Ftarget/);
+    await expect(scope.getByText('missing (unavailable)')).toBeVisible();
+    // Observe the application's event policy, then suppress the browser default in the
+    // harness so a background tab/download cannot steal focus from the remaining checks.
+    expect(await source.evaluate(el => {
+      let prevented: boolean | undefined;
+      document.addEventListener('click', event => { prevented = event.defaultPrevented; event.preventDefault(); }, {once:true});
+      el.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,ctrlKey:true}));
+      return prevented;
+    })).toBe(false);
+    await expect(scope.getByRole('heading',{name:'Large overview'})).toBeVisible();
+    await source.focus();await page.keyboard.press('Enter');
+    await expect(scope.getByRole('heading',{name:'Target contents'})).toBeVisible();
+    await expect(scope.getByLabel('Document preview')).toBeFocused();
+    expect(reads.every(url=>url.includes('request_id=r')&&!url.includes('child'))).toBe(true);
+    await expect(notes).toHaveValue('Keep this draft');
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+    expect(await page.locator('button a, a button').count()).toBe(0);
+    await page.screenshot({path:testInfo.outputPath(`metadata-${width}.png`)});
+    if(compact) {
+      await scope.getByRole('button',{name:'Back to review'}).click();
+      const cardSource=nav.getByRole('link',{name:'Diagnostic · 雪/target.md (雪/target)',exact:true});
+      await cardSource.click();await expect(page.getByRole('dialog').getByRole('heading',{name:'Target contents'})).toBeVisible();
+      await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(cardSource).toBeFocused();
+    } else {
+      await page.setViewportSize({width:375,height:844});await expect(page.getByRole('dialog')).toHaveCount(0);
+      await page.setViewportSize({width,height:844});await expect(nav.locator('[aria-current=true]')).toContainText('Diagnostic');
+    }
+  });
 }

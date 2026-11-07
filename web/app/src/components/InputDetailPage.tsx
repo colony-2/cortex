@@ -155,6 +155,7 @@ export default function InputDetailPage({ projectId }: InputDetailPageProps) {
         </Card>)}
         </div>
         {reviews && <ReviewDocuments key={details.form.request_id} projectId={projectId} jobId={jobId}
+          documentMetadata={details.form.document_metadata} overviewDocumentId={details.form.overview_document_id}
           requestId={details.form.request_id!} documents={details.form.documents || {}} />}
         <Card title={reviews ? 'Your response' : form.title}>
           {error && <Alert type="error" showIcon message={error} closable onClose={() => setError(null)} style={{ marginBottom: 16 }} />}

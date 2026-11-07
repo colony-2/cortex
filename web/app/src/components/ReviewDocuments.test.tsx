@@ -78,7 +78,7 @@ describe('MAL review file navigation', () => {
     await screen.findByRole('heading',{name:'Target'});
     expect(screen.getByRole('link',{name:'Download'})).toHaveAttribute('download','foo.md');
     expect(screen.getByRole('link',{name:'Download'}).getAttribute('href')).toContain('document_id=b%2F%E9%9B%AA');
-    expect(screen.getByText('b/雪 · foo.md')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /foo.md b\/雪/ })).toHaveAttribute('aria-current', 'true');
     fireEvent.click(screen.getByRole('button',{name:'self'}));expect(mock).toHaveBeenCalledTimes(2);
     fireEvent.click(screen.getByRole('button',{name:'missing'}));expect(mock).toHaveBeenCalledTimes(2);
     expect(screen.getByRole('status')).toHaveTextContent('missing');
@@ -127,7 +127,7 @@ it('MAL-032 cancels a pending linked target when selecting another document and 
   }));
   render(<ReviewDocuments projectId="tenant" jobId="job" requestId="r" documents={docs}/>);
   fireEvent.click(await screen.findByRole('button',{name:'next'}));await screen.findByLabelText('Loading document');
-  fireEvent.mouseDown(screen.getByRole('combobox',{name:'Review document'}));fireEvent.click(await screen.findByTitle('c · c.md'));
+  fireEvent.click(screen.getByRole('button',{name:'c.md c'}));
   await screen.findByRole('heading',{name:'Current C'});expect(signal.aborted).toBe(true);
   fail(new Error('Obsolete failure'));await waitFor(()=>expect(screen.queryByText('Obsolete failure')).toBeNull());
   expect(screen.queryByRole('status')).toBeNull();
@@ -227,4 +227,96 @@ it('CTX-001 MAL-026,028,033 preserves valid target focus and fragment through a 
     if (previousScroll) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', previousScroll);
     else delete (HTMLElement.prototype as {scrollIntoView?:unknown}).scrollIntoView;
   }
+});
+
+describe('RDM metadata catalog', () => {
+  const doc = (name: string) => ({kind:'stored' as const, name, stored:{key:{jobId:'child',taskOrdinal:2,name,sizeBytes:12}}});
+  const docs = { z:doc('z.md'), b:doc('b.md'), a:doc('a.md'), '雪/target':doc('target.md') };
+  it('RDM-001–009,019–025 orders and opens overview with descriptive exact-ID source links', async () => {
+    const fetcher=vi.fn(async()=>new Response('# Contents'));vi.stubGlobal('fetch',fetcher);
+    const metadata = { z:{title:'Overview',description:'Read this first',role:'primary' as const,order:10,source_document_ids:['雪/target','missing','b.md','z','雪/target']}, b:{title:'Supporting notes',role:'supporting' as const,order:2}, a:{order:0}, '雪/target':{title:'Diagnostic report',role:'diagnostic' as const,order:2,source_document_ids:['z']}, orphan:{title:'Never attached',order:0} };
+    render(<ReviewDocuments projectId="tenant" jobId="job" requestId="r" documents={docs} documentMetadata={metadata} overviewDocumentId="z"/>);
+    await screen.findByRole('heading',{name:'Contents'});
+    const nav=screen.getByRole('navigation',{name:'Review documents'});
+    expect([...nav.querySelectorAll('button')].map(b=>b.textContent)).toEqual(['a.mda','Supporting notesSupportingb · b.md','Diagnostic reportDiagnostic雪/target · target.md','OverviewPrimaryz · z.mdRead this first']);
+    expect(fetcher.mock.calls).toHaveLength(1);
+    expect(fetcher.mock.calls[0][0]).toContain('document_id=z');
+    expect(screen.queryByText('Never attached')).toBeNull();
+    const source=screen.getByRole('link',{name:'Diagnostic report · target.md (雪/target)'});
+    expect(source.getAttribute('href')).toContain('document_id=%E9%9B%AA%2Ftarget');
+    expect(screen.getByText('missing (unavailable)')).toBeInTheDocument();
+    expect(screen.getByText('b.md (unavailable)')).toBeInTheDocument();
+    expect(screen.getAllByRole('link',{name:'Diagnostic report · target.md (雪/target)'})).toHaveLength(1);
+    const modified = new MouseEvent('click', {bubbles:true,cancelable:true,ctrlKey:true});
+    source.addEventListener('click', event => { expect(event.defaultPrevented).toBe(false); event.preventDefault(); }, {once:true});
+    source.dispatchEvent(modified);expect(fetcher).toHaveBeenCalledTimes(1);
+    fireEvent.click(source);
+    await waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('button',{name:/Diagnostic report Diagnostic 雪/})).toHaveAttribute('aria-current','true');
+    await waitFor(()=>expect(screen.getByLabelText('Document preview')).toHaveFocus());
+  });
+  it('RDM-004,007,010,011,026,027 handles absent overview, invalid metadata, stable selection and removal', async () => {
+    vi.stubGlobal('fetch',vi.fn(async()=>new Response('# Loaded')));
+    const props={projectId:'t',jobId:'j',requestId:'r'};
+    const bad={a:{title:'  ',order:-1},b:{order:1.5},z:{order:1_000_001},'雪/target':{order:0,title:'<script>bad()</script>',description:'**plain**',role:'unknown'}};
+    const {rerender,container}=render(<ReviewDocuments {...props} documents={docs} documentMetadata={bad as never} overviewDocumentId="missing"/>);
+    await screen.findByRole('heading',{name:'Loaded'});
+    expect(container.querySelector('script')).toBeNull();
+    expect(screen.getAllByText('**plain**')).toHaveLength(2);
+    const nav=screen.getByRole('navigation');
+    expect(nav.querySelector('button')).toHaveAttribute('aria-current','true');
+    fireEvent.click(screen.getByRole('button',{name:'b.md b'}));
+    rerender(<ReviewDocuments {...props} documents={docs} documentMetadata={{a:{order:0}}} overviewDocumentId="a"/>);
+    expect(screen.getByRole('button',{name:'b.md b'})).toHaveAttribute('aria-current','true');
+    const {b:removed,...remaining}=docs;
+    rerender(<ReviewDocuments {...props} documents={remaining} overviewDocumentId="z"/>);
+    expect(screen.getByRole('button',{name:'z.md z'})).toHaveAttribute('aria-current','true');
+    rerender(<ReviewDocuments {...props} documents={docs} overviewDocumentId="a"/>);
+    expect(screen.getByRole('button',{name:'z.md z'})).toHaveAttribute('aria-current','true');
+  });
+  it.each([undefined, '', 'missing'])('RDM-004 falls back to first ordered document for overview %s', async overview => {
+    const fetcher=vi.fn(async()=>new Response('# Loaded'));vi.stubGlobal('fetch',fetcher);
+    render(<ReviewDocuments projectId="t" jobId="j" requestId="r" documents={docs} overviewDocumentId={overview} documentMetadata={{b:{order:0}}}/>);
+    await screen.findByRole('heading',{name:'Loaded'});
+    expect(fetcher.mock.calls[0][0]).toContain('document_id=b');
+  });
+  it.each([null,'0',-1,1.1,1_000_001])('RDM-010 treats invalid order %s as absent', async order => {
+    vi.stubGlobal('fetch',vi.fn(async()=>new Response('# Loaded')));
+    render(<ReviewDocuments projectId="t" jobId="j" requestId="r" documents={docs} documentMetadata={{z:{order:order as never},b:{order:1_000_000}}}/>);
+    await screen.findByRole('heading',{name:'Loaded'});
+    expect(screen.getByRole('navigation').querySelector('button')).toHaveTextContent('b.md');
+  });
+});
+
+it('RDM-007,008,019,024 preserves fallback labels and disables sources after membership changes', async () => {
+  const doc=(name:string)=>({kind:'stored' as const,stored:{key:{jobId:'p',taskOrdinal:1,name,sizeBytes:1}}});
+  const docs={a:doc('same.md'),b:doc('same.md'),c:doc('')};
+  const fetcher=vi.fn(async()=>new Response('# Loaded'));vi.stubGlobal('fetch',fetcher);
+  const props={projectId:'t',jobId:'j',requestId:'r',documentMetadata:{a:{source_document_ids:['b','c']}}};
+  const {rerender}=render(<ReviewDocuments {...props} documents={docs}/>);
+  await screen.findByRole('heading',{name:'Loaded'});
+  expect(screen.getByRole('button',{name:'same.md a'})).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:'same.md b'})).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:'c c'})).toBeInTheDocument();
+  expect(screen.getByRole('link',{name:'same.md (b)'})).toBeInTheDocument();
+  expect(screen.getByRole('link',{name:'c (c)'})).toBeInTheDocument();
+  rerender(<ReviewDocuments {...props} documents={{a:docs.a,c:docs.c}}/>);
+  expect(screen.queryByRole('link',{name:'same.md (b)'})).toBeNull();
+  expect(screen.getByText('b (unavailable)')).toBeInTheDocument();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it.each([false,true])('RDM-014,016 returns compact focus when the opener disappears, empty=%s', async empty => {
+  const previous=window.innerWidth;Object.defineProperty(window,'innerWidth',{value:375,configurable:true});
+  vi.stubGlobal('fetch',vi.fn(async()=>new Response('# Loaded')));
+  const doc=(name:string)=>({kind:'stored' as const,stored:{key:{jobId:'p',taskOrdinal:1,name,sizeBytes:1}}});
+  const props={projectId:'t',jobId:'j',requestId:'r'};
+  try {
+    const {rerender}=render(<ReviewDocuments {...props} documents={{a:doc('a.md'),b:doc('b.md')}} overviewDocumentId="b"/>);
+    expect(fetch).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button',{name:'Read b.md'}));await screen.findByRole('heading',{name:'Loaded'});
+    rerender(<ReviewDocuments {...props} documents={empty ? {} : {a:doc('a.md')}}/>);
+    if (!empty) fireEvent.click(screen.getByRole('button',{name:'Back to review'}));
+    await waitFor(()=>expect(document.querySelector('.review-document-catalog')).toHaveFocus());
+  } finally {Object.defineProperty(window,'innerWidth',{value:previous,configurable:true});}
 });

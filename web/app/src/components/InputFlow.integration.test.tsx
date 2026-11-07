@@ -348,7 +348,7 @@ describe('Input Flow - Complete E2E Integration', () => {
 
 describe('MAL review draft preservation', () => {
   it('MAL-014 preserves draft and request identity without submitting on document navigation', async () => {
-    const details = {...createMockSingleQuestionDetails('review-job'),form:{kind:'review' as const,request_id:'request-1',fields:[{id:'notes',question:'Notes',type:'paragraph_text' as const,required:true}],documents:{
+    const details = {...createMockSingleQuestionDetails('review-job'),form:{kind:'review' as const,request_id:'request-1',overview_document_id:'a',document_metadata:{a:{title:'Design overview',order:5,source_document_ids:['b']},b:{title:'Source notes',order:0}},fields:[{id:'notes',question:'Notes',type:'paragraph_text' as const,required:true}],documents:{
       a:{kind:'stored' as const,stored:{key:{jobId:'producer',taskOrdinal:1,name:'bar.md'}}},
       b:{kind:'stored' as const,stored:{key:{jobId:'producer',taskOrdinal:2,name:'foo.md'}}},
     }}};
@@ -359,6 +359,9 @@ describe('MAL review draft preservation', () => {
     try {
       render(<MemoryRouter initialEntries={['/project/tenant/reviews/review-job']}><Routes><Route path="/project/:projectId/reviews/:jobId" element={<InputDetailPage projectId="tenant"/>}/></Routes></MemoryRouter>);
       await userEvent.setup().type(await screen.findByRole('textbox',{name:'Notes'}),'Keep this draft');
+      expect(screen.getByRole('button',{name:/Design overview/})).toHaveAttribute('aria-current','true');
+      fireEvent.click(await screen.findByRole('link',{name:'Source notes · foo.md (b)'}));await screen.findByRole('heading',{name:'Foo'});
+      fireEvent.click(screen.getByRole('button',{name:/Design overview/}));
       fireEvent.click(await screen.findByRole('button',{name:'next'}));await screen.findByRole('heading',{name:'Foo'});
       expect(screen.getByRole('textbox',{name:'Notes'})).toHaveValue('Keep this draft');
       expect(submit).not.toHaveBeenCalled();expect(mockNavigate).not.toHaveBeenCalled();

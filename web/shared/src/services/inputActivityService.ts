@@ -95,6 +95,14 @@ export interface FormContext {
   artifacts_glob?: GlobPattern[];
 }
 
+export interface ReviewDocumentMetadata {
+  title?: string;
+  description?: string;
+  role?: '' | 'primary' | 'supporting' | 'diagnostic';
+  order?: number;
+  source_document_ids?: string[];
+}
+
 export interface ReviewDocument {
   kind: 'stored';
   name?: string;
@@ -105,6 +113,8 @@ export interface InputFormConfig {
   kind?: string;
   request_id?: string;
   documents?: Record<string, ReviewDocument>;
+  document_metadata?: Record<string, ReviewDocumentMetadata>;
+  overview_document_id?: string;
   // Single question format
   question?: string;
   type?: FieldType;

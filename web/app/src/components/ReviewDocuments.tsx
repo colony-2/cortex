@@ -1,22 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, Drawer, Empty, Select, Space, Spin, Typography } from 'antd';
+import { Alert, Button, Card, Drawer, Empty, Select, Spin, Tag, Typography } from 'antd';
 import { useCompact } from '../hooks/useCompact';
-import { inputActivityService, type ReviewDocument } from '@colony2/shared';
+import { inputActivityService, type ReviewDocument, type ReviewDocumentMetadata } from '@colony2/shared';
 import DocumentPreview from './review/DocumentPreview';
 import { resolveArtifactLink, type NavigationIntent } from './review/artifactLinks';
 import { loadDocument, type DocumentData } from './review/document';
 
-interface Props { projectId: string; jobId: string; requestId: string; documents: Record<string, ReviewDocument> }
+interface Props { projectId: string; jobId: string; requestId: string; documents: Record<string, ReviewDocument>; documentMetadata?: Record<string, ReviewDocumentMetadata>; overviewDocumentId?: string }
 export default function ReviewDocuments(props: Props) {
   // A fresh review identity owns all preview state; response drafts live above this component.
   return <ReviewReader key={JSON.stringify([props.projectId, props.jobId, props.requestId])} {...props} />;
 }
-function ReviewReader({ projectId, jobId, requestId, documents }: Props) {
+function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata = {}, overviewDocumentId }: Props) {
   const compact = useCompact();
   const [readerOpen, setReaderOpen] = useState(false);
-  const ids = Object.keys(documents).sort();
-  const [selection, setSelection] = useState(ids[0]);
-  const selected = selection && documents[selection] ? selection : ids[0];
+  useEffect(() => { if (!compact) setReaderOpen(false); }, [compact]);
+  const ids = Object.keys(documents).sort((a, b) => displayOrder(documentMetadata[a]?.order) - displayOrder(documentMetadata[b]?.order) || (a < b ? -1 : a > b ? 1 : 0));
+  const attached = (id?: string): id is string => id !== undefined && Object.prototype.hasOwnProperty.call(documents, id);
+  const initial = attached(overviewDocumentId) ? overviewDocumentId : ids[0];
+  const [selection, setSelection] = useState(initial);
+  const selected = attached(selection) ? selection : initial;
+  const catalog = useRef<HTMLDivElement>(null);
+  const readerVisible = useRef(false);
+  readerVisible.current = compact && readerOpen;
+  useEffect(() => { if (!selected) setReaderOpen(false); }, [selected]);
   const [navigationIntent, setNavigationIntent] = useState<(NavigationIntent & { documentId: string })>();
   const [dual, setDual] = useState(false);
   const [markdownSource, setMarkdownSource] = useState(false);
@@ -25,6 +32,17 @@ function ReviewReader({ projectId, jobId, requestId, documents }: Props) {
   const [error, setError] = useState<string>();
   const [retry, setRetry] = useState(0);
   const opener = useRef<HTMLElement>();
+  const wasReaderVisible = useRef(false);
+  const restoreFocus = () => requestAnimationFrame(() => {
+    if (!readerVisible.current) (opener.current?.isConnected ? opener.current : catalog.current)?.focus();
+  });
+  useEffect(() => {
+    // A cached preview can be closed before the drawer's enter animation ends;
+    // rc-drawer may skip afterOpenChange in that case.
+    const visible = compact && readerOpen;
+    if (wasReaderVisible.current && !visible) restoreFocus();
+    wasReaderVisible.current = visible;
+  }, [compact, readerOpen]);
   const doc = documents[selected];
   const name = doc?.name || doc?.stored.key.name || selected;
   const url = selected ? inputActivityService.reviewDocumentURL(projectId, jobId, requestId, selected) : '';
@@ -46,8 +64,38 @@ function ReviewReader({ projectId, jobId, requestId, documents }: Props) {
     }).catch(e => { if (!controller.signal.aborted) setError(e.message); });
     return () => controller.abort();
   }, [url, name, retry, previewActive]);
+  const filename = (id: string) => documents[id]?.name || documents[id]?.stored.key.name || id;
+  const title = (id: string) => documentMetadata[id]?.title?.trim() ? documentMetadata[id].title! : filename(id);
+  const openDocument = (id: string, focus = false, fragment?: string) => {
+    if (!attached(id)) return false;
+    setSelection(id);
+    setNavigationIntent(focus ? previous => ({ documentId: id, token: (previous?.token || 0) + 1, fragment }) : undefined);
+    if (focus) setMarkdownSource(false);
+    if (compact) setReaderOpen(true);
+    return true;
+  };
+  const summary = (id: string) => {
+    const metadata = documentMetadata[id];
+    const role = metadata?.role === 'primary' ? 'Primary' : metadata?.role === 'supporting' ? 'Supporting' : metadata?.role === 'diagnostic' ? 'Diagnostic' : undefined;
+    return <div className="review-document-summary">
+      <strong>{title(id)}</strong>{role && <Tag>{role}</Tag>}
+      <Typography.Text type="secondary">{id}{title(id) !== filename(id) ? ` · ${filename(id)}` : ''}</Typography.Text>
+      {metadata?.description && <p>{metadata.description}</p>}
+    </div>;
+  };
+  const sources = (id: string) => {
+    const sourceIds = [...new Set(documentMetadata[id]?.source_document_ids || [])].filter(source => source !== id);
+    return sourceIds.length ? <div className="review-document-sources" aria-label="Source documents">Source documents: {sourceIds.map(source => attached(source)
+      ? <a key={source} href={inputActivityService.reviewDocumentURL(projectId, jobId, requestId, source)} onClick={event => {
+        if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        if (compact && !readerOpen) opener.current = event.currentTarget;
+        openDocument(source, true);
+      }}>{title(source)}{title(source) !== filename(source) ? ` · ${filename(source)}` : ''} ({source})</a>
+      : <span key={source}>{source} (unavailable)</span>)}</div> : null;
+  };
   const toolbar = <div className="review-document-toolbar">
-    <Select aria-label="Review document" value={selected} onChange={id => { setNavigationIntent(undefined); setSelection(id); }} style={{ minWidth: 220, maxWidth: '100%' }} options={ids.map(id => ({ value: id, label: `${id} · ${documents[id].name || documents[id].stored.key.name}` }))} />
+    {compact && <Select aria-label="Review document" value={selected} onChange={id => { setNavigationIntent(undefined); setSelection(id); }} style={{ minWidth: 220, maxWidth: '100%' }} options={ids.map(id => ({ value: id, label: `${id} · ${title(id)}` }))} />}
     <Typography.Text type="secondary">{doc?.stored.key.sizeBytes?.toLocaleString() ?? 'Unknown'} bytes</Typography.Text>
     <Button href={url} download={name}>Download</Button>
   </div>;
@@ -55,26 +103,36 @@ function ReviewReader({ projectId, jobId, requestId, documents }: Props) {
     : !content || content.url !== url ? <Spin aria-label="Loading document" />
     : <DocumentPreview key={url} data={content.data} name={name} markdownSource={markdownSource} setMarkdownSource={setMarkdownSource} dual={dual} setDual={setDual} navigationIntent={navigationIntent?.documentId === selected ? navigationIntent : undefined} navigation={{
       resolve: reference => resolveArtifactLink(reference, doc.stored.key.name, Object.entries(documents).map(([key, d]) => ({key, path: d.stored.key.name, aliases: [key, ...(d.name ? [d.name] : [])]}))),
-      open: (key, fragment) => {
-        if (!Object.prototype.hasOwnProperty.call(documents, key)) return false;
-        setMarkdownSource(false); setSelection(key);
-        setNavigationIntent(previous => ({documentId: key, token: (previous?.token || 0) + 1, fragment}));
-        return true;
-      },
+      open: (key, fragment) => openDocument(key, true, fragment),
     }} resolveAttachment={reference => {
       const matches = Object.entries(documents).filter(([id, d]) => reference === id || reference === d.name || reference === d.stored.key.name);
       if (matches.length !== 1) return undefined;
       const [id, d] = matches[0];
       return { key: id, name: d.name || d.stored.key.name, url: inputActivityService.reviewDocumentURL(projectId, jobId, requestId, id) };
     }} />;
+  const details = selected ? <>{summary(selected)}{sources(selected)}{toolbar}</> : null;
   return <>
-    <Card title={`Documents (${ids.length})`} extra={<Typography.Text type="secondary">Read only</Typography.Text>}>
+    <Card ref={catalog} tabIndex={-1} className="review-document-catalog" title={`Documents (${ids.length})`} extra={<Typography.Text type="secondary">Read only</Typography.Text>}>
       {!selected ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents attached" />
-        : compact ? <Space direction="vertical" style={{ width: '100%' }}>{ids.map(id => <Button key={id} block onClick={e => { opener.current = e.currentTarget; setNavigationIntent(undefined); setSelection(id); setReaderOpen(true); }}>Read {documents[id].name || documents[id].stored.key.name}</Button>)}</Space>
-        : <Space direction="vertical" size="middle" style={{ width: '100%' }}>{toolbar}{preview}</Space>}
+        : <div className={compact ? 'review-document-cards' : 'review-document-layout'}>
+          <nav aria-label="Review documents" className="review-document-list">{ids.map(id => <div key={id} className="review-document-entry">
+            {compact ? <>{summary(id)}{id === initial && <Tag>Starting document</Tag>}{sources(id)}<Button block onClick={event => { opener.current = event.currentTarget; openDocument(id); }}>Read {title(id)}</Button></>
+              : <button type="button" aria-current={id === selected ? 'true' : undefined} onClick={() => openDocument(id)}>{summary(id)}</button>}
+          </div>)}</nav>
+          {!compact && <section className="review-document-content" aria-label="Selected document">{details}{preview}</section>}
+        </div>}
+
     </Card>
-    <Drawer rootClassName="review-reader" title={name} width="100%" open={readerOpen} destroyOnHidden closable={false} onClose={() => setReaderOpen(false)} afterOpenChange={open => { if (!open && !readerOpen) opener.current?.focus(); }} extra={<Button onClick={() => setReaderOpen(false)}>Back to review</Button>}>
+    <Drawer rootClassName="review-reader" title={selected ? title(selected) : name} width="100%" open={compact && readerOpen} destroyOnHidden closable={false} onClose={() => setReaderOpen(false)} afterOpenChange={open => {
+      // Run after rc-drawer's own last-active-element restoration as well.
+      if (!open) restoreFocus();
+    }} extra={<Button onClick={() => setReaderOpen(false)}>Back to review</Button>}>
+      {selected && <>{summary(selected)}{sources(selected)}</>}
       <details className="reader-options"><summary>Document options</summary>{toolbar}</details>{preview}
     </Drawer>
   </>;
+}
+
+function displayOrder(order: unknown): number {
+  return typeof order === 'number' && Number.isInteger(order) && order >= 0 && order <= 1_000_000 ? order : Infinity;
 }
