@@ -343,3 +343,19 @@ body {
 .review-document-cards .review-document-entry > button { text-align: center; margin-top: 8px; }
 .review-document-cards .review-document-entry > button { white-space: normal; height: auto; min-height: 44px; overflow-wrap: anywhere; }
 .review-reader .ant-drawer-title { overflow-wrap: anywhere; }
+
+.job-relationships { min-width: 0; overflow-wrap: anywhere; }
+.relationship-disclosure { background: #fff; border: 1px solid #f0f0f0; border-radius: 8px; }
+.relationship-disclosure > summary { padding: 12px; min-height: 44px; box-sizing: border-box; font-weight: 600; cursor: pointer; }
+.relationship-disclosure > summary:focus-visible { outline: 2px solid #1677ff; outline-offset: 2px; border-radius: 8px; }
+.relationship-disclosure[open] > summary { border-bottom: 1px solid #f0f0f0; }
+.relationship-group { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 12px; padding-block: 12px; }
+.relationship-group + .relationship-group { border-top: 1px solid #f0f0f0; }
+.relationship-children { list-style: none; padding: 0; margin: 0; }
+.relationship-children li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid #f0f0f0; }
+.relationship-children li > * { min-width: 0; max-width: 100%; }
+.relationship-identity { color: #737373; margin-block: 4px; }
+.job-relationships a:focus-visible { outline: 2px solid #1677ff; outline-offset: 2px; }
+@media (max-width: 767px) {
+  .relationship-group { grid-template-columns: minmax(0, 1fr); }
+}

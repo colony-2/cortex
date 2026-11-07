@@ -144,10 +144,7 @@ export default function InputDetailPage({ projectId }: InputDetailPageProps) {
           </Space>
         </Card>)}
 
-        {reviews && <details className="review-goal-context" open={!compact || undefined}>
-          <summary>Goal context</summary>
-          <ReviewJobContext key={`${projectId}/${jobId}`} projectId={projectId} jobId={jobId} />
-        </details>}
+        {reviews && <ReviewJobContext key={`${projectId}/${jobId}`} projectId={projectId} jobId={jobId} compact={compact} relationships />}
         {reviewPrompt && (compact ? <details><summary>Review instructions</summary>
           <section aria-label="Review context" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{reviewPrompt}</section>
         </details> : <Card title="Review context">

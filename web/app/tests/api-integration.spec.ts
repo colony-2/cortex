@@ -321,7 +321,7 @@ test('wraps long job story context without overflowing its header', async ({ pag
     const failureBox = await failure.boundingBox();
     expect(promptBox!.y).toBeGreaterThanOrEqual(headingBox!.y + headingBox!.height);
     expect(failureBox!.y).toBeGreaterThanOrEqual(promptBox!.y + promptBox!.height);
-    await expect(page.getByRole('button', { name: /Refresh/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Refresh$/ })).toBeVisible();
   }
 });
 

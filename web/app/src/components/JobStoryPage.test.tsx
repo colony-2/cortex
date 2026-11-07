@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import JobStoryPage from './JobStoryPage';
 import { jobIdentity } from '../test/cellFixtures';
-import { getJob } from '@colony2/shared/api';
+import { getJob, listJobChildren } from '@colony2/shared/api';
 import type { RecipeJob } from '@colony2/shared/types';
 import DownloadChaptersButton from './DownloadChaptersButton';
 
@@ -14,6 +14,7 @@ vi.mock('@colony2/shared', async (importOriginal) => ({
 vi.mock('@colony2/shared/api', async (importOriginal) => ({
   ...await importOriginal<typeof import('@colony2/shared/api')>(),
   getJob: vi.fn(),
+  listJobChildren: vi.fn().mockResolvedValue({ jobs: [] }),
 }));
 vi.mock('react-json-view', () => ({ default: ({ src }: { src: unknown }) => <pre>{JSON.stringify(src)}</pre> }));
 
@@ -92,7 +93,7 @@ describe('job story history', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Refresh/ })); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Refresh$/ })); });
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(toggle).not.toBeChecked();
     await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
@@ -118,7 +119,7 @@ describe('job story history', () => {
     fireEvent.click(screen.getByText('Development.Design.Task 1.2'));
     expect(await screen.findByText('Failure 1.2: temporary directory missing')).toBeVisible();
     expect(screen.getByTestId('location').textContent).toContain('nodeId=jobAttempt%3A1%7Cn_38');
-    fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(screen.getByText('Failure 1.2: temporary directory missing')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Job attempts' }));
@@ -160,8 +161,8 @@ describe('job story history', () => {
     expect(screen.getByRole('tab', { name: 'Output', exact: true })).toHaveAttribute('aria-selected', 'true');
     fireEvent.click(screen.getByRole('tab', { name: 'Overview', exact: true }));
     expect(await screen.findByText('Failure 1.2: temporary directory missing')).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
-    await waitFor(() => expect(screen.getByRole('button', { name: /Refresh/ })).not.toHaveClass('ant-btn-loading'));
+    fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Refresh$/ })).not.toHaveClass('ant-btn-loading'));
     expect(screen.getByRole('tab', { name: 'Attempt 2' })).toHaveAttribute('aria-selected', 'true');
     fireEvent.click(within(screen.getByRole('tree')).getByText('Task 1.3'));
     expect(screen.getByRole('tab', { name: 'Attempt 3' })).toHaveAttribute('aria-selected', 'true');
@@ -583,7 +584,7 @@ describe('job story context', () => {
     expect(screen.getByRole('heading', { name: 'Job Story' })).toBeVisible();
     expect(screen.queryByText('Failed to load job story')).toBeNull();
     vi.mocked(getJob).mockResolvedValue(metadata({ title: 'Recovered', prompt: 'New prompt', completion_status: 'failed_system', completion_detail: 'New detail' }));
-    fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
     await screen.findByRole('heading', { name: 'Job Story: Recovered' });
     expect(screen.getByText('New prompt')).toBeVisible();
     expect(screen.getByText('New detail')).toBeVisible();
@@ -608,8 +609,8 @@ describe('job story context', () => {
     await screen.findByRole('heading', { name: 'Job Story: Initial' });
     const old = deferred<RecipeJob>();
     vi.mocked(getJob).mockReturnValueOnce(old.promise).mockResolvedValue(metadata({ title: 'Newest', cell_name: 'newest-cell' }));
-    fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
     await screen.findByRole('heading', { name: 'Job Story: Newest' });
     await act(async () => { if (outcome === 'success') old.resolve(metadata({ title: 'Obsolete', cell_name: 'obsolete-cell' })); else old.reject(new Error('obsolete')); });
     expect(screen.getByRole('heading', { name: 'Job Story: Newest' })).toBeVisible();
@@ -637,14 +638,14 @@ describe('job story context', () => {
     mount();
     await screen.findByText('Old prompt');
     vi.mocked(getJob).mockRejectedValueOnce(new Error('refresh failed'));
-    fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
     await screen.findByText('Job details unavailable');
     expect(screen.queryByText('Old prompt')).toBeNull();
     expect(screen.queryByLabelText('Job cell')).toBeNull(); // JC-007,008
     expect(screen.queryByText('Old diagnostic')).toBeNull();
     expect(screen.getByRole('heading', { name: 'Job Story', exact: true })).toBeVisible();
     vi.mocked(getJob).mockResolvedValue(metadata({ prompt: 'Fresh prompt' }));
-    fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
     expect(await screen.findByText('Fresh prompt')).toBeVisible();
     expect(screen.queryByText('Job details unavailable')).toBeNull();
   });
@@ -669,8 +670,8 @@ describe('job story context', () => {
     await screen.findByText('Initial');
     const old = deferred<RecipeJob>();
     vi.mocked(getJob).mockReturnValueOnce(old.promise).mockRejectedValueOnce(new Error('new failure'));
-    fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
     await screen.findByText('new failure');
     await act(async () => { if (outcome === 'success') old.resolve(metadata({ prompt: 'Obsolete' })); else old.reject(new Error('old failure')); });
     expect(screen.getByText('new failure')).toBeVisible();
@@ -724,7 +725,7 @@ describe('job story context', () => {
       <Route path="/project/:projectId/jobs/:jobId/story" element={<Host />} />
     </Routes></MemoryRouter>);
     await screen.findByRole('heading', { name: 'Job Story: Old' });
-    fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
     const current = deferred<RecipeJob>();
     vi.mocked(getJob).mockReturnValueOnce(current.promise);
     act(() => navigate(change === 'job' ? '/project/tenant/jobs/new/story' : '/project/other/jobs/job/story'));
@@ -857,7 +858,7 @@ describe('SAV rich story formats and attachment boundaries', () => {
     const mock = await start('notes.md','![missing](new.png)');
     await screen.findByText(/Blocked external or ambiguous image/);
     mock.mockImplementation(async()=>({ok:true,json:async()=>({...story,root:{...node,artifact_keys:[...keys,{name:'new.png',taskOrdinal:9}]}})}));
-    fireEvent.click(screen.getByRole('button',{name:/Refresh/,exact:true}));
+    fireEvent.click(screen.getByRole('button',{name:/Refresh$/,exact:true}));
     await screen.findByRole('tab', {name:'Artifacts (5)'});
     expect(screen.getByText(/Blocked external or ambiguous image/)).toBeInTheDocument();
     expect(mock.mock.calls.filter(c=>String(c[0]).includes('/artifacts/'))).toHaveLength(1);
@@ -905,7 +906,7 @@ describe('MAL node-local navigation', () => {
   it('MAL-017,018,019,021,022,023,028,031 keeps the original snapshot through refresh and chained navigation', async()=>{
     const {mock,refresh}=await start();
     fireEvent.click(screen.getByRole('button',{name:'ambiguous'}));expect(within(screen.getByRole('dialog')).getByRole('status')).toHaveTextContent('ambiguous');
-    refresh();fireEvent.click(screen.getByRole('button',{name:/Refresh/,exact:true}));await screen.findByRole('tab',{name:'Artifacts (6)'});
+    refresh();fireEvent.click(screen.getByRole('button',{name:/Refresh$/,exact:true}));await screen.findByRole('tab',{name:'Artifacts (6)'});
     fireEvent.click(screen.getByText('Other node', {selector:'strong'}));await screen.findByRole('tab',{name:'Artifacts (2)'});
     fireEvent.click(screen.getByRole('button',{name:'next'}));await screen.findByRole('heading',{name:'Target'});
     expect(within(screen.getByRole('dialog')).getByText('docs/foo.md')).toBeInTheDocument();
@@ -960,4 +961,22 @@ it('keeps story cancellation confirmed by default and retries only after an expl
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(changes).toEqual(['/api/projects/tenant/jobs/job/cancel', '/api/projects/tenant/jobs/job/cancel']);
   expect(trigger).toBeDisabled();
+});
+
+it('REL-001,010,030,031 keeps URL relationships through past-attempt selection and child loading failure', async () => {
+  vi.mocked(getJob).mockResolvedValue({ ...jobIdentity, tenant_id:'tenant', job_id:'job', goal_id:'goal', parent:{job_id:'parent',goal_id:'parent-goal'} } as RecipeJob);
+  vi.mocked(listJobChildren).mockReset().mockRejectedValueOnce(new Error('offline'));
+  mount();
+  fireEvent.click(await screen.findByText('Related jobs and goals', {selector:'summary'}));
+  await screen.findByText('Child jobs unavailable');
+  expect(screen.getByRole('link',{name:'Job · parent'})).toHaveAttribute('href','/project/tenant/jobs/parent/story');
+  expect(screen.getByRole('link',{name:'Goal · parent-goal'})).toHaveAttribute('href','/project/tenant/goals/parent-goal');
+  fireEvent.click(screen.getByRole('button',{name:'Job attempts'}));
+  fireEvent.click(screen.getByRole('tab',{name:'Job attempt 1'}));
+  fireEvent.click(await screen.findByText('Development.Design.Task 1.2'));
+  await screen.findByText('Failure 1.2: temporary directory missing');
+  expect(listJobChildren).toHaveBeenCalledTimes(1);
+  expect(listJobChildren).toHaveBeenCalledWith('tenant','job',{pageSize:20,pageToken:undefined});
+  expect(getJob).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('link',{name:'Job · parent'})).toBeVisible();
 });

@@ -98,6 +98,21 @@ export async function listJobs(
   return page;
 }
 
+export async function listJobChildren(
+  projectId: string, jobId: string, options: { pageSize?: number; pageToken?: string } = {},
+): Promise<ListRecipeJobsResponse> {
+  const params = new URLSearchParams();
+  if (options.pageSize !== undefined) params.set('pageSize', String(options.pageSize));
+  if (options.pageToken) params.set('pageToken', options.pageToken);
+  const query = params.toString();
+  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/children${query ? `?${query}` : ''}`);
+  await handleResponse(response, 'List child jobs');
+  const page = parseJobJSON(await response.text()) as ListRecipeJobsResponse;
+  if (!Array.isArray(page.jobs)) throw new Error('Invalid child job list response');
+  page.jobs.forEach(validateJobCell);
+  return page;
+}
+
 export async function getJob(projectId: string, jobId: string): Promise<RecipeJob> {
   const response = await fetch(
     `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}`,

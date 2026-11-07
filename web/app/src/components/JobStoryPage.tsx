@@ -1,3 +1,4 @@
+import JobRelationships from './JobRelationships';
 import { cellLabel } from '../utils/cellPresentation';
 import { resolveArtifactLink, type NavigationIntent } from './review/artifactLinks';
 import ArtifactContents from './ArtifactContents';
@@ -828,6 +829,8 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
             }
           />
         ) : null}
+
+        {job && <JobRelationships projectId={projectId} jobId={jobId!} job={job} />}
 
         <Card title="Run Summary" size="small">
           <Descriptions column={2} bordered size="small">

@@ -1,3 +1,4 @@
+import JobRelationships from './JobRelationships';
 import { Alert, Button, Card, Descriptions, Space, Typography, Tag } from 'antd';
 import { Link } from 'react-router-dom';
 import { useReviewJobMetadata } from '../hooks/useReviewJobMetadata';
@@ -6,7 +7,7 @@ import { jobStatus } from '../utils/jobStatus';
 import { jobTime } from './JobListDetails';
 import { goalPath, jobPath } from './JobWaitLinks';
 
-export default function ReviewJobContext({ projectId, jobId }: { projectId: string; jobId: string }) {
+export default function ReviewJobContext({ projectId, jobId, relationships = false, compact = false }: { projectId: string; jobId: string; relationships?: boolean; compact?: boolean }) {
   const { metadata, refresh } = useReviewJobMetadata(projectId, [jobId]);
   const entry = metadata.get(jobId);
   if (entry?.status === 'error') return <Alert type="warning" message="Job context unavailable"
@@ -20,7 +21,7 @@ export default function ReviewJobContext({ projectId, jobId }: { projectId: stri
       'Job type': job.job_type, Repository: job.repo, Ref: job.git_ref, 'Goal ID': job.goal_id })
       .filter(([, value]) => !!value).map(([label, value]) => ({ key: label, label, children: value! })),
   ];
-  return <Card style={{ overflowWrap: 'anywhere' }}>
+  const context = <Card style={{ overflowWrap: 'anywhere' }}>
     <Space direction="vertical" style={{ width: '100%' }}>
       <Descriptions size="small" column={{ xs: 1, sm: 2, lg: 3 }} items={items} />
       <Space wrap>
@@ -33,4 +34,10 @@ export default function ReviewJobContext({ projectId, jobId }: { projectId: stri
       </section>
     </Space>
   </Card>;
+  return relationships ? <>
+    <details className="review-goal-context" open={!compact || undefined}>
+      <summary>Goal context</summary>{context}
+    </details>
+    <JobRelationships projectId={projectId} jobId={jobId} job={job} />
+  </> : context;
 }

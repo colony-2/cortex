@@ -14,7 +14,7 @@ import { abbreviatePrompt } from '../utils/goalPresentation';
 
 const server = setupServer(...inputApiHandlers);
 let events: ReturnType<typeof mockEventSource>;
-beforeEach(() => { server.listen({ onUnhandledRequest: 'error' }); resetMockInputStore(); events = mockEventSource(); });
+beforeEach(() => { server.listen({ onUnhandledRequest: 'error' }); resetMockInputStore(); events = mockEventSource(); server.use(http.get('http://localhost:8080/api/projects/:tenant/jobs/:job/children', () => HttpResponse.json({jobs:[]}))); });
 afterEach(() => { inputActivityService.disconnect(); inputActivityService.clearCaches(); server.resetHandlers(); server.close(); events.restore(); vi.clearAllMocks(); });
 const view = (projectId = 'tenant') => <MemoryRouter><InputActivityProvider><PendingInputsListPage projectId={projectId} /></InputActivityProvider></MemoryRouter>;
 
@@ -82,4 +82,27 @@ it.each([404, 503, 'network'] as const)('preserves review draft and submission t
   await waitFor(() => expect(received).toBe(true));
   expect(submit).toHaveBeenCalledWith('tenant', 'a', 'original-request', expect.objectContaining({ fields: { decision: 'approve', feedback: 'Keep this draft' } }));
   submit.mockRestore();
+});
+
+it('REL-001,030,031 preserves parent context and review draft through child failure with one job inspection', async () => {
+  setupMockInputs('tenant', [], [{jobId:'a',status:'pending',startTime:'2026-11-07T00:00:00Z',form:{kind:'review',title:'Review evidence',request_id:'relationship-review',fields:[
+    {id:'decision',type:'multiple_choice',question:'Approve evidence',required:true,options:[{value:'approve',label:'Approve'}]},
+    {id:'feedback',type:'paragraph_text',question:'Feedback',required:false},
+  ]}}]);
+  let reads=0;
+  server.use(
+    http.get('http://localhost:8080/api/projects/tenant/jobs/a',()=>{reads++;return HttpResponse.json({...jobIdentity,job_id:'a',tenant_id:'tenant',status:'READY',store:'ACTIVE',parent:{job_id:'parent',goal_id:'parent-goal'}});}),
+    http.get('http://localhost:8080/api/projects/tenant/jobs/a/children',()=>new HttpResponse(null,{status:503})),
+  );
+  render(<MemoryRouter initialEntries={['/reviews/a']}><Routes><Route path="/reviews/:jobId" element={<InputDetailPage projectId="tenant" />} /></Routes></MemoryRouter>);
+  fireEvent.click(await screen.findByText('Related jobs and goals', {selector:'summary'}));
+  await screen.findByText('Child jobs unavailable');
+  expect(screen.getByRole('link',{name:'Job · parent'})).toHaveAttribute('href','/project/tenant/jobs/parent/story');
+  expect(screen.getByRole('link',{name:'Goal · parent-goal'})).toHaveAttribute('href','/project/tenant/goals/parent-goal');
+  await userEvent.type(screen.getByLabelText('Feedback'),'Retained draft');
+  fireEvent.click(screen.getByRole('button',{name:'Retry',exact:true}));
+  await screen.findByText('Child jobs unavailable');
+  expect(reads).toBe(1);
+  expect(screen.getByLabelText('Feedback')).toHaveValue('Retained draft');
+  expect(screen.getByRole('button',{name:'Approve',exact:true})).toBeEnabled();
 });

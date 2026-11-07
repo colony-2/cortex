@@ -151,3 +151,26 @@ it.each([{}, { tenant_id: 'other', job_id: 'job', goal_id: 'goal', cell_id: 'cel
  await expect(submitJob('tenant', { cell: 'platform' })).rejects.toThrow();
  await expect(submitJob('tenant', { cell: 'platform' }, [new File([], 'empty')])).rejects.toThrow();
 });
+
+it('REL-009,021 encodes child paths and cursors and preserves lossless summary numbers', async () => {
+  const { listJobChildren } = await import('./api');
+  const fetch = vi.fn(async () => new Response('{"jobs":[{"cell_id":"cell","cell_name":"platform","repo":"github.com/acme/platform","parent":{"invocation_seq":9007199254740993}}],"next_page_token":"next+/="}'));
+  vi.stubGlobal('fetch', fetch);
+  const page = await listJobChildren('tenant /雪', 'job /?#', { pageSize: 20, pageToken: 'cursor+/=' });
+  const url = new URL(fetch.mock.calls[0][0] as string);
+  expect(url.pathname).toContain('/tenant%20%2F%E9%9B%AA/jobs/job%20%2F%3F%23/children');
+  expect(url.searchParams.get('pageSize')).toBe('20');
+  expect(url.searchParams.get('pageToken')).toBe('cursor+/=');
+  expect(String(page.jobs[0].parent?.invocation_seq)).toBe('9007199254740993');
+  expect(page.next_page_token).toBe('next+/=');
+});
+it('REL-021 rejects malformed children and surfaces HTTP errors', async () => {
+  const { listJobChildren } = await import('./api');
+  const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+  for (const payload of [{ jobs: [{}] }, { jobs: null }]) {
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify(payload)));
+    await expect(listJobChildren('tenant','job')).rejects.toThrow(/Invalid/);
+  }
+  fetch.mockResolvedValueOnce(new Response('{"error":"offline"}', { status: 503 }));
+  await expect(listJobChildren('tenant','job')).rejects.toThrow(/503.*offline/);
+});
