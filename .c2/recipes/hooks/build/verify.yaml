@@ -1,0 +1,348 @@
+# Loaded from the managed candidate by the shared build workflow.
+# Commands get fresh worktrees: each consumer installs its own prerequisites.
+# const prevents dependency/build products from changing the candidate.
+id: cortex-build-verify
+version: "1.0.0"
+desc: Verify Cortex modules, server, frontend, installer and browser behavior.
+# This legacy included hook intentionally leaves input_schema undeclared.
+# The caller supplies api_version, request, target_directory, candidate, base,
+# documents and settings. Checks use none of these values, and settings may be
+# null; a typed optional artifact currently rejects explicit null in c2j.
+# Legacy includes preserve the caller payload without validating unused fields.
+execution:
+  packages:
+    - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#bash
+    - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#gnumake
+    - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#git
+    - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#coreutils
+    - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#findutils
+    - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#go_1_26
+    - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#nodejs-slim_24
+    - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#chromium
+    - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#ffmpeg
+    - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#nix
+    - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#dejavu_fonts
+    - pnpm:pnpm@10.0.0
+    - pnpm:playwright@1.61.1
+sequence:
+  - id: toolchain-preflight
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 10m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: &verification-env
+        CI: "1"
+        GOPRIVATE: github.com/colony-2/*
+        GIT_TERMINAL_PROMPT: "0"
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        CORTEX_PLAYWRIGHT_BROWSERS_PATH: ""
+        CORTEX_TEST_NORMAL_BUILD: "0"
+        C2J_JOBDB: ""
+        JOBDB_URL: ""
+        CORTEX_TENANT_ID: ""
+        CORTEX_WORKING_DIR: ""
+        CORTEX_API_URL: ""
+        VITE_CORTEX_API_BASE: ""
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        expected_go="go$(cat .go-version)"
+        [[ "$(go env GOVERSION)" == "$expected_go" ]]
+        [[ "$(node --version)" == v24.* ]]
+        [[ "$(pnpm --version)" == 10.0.0 ]]
+        for tool in go gofmt node pnpm make git chromium ffmpeg; do
+          command -v "$tool"
+        done
+        go version
+        node --version
+        pnpm --version
+        make --version
+        git --version
+        chromium --version
+        ffmpeg -version
+  - id: install-web-dependencies
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 10m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+  - id: git-compatibility-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 5m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        node --test scripts/verify-command.test.mjs
+  - id: go-module-verify
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 10m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        module_cache="$(mktemp -d)"
+        trap 'rm -rf "$module_cache"' EXIT
+        export GOMODCACHE="$module_cache"
+        printf 'Verifying modules using a fresh empty module cache.\n'
+        cd server
+        GOWORK=off node ../scripts/verify-command.mjs bash ../scripts/go.sh mod download
+        GOWORK=off node ../scripts/verify-command.mjs bash ../scripts/go.sh mod verify
+  - id: go-module-tidy
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 10m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        cd server
+        GOWORK=off node ../scripts/verify-command.mjs bash ../scripts/go.sh mod tidy -diff
+  - id: go-format
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 5m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        unformatted="$(gofmt -l server)"
+        if [[ -n "$unformatted" ]]; then
+          printf 'Unformatted Go files:\n%s\n' "$unformatted" >&2
+          exit 1
+        fi
+  - id: go-vet
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        node scripts/verify-command.mjs bash scripts/go.sh vet ./server/...
+  - id: go-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        node scripts/verify-command.mjs bash scripts/go.sh test -count=1 ./server/...
+  - id: shared-typecheck
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        pnpm --filter @colony2/shared typecheck
+  - id: app-typecheck
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        pnpm --filter @colony2/app typecheck
+  - id: shared-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        pnpm --filter @colony2/shared test
+  - id: app-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        pnpm --filter @colony2/app test
+  - id: shared-build
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        pnpm --filter @colony2/shared build
+  - id: app-build
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        pnpm --filter @colony2/app build
+  - id: go-build
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        node scripts/verify-command.mjs make server-build
+  - id: installer-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 5m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        node --test npm/cortex/test/*.test.cjs
+  - id: image-encoder-preflight
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 10m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        fixture_dir="$(mktemp -d)"
+        trap 'rm -rf "$fixture_dir"' EXIT
+        ffmpeg -v error -f lavfi -i color=c=blue:s=1280x900 -frames:v 1 -y "$fixture_dir/wide.png"
+        for format in jpg gif webp avif bmp; do
+          ffmpeg -v error -f lavfi -i color=c=blue:s=2x2 -frames:v 1 -y "$fixture_dir/sample.$format"
+        done
+  - id: browser-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 30m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm test:e2e
+  - id: artifact-browser-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 30m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.artifact.config.ts
+# Native failures propagate to the caller's existing repair handlers.
+# Successful command logs remain attached to their individual tasks.
+outputs:
+  api_version: c2.build-hook/v1
+  status: passed
+  summary: All required Cortex verification tasks passed.
+  artifact_refs: {}

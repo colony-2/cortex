@@ -51,3 +51,6 @@ graph_positions.db
 **/playwright-report/*
 **/test-results/*
 .tmp
+
+# The build-hook directory contains source recipes, not generated binaries.
+!.c2/recipes/hooks/build/
