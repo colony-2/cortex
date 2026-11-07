@@ -266,7 +266,11 @@ node --test npm/cortex/test/*.test.cjs
 
 The c2 execution tools in [`.c2/config.yaml`](.c2/config.yaml) declare Go, Bash,
 Make, Node.js, pnpm, Playwright, Chromium, and FFmpeg. Nix supplies Chromium's
-runtime libraries and fonts. The browser tests use Chromium and FFmpeg from
+runtime libraries. Linux workers must also expose fonts through a usable
+Fontconfig configuration; on minimal workers, set `FONTCONFIG_FILE` to a
+configuration referencing the provisioned fonts and a writable cache directory.
+Having font files in the Nix store alone does not configure font discovery.
+The browser tests use Chromium and FFmpeg from
 `PATH`, without downloading browsers or installing system packages.
 
 Outside c2, either provide Chromium and FFmpeg on `PATH`, or install Playwright's
