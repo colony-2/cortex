@@ -53,3 +53,12 @@ export function jobStatusOptions(jobs: RecipeJobSummary[], selected: RecipeJobFi
   const statuses = new Set<string>([...Object.keys(filterStatuses), ...selected, ...jobs.map(jobStatusValue)]);
   return [...statuses].map(value => ({ value, label: jobStatusPresentation(value).label }));
 }
+
+// Resolve every selected attempt from the loaded page; missing data fails closed.
+export function canArchiveImmediately(ids: string[], jobs: RecipeJobSummary[]): boolean {
+  const summaries = new Map(jobs.map(job => [job.job_id, job]));
+  return ids.length > 0 && ids.every(id => {
+    const job = summaries.get(id);
+    return !!job && ['failed_app', 'failed_system', 'success', 'CANCELLED'].includes(jobStatusValue(job));
+  });
+}

@@ -96,6 +96,7 @@ test('renders a single compact row or grouped attempts with metadata and waiting
   await page.screenshot({ path: '/tmp/cortex-goals-list.png', fullPage: true });
   await row.getByRole('link', { name: 'Goal overview' }).click();
   await expect(page.getByRole('heading', { name: 'Goal overview', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Archive selected', exact: true })).toHaveCount(0);
   await expect(page.getByRole('checkbox')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Expand row' })).toHaveCount(0);
   await expect(page.getByText('Execution requirements', { exact: true })).toBeVisible();
@@ -366,6 +367,7 @@ test('searches complete prompts and sorts locally while preserving the view thro
   const row = page.getByRole('link', { name: 'Alpha task', exact: true }).locator('xpath=ancestor::tr');
   await row.getByRole('link', { name: 'Goal overview', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Goal overview', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Archive selected', exact: true })).toHaveCount(0);
   await page.getByRole('link', { name: 'Back to Goals', exact: true }).click();
   await expect(page).toHaveURL(listURL);
   await expect(search).toHaveValue('common task');
@@ -397,3 +399,65 @@ for (const cellName of ['self', 'platform']) {
 }
 
 test.beforeEach(async ({ page }) => { await mockCells(page, ['platform', 'alpha', 'beta', 'gamma', 'self']); });
+
+for (const compact of [false, true]) for (const view of ['', '?view=all']) {
+  test(`archives finished selections with accessible progress and recovery: compact=${compact} view=${view || 'inbox'}`, async ({ page, context, baseURL }) => {
+    if (compact) await page.setViewportSize({ width: 390, height: 844 });
+    await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+    const jobs = [
+      { ...jobIdentity, job_id: 'finished', status: 'COMPLETED', completion_status: 'success', store: 'ACTIVE' },
+      { ...jobIdentity, job_id: 'failed', status: 'COMPLETED', completion_status: 'failed_app', store: 'ACTIVE' },
+      { ...jobIdentity, job_id: 'ready', status: 'READY', store: 'ACTIVE' },
+    ];
+    const changes: string[] = [];
+    let release!: () => void;
+    const deferred = new Promise<void>(resolve => { release = resolve; });
+    let fail = true;
+    await page.route('**/api/projects/archive-ui/jobs?*', route => route.fulfill({ json: { jobs } }));
+    await page.route('**/api/projects/archive-ui/jobs/*', async route => {
+      expect(route.request().method()).toBe('DELETE');
+      const id = new URL(route.request().url()).pathname.split('/').at(-1)!;
+      changes.push(id);
+      await deferred;
+      await route.fulfill(id === 'failed' && fail ? { status: 503, body: 'Try again' } : { status: 204 });
+    });
+    await page.goto('/project/archive-ui/goals' + view);
+    await page.getByRole('checkbox', { name: 'Select job finished', exact: true }).check();
+    await page.getByRole('checkbox', { name: 'Select job failed', exact: true }).check();
+    const archive = page.getByRole('button', { name: 'Archive selected', exact: true });
+    await archive.focus();
+    await archive.press('Enter');
+    await expect.poll(() => changes.length).toBe(2);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByRole('status')).toHaveText('Archiving jobs…');
+    await expect(archive).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Cancel selected', exact: true })).toBeDisabled();
+    release();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText('Try again');
+    await expect(page.getByRole('checkbox', { name: 'Select job finished', exact: true })).not.toBeChecked();
+    expect(changes).toEqual(['finished', 'failed']);
+    fail = false;
+    await dialog.getByRole('button', { name: 'Archive job', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(changes).toEqual(['finished', 'failed', 'failed']);
+    await page.getByRole('checkbox', { name: 'Select job ready', exact: true }).check();
+    await archive.click();
+    await expect(dialog).toBeVisible();
+    expect(changes).toHaveLength(3);
+    await dialog.getByRole('button', { name: 'Keep jobs', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(archive).toBeFocused();
+    expect(changes).toHaveLength(3);
+    // Closing immediate recovery is also explicit and sends no new request.
+    await page.getByRole('checkbox', { name: 'Select job ready', exact: true }).uncheck();
+    await page.getByRole('checkbox', { name: 'Select job failed', exact: true }).check();
+    fail = true;
+    await archive.click();
+    await expect(dialog).toContainText('Try again');
+    await dialog.getByRole('button', { name: 'Close', exact: true }).filter({ hasText: /^Close$/ }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(archive).toBeFocused();
+    expect(changes).toEqual(['finished', 'failed', 'failed', 'failed']);
+  });
+}

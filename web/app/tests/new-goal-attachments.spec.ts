@@ -13,13 +13,12 @@ test('ATT-018 ATT-020 ATT-035 creates a goal with persisted file bytes', async (
  await dialog.getByRole('combobox', { name: 'Cell', exact: true }).click();
  await page.getByTitle(`${cell.name} · ${cell.repo}`, { exact: true }).click();
  const picker = dialog.getByRole('button', { name: 'Attach files' });
- await picker.focus();
  const chooserEvent = page.waitForEvent('filechooser');
- await page.keyboard.press('Enter');
+ await picker.press('Enter');
  const chooser = await chooserEvent;
  await chooser.setFiles({ name: 'requirements.bin', mimeType: 'application/octet-stream', buffer: Buffer.from([0, 255, 1, 2]) });
  const remove = dialog.getByRole('button', { name: 'Remove requirements.bin' });
- await remove.focus(); await page.keyboard.press('Enter');
+ await remove.press('Enter');
  await expect(remove).toHaveCount(0);
  const uploads = [
   { name: 'requirements.bin', mimeType: 'application/octet-stream', buffer: Buffer.from([0, 255, 1, 2]) },

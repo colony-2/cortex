@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RecipeJob } from '@colony2/shared/types';
-import { jobStatus, jobStatusOptions } from './jobStatus';
+import { jobStatus, jobStatusOptions, canArchiveImmediately } from './jobStatus';
 import { jobFilterSearch, nextFilterSelection, readJobFilters } from './jobFilters';
 
 const job: RecipeJob = {
@@ -84,4 +84,10 @@ describe('job display status', () => {
     expect(nextFilterSelection(['alpha', 'beta'], ['alpha', 'beta'], ['alpha'])).toBeNull();
     expect(nextFilterSelection([], ['alpha', 'beta'], null)).toEqual([]);
   });
+});
+
+it('fails closed for empty or unresolved selected summaries', () => {
+  expect(canArchiveImmediately([], [job])).toBe(false);
+  expect(canArchiveImmediately(['missing'], [job])).toBe(false);
+  expect(canArchiveImmediately(['job', 'missing'], [{ ...job, completion_status: 'success' }])).toBe(false);
 });

@@ -10,16 +10,19 @@ interface Props {
   action: JobAction;
   onClose: () => void;
   onComplete: (succeeded: string[]) => void | Promise<void>;
+  immediate?: boolean;
   onBusyChange?: (busy: boolean) => void;
 }
 
 // Mount a fresh dialog for each action so its confirmed IDs cannot change with
 // filtering, selection, or a background list refresh.
-export default function JobActionDialog({ projectId, jobIds, action, onClose, onComplete, onBusyChange }: Props) {
+export default function JobActionDialog({ projectId, jobIds, action, onClose, onComplete, onBusyChange, immediate = false }: Props) {
   const trigger = useRef(document.activeElement as HTMLElement | null);
   useEffect(() => () => {
     if (trigger.current?.isConnected) trigger.current.focus({ preventScroll: true });
   }, []);
+  const started = useRef(false);
+  const submitting = useRef(false);
   const [pending, setPending] = useState(jobIds);
   const [busy, setBusy] = useState(false);
   const [failures, setFailures] = useState<{ id: string; error: string }[]>([]);
@@ -27,7 +30,8 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
   const label = `${verb} ${pending.length === 1 ? 'job' : `${pending.length} jobs`}`;
 
   const submit = async () => {
-    if (busy || !pending.length) return;
+    if (submitting.current || !pending.length) return;
+    submitting.current = true;
     setBusy(true);
     onBusyChange?.(true);
     const succeeded: string[] = [];
@@ -54,14 +58,24 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
       }
       if (!failed.length) onClose();
     } finally {
+      submitting.current = false;
       setBusy(false);
       onBusyChange?.(false);
     }
   };
 
-  return <Modal open title={`${label}?`} okText={label} cancelText="Keep jobs"
+  useEffect(() => {
+    if (immediate && !started.current) {
+      started.current = true;
+      void submit();
+    }
+  }, []); // The mounted operation is an immutable click-time snapshot.
+
+  if (immediate && !failures.length) return <span role="status" aria-live="polite">Archiving jobs…</span>;
+
+  return <Modal open title={failures.length ? `${verb} failed jobs` : `${label}?`} okText={label} cancelText={failures.length ? "Close" : "Keep jobs"}
     onOk={submit} onCancel={onClose} closable={!busy} maskClosable={!busy} keyboard={!busy}
-    okButtonProps={{ danger: true, loading: busy, disabled: !pending.length, 'aria-label': label }}
+    okButtonProps={{ danger: true, loading: busy, disabled: busy || !pending.length, 'aria-label': label }}
     cancelButtonProps={{ disabled: busy }}>
     <Space direction="vertical" style={{ width: '100%' }}>
       <Typography.Paragraph>
@@ -73,7 +87,7 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
         {pending.map(id => <li key={id}>{id}</li>)}
       </ul>
       {failures.length > 0 && <Alert type="error" showIcon message={`${failures.length} job operation${failures.length === 1 ? '' : 's'} failed`}
-        description={<><p>Only the failed jobs remain selected. Confirm again to retry.</p>
+        description={<><p>Only the failed jobs remain selected. Retry to complete the operation.</p>
           {failures.map(failure => <div key={failure.id} style={{ overflowWrap: 'anywhere' }}><strong>{failure.id}:</strong> {failure.error}</div>)}
         </>} />}
     </Space>

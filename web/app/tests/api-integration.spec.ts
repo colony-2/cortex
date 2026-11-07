@@ -9,7 +9,7 @@ import { jobIdentity, registerCell } from './helpers/cells';
 import { fixtureGitTransport } from './helpers/gitTransport';
 
 for (const width of [1440, 390]) {
-test(`confirms cancellation on job details and bulk cancel/archive at ${width}px`, async ({ page, request, context, baseURL }) => {
+test(`confirms cancellation and active archive, immediately archives cancelled jobs at ${width}px`, async ({ page, request, context, baseURL }) => {
   await page.setViewportSize({ width, height: 844 });
   const tenant = `actions-${randomUUID()}`;
   await registerCell(request, tenant);
@@ -46,21 +46,27 @@ test(`confirms cancellation on job details and bulk cancel/archive at ${width}px
   await expect(dialog).not.toBeVisible();
   for (const id of ['bulk-one', 'bulk-two']) {
     expect((await (await request.get(`${base}/${id}`)).json()).status).toBe('CANCELLED');
+    await expect(page.getByRole('link', { name: `Job ${id}: Cancelled`, exact: true })).toBeVisible();
     await page.getByRole('checkbox', { name: `Select job ${id}`, exact: true }).check();
   }
+  // A Ready member still requires confirmation for the entire selection.
+  await page.getByRole('checkbox', { name: 'Select job untouched', exact: true }).check();
   await page.getByRole('button', { name: 'Archive selected' }).click();
   await expect(dialog.getByText(/History and artifacts remain available/)).toBeVisible();
   await dialog.getByRole('button', { name: 'Keep jobs' }).click();
   expect((await (await request.get(`${base}?status=all`)).json()).jobs).toHaveLength(4);
+  expect(mutations).toHaveLength(3); // Keeping jobs must not send any DELETE.
+  await page.getByRole('checkbox', { name: 'Select job untouched', exact: true }).uncheck();
+  // All remaining selections are now cancelled: no second confirmation click.
   await page.getByRole('button', { name: 'Archive selected' }).click();
-  await dialog.getByRole('button', { name: 'Archive 2 jobs', exact: true }).click();
-  await expect(dialog).not.toBeVisible();
+  await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'bulk-one', exact: true })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'bulk-two', exact: true })).toHaveCount(0);
   const remaining = (await (await request.get(`${base}?status=all`)).json()).jobs;
   expect(remaining.map((job: { job_id: string }) => job.job_id).sort()).toEqual(['detail-job', 'untouched']);
   expect(remaining.find((job: { job_id: string }) => job.job_id === 'untouched').status).toBe('READY');
   expect(mutations).toHaveLength(5);
+  expect(mutations.slice(3).sort()).toEqual([`${base}/bulk-one`, `${base}/bulk-two`]);
   const visibility = page.getByLabel('Job visibility', { exact: true });
   await expect(visibility).toHaveValue('inbox');
   await visibility.selectOption('all');

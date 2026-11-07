@@ -928,3 +928,36 @@ describe('MAL node-local navigation', () => {
     expect(mock.mock.calls.at(-1)?.[0]).toContain('/tasks/2/artifacts/docs%2Ffoo.md');
   });
 });
+
+it('keeps story cancellation confirmed by default and retries only after an explicit action', async () => {
+  const response = { ...story, status: 'running' };
+  const transport = mount('', response);
+  const changes: string[] = [];
+  let fail = true;
+  transport.mockImplementation(async (input: string, init?: RequestInit) => {
+    if (init?.method === 'POST') {
+      changes.push(new URL(input, 'http://localhost').pathname);
+      return fail
+        ? { ok: false, status: 503, text: async () => 'Cancellation unavailable' }
+        : { ok: true, status: 204 };
+    }
+    return { ok: true, json: async () => response };
+  });
+  const trigger = await screen.findByRole('button', { name: 'Cancel job', exact: true });
+  fireEvent.click(trigger);
+  let dialog = screen.getByRole('dialog');
+  expect(changes).toEqual([]);
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Keep jobs', exact: true }));
+  expect(changes).toEqual([]);
+  fireEvent.click(trigger);
+  dialog = screen.getByRole('dialog');
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel job', exact: true }));
+  await within(dialog).findByText(/Cancellation unavailable/);
+  await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Cancel job', exact: true })).toBeEnabled());
+  expect(changes).toEqual(['/api/projects/tenant/jobs/job/cancel']);
+  fail = false;
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel job', exact: true }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(changes).toEqual(['/api/projects/tenant/jobs/job/cancel', '/api/projects/tenant/jobs/job/cancel']);
+  expect(trigger).toBeDisabled();
+});

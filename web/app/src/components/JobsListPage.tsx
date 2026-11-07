@@ -7,7 +7,7 @@ import type { ColumnsType, TableProps } from 'antd/es/table';
 import type { SortOrder } from 'antd/es/table/interface';
 import { getCell, getJob, listJobs } from '@colony2/shared/api';
 import type { RecipeJobSummary } from '@colony2/shared/types';
-import { jobStatus, jobStatusOptions } from '../utils/jobStatus';
+import { jobStatus, jobStatusOptions, canArchiveImmediately } from '../utils/jobStatus';
 import { jobTime } from './JobListDetails';
 import GoalJobOverview, { AttemptStatus } from './GoalJobOverview';
 import { abbreviatePrompt, jobTimestamp, latestActiveJob } from '../utils/goalPresentation';
@@ -49,7 +49,15 @@ function JobsList({ projectId, goalId }: Props) {
   const [controlsOpen, setControlsOpen] = useState(false);
   const [submitOpen, setSubmitOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [operation, setOperation] = useState<{ action: JobAction; jobIds: string[] } | null>(null);
+  const [operation, setOperation] = useState<{ action: JobAction; jobIds: string[]; immediate: boolean } | null>(null);
+  const operationActive = useRef(false);
+  const [operationBusy, setOperationBusy] = useState(false);
+  const startOperation = (action: JobAction) => {
+    if (operationActive.current || loading || !selectedIds.length) return;
+    operationActive.current = true;
+    const jobIds = [...selectedIds];
+    setOperation({ action, jobIds, immediate: action === 'archive' && canArchiveImmediately(jobIds, jobs) });
+  };
   const [refresh, setRefresh] = useState(0);
   const registry = useCells(projectId, 'ALL', refresh);
   const loadVersion = useRef(0);
@@ -253,8 +261,8 @@ function JobsList({ projectId, goalId }: Props) {
         <div className="goal-list-actions">
           {(!compact || selectedIds.length > 0) && <Space wrap>
             <Text>{selectedIds.length} selected</Text>
-            <Button danger disabled={loading || !selectedIds.length} onClick={() => setOperation({ action: 'cancel', jobIds: selectedIds })}>Cancel selected</Button>
-            <Button danger disabled={loading || !selectedIds.length} onClick={() => setOperation({ action: 'archive', jobIds: selectedIds })}>Archive selected</Button>
+            <Button danger disabled={loading || !!operation || !selectedIds.length} onClick={() => startOperation('cancel')}>Cancel selected</Button>
+            <Button danger aria-busy={operation?.action === 'archive' && operationBusy || undefined} disabled={loading || !!operation || !selectedIds.length} onClick={() => startOperation('archive')}>Archive selected</Button>
             {!!selectedIds.length && <Button onClick={() => setSelectedIds([])}>Clear selection</Button>}
           </Space>}
           <div hidden={compact && !controlsOpen} className="goal-search-control"><Input className="goal-search" aria-label="Search goals" placeholder="Search full prompts" prefix={<SearchOutlined aria-hidden />} allowClear value={search}
@@ -320,7 +328,7 @@ function JobsList({ projectId, goalId }: Props) {
         {nextPage && <Button disabled={loading} onClick={() => changeQuery(query => { query.set('pageToken', nextPage); })}>Next jobs</Button>}
       </Space>
     </Space>
-    {operation && <JobActionDialog projectId={projectId} {...operation} onClose={() => setOperation(null)} onComplete={async succeeded => {
+    {operation && <JobActionDialog projectId={projectId} {...operation} onBusyChange={setOperationBusy} onClose={() => { operationActive.current = false; setOperation(null); }} onComplete={async succeeded => {
       setSelectedIds(previous => previous.filter(id => !succeeded.includes(id))); setRefresh(value => value + 1);
     }} />}
     {submitOpen && <NewGoalDialog projectId={projectId} filters={filters.cell} onClose={() => setSubmitOpen(false)} onCreated={id => {

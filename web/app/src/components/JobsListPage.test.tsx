@@ -542,3 +542,173 @@ it('groups only primary membership while honoring a server-filtered secondary go
   await waitFor(() => expect(getJob).toHaveBeenCalledExactlyOnceWith('tenant', 'member'));
   expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('goal=secondary'))).toBe(true);
 });
+
+const archiveCases = [
+  ...['failed_app', 'failed_system', 'success', 'cancelled'].map(completion_status => ({
+    status: 'COMPLETED', store: 'ACTIVE', completion_status, immediate: true,
+  })),
+  ...['ACTIVE', 'READY', 'PENDING_JOBS', 'AWAITING_FUTURE', 'EXPIRED', 'CRASH_CONCERN', 'FUTURE_STATE'].map(status => ({
+    status, store: 'ACTIVE', immediate: false,
+  })),
+  ...['failed_timeout', 'future_outcome', ''].map(completion_status => ({
+    status: 'COMPLETED', store: 'ACTIVE', completion_status, immediate: false,
+  })),
+  { status: 'ACTIVE', store: 'ACTIVE', completion_status: 'failed_app', immediate: false },
+  { status: 'ACTIVE', store: 'ACTIVE', completion_status: 'failed_system', immediate: false },
+  { status: 'CANCELLED', store: 'ACTIVE', cancel_requested: true, immediate: false },
+];
+
+it.each(archiveCases)('uses effective status for archive: %j', async ({ immediate, ...state }) => {
+  const jobs = [{ ...jobIdentity, job_id: 'target', ...state }];
+  const changes: string[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+    if (init?.method === 'DELETE') { changes.push(input); return { ok: true, status: 204 }; }
+    return new Response(JSON.stringify({ jobs }));
+  }));
+  render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
+  expect(screen.getByRole('button', { name: 'Archive selected' })).toBeDisabled();
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Select job target' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Archive selected' }));
+  if (immediate) {
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(changes).toHaveLength(1));
+    await waitFor(() => expect(screen.getByText('0 selected')).toBeVisible());
+  } else {
+    const dialog = screen.getByRole('dialog');
+    expect(changes).toEqual([]);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Archive job', exact: true }));
+    await waitFor(() => expect(changes).toHaveLength(1));
+  }
+  expect(new URL(changes[0], 'http://localhost').pathname).toBe('/api/projects/tenant/jobs/target');
+  expect(getJob).not.toHaveBeenCalled();
+});
+
+it.each([false, true])('recovers immediate archive failures without automatic retry (total=%s)', async total => {
+  const jobs = ['first', 'second', 'untouched'].map(job_id => ({ ...jobIdentity, job_id, status: 'COMPLETED', completion_status: 'success', store: 'ACTIVE' }));
+  const changes: string[] = [];
+  let fail = true;
+  let reads = 0;
+  vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+    if (init?.method === 'DELETE') {
+      const id = input.split('/').at(-1)!;
+      changes.push(id);
+      if (fail && (total || id === 'second')) return { ok: false, status: 503, text: async () => 'archive unavailable' };
+      return { ok: true, status: 204 };
+    }
+    reads++;
+    return new Response(JSON.stringify({ jobs }));
+  }));
+  render(<StrictMode><MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter></StrictMode>);
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Select job first' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select job second' }));
+  const button = screen.getByRole('button', { name: 'Archive selected' });
+  act(() => { fireEvent.click(button); fireEvent.click(button); });
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  const dialog = await screen.findByRole('dialog');
+  expect(await within(dialog).findAllByText(/archive unavailable/)).toHaveLength(total ? 2 : 1);
+  expect(changes).toEqual(['first', 'second']);
+  expect(screen.getByRole('button', { name: 'Cancel selected' })).toBeDisabled();
+  const retryName = total ? 'Archive 2 jobs' : 'Archive job';
+  fireEvent.click(within(dialog).getByRole('button', { name: retryName, exact: true }));
+  await waitFor(() => expect(changes).toHaveLength(total ? 4 : 3));
+  await waitFor(() => expect(within(dialog).getByRole('button', { name: retryName, exact: true })).toBeEnabled());
+  fail = false;
+  fireEvent.click(within(dialog).getByRole('button', { name: retryName, exact: true }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(changes).toEqual(total ? ['first', 'second', 'first', 'second', 'first', 'second'] : ['first', 'second', 'second', 'second']);
+  expect(screen.getByText('0 selected')).toBeVisible();
+  expect(reads).toBeGreaterThan(1);
+});
+
+it('bounds immediate batches and keeps targets fixed through selection and filter changes', async () => {
+  const jobs = Array.from({ length: 8 }, (_, i) => ({ ...jobIdentity, job_id: String(i), status: 'COMPLETED', store: 'ACTIVE',
+    completion_status: ['success', 'failed_app', 'failed_system', 'cancelled'][i % 4] }));
+  const changes: string[] = [];
+  const release: (() => void)[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+    if (init?.method === 'DELETE') {
+      changes.push(input.split('/').at(-1)!);
+      await new Promise<void>(resolve => release.push(resolve));
+      return { ok: true, status: 204 };
+    }
+    return new Response(JSON.stringify({ jobs }));
+  }));
+  render(<StrictMode><MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter></StrictMode>);
+  await screen.findByRole('checkbox', { name: 'Select job 0' });
+  for (let i = 0; i < 7; i++) fireEvent.click(screen.getByRole('checkbox', { name: `Select job ${i}` }));
+  fireEvent.click(screen.getByRole('button', { name: 'Archive selected' }));
+  await waitFor(() => expect(changes).toHaveLength(5));
+  expect(vi.mocked(fetch).mock.calls.filter(([, init]) => !init?.method || init.method === 'GET')).toHaveLength(1);
+  expect(screen.getByRole('status')).toHaveTextContent('Archiving jobs');
+  expect(screen.getByRole('button', { name: 'Cancel selected' })).toBeDisabled();
+  jobs[0].status = 'ACTIVE';
+  fireEvent.click(screen.getAllByRole('button', { name: 'Refresh', exact: true })[0]);
+  await screen.findByRole('link', { name: 'Job 0: Running', exact: true });
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select job 7' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search goals' }), { target: { value: 'missing' } });
+  await act(async () => { release.splice(0).forEach(resolve => resolve()); });
+  await waitFor(() => expect(changes).toHaveLength(7));
+  expect(changes).toEqual(['0', '1', '2', '3', '4', '5', '6']);
+  await act(async () => { release.splice(0).forEach(resolve => resolve()); });
+  await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+  expect(await screen.findByText('Archived 7 jobs')).toBeVisible();
+  expect(getJob).not.toHaveBeenCalled();
+});
+
+it.each([true, false])('checks every grouped attempt (eligible=%s)', async eligible => {
+  const jobs = [
+    { ...jobIdentity, job_id: 'new', goal_id: 'group', status: 'COMPLETED', store: 'ACTIVE', completion_status: 'success', created_at: '2026-11-01' },
+    { ...jobIdentity, job_id: 'old', goal_id: 'group', status: eligible ? 'COMPLETED' : 'READY', store: 'ACTIVE', completion_status: eligible ? 'failed_app' : undefined, created_at: '2026-10-01' },
+  ];
+  const changes: string[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+    if (init?.method === 'DELETE') { changes.push(input.split('/').at(-1)!); return { ok: true, status: 204 }; }
+    return new Response(JSON.stringify({ jobs }));
+  }));
+  render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('checkbox', { name: /Select attempts for/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Archive selected' }));
+  if (eligible) {
+    await waitFor(() => expect(changes).toEqual(['new', 'old']));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  } else {
+    expect(screen.getByRole('dialog')).toBeVisible();
+    expect(changes).toEqual([]);
+  }
+});
+
+it('keeps confirmation targets fixed after filters change', async () => {
+  const jobs = ['captured', 'other'].map(job_id => ({ ...jobIdentity, job_id, status: 'READY', store: 'ACTIVE' }));
+  const changes: string[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+    if (init?.method === 'DELETE') { changes.push(input.split('/').at(-1)!); return { ok: true, status: 204 }; }
+    return new Response(JSON.stringify({ jobs }));
+  }));
+  render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Select job captured' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Archive selected' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search goals' }), { target: { value: 'missing' } });
+  expect(changes).toEqual([]);
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Archive job', exact: true }));
+  await waitFor(() => expect(changes).toEqual(['captured']));
+});
+
+it('archives only the eligible attempt individually selected within a mixed group', async () => {
+  const jobs = [
+    { ...jobIdentity, job_id: 'finished', goal_id: 'group', status: 'COMPLETED', store: 'ACTIVE', completion_status: 'success' },
+    { ...jobIdentity, job_id: 'running', goal_id: 'group', status: 'ACTIVE', store: 'ACTIVE' },
+  ];
+  const changes: string[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+    if (init?.method === 'DELETE') { changes.push(input.split('/').at(-1)!); return { ok: true, status: 204 }; }
+    return new Response(JSON.stringify({ jobs }));
+  }));
+  render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('button', { name: 'Expand row' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select job finished', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Archive selected' }));
+  await waitFor(() => expect(changes).toEqual(['finished']));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
