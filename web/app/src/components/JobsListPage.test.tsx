@@ -141,7 +141,7 @@ it('shows restored fields immediately and inspects only after expansion', async 
   expect(getJob).not.toHaveBeenCalled();
   expect(screen.queryByText('COMPLETED')).not.toBeInTheDocument();
   const row = screen.getByRole('link', { name: 'Job failed-job: Failed (system)' }).closest('tr')!;
-  fireEvent.click(within(row).getByRole('button', { name: 'Expand row' }));
+  fireEvent.click(within(row).getByRole('button', { name: 'Expand goal details' }));
   expect(await screen.findByRole('link', { name: 'View parent execution' })).toHaveAttribute('href', '/project/parent-tenant/jobs/parent-job/story');
   expect(screen.getByRole('link', { name: 'Dependency 1' })).toHaveAttribute('href', '/project/tenant/jobs/dependency-job/story?executionState=cells-v1&expanded=job%3Afailed-job');
   fireEvent.click(screen.getByText('Technical details'));
@@ -224,6 +224,14 @@ it('searches full prompts across attempts without fetching and clears hidden sel
   fireEvent.change(search, { target: { value: '' } });
   expect(screen.getByRole('link', { name: 'Different work', exact: true })).toBeVisible();
   expect(screen.getByRole('link', { name: 'Untitled goal', exact: true })).toBeVisible();
+  const missingRow = screen.getByRole('link', { name: 'Untitled goal', exact: true }).closest('tr')!;
+  const missingCells = within(missingRow).getAllByRole('cell');
+  expect(missingCells).toHaveLength(6);
+  expect(within(missingCells[0]).getByRole('checkbox')).not.toBeChecked();
+  expect(missingCells[4]).toHaveTextContent('—');
+  expect(within(missingCells[5]).getAllByRole('link')).toHaveLength(1);
+  expect(within(missingCells[5]).getByRole('link')).toHaveAttribute('href', 'https://github.com/acme/platform');
+
   // Sorting pushes a history entry; changing search replaces only that entry.
   // Going back must also clear selection, even though the input did not fire.
   fireEvent.click(screen.getByRole('columnheader', { name: /^Goal/ }));
@@ -359,7 +367,7 @@ it('groups attempts and restores expanded details through goal navigation and br
   const first = (await screen.findByRole('link', { name: 'Build a useful feature', exact: true })).closest('tr')!;
   expect(screen.getAllByRole('link', { name: 'Build a useful feature' })).toHaveLength(1);
   expect(screen.queryByText('goal-b')).not.toBeInTheDocument();
-  fireEvent.click(within(first).getByRole('button', { name: 'Expand row' }));
+  fireEvent.click(within(first).getByRole('button', { name: 'Expand goal details' }));
   fireEvent.click(await screen.findByText('Execution requirements'));
   expect(within(screen.getByText('Execution requirements').closest('details')!).getByText(/"cpu": 4/)).toBeVisible();
   expect(fetch).toHaveBeenCalledTimes(1);
@@ -367,7 +375,7 @@ it('groups attempts and restores expanded details through goal navigation and br
   fireEvent.click(within(first).getByRole('link', { name: 'Goal overview' }));
   await screen.findByRole('heading', { name: 'Goal overview', exact: true });
   expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Expand row' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Expand goal details' })).not.toBeInTheDocument();
   expect(await screen.findByText('Execution requirements')).toBeVisible();
   expect(fetch.mock.calls.some(([input]) => {
     const query = new URL(input).searchParams;
@@ -400,7 +408,7 @@ it('uses compact wait indicators until dependency targets are inspected', async 
     ],
   } } as RecipeJob);
   const row = screen.getByRole('link', { name: 'Job waiting: Waiting for jobs' }).closest('tr')!;
-  fireEvent.click(within(row).getByRole('button', { name: 'Expand row' }));
+  fireEvent.click(within(row).getByRole('button', { name: 'Expand goal details' }));
   expect(await screen.findByRole('link', { name: 'Goal 1' })).toHaveAttribute('href', '/project/tenant/goals/target-goal');
   expect(screen.getByRole('link', { name: 'Execution 2' })).toHaveAttribute('href', '/project/tenant/jobs/target-job/story');
   expect(getJob).toHaveBeenCalledExactlyOnceWith('tenant', 'waiting');
@@ -432,7 +440,7 @@ it.each(['self', 'platform'])('uses explicit cell identity in list and attempts 
   const row = (await screen.findByRole('link', { name: 'Goal prompt', exact: true })).closest('tr')!;
   const label = cell_name;
   expect(within(row).getByText(label, { exact: true })).toBeVisible();
-  fireEvent.click(within(row).getByRole('button', { name: 'Expand row' }));
+  fireEvent.click(within(row).getByRole('button', { name: 'Expand goal details' }));
   const attempts = await screen.findByRole('region', { name: 'Attempts' });
   expect(within(attempts).getAllByText(label, { exact: true })).toHaveLength(2);
 });
@@ -520,11 +528,11 @@ it('inspects only visible selections, revalidates on refresh/reopen, and ignores
   fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   await waitFor(() => expect(getJob).toHaveBeenCalledTimes(3));
   expect(getJob).toHaveBeenLastCalledWith('tenant', 'second');
-  fireEvent.click(screen.getByRole('button', { name: 'Collapse row' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse goal details' }));
   fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Expand row' })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Expand goal details' })).toBeEnabled());
   expect(getJob).toHaveBeenCalledTimes(3);
-  fireEvent.click(screen.getByRole('button', { name: 'Expand row' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Expand goal details' }));
   await waitFor(() => expect(getJob).toHaveBeenCalledTimes(4));
   expect(getJob).toHaveBeenLastCalledWith('tenant', 'second');
 });
@@ -560,6 +568,8 @@ it('keeps collapsed summaries compact and follows an empty page cursor in Strict
   expect(requests).toHaveLength(2);
   expect(requests[1].url.searchParams.get('pageToken')).toBe('empty');
   expect(screen.getByRole('button', { name: 'Next jobs' })).toBeDisabled();
+  expect(screen.getByRole('checkbox', { name: 'Select job job-2' })).toBeDisabled();
+
   await act(async () => { requests[1].resolve(new Response(JSON.stringify({ jobs: [], next_page_token: 'last' }))); });
   expect(screen.queryByRole('checkbox', { name: 'Select job job-2' })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Next jobs' })).toBeEnabled();
@@ -748,8 +758,20 @@ it('archives only the eligible attempt individually selected within a mixed grou
     return new Response(JSON.stringify({ jobs }));
   }));
   render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('button', { name: 'Expand row' }));
+  const groupSelection = await screen.findByRole('checkbox', { name: 'Select attempts for Untitled goal', exact: true });
+  fireEvent.click(groupSelection);
+  expect(screen.getByText('2 selected')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
+  const selectAll = within(screen.getAllByRole('columnheader')[0]).getByRole('checkbox');
+  fireEvent.click(selectAll);
+  expect(screen.getByText('2 selected')).toBeVisible();
+  fireEvent.click(selectAll);
+  expect(screen.getByText('0 selected')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Expand goal details' }));
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select job finished', exact: true }));
+  expect(groupSelection).not.toBeChecked();
+  expect(groupSelection).toBePartiallyChecked();
+
   fireEvent.click(screen.getByRole('button', { name: 'Archive selected' }));
   await waitFor(() => expect(changes).toEqual(['finished']));
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

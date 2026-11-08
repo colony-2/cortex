@@ -47,6 +47,10 @@ test('phone filters, ordering, selection, history, and responsive state share on
   page.on('request', request => { if (/\/jobs(?:\?|\/[^/]+$)/.test(request.url())) reads.push(request.url()); });
   await page.goto('/project/phone/goals');
   await expect(page.locator('.goal-card')).toHaveCount(2);
+  const card = page.locator('.goal-card').filter({ has: page.getByRole('link', { name: /^Build a reliable dashboard/ }) });
+  await expect(card.locator('.goal-card-meta').getByRole('link')).toHaveCount(1);
+  await expect(card.locator('.goal-card-meta').getByRole('link')).toHaveAttribute('aria-label', /^Job .*: /);
+  await expect(card.locator('.goal-card-meta')).not.toContainText('Build a reliable dashboard');
   await expect(page.getByText('2 attempts on this page')).toBeVisible();
   await filter(page, 'Filter cells', []);
   await expect(page.getByText('No cells selected')).toBeVisible();
@@ -65,6 +69,8 @@ test('phone filters, ordering, selection, history, and responsive state share on
   await page.getByRole('checkbox', { name: 'Select all goals on this page', exact: true }).check();
   await expect(page.getByText('3 selected', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Expand goal details' }).first().click();
+  await expect(card.locator('.goal-card-secondary')).toContainText('Submitted:');
+  await expect(card.locator('.goal-card-secondary')).toContainText('Links:');
   const attempts = page.getByRole('region', { name: 'Attempts', exact: true });
   await expect(attempts.getByRole('button', { name: 'Details', exact: true })).toHaveCount(2);
   await attempts.getByRole('button', { name: 'Details', exact: true }).last().click();

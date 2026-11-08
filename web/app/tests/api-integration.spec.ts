@@ -186,14 +186,14 @@ test('creates a prompt-only goal and restores expanded list state through naviga
   await expect(page.getByRole('heading', { name: 'Goal overview', exact: true })).toBeVisible();
   await expect(page.getByText(prompt, { exact: true })).toBeVisible();
   await expect(page.getByRole('checkbox')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Expand row' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Expand goal details' })).toHaveCount(0);
   await page.getByRole('link', { name: 'Back to Goals', exact: true }).click();
   const abbreviated = `${prompt.slice(0, 75).trimEnd()}...`;
   const name = page.getByRole('link', { name: abbreviated, exact: true });
   await expect(name).toBeVisible();
   await expect(name).toHaveCSS('text-decoration-line', 'none');
   const row = name.locator('xpath=ancestor::tr');
-  await row.getByRole('button', { name: 'Expand row', exact: true }).click();
+  await row.getByRole('button', { name: 'Expand goal details', exact: true }).click();
   await page.getByText('Execution requirements', { exact: true }).click();
   const detailURL = page.url();
   await name.click();
@@ -209,7 +209,7 @@ test('creates a prompt-only goal and restores expanded list state through naviga
   await expect(page.getByRole('region', { name: 'Job prompt' }).locator('div.ant-typography')).toHaveText(prompt);
   await page.getByRole('link', { name: 'Goal overview', exact: true }).click();
   await expect(page).toHaveURL(goalURL);
-  await expect(page.getByRole('button', { name: 'Expand row' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Expand goal details' })).toHaveCount(0);
   await page.getByRole('link', { name: 'Open execution', exact: true }).click();
   await page.getByRole('button', { name: 'Back to Goals' }).click();
   await expect(page).toHaveURL(detailURL);

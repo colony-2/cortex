@@ -173,21 +173,24 @@ function JobsList({ projectId, goalId }: Props) {
   const columns: ColumnsType<Row> = [
     { title: 'Cell', key: 'cell', width: 140, sorter: (a, b) => cellLabel(a.job.cell_name).localeCompare(cellLabel(b.job.cell_name)), sortOrder: sortOrder('cell'),
       ...checkboxFilter('Filter cells', cellOptions, filters.cell), render: (_, { job }) => cellLabel(job.cell_name) },
-    { title: 'Status', key: 'status', width: 180,
-      sorter: (a, b) => jobStatus(a.job).label.localeCompare(jobStatus(b.job).label), sortOrder: sortOrder('status'),
-      ...checkboxFilter('Filter statuses', statusOptions, filters.status),
-      render: (_, { job, group }) => <Link className="compact-touch-link" to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)} aria-label={`Job ${job.job_id}: ${jobStatus(job).label}`}><AttemptStatus job={job} /></Link> },
-    { title: 'Goal', key: 'prompt', sorter: (a, b) => (fullPrompt(a.group) || 'Untitled goal').localeCompare(fullPrompt(b.group) || 'Untitled goal'), sortOrder: sortOrder('prompt'), render: (_, { group, job }) => <Space direction="vertical" size={2}>
+    { title: 'Goal', key: 'prompt', sorter: (a, b) => (fullPrompt(a.group) || 'Untitled goal').localeCompare(fullPrompt(b.group) || 'Untitled goal'), sortOrder: sortOrder('prompt'), render: (_, row) => { const { group, job } = row; return <Space direction="vertical" size={2}>
+      <Space align="start">
+        <Button aria-label={`${isExpanded(row) ? 'Collapse' : 'Expand'} goal details`} aria-expanded={isExpanded(row)} icon={isExpanded(row) ? <UpOutlined /> : <DownOutlined />} onClick={event => { event.stopPropagation(); expand(!isExpanded(row), row); }} />
       <Link className="goal-prompt compact-touch-link" to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)}>
         {abbreviatePrompt(fullPrompt(group) || 'Untitled goal')}
       </Link>
+      </Space>
       {group.jobs.length > 1 && <Text type="secondary" className="goal-attempt-count">{group.jobs.length} attempts on this page</Text>}
       <JobWaitLinks job={job} projectId={projectId} />
       <JobCompletionMessage job={job} />
       <JobExecutionRequirements execution={job.execution} />
-    </Space> },
+    </Space>; } },
+    { title: 'Status', key: 'status', width: 180,
+      sorter: (a, b) => jobStatus(a.job).label.localeCompare(jobStatus(b.job).label), sortOrder: sortOrder('status'),
+      ...checkboxFilter('Filter statuses', statusOptions, filters.status),
+      render: (_, { job, group }) => <Link className="compact-touch-link" to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)} aria-label={`Job ${job.job_id}: ${jobStatus(job).label}`}><AttemptStatus job={job} /></Link> },
     { title: 'Submitted', key: 'submitted', width: 185, sorter: (a, b) => jobTimestamp(a.job) - jobTimestamp(b.job), sortOrder: sortOrder('submitted'), render: (_, { job }) => jobTime(job.submitted_at || job.created_at) || '—' },
-    { title: 'Links', width: 180, render: (_, { job, group }) => <Space direction="vertical" size={2}>
+    { title: 'Links', key: 'links', width: 180, render: (_, { job, group }) => <Space direction="vertical" size={2}>
       {group.goalId && <Link className="compact-touch-link" to={goalPath(projectId, group.goalId)} state={{ goalsReturnTo }}>Goal overview</Link>}
       {job.parent?.job_id && <Link className="compact-touch-link" to={jobPath(job.parent.tenant_id || projectId, job.parent.job_id)}>Parent</Link>}
       {job.repo && <RepositoryLink repo={job.repo} />}
@@ -292,13 +295,13 @@ function JobsList({ projectId, goalId }: Props) {
                 <Button aria-label={`${isExpanded(row) ? 'Collapse' : 'Expand'} goal details`} aria-expanded={isExpanded(row)} icon={isExpanded(row) ? <UpOutlined /> : <DownOutlined />} onClick={() => expand(!isExpanded(row), row)} />
               </div>
               <div className="goal-card-meta">
-                {columns[1].render?.(undefined, row, index) as React.ReactNode}
+                {columns.find(column => column.key === 'status')?.render?.(undefined, row, index) as React.ReactNode}
                 <Text type="secondary">{cellLabel(row.job.cell_name)}</Text>
                 {row.group.jobs.length > 1 && <Text type="secondary" className="goal-attempt-count">{row.group.jobs.length} attempts on this page</Text>}
               </div>
               <JobWaitLinks job={row.job} projectId={projectId} />
               {isExpanded(row) && <div className="goal-card-secondary">
-                {columns.slice(3).map((column, columnIndex) => <div key={columnIndex} className="goal-card-field"><Text type="secondary">{String(column.title)}: </Text>{column.render?.(undefined, row, index) as React.ReactNode}</div>)}
+                {columns.filter(column => column.key === 'submitted' || column.key === 'links').map((column, columnIndex) => <div key={columnIndex} className="goal-card-field"><Text type="secondary">{String(column.title)}: </Text>{column.render?.(undefined, row, index) as React.ReactNode}</div>)}
                 <JobCompletionMessage job={row.job} /><JobExecutionRequirements execution={row.job.execution} />
               </div>}
               {isExpanded(row) && details(row)}
@@ -320,7 +323,7 @@ function JobsList({ projectId, goalId }: Props) {
             expandedRowKeys: rows.filter(row => expanded.includes(row.key) || row.group.jobs.some(job => expanded.includes(job.job_id))).map(row => row.key),
             onExpand: expand,
             expandedRowRender: row => isExpanded(row) ? details(row) : null,
-            columnWidth: 40,
+            showExpandColumn: false,
           }} />}
       </>}
       <Space>

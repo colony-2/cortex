@@ -67,16 +67,24 @@ test('renders a single compact row or grouped attempts with metadata and waiting
   await expect(page.getByRole('link', { name: first.prompt, exact: true })).toHaveCount(1);
   await expect(page.getByRole('link', { name: 'Wait for deployment approval', exact: true })).toBeVisible();
   const row = page.getByRole('link', { name: first.prompt, exact: true }).locator('xpath=ancestor::tr');
-  // JC-011: inspect both actual headers and aligned values, excluding control columns.
-  const headers = page.getByRole('columnheader');
-  const labels = (await headers.allTextContents()).map(text => text.trim()).filter(Boolean);
-  expect(labels).toEqual(['Cell', 'Status', 'Goal', 'Submitted', 'Links']);
-  const values = row.locator('td:not(.ant-table-selection-column):not(.ant-table-row-expand-icon-cell)');
-  await expect(values.nth(0)).toHaveText('platform');
-  await expect(values.nth(1)).toContainText('Ready');
+  // GC-001–003: include the selection column in actual DOM counts.
+  const table = page.getByRole('table').first();
+  const headers = table.locator('thead > tr > th');
+  await expect(headers).toHaveCount(6);
+  expect((await headers.allTextContents()).map(text => text.trim())).toEqual(['', 'Cell', 'Goal', 'Status', 'Submitted', 'Links']);
+  await expect(headers.first().getByRole('checkbox')).toHaveCount(1);
+  const values = row.locator(':scope > td');
+  await expect(values).toHaveCount(6);
+  await expect(values.nth(0).getByRole('checkbox')).not.toBeChecked();
+  await expect(values.nth(1)).toHaveText('platform');
   await expect(values.nth(2)).toContainText(first.prompt);
-  await expect(values.nth(3)).not.toBeEmpty();
-  await expect(values.nth(4).getByRole('link', { name: 'Goal overview' })).toBeVisible();
+  await expect(values.nth(3)).toContainText('Ready');
+  await expect(values.nth(4)).not.toBeEmpty();
+  await expect(values.nth(5).getByRole('link', { name: 'Goal overview' })).toBeVisible();
+  const soloRow = page.getByRole('link', { name: solo.prompt, exact: true }).locator('xpath=ancestor::tr');
+  await expect(soloRow.locator(':scope > td')).toHaveCount(6);
+  const expander = values.nth(2).getByRole('button', { name: 'Expand goal details', exact: true });
+  await expect(expander).toHaveAttribute('aria-expanded', 'false');
 
   await expect(row.getByRole('link', { name: 'Open input/review' })).toHaveAttribute('href', '/project/goal-layout/reviews/first');
   await expect(row.getByRole('link', { name: 'Parent' })).toHaveAttribute('href', '/project/goal-layout/jobs/coordinator/story');
@@ -84,11 +92,24 @@ test('renders a single compact row or grouped attempts with metadata and waiting
   await expect(page.getByText('Waiting for dependencies')).toBeVisible();
   expect(detailsRead).toEqual([]);
   const initialReads = reads;
-  await row.getByRole('button', { name: 'Expand row', exact: true }).click();
+  await expander.focus();
+  await page.keyboard.press('Enter');
+  const collapse = values.nth(2).getByRole('button', { name: 'Collapse goal details', exact: true });
+  await expect(collapse).toHaveAttribute('aria-expanded', 'true');
+  await expect(table.locator('tr.ant-table-expanded-row > td')).toHaveAttribute('colspan', '6');
+  await expect(values.first().getByRole('checkbox')).not.toBeChecked();
+  await expect(page).toHaveURL(/\/goals\?/);
+  await expect.poll(() => detailsRead).toEqual(['first']);
+  await collapse.focus();
+  await page.keyboard.press('Space');
+  await expect(expander).toHaveAttribute('aria-expanded', 'false');
+  await expander.click();
+  await expect(values.first().getByRole('checkbox')).not.toBeChecked();
+  await expect(page).toHaveURL(/\/goals\?/);
   await page.getByText('Execution requirements', { exact: true }).click();
   await expect(page.getByText('Execution requirements', { exact: true }).locator('..')).toContainText('4Gi');
   expect(reads).toBe(initialReads);
-  expect(detailsRead).toEqual(['first']);
+  await expect.poll(() => detailsRead).toEqual(['first', 'first']);
   const attempts = page.getByRole('region', { name: 'Attempts', exact: true }).getByRole('table');
   await expect(attempts).toHaveCount(1);
   await expect(attempts.getByText(second.completion_detail, { exact: true })).toBeVisible();
@@ -98,7 +119,7 @@ test('renders a single compact row or grouped attempts with metadata and waiting
   await expect(page.getByRole('heading', { name: 'Goal overview', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Archive selected', exact: true })).toHaveCount(0);
   await expect(page.getByRole('checkbox')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Expand row' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Expand goal details' })).toHaveCount(0);
   await expect(page.getByText('Execution requirements', { exact: true })).toBeVisible();
   await page.screenshot({ path: '/tmp/cortex-goal-overview.png', fullPage: true });
   await page.getByRole('region', { name: 'Attempts', exact: true }).getByRole('button', { name: 'Details', exact: true }).nth(1).click();
@@ -461,3 +482,16 @@ for (const compact of [false, true]) for (const view of ['', '?view=all']) {
     expect(changes).toEqual(['finished', 'failed', 'failed', 'failed']);
   });
 }
+
+test('Goals and Jobs aliases expose the same six desktop columns', async ({ page, context, baseURL }) => {
+  await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+  await page.route('**/api/projects/aliases/jobs?*', route => route.fulfill({ json: { jobs: [{ ...jobIdentity, tenant_id: 'aliases', job_id: 'alias-job', prompt: 'Alias goal', status: 'READY', store: 'ACTIVE' }] } }));
+  for (const path of ['/project/aliases/goals', '/project/aliases/jobs', '/jobs?tenantId=aliases']) {
+    await page.goto(path);
+    const row = page.getByRole('checkbox', { name: 'Select job alias-job', exact: true }).locator('xpath=ancestor::tr');
+    await expect(row.locator(':scope > td')).toHaveCount(6);
+    const headers = page.getByRole('table').first().locator('thead > tr > th');
+    await expect(headers).toHaveCount(6);
+    expect((await headers.allTextContents()).map(text => text.trim())).toEqual(['', 'Cell', 'Goal', 'Status', 'Submitted', 'Links']);
+  }
+});

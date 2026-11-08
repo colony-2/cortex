@@ -291,7 +291,7 @@ for (const multiField of [false, true]) {
       expect(jobs.jobs.find((job: { job_id: string }) => job.job_id === jobID)).toMatchObject({ status: 'COMPLETED', completion_status: 'success' });
       const row = page.getByRole('row').filter({ has: page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }) });
       await expect(row.getByText('Succeeded', { exact: true })).toBeVisible();
-      await row.getByRole('button', { name: 'Expand row' }).click();
+      await row.getByRole('button', { name: 'Expand goal details' }).click();
       await expect(page.getByText('All job data', { exact: true })).toBeVisible();
 
       if (!multiField) {
