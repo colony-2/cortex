@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { jobIdentity } from './helpers/cells';
 
 for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
   test(`SAV-026,027 story viewer ${viewport.width}`, async ({ page, context, baseURL }, testInfo) => {
@@ -232,5 +233,111 @@ for (const width of [375, 767, 768, 1280]) {
       await page.setViewportSize({width:375,height:844});await expect(page.getByRole('dialog')).toHaveCount(0);
       await page.setViewportSize({width,height:844});await expect(nav.locator('[aria-current=true]')).toContainText('Diagnostic');
     }
+  });
+}
+
+for (const width of [1280, 390]) {
+  test(`IA-016,017 queued input artifacts ${width}`, async ({ page, context, baseURL }, testInfo) => {
+    await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+    await page.setViewportSize({ width, height: 844 });
+    const capture = async (name: string, fullPage = false) => {
+      // Capture the settled modal, rather than an Ant Design opening frame.
+      await page.evaluate(async () => {
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        await Promise.all(document.getAnimations()
+          .filter(animation => animation.playState === 'running'
+            && (animation.effect as KeyframeEffect)?.target instanceof Element
+            && ((animation.effect as KeyframeEffect).target as Element).closest('.ant-modal, .ant-modal-mask')
+            && animation.effect?.getComputedTiming().iterations !== Infinity)
+          .map(animation => animation.finished.catch(() => {})));
+      });
+      const dialog = page.getByRole('dialog');
+      if (await dialog.count()) {
+        await expect(dialog).not.toHaveClass(/ant-zoom-(appear|enter)/);
+        await expect(dialog).toHaveCSS('opacity', '1');
+        await expect(dialog).toHaveCSS('transform', 'none');
+      }
+      await page.screenshot({ path: testInfo.outputPath(name), fullPage });
+    };
+    const longName = 'docs/' + 'long-path-segment/'.repeat(8) + 'brief.md';
+    const files = [longName, 'docs/next.md', 'wide.png', 'input.bin', 'empty'];
+    let inventoryRequests = 0;
+    await page.route('**/api/**', async route => {
+      const url = new URL(route.request().url());
+      if (url.pathname.includes('/artifacts/')) {
+        const name = decodeURIComponent(url.pathname.split('/artifacts/')[1]);
+        if (name === 'wide.png' || name === 'input.bin' || name === 'empty') return route.continue();
+        return route.fulfill({ body: name === longName ? '# Submission brief\n\n[next](../../../../../../../../next.md)\n\n![input image](wide.png)' : '# Next input' });
+      }
+      let body: unknown = [];
+      if (url.pathname === '/api/projects') body = [{ tenant_id: 'tenant', name: 'Test tenant' }];
+      else if (url.pathname.endsWith('/story')) return route.fulfill({ status: 500, body: 'replay unavailable' });
+      else if (url.pathname.endsWith('/input-artifacts')) {
+        inventoryRequests++;
+        body = { artifacts: files.map(name => ({ jobId: 'job', taskOrdinal: 0, name, sizeBytes: name === 'empty' ? 0 : 120 })) };
+      }
+      else if (url.pathname.endsWith('/jobs/job')) body = { ...jobIdentity, job_id: 'job', title: 'Queued job', status: 'READY' };
+      else if (url.pathname.endsWith('/children')) body = { jobs: [] };
+      else if (url.pathname.includes('/events')) return route.fulfill({ contentType: 'text/event-stream', body: ': fixture\n\n' });
+      await route.fulfill({ json: body });
+    });
+    await page.goto('/project/tenant/jobs/job/story');
+    await expect(page.getByText('Input artifacts (5)', { exact: true })).toBeVisible();
+    // The dev app uses StrictMode, which may repeat the initial effect.
+    const loadedInventoryRequests = inventoryRequests;
+    await capture(`input-artifacts-${width}.png`, true);
+    const runSummary = page.locator('.story-summary-disclosure');
+    const inputPane = page.locator('.input-artifacts-disclosure');
+    await expect(runSummary).toHaveAttribute('open', '');
+    await expect(inputPane).toHaveAttribute('open', '');
+    await runSummary.locator(':scope > summary').click();
+    await inputPane.locator(':scope > summary').click();
+    await expect(runSummary).not.toHaveAttribute('open');
+    await expect(inputPane).not.toHaveAttribute('open');
+    await expect(runSummary.locator(':scope > summary')).toHaveText('Run Summary');
+    await expect(inputPane.locator(':scope > summary')).toHaveText('Input artifacts (5)');
+    await expect(page.getByRole('button', { name: longName, exact: true })).not.toBeVisible();
+    await capture(`input-panes-collapsed-${width}.png`, true);
+    await runSummary.locator(':scope > summary').focus();
+    await page.keyboard.press('Enter');
+    await inputPane.locator(':scope > summary').focus();
+    await page.keyboard.press('Space');
+    await expect(runSummary).toHaveAttribute('open', '');
+    await expect(inputPane).toHaveAttribute('open', '');
+    // Each native disclosure supports both activation keys and retains inventory.
+    for (const pane of [runSummary, inputPane]) {
+      await pane.locator(':scope > summary').focus();
+      await page.keyboard.press('Space');
+      await expect(pane).not.toHaveAttribute('open');
+      await page.keyboard.press('Enter');
+      await expect(pane).toHaveAttribute('open', '');
+    }
+    expect(inventoryRequests).toBe(loadedInventoryRequests);
+
+    const opener = page.getByRole('button', { name: longName, exact: true });
+    await opener.click();
+    const modal = page.getByRole('dialog');
+    await expect(modal.getByRole('heading', { name: 'Submission brief' })).toBeVisible();
+    await expect(modal.getByRole('img', { name: 'wide.png' })).toBeVisible();
+    await capture(`input-markdown-${width}.png`);
+    await modal.getByRole('button', { name: 'next', exact: true }).click();
+    await expect(modal.getByRole('heading', { name: 'Next input' })).toBeVisible();
+    await modal.getByRole('button', { name: 'Close', exact: true }).first().click();
+    await expect(modal).not.toBeVisible();
+    await expect(opener).toBeFocused();
+    await page.getByRole('button', { name: 'wide.png', exact: true }).click();
+    await expect(modal.getByRole('img', { name: 'wide.png' })).toBeVisible();
+    await capture(`input-image-${width}.png`);
+    await modal.getByRole('button', { name: 'Close', exact: true }).first().click();
+    await expect(modal).not.toBeVisible();
+    for (const [name, bytes] of [['input.bin', Buffer.from([0, 255, 1])], ['empty', Buffer.alloc(0)]] as const) {
+      const button = page.getByRole('button', { name: `Download ${name}`, exact: true });
+      await expect(button).toBeInViewport();
+      const pending = page.waitForEvent('download');
+      await button.click();
+      const download = await pending;
+      expect(await readFile((await download.path())!)).toEqual(bytes);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 }

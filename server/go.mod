@@ -7,6 +7,7 @@ require (
 	github.com/colony-2/jobdb v0.0.74
 	github.com/gorilla/mux v1.8.1
 	github.com/spf13/cobra v1.10.2
+	modernc.org/sqlite v1.50.1
 )
 
 require (
@@ -93,6 +94,5 @@ require (
 	modernc.org/libc v1.72.3 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
-	modernc.org/sqlite v1.50.1 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 )

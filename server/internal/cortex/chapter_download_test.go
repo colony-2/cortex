@@ -97,6 +97,12 @@ func TestChapterDownloadRuntimeIntegration(t *testing.T) {
 			if storyResponse.StatusCode != 500 {
 				t.Fatalf("expected replay failure, got %d", storyResponse.StatusCode)
 			}
+			inventory := getJSON[struct {
+				Artifacts []inputArtifact `json:"artifacts"`
+			}](t, api.URL+"/api/projects/a/jobs/same/input-artifacts")
+			if inventory.Artifacts == nil || len(inventory.Artifacts) != 0 {
+				t.Fatal("unexpected inputs", inventory)
+			}
 			initial := download()
 			if len(initial.Chapters) != 1 || initial.Chapters[0].Body.(map[string]any)["kind"] != "job_start" {
 				t.Fatalf("initial chapters: %#v", initial.Chapters)
@@ -193,6 +199,12 @@ func TestChapterDownloadRuntimeIntegration(t *testing.T) {
 				t.Fatalf("deleted: %v", resp)
 			}
 
+			archivedInputs := getJSON[struct {
+				Artifacts []inputArtifact `json:"artifacts"`
+			}](t, api.URL+"/api/projects/a/jobs/same/input-artifacts")
+			if len(archivedInputs.Artifacts) != 0 {
+				t.Fatal("execution artifact leaked into inputs")
+			}
 			// The existing chapter-download policy stays intact, while archived
 			// story artifacts remain readable through their normal endpoint.
 			resp, err = http.Get(api.URL + "/api/projects/a/jobs/same/tasks/3/artifacts/%E9%9B%AA.txt")

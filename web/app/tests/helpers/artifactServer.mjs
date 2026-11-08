@@ -23,7 +23,7 @@ const wideImage = Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), chunk(
 const patch = Buffer.from('--- a/file\n+++ b/file\n@@ -1 +1 @@\n-' + 'old'.repeat(400) + '\n+' + 'new'.repeat(400) + '\n');
 createServer((req, res) => {
   const isImage = req.url.endsWith('/huge.png');
-  const body = isImage ? image : req.url.endsWith('/wide.png') ? wideImage : req.url.endsWith('/wide.patch') ? patch : markdown;
+  const body = req.url.endsWith('/empty') ? Buffer.alloc(0) : req.url.endsWith('/input.bin') ? Buffer.from([0, 255, 1]) : isImage ? image : req.url.endsWith('/wide.png') ? wideImage : req.url.endsWith('/wide.patch') ? patch : markdown;
   res.writeHead(200, {
     'Content-Type': req.url.endsWith('.png') ? 'image/png' : 'text/plain',
     'Content-Length': body.length,

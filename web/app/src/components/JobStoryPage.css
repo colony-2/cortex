@@ -79,3 +79,10 @@
 }
 /* This read-only tree does not need Ant Design's out-of-row drop target. */
 .story-tree-panel .ant-tree-treenode[draggable="false"]::before { display: none; }
+
+.input-artifacts .ant-list-item { gap: 12px; align-items: center; }
+.input-artifact-name.ant-btn { height: auto; white-space: normal; overflow-wrap: anywhere; text-align: left; min-width: 0; }
+.input-artifacts .ant-list-item > .ant-space { flex-shrink: 0; }
+@media (max-width: 600px) {
+  .input-artifacts .ant-list-item { flex-direction: column; align-items: flex-start; }
+}

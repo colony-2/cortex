@@ -192,3 +192,16 @@ export async function getJobChaptersDownload(projectId: string, jobId: string, s
   await handleResponse(response, 'Download chapters');
   return response.blob();
 }
+
+export interface InputArtifact {
+  jobId: string;
+  taskOrdinal: number;
+  name: string;
+  sizeBytes: number;
+}
+
+export async function getJobInputArtifacts(projectId: string, jobId: string, signal?: AbortSignal): Promise<{ artifacts: InputArtifact[] }> {
+  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/input-artifacts`, { signal });
+  await handleResponse(response, 'Load input artifacts');
+  return response.json();
+}

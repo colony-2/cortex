@@ -188,3 +188,20 @@ it('sends optional cancellation/archive reasons as JSON and keeps bodyless calle
   expect(fetch.mock.calls[2][1]).toEqual({method:'POST'});
   expect(fetch.mock.calls[3][1]).toEqual({method:'DELETE'});
 });
+
+it('IA-007 lists typed input metadata with encoded identity, cancellation and errors', async () => {
+  const { getJobInputArtifacts } = await import('./api');
+  const { API_BASE } = await import('./apiBase');
+  const result = { artifacts: [{ jobId: 'job/a&雪', taskOrdinal: 0, name: 'docs/brief.md', sizeBytes: 0 }] };
+  const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(result)));
+  vi.stubGlobal('fetch', fetch);
+  const controller = new AbortController();
+  expect(await getJobInputArtifacts('tenant ?#', 'job/a&雪', controller.signal)).toEqual(result);
+  expect(fetch).toHaveBeenCalledWith(`${API_BASE}/projects/tenant%20%3F%23/jobs/job%2Fa%26%E9%9B%AA/input-artifacts`, { signal: controller.signal });
+  fetch.mockResolvedValueOnce(new Response('unsupported', { status: 404 }));
+  await expect(getJobInputArtifacts('tenant', 'job')).rejects.toThrow('404');
+  fetch.mockImplementationOnce((_url, options) => new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))));
+  const pending = getJobInputArtifacts('tenant', 'job', controller.signal);
+  controller.abort();
+  await expect(pending).rejects.toThrow('Aborted');
+});

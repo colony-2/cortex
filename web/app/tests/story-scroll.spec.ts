@@ -21,12 +21,15 @@ test.beforeEach(async ({ page, context, baseURL }) => {
   });
   await page.route('**/api/projects', route => route.fulfill({ json: [{ ...jobIdentity, tenant_id: 'phone' }] }));
   await mockCells(page, ['platform']);
+  await page.route('**/api/projects/*/jobs/one/input-artifacts', route => route.fulfill({ json: { artifacts: [] } }));
+  await page.route('**/api/projects/*/jobs/one/children?*', route => route.fulfill({ json: { jobs: [] } }));
   await page.route('**/user-inputs/pending', route => route.fulfill({ json: [] }));
   await page.route('**/api/projects/*/jobs/one', route => route.fulfill({ json: { ...jobIdentity, job_id: 'one', status: 'RUNNING', prompt: 'Scrolling fixture' } }));
   await page.route('**/api/projects/*/jobs/one/story', route => { reads++; return route.fulfill({ json: fixture(append) }); });
 });
 async function open(page: Page) {
   await page.goto('/project/phone/jobs/one/story');
+  await expect(page.getByText('No input artifacts', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Expand all', exact: true }).click();
   await expect(page.getByRole('treeitem')).toHaveCount(132);
 }

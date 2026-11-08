@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import JobStoryPage from './JobStoryPage';
 import { jobIdentity } from '../test/cellFixtures';
-import { getJob, listJobChildren } from '@colony2/shared/api';
+import { getJob, getJobInputArtifacts, listJobChildren } from '@colony2/shared/api';
 import type { RecipeJob } from '@colony2/shared/types';
 import DownloadChaptersButton from './DownloadChaptersButton';
 
@@ -14,6 +14,7 @@ vi.mock('@colony2/shared', async (importOriginal) => ({
 vi.mock('@colony2/shared/api', async (importOriginal) => ({
   ...await importOriginal<typeof import('@colony2/shared/api')>(),
   getJob: vi.fn(),
+  getJobInputArtifacts: vi.fn().mockResolvedValue({ artifacts: [] }),
   listJobChildren: vi.fn().mockResolvedValue({ jobs: [] }),
 }));
 vi.mock('react-json-view', () => ({ default: ({ src }: { src: unknown }) => <pre>{JSON.stringify(src)}</pre> }));
@@ -54,6 +55,7 @@ function mount(search = '', response: unknown = story) {
   return fetchMock;
 }
 beforeEach(() => {
+  vi.mocked(getJobInputArtifacts).mockReset().mockResolvedValue({ artifacts: [] });
   vi.mocked(getJob).mockReset().mockResolvedValue({ ...jobIdentity, goal_id: 'goal' } as RecipeJob);
   vi.mocked(listJobChildren).mockReset().mockResolvedValue({ jobs: [] });
 });
@@ -1067,4 +1069,151 @@ it('preserves transition decisions in the overview', async () => {
   expect(await screen.findByText('status == done')).toBeVisible();
   expect(screen.getByText('to finish')).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Structured' })).toBeNull();
+});
+
+describe('input artifact inventory', () => {
+  const artifacts = [{ jobId: 'job', taskOrdinal: 0, name: 'docs/brief.md', sizeBytes: 120 }, { jobId: 'job', taskOrdinal: 0, name: 'a.bin', sizeBytes: 0 }];
+  it('IA-009 breaks equal-name ties by the recorded ordinal', async () => {
+    vi.mocked(getJobInputArtifacts).mockResolvedValue({ artifacts: [
+      { jobId: 'job', taskOrdinal: 17, name: 'same.md', sizeBytes: 17 },
+      { jobId: 'job', taskOrdinal: 2, name: 'same.md', sizeBytes: 2 },
+    ] });
+    const fetch = mount();
+    const buttons = await screen.findAllByRole('button', { name: 'same.md', exact: true });
+    fetch.mockResolvedValue(new Response('# Earlier ordinal'));
+    fireEvent.click(buttons[0]);
+    expect(await screen.findByRole('heading', { name: 'Earlier ordinal' })).toBeVisible();
+    expect(fetch).toHaveBeenLastCalledWith(expect.stringContaining('/tasks/2/artifacts/same.md'), expect.anything());
+  });
+  it('IA-008–013 loads independently of replay, sorts and previews with focus restoration', async () => {
+    let resolve!: (result: { artifacts: typeof artifacts }) => void;
+    vi.mocked(getJobInputArtifacts).mockImplementationOnce(() => new Promise(r => { resolve = r; }));
+    const fetch = mount('', { job_id: 'job', status: 'running', root: null });
+    expect(screen.getByText('Loading input artifacts')).toBeVisible();
+    await act(async () => resolve({ artifacts }));
+    expect(await screen.findByText('Input artifacts (2)')).toBeVisible();
+    const buttons = screen.getAllByRole('button').filter(b => ['a.bin', 'docs/brief.md'].includes(b.textContent || ''));
+    expect(buttons.map(b => b.textContent)).toEqual(['a.bin', 'docs/brief.md']);
+    expect(screen.getByText('0 B')).toBeVisible();
+    expect(screen.getByText('120 B')).toBeVisible();
+    fetch.mockResolvedValue(new Response('# Input brief'));
+    const opener = screen.getByRole('button', { name: 'docs/brief.md', exact: true });
+    opener.focus(); fireEvent.click(opener);
+    expect(await screen.findByRole('heading', { name: 'Input brief' })).toBeVisible();
+    expect(fetch).toHaveBeenLastCalledWith(expect.stringContaining('/tasks/0/artifacts/docs%2Fbrief.md'), expect.anything());
+    fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[0]);
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+  it('IA-010 treats unsupported inventory as a local error and retries to empty', async () => {
+    vi.mocked(getJobInputArtifacts).mockRejectedValueOnce(new Error('404 unsupported')).mockResolvedValueOnce({ artifacts: [] });
+    mount();
+    expect(await screen.findByText('Unable to load input artifacts')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
+    expect(await screen.findByText('No input artifacts')).toBeVisible();
+    expect(screen.getByText('Run Summary')).toBeVisible();
+  });
+  it('IA-015 keeps metadata visible when bytes are unavailable and retries preview', async () => {
+    vi.mocked(getJobInputArtifacts).mockResolvedValue({ artifacts });
+    const fetch = mount();
+    await screen.findByText('Input artifacts (2)');
+    fetch.mockResolvedValue({ ok: false });
+    fireEvent.click(screen.getByRole('button', { name: 'docs/brief.md', exact: true }));
+    expect(await screen.findByText(/Could not load this document/)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'docs/brief.md', exact: true })).toBeInTheDocument();
+    fetch.mockResolvedValue(new Response('# Recovered input'));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
+    expect(await screen.findByRole('heading', { name: 'Recovered input' })).toBeVisible();
+  });
+});
+
+it.each(['other/job', 'tenant/other'])('IA-014 aborts inventory and preview when switching to %s', async destination => {
+  let finish!: (value: { artifacts: [] }) => void;
+  let inventorySignal: AbortSignal | undefined;
+  let previewSignal: AbortSignal | undefined;
+  let finishPreview!: (value: Response) => void;
+  vi.mocked(getJobInputArtifacts).mockResolvedValueOnce({ artifacts: [{ jobId: 'job', taskOrdinal: 0, name: 'input.md', sizeBytes: 10 }] })
+    .mockImplementationOnce((_tenant, _job, signal) => { inventorySignal = signal; return new Promise(r => { finish = r; }); });
+  const fetch = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url.includes('/artifacts/')) { previewSignal = options?.signal as AbortSignal; return new Promise<Response>(r => { finishPreview = r; }); }
+    return { ok: true, json: async () => story };
+  });
+  vi.stubGlobal('fetch', fetch);
+  function Host() {
+    const { projectId } = useParams(); const navigate = useNavigate();
+    return <><button onClick={() => navigate(`/project/${destination.split('/')[0]}/jobs/${destination.split('/')[1]}/story`)}>Switch job</button><JobStoryPage projectId={projectId!} /></>;
+  }
+  render(<MemoryRouter initialEntries={['/project/tenant/jobs/job/story']}><Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<Host />} /></Routes></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('button', { name: 'input.md', exact: true }));
+  await screen.findByLabelText('Loading artifact');
+  fireEvent.click(screen.getByRole('button', { name: 'Switch job' }));
+  await waitFor(() => expect(previewSignal?.aborted).toBe(true));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'input.md', exact: true })).not.toBeInTheDocument();
+  expect(screen.getByText('Loading input artifacts')).toBeVisible();
+  await act(async () => finishPreview(new Response('# Stale preview')));
+  expect(screen.queryByText('Stale preview')).not.toBeInTheDocument();
+  cleanup();
+  expect(inventorySignal?.aborted).toBe(true);
+  await act(async () => finish({ artifacts: [] }));
+});
+
+it('IA-012 keeps same-name inputs and outputs in separate navigation and image catalogs', async () => {
+  const keys = [{ jobId: 'job', taskOrdinal: 0, name: 'docs/brief.md', sizeBytes: 5 }, { jobId: 'job', taskOrdinal: 0, name: 'docs/next.md', sizeBytes: 5 }, { jobId: 'job', taskOrdinal: 0, name: 'docs/image.png', sizeBytes: 5 }];
+  vi.mocked(getJobInputArtifacts).mockResolvedValue({ artifacts: keys });
+  const current = { ...story, root: { id: 'root', kind: 'opStep', title: 'Outputs', status: 'success', path: [], artifact_keys: [{ jobId: 'job', taskOrdinal: 8, name: 'docs/brief.md' }, { jobId: 'job', taskOrdinal: 9, name: 'docs/next.md' }] } };
+  const fetch = mount('?nodeId=root', current);
+  fetch.mockImplementation(async (url: string) => url.includes('/artifacts/') ? new Response(url.includes('image.png') ? new Uint8Array([137,80,78,71]) : url.includes('next.md') ? '# Input target' : url.includes('/tasks/0/') ? '# Input\n\n[next](next.md) ![relative](image.png)' : '# Output') : { ok: true, json: async () => current });
+  fireEvent.click(await screen.findByRole('button', { name: 'docs/brief.md', exact: true }));
+  await screen.findByRole('heading', { name: 'Input', exact: true });
+  fireEvent.click(screen.getByRole('button', { name: 'next', exact: true }));
+  await screen.findByRole('heading', { name: 'Input target' });
+  const requests = fetch.mock.calls.map(c => String(c[0])).filter(url => url.includes('/artifacts/'));
+  expect(requests).toContainEqual(expect.stringContaining('/tasks/0/artifacts/docs%2Fimage.png'));
+  expect(requests).toContainEqual(expect.stringContaining('/tasks/0/artifacts/docs%2Fnext.md'));
+  expect(requests.some(url => url.includes('/tasks/8/') || url.includes('/tasks/9/'))).toBe(false);
+  fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[0]);
+  fireEvent.click(screen.getByRole('tab', { name: 'Artifacts (2)' }));
+  fireEvent.click(screen.getByRole('link', { name: 'docs/brief.md', exact: true }));
+  expect(await screen.findByRole('heading', { name: 'Output', exact: true })).toBeVisible();
+  expect(fetch.mock.calls.at(-1)?.[0]).toContain('/tasks/8/artifacts/docs%2Fbrief.md');
+});
+
+it('IA-014 ignores a late inventory result from the previous job', async () => {
+  let finish!: (value: { artifacts: { jobId: string; taskOrdinal: number; name: string; sizeBytes: number }[] }) => void;
+  let oldSignal: AbortSignal | undefined;
+  vi.mocked(getJobInputArtifacts).mockImplementationOnce((_tenant, _job, signal) => { oldSignal = signal; return new Promise(r => { finish = r; }); }).mockResolvedValueOnce({ artifacts: [] });
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => story }));
+  function Host() {
+    const navigate = useNavigate();
+    return <><button onClick={() => navigate('/project/tenant/jobs/next/story')}>Next job</button><JobStoryPage projectId="tenant" /></>;
+  }
+  render(<MemoryRouter initialEntries={['/project/tenant/jobs/job/story']}><Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<Host />} /></Routes></MemoryRouter>);
+  expect(screen.getByText('Loading input artifacts')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Next job' }));
+  expect(await screen.findByText('No input artifacts')).toBeVisible();
+  expect(oldSignal?.aborted).toBe(true);
+  await act(async () => finish({ artifacts: [{ jobId: 'job', taskOrdinal: 0, name: 'stale.md', sizeBytes: 1 }] }));
+  expect(screen.queryByText('stale.md')).not.toBeInTheDocument();
+  expect(screen.getByText('No input artifacts')).toBeVisible();
+});
+
+it('IA-020 collapses Run Summary and Input artifacts independently without losing the inventory', async () => {
+  vi.mocked(getJobInputArtifacts).mockResolvedValue({ artifacts: [{ jobId: 'job', taskOrdinal: 0, name: 'input.md', sizeBytes: 5 }] });
+  mount();
+  const input = await screen.findByRole('button', { name: 'input.md', exact: true });
+  const summary = screen.getByText('Run Summary');
+  const inputs = screen.getByText('Input artifacts (1)');
+  expect(summary.closest('details')).toHaveAttribute('open');
+  expect(inputs.closest('details')).toHaveAttribute('open');
+  fireEvent.click(summary);
+  expect(summary.closest('details')).not.toHaveAttribute('open');
+  expect(input).toBeVisible();
+  fireEvent.click(inputs);
+  expect(inputs.closest('details')).not.toHaveAttribute('open');
+  expect(input).not.toBeVisible();
+  expect(inputs).toBeVisible();
+  fireEvent.click(inputs);
+  expect(input).toBeVisible();
+  expect(summary.closest('details')).not.toHaveAttribute('open');
+  expect(getJobInputArtifacts).toHaveBeenCalledTimes(1);
 });

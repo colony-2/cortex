@@ -38,7 +38,7 @@ import InputFormRenderer from './InputFormRenderer';
 import AttemptTabs from './AttemptTabs';
 import CancelJobButton from './CancelJobButton';
 import DownloadChaptersButton from './DownloadChaptersButton';
-import { getJob } from '@colony2/shared/api';
+import { getJob, getJobInputArtifacts, type InputArtifact } from '@colony2/shared/api';
 import type { RecipeJob } from '@colony2/shared/types';
 import { jobStatusValue } from '../utils/jobStatus';
 import { goalPath } from './JobWaitLinks';
@@ -125,7 +125,12 @@ function statusTagColor(status: string): string {
 }
 
 function artifactUrl(projectId: string, jobId: string, artifact: ArtifactKey): string {
-  return `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/tasks/${artifact.taskOrdinal}/artifacts/${encodeURIComponent(artifact.name)}`;
+  return `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(artifact.jobId || jobId)}/tasks/${artifact.taskOrdinal}/artifacts/${encodeURIComponent(artifact.name)}`;
+}
+
+function artifactSize(bytes: number): string {
+  const unit = Math.min(3, Math.max(0, Math.floor(Math.log2(Math.max(1, bytes)) / 10)));
+  return `${unit === 0 ? bytes : (bytes / 1024 ** unit).toFixed(1)} ${['B', 'KB', 'MB', 'GB'][unit]}`;
 }
 
 function kindLabel(kind: StoryKind): string {
@@ -314,6 +319,20 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   const jobId = routeJobId || '';
   const artifactIdentity = JSON.stringify([projectId, jobId]);
   const activeArtifact = artifactOwner === artifactIdentity ? selectedArtifact : null;
+
+  const [inputInventory, setInputInventory] = useState<{ owner: string; artifacts?: InputArtifact[]; error?: string }>();
+  const [inputRetry, setInputRetry] = useState(0);
+  const inputs = inputInventory?.owner === artifactIdentity ? inputInventory : undefined;
+  useEffect(() => {
+    const controller = new AbortController();
+    setInputInventory({ owner: artifactIdentity });
+    getJobInputArtifacts(projectId, jobId, controller.signal).then(result => {
+      if (!controller.signal.aborted) setInputInventory({ owner: artifactIdentity, artifacts: [...result.artifacts].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : a.taskOrdinal - b.taskOrdinal) });
+    }).catch(error => {
+      if (!controller.signal.aborted) setInputInventory({ owner: artifactIdentity, error: error instanceof Error ? error.message : String(error) });
+    });
+    return () => controller.abort();
+  }, [projectId, jobId, artifactIdentity, inputRetry]);
 
   const wantInput = searchParams.get('input') === '1';
   const taskOrdinalParamRaw = searchParams.get('taskOrdinal');
@@ -523,11 +542,11 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRefresh, refreshIntervalMs, story?.status, projectId, jobId, selectedKey]);
 
-  const openArtifact = (artifact: ArtifactKey) => {
+  const openArtifact = (artifact: ArtifactKey, attachments = selectedNode?.artifact_keys || []) => {
     artifactOpener.current = document.activeElement as HTMLElement;
     setArtifactNavigation(undefined);
     setArtifactOwner(artifactIdentity);
-    setArtifactAttachments((selectedNode?.artifact_keys || []).map(a => ({ ...a })));
+    setArtifactAttachments(attachments.map(a => ({ ...a })));
     setSelectedArtifact(artifact);
   };
   useEffect(() => { setSelectedArtifact(null); }, [artifactIdentity]);
@@ -833,48 +852,67 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
 
         {job && <JobRelationships projectId={projectId} jobId={jobId!} job={job} />}
 
-        <Card title="Run Summary" size="small">
-          <Descriptions column={2} bordered size="small">
-            <Descriptions.Item label="Status">
-              {story?.status ? (
-                <Tag color={statusTagColor(story.status)}>{story.status.toUpperCase()}</Tag>
-              ) : (
-                '-'
-              )}
-            </Descriptions.Item>
-            <Descriptions.Item label="Recipe">
-              {extractRecipeLabel(story?.recipe)}
-            </Descriptions.Item>
-            <Descriptions.Item label="Started">
-              {formatTimestamp(story?.started_at)}
-            </Descriptions.Item>
-            <Descriptions.Item label="Finished">
-              {formatTimestamp(story?.finished_at)}
-            </Descriptions.Item>
-            <Descriptions.Item label="Duration">
-              {formatDuration(story?.started_at ?? null, story?.finished_at ?? null)}
-            </Descriptions.Item>
-            <Descriptions.Item label="Invocation Seq">
-              {story?.invocation_sequence ?? '-'}
-            </Descriptions.Item>
-          </Descriptions>
+        <details className="relationship-disclosure story-summary-disclosure" open>
+          <summary>Run Summary</summary>
+          <Card size="small" variant="borderless">
+            <Descriptions column={2} bordered size="small">
+              <Descriptions.Item label="Status">
+                {story?.status ? (
+                  <Tag color={statusTagColor(story.status)}>{story.status.toUpperCase()}</Tag>
+                ) : (
+                  '-'
+                )}
+              </Descriptions.Item>
+              <Descriptions.Item label="Recipe">
+                {extractRecipeLabel(story?.recipe)}
+              </Descriptions.Item>
+              <Descriptions.Item label="Started">
+                {formatTimestamp(story?.started_at)}
+              </Descriptions.Item>
+              <Descriptions.Item label="Finished">
+                {formatTimestamp(story?.finished_at)}
+              </Descriptions.Item>
+              <Descriptions.Item label="Duration">
+                {formatDuration(story?.started_at ?? null, story?.finished_at ?? null)}
+              </Descriptions.Item>
+              <Descriptions.Item label="Invocation Seq">
+                {story?.invocation_sequence ?? '-'}
+              </Descriptions.Item>
+            </Descriptions>
 
-          {story?.recipe ? (
-            <details style={{ marginTop: 12 }}>
-              <summary>Recipe metadata</summary>
-            <div>Job ID: <Text code>{jobId}</Text></div>
-              <div style={{ marginTop: 8 }}>
-                <div role="region" aria-label="JSON data" className="technical-region" tabIndex={0}><ReactJson
-                  src={story.recipe}
-                  collapsed={1}
-                  displayDataTypes={false}
-                  enableClipboard
-                  theme="rjv-default"
-                /></div>
-              </div>
-            </details>
-          ) : null}
-        </Card>
+            {story?.recipe ? (
+              <details style={{ marginTop: 12 }}>
+                <summary>Recipe metadata</summary>
+              <div>Job ID: <Text code>{jobId}</Text></div>
+                <div style={{ marginTop: 8 }}>
+                  <div role="region" aria-label="JSON data" className="technical-region" tabIndex={0}><ReactJson
+                    src={story.recipe}
+                    collapsed={1}
+                    displayDataTypes={false}
+                    enableClipboard
+                    theme="rjv-default"
+                  /></div>
+                </div>
+              </details>
+            ) : null}
+          </Card>
+        </details>
+
+        <details className="relationship-disclosure input-artifacts-disclosure" open>
+          <summary>{`Input artifacts${inputs?.artifacts ? ` (${inputs.artifacts.length})` : ''}`}</summary>
+          <Card size="small" variant="borderless" className="input-artifacts">
+            {inputs?.error ? <Alert type="error" message="Unable to load input artifacts" description={inputs.error} action={<Button onClick={() => setInputRetry(value => value + 1)}>Retry</Button>} />
+              : !inputs?.artifacts ? <Text>Loading input artifacts</Text>
+              : inputs.artifacts.length === 0 ? <Text>No input artifacts</Text>
+              : <List dataSource={inputs.artifacts} renderItem={artifact => (
+                <List.Item key={JSON.stringify([projectId, artifact.jobId, artifact.taskOrdinal, artifact.name])}>
+                  <Button type="link" className="input-artifact-name" onClick={() => openArtifact(artifact, inputs.artifacts)}>{artifact.name}</Button>
+                  <Space><Text type="secondary">{artifactSize(artifact.sizeBytes)}</Text>
+                    <Button aria-label={`Download ${artifact.name}`} icon={<DownloadOutlined />} onClick={() => downloadArtifact(artifact)}>Download</Button></Space>
+                </List.Item>
+              )} />}
+          </Card>
+        </details>
 
         {detailsLink}
         <div className="story-panels">
@@ -1228,14 +1266,14 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
         ]}
       >
         {activeArtifact && <ArtifactContents
-          key={JSON.stringify([projectId, jobId, activeArtifact.taskOrdinal, activeArtifact.name])}
+          key={JSON.stringify([projectId, activeArtifact.jobId || jobId, activeArtifact.taskOrdinal, activeArtifact.name])}
           url={artifactUrl(projectId, jobId, activeArtifact)} name={activeArtifact.name}
           navigationIntent={artifactNavigation}
           navigation={{
-            resolve: reference => resolveArtifactLink(reference, activeArtifact.name, artifactAttachments.map(a => ({key: JSON.stringify([a.taskOrdinal, a.name]), path: a.name}))),
+            resolve: reference => resolveArtifactLink(reference, activeArtifact.name, artifactAttachments.map(a => ({key: JSON.stringify([a.jobId || jobId, a.taskOrdinal, a.name]), path: a.name}))),
             open: (key, fragment) => {
               if (artifactOwner !== artifactIdentity) return false;
-              const target = artifactAttachments.find(a => JSON.stringify([a.taskOrdinal, a.name]) === key);
+              const target = artifactAttachments.find(a => JSON.stringify([a.jobId || jobId, a.taskOrdinal, a.name]) === key);
               if (!target) return false;
               setSelectedArtifact(target);
               setArtifactNavigation(previous => ({token: (previous?.token || 0) + 1, fragment}));
@@ -1243,10 +1281,13 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
             },
           }}
           resolveAttachment={reference => {
-            const matches = artifactAttachments.filter(a => a.name === reference);
-            const identities = new Map(matches.map(a => [JSON.stringify([a.taskOrdinal, a.name]), a]));
-            if (identities.size !== 1) return undefined;
-            const [key, a] = [...identities][0];
+            const resolution = resolveArtifactLink(reference, activeArtifact.name, artifactAttachments.map(a => ({
+              key: JSON.stringify([a.jobId, a.taskOrdinal, a.name]), path: a.name, aliases: [a.name],
+            })));
+            if (resolution.kind !== 'target') return undefined;
+            const a = artifactAttachments.find(a => JSON.stringify([a.jobId, a.taskOrdinal, a.name]) === resolution.key);
+            if (!a) return undefined;
+            const key = resolution.key;
             return { key, name: a.name, url: artifactUrl(projectId, jobId, a) };
           }}
         />}

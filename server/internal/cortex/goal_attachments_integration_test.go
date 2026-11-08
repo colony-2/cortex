@@ -10,9 +10,13 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/colony-2/c2j/pkg/jobdbschema"
 	"github.com/colony-2/colony2/server/internal/testjobdb"
 	"github.com/colony-2/jobdb/pkg/jobdb"
 )
@@ -29,7 +33,7 @@ func TestGoalAttachmentNativePersistence(t *testing.T) {
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
 	_ = w.WriteField("submission", `{"cell":"platform","job_id":"files","inputs":{"prompt":"Build with files","type":"build"}}`)
-	for _, p := range []struct{ name, data string }{{"雪.bin", "\x00\xff\x01"}, {"empty", ""}} {
+	for _, p := range []struct{ name, data string }{{"雪.bin", "\x00\xff\x01"}, {"empty", ""}, {"brief ?#.md", "# Hello"}} {
 		part, e := w.CreateFormFile("files", p.name)
 		if e != nil {
 			t.Fatal(e)
@@ -55,7 +59,36 @@ func TestGoalAttachmentNativePersistence(t *testing.T) {
 	if submitted["goal_id"] == "" || submitted["job_id"] != "files" {
 		t.Fatal(submitted)
 	}
-	for _, p := range []struct{ name, data string }{{"雪.bin", "\x00\xff\x01"}, {"empty", ""}} {
+	inventory := getJSON[struct {
+		Artifacts []inputArtifact `json:"artifacts"`
+	}](t, base+"/jobs/files/input-artifacts")
+	if len(inventory.Artifacts) != 3 {
+		t.Fatalf("inventory: %#v", inventory)
+	}
+	for _, suffix := range []string{"/api/projects/other/jobs/files/input-artifacts", "/api/projects/attachments/jobs/missing/input-artifacts", "/api/projects/other/jobs/files/tasks/0/artifacts/empty", "/api/projects/attachments/jobs/files/tasks/0/artifacts/missing"} {
+		response, e := http.Get(api.URL + suffix)
+		if e != nil {
+			t.Fatal(e)
+		}
+		response.Body.Close()
+		want := 404
+		if strings.HasSuffix(suffix, "/artifacts/missing") {
+			want = 500
+		} // Preserve the existing story adapter missing-byte mapping.
+		if response.StatusCode != want {
+			t.Fatalf("guard %s: %d", suffix, response.StatusCode)
+		}
+	}
+	for _, p := range []struct{ name, data string }{{"雪.bin", "\x00\xff\x01"}, {"empty", ""}, {"brief ?#.md", "# Hello"}} {
+		response, e := http.Get(base + "/jobs/files/tasks/0/artifacts/" + url.PathEscape(p.name))
+		if e != nil {
+			t.Fatal(e)
+		}
+		downloaded, e := io.ReadAll(response.Body)
+		response.Body.Close()
+		if e != nil || response.StatusCode != 200 || string(downloaded) != p.data {
+			t.Fatalf("HTTP input bytes: %d %x %v", response.StatusCode, downloaded, e)
+		}
 		art, e := srv.engine.GetArtifact("attachments", jobdb.ArtifactKey{JobId: "files", TaskOrdinal: 0, Name: p.name})
 		if e != nil {
 			t.Fatal(e)
@@ -64,6 +97,33 @@ func TestGoalAttachmentNativePersistence(t *testing.T) {
 		if e != nil || string(actual) != p.data {
 			t.Fatalf("persisted %q %x %v", p.name, actual, e)
 		}
+	}
+	// Nonzero execution attachments retain the same native HTTP retrieval path.
+	// Start ordinal selection and malformed legacy histories are tested separately.
+	ctx := testjobdb.Context(context.Background())
+	lease, e := srv.engine.GetJobLease(ctx, jobdb.GetJobLeaseRequest{JobKey: jobdb.JobKey{TenantId: "attachments", JobId: "files"}, WorkerID: "input-test", Routes: []jobdb.Route{{JobType: "recipe"}}, LeaseDuration: time.Minute})
+	if e != nil || lease == nil {
+		t.Fatalf("lease: %v", e)
+	}
+	defer lease.StopKeepAlive()
+	artifact := jobdb.NewArtifactFromBytes("docs/nested 雪 ?#.txt", []byte("recorded ordinal"))
+	runtime := srv.engine.(jobdbschema.WorkflowEngine).Registry.(jobdb.WorkflowRuntime)
+	token := ""
+	if l, ok := lease.(interface{ LeaseToken() string }); ok {
+		token = l.LeaseToken()
+	}
+	e = runtime.PutChapter(ctx, jobdb.PutChapterRequest{LeaseID: lease.LeaseID(), LeaseToken: token, Ref: jobdb.ChapterRef{JobKey: jobdb.JobKey{TenantId: "attachments", JobId: "files"}, Ordinal: 1}, Chapter: jobdb.Chapter{Ordinal: 1, Body: jobdb.ExecutionChapter{Record: json.RawMessage(fmt.Sprintf(`{"version":%d,"kind":"header","versions":{"execution_pattern_version":%d,"jobdb_version":"test"}}`, jobdb.ExecutionPatternVersion, jobdb.ExecutionPatternVersion))}}, ArtifactUploads: []jobdb.ArtifactUpload{{Name: artifact.Name(), Size: artifact.Size(), Open: artifact.Open}}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	response, e := http.Get(base + "/jobs/files/tasks/1/artifacts/" + url.PathEscape(artifact.Name()))
+	if e != nil {
+		t.Fatal(e)
+	}
+	downloaded, e := io.ReadAll(response.Body)
+	response.Body.Close()
+	if e != nil || response.StatusCode != 200 || string(downloaded) != "recorded ordinal" {
+		t.Fatalf("recorded ordinal bytes: %d %q %v", response.StatusCode, downloaded, e)
 	}
 }
 
