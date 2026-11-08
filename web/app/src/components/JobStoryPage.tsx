@@ -1,3 +1,4 @@
+import NodePayloadView from './NodePayloadView';
 import JobRelationships from './JobRelationships';
 import { cellLabel } from '../utils/cellPresentation';
 import { resolveArtifactLink, type NavigationIntent } from './review/artifactLinks';
@@ -1146,32 +1147,14 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                   {
                     key: 'input',
                     label: 'Input',
-                    children: selectedNode.input ? (
-                      <div role="region" aria-label="JSON data" className="technical-region" tabIndex={0}><ReactJson
-                        src={selectedNode.input as any}
-                        collapsed={2}
-                        displayDataTypes={false}
-                        enableClipboard
-                        theme="rjv-default"
-                      /></div>
-                    ) : (
-                      <Empty description="No input payload" />
-                    ),
+                    children: <NodePayloadView value={selectedNode.input} label="Input"
+                      identity={JSON.stringify([projectId, jobId, selectedKey, selectedRef?.jobAttempt, selectedNode.attempt, 'input'])} />,
                   },
                   {
                     key: 'output',
                     label: 'Output',
-                    children: selectedNode.output ? (
-                      <div role="region" aria-label="JSON data" className="technical-region" tabIndex={0}><ReactJson
-                        src={selectedNode.output as any}
-                        collapsed={2}
-                        displayDataTypes={false}
-                        enableClipboard
-                        theme="rjv-default"
-                      /></div>
-                    ) : (
-                      <Empty description="No output payload" />
-                    ),
+                    children: <NodePayloadView value={selectedNode.output} label="Output"
+                      identity={JSON.stringify([projectId, jobId, selectedKey, selectedRef?.jobAttempt, selectedNode.attempt, 'output'])} />,
                   },
                   {
                     key: 'artifacts',

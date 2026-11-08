@@ -53,7 +53,10 @@ function mount(search = '', response: unknown = story) {
   </MemoryRouter>);
   return fetchMock;
 }
-beforeEach(() => { vi.mocked(getJob).mockReset().mockResolvedValue({ ...jobIdentity, goal_id: 'goal' } as RecipeJob); });
+beforeEach(() => {
+  vi.mocked(getJob).mockReset().mockResolvedValue({ ...jobIdentity, goal_id: 'goal' } as RecipeJob);
+  vi.mocked(listJobChildren).mockReset().mockResolvedValue({ jobs: [] });
+});
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('job story history', () => {
@@ -979,4 +982,89 @@ it('REL-001,010,030,031 keeps URL relationships through past-attempt selection a
   expect(listJobChildren).toHaveBeenCalledWith('tenant','job',{pageSize:20,pageToken:undefined});
   expect(getJob).toHaveBeenCalledTimes(1);
   expect(screen.getByRole('link',{name:'Job · parent'})).toBeVisible();
+});
+
+describe('structured node payloads', () => {
+  it.each(['native', 'unknown extension'])('shows %s operation and step fields, preserving tab state without requests', async selector => {
+    const payload = { status: 'ok', response: { files: ['a.ts'] }, result: false };
+    const root = { id: 'payload-op', kind: 'op', title: selector, op_id: selector, status: 'success', path: ['op'], input: payload, output: payload,
+      children: [{ id: 'payload-step', kind: 'opStep', title: 'Recorded step', status: 'success', path: ['op', 'step'], input: payload, output: payload }, { id: 'another-step', kind: 'opStep', title: 'Other step', status: 'success', path: ['op', 'other'] }] };
+    const requests = mount('?nodeId=payload-op', { ...story, root });
+    await screen.findByRole('tab', { name: 'Input', exact: true });
+    fireEvent.click(screen.getByRole('tab', { name: 'Input', exact: true }));
+    const input = await screen.findByRole('region', { name: 'Input payload' });
+    expect(within(input).getByText('status')).toBeVisible();
+    expect(within(input).getByText('ok')).toBeVisible();
+    fireEvent.click(within(input).getByRole('button', { name: /response Object/ }));
+    fireEvent.click(within(input).getByRole('button', { name: 'JSON' }));
+    const count = requests.mock.calls.length;
+    fireEvent.click(screen.getByRole('tab', { name: 'Output', exact: true }));
+    expect(within(await screen.findByRole('region', { name: 'Output payload' })).getByRole('button', { name: 'Structured' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('tab', { name: 'Input', exact: true }));
+    expect(within(input).getByRole('button', { name: 'JSON' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(within(input).getByRole('button', { name: 'Structured' }));
+    expect(within(input).getByRole('button', { name: /response Object/ })).toHaveAttribute('aria-expanded', 'true');
+    expect(requests).toHaveBeenCalledTimes(count);
+    fireEvent.click(within(screen.getByRole('tree')).getByText('Recorded step'));
+    fireEvent.click(screen.getByRole('tab', { name: 'Input', exact: true }));
+    const stepInput = await screen.findByRole('region', { name: 'Input payload' });
+    expect(within(stepInput).getByRole('button', { name: 'Structured' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(stepInput).getByRole('button', { name: /response Object/ })).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(screen.getByRole('tab', { name: 'Output', exact: true }));
+    expect(within(await screen.findByRole('region', { name: 'Output payload' })).getByText('false')).toBeVisible();
+  });
+  it('resets repeated task IDs across task and job attempts', async () => {
+    const root = (job: number) => ({ id: 'payload-root', kind: 'recipe', title: 'Payload attempts', path: [], status: 'failed', job_attempt: job,
+      children: [1, 2].map(attempt => ({ id: `payload-${attempt}`, kind: 'opStep', title: `Payload step`, path: ['payload'], attempt, status: 'failed', input: { nested: { value: `${job}.${attempt}` } }, output: false })) });
+    mount('?nodeId=jobAttempt%3A2%7Cpayload-2', { ...story, root: { ...root(2), past_attempts: [root(1)] } });
+    fireEvent.click(await screen.findByRole('tab', { name: 'Input', exact: true }));
+    let input = await screen.findByRole('region', { name: 'Input payload' });
+    fireEvent.click(within(input).getByRole('button', { name: /nested Object/ }));
+    fireEvent.click(within(input).getByRole('button', { name: 'JSON' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Attempt 1', exact: true }));
+    input = await screen.findByRole('region', { name: 'Input payload' });
+    expect(within(input).getByRole('button', { name: 'Structured' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(input).getByRole('button', { name: /nested Object/ })).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(within(input).getByRole('button', { name: /nested Object/ }));
+    expect(within(input).getByText('2.1')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Job attempts' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Job attempt 1' }));
+    fireEvent.click(within(screen.getByRole('tree')).getByText('Payload step'));
+    fireEvent.click(screen.getByRole('tab', { name: 'Input', exact: true }));
+    input = await screen.findByRole('region', { name: 'Input payload' });
+    expect(within(input).getByRole('button', { name: 'Structured' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(input).getByRole('button', { name: /nested Object/ })).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(within(input).getByRole('button', { name: /nested Object/ }));
+    expect(within(input).getByText('1.2')).toBeVisible();
+  });
+});
+
+it.each([null, false, 0, ''])('keeps explicit root %j visible in both story payload directions', async value => {
+  mount('?nodeId=falsy', { ...story, root: { id: 'falsy', kind: 'opStep', title: 'Falsy payload', path: [], status: 'success', input: value, output: value } });
+  for (const label of ['Input', 'Output']) {
+    fireEvent.click(await screen.findByRole('tab', { name: label, exact: true }));
+    const region = await screen.findByRole('region', { name: `${label} payload` });
+    expect(region).toHaveTextContent(value === '' ? 'Empty string' : String(value));
+    expect(screen.queryByText(`No ${label.toLowerCase()} payload`)).toBeNull();
+  }
+});
+
+it('preserves applied patch and recipe overview JSON presentations', async () => {
+  mount('?nodeId=patch', { ...story, recipe: { name: 'unchanged recipe' }, root: {
+    id: 'patch', kind: 'contextPatch', title: 'Patch', status: 'success', path: [], output: { applied: true },
+  } });
+  expect(await screen.findByText('Applied Context Patch')).toBeVisible();
+  expect(screen.getByText('{"applied":true}')).toBeVisible();
+  fireEvent.click(screen.getByText('Recipe metadata'));
+  expect(screen.getByText('{"name":"unchanged recipe"}')).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Structured' })).toBeNull();
+  fireEvent.click(screen.getByRole('tab', { name: 'Output', exact: true }));
+  expect(within(await screen.findByRole('region', { name: 'Output payload' })).getByText('applied')).toBeVisible();
+});
+it('preserves transition decisions in the overview', async () => {
+  mount('?nodeId=transition', { ...story, root: { id: 'transition', kind: 'transitionEval', title: 'Transition', status: 'success', path: [],
+    evaluations: [{ expression: 'status == done', result: true, to_state_id: 'finish' }], decision: { kind: 'state', to_state_id: 'finish' } } });
+  expect(await screen.findByText('status == done')).toBeVisible();
+  expect(screen.getByText('to finish')).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Structured' })).toBeNull();
 });

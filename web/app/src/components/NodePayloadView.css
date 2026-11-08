@@ -1,0 +1,12 @@
+.node-payload { min-width: 0; container-type: inline-size; }
+.node-payload-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.node-payload button { cursor: pointer; color: inherit; background: #fff; border: 1px solid #bfbfbf; border-radius: 4px; padding: 4px 8px; font: inherit; max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+.node-payload button[aria-pressed="true"] { background: #e6f4ff; border-color: #1677ff; }
+.node-payload button:focus-visible { outline: 2px solid #1677ff; outline-offset: 2px; }
+.node-payload-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 3fr); gap: 8px; padding: 6px 0; border-bottom: 1px solid #eee; }
+.node-payload-name { font-weight: 600; white-space: pre-wrap; overflow-wrap: anywhere; }
+.node-payload-name:empty::after { content: '"" (empty name)'; }
+.node-payload-value, .node-payload pre { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+.node-payload-children { margin-left: 12px; padding-left: 8px; border-left: 1px solid #ddd; }
+.node-payload-disclosure { margin: 4px 0; }
+@container (max-width: 480px) { .node-payload-row { grid-template-columns: minmax(0, 1fr); gap: 2px; } .node-payload-children { margin-left: 4px; padding-left: 4px; } }
