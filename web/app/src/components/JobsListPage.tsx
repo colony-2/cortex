@@ -2,7 +2,7 @@ import { cellLabel } from '../utils/cellPresentation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, Button, Card, Checkbox, Empty, Input, Space, Spin, Table, Typography, theme } from 'antd';
-import { DownOutlined, UpOutlined, FilterFilled, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import { FilterFilled, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType, TableProps } from 'antd/es/table';
 import type { SortOrder } from 'antd/es/table/interface';
 import { getCell, getJob, listJobs } from '@colony2/shared/api';
@@ -26,6 +26,15 @@ const { Text, Title } = Typography;
 type Props = { projectId: string; goalId?: string };
 type JobGroup = { key: string; goalId?: string; jobs: RecipeJobSummary[] };
 type Row = { key: string; group: JobGroup; job: RecipeJobSummary };
+function GoalExpander({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+  const { token } = theme.useToken();
+  return <button type="button" className="goal-expander"
+    aria-label={`${expanded ? 'Collapse' : 'Expand'} goal details`} aria-expanded={expanded}
+    style={{ color: token.colorTextSecondary, '--goal-expander-border': token.colorBorder, '--goal-expander-bg': token.colorBgContainer, '--goal-expander-active': token.colorPrimary } as React.CSSProperties}
+    onClick={event => { event.stopPropagation(); onToggle(); }}>
+    <span className="goal-expander-icon" aria-hidden="true">{expanded ? '−' : '+'}</span>
+  </button>;
+}
 export default function JobsListPage(props: Props) {
   return <JobsList key={`${props.projectId}/${props.goalId || ''}`} {...props} />;
 }
@@ -175,7 +184,7 @@ function JobsList({ projectId, goalId }: Props) {
       ...checkboxFilter('Filter cells', cellOptions, filters.cell), render: (_, { job }) => cellLabel(job.cell_name) },
     { title: 'Goal', key: 'prompt', sorter: (a, b) => (fullPrompt(a.group) || 'Untitled goal').localeCompare(fullPrompt(b.group) || 'Untitled goal'), sortOrder: sortOrder('prompt'), render: (_, row) => { const { group, job } = row; return <Space direction="vertical" size={2}>
       <Space align="start">
-        <Button aria-label={`${isExpanded(row) ? 'Collapse' : 'Expand'} goal details`} aria-expanded={isExpanded(row)} icon={isExpanded(row) ? <UpOutlined /> : <DownOutlined />} onClick={event => { event.stopPropagation(); expand(!isExpanded(row), row); }} />
+        <GoalExpander expanded={isExpanded(row)} onToggle={() => expand(!isExpanded(row), row)} />
       <Link className="goal-prompt compact-touch-link" to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)}>
         {abbreviatePrompt(fullPrompt(group) || 'Untitled goal')}
       </Link>
@@ -292,7 +301,7 @@ function JobsList({ projectId, goalId }: Props) {
                 <Link className="goal-prompt compact-touch-link" to={`${jobPath(projectId, row.job.job_id)}${jobFilterSearch(params)}`} state={navigationState(row.group.goalId)}>
                   <span className="goal-card-title">{abbreviatePrompt(fullPrompt(row.group) || 'Untitled goal')}</span>
                 </Link>
-                <Button aria-label={`${isExpanded(row) ? 'Collapse' : 'Expand'} goal details`} aria-expanded={isExpanded(row)} icon={isExpanded(row) ? <UpOutlined /> : <DownOutlined />} onClick={() => expand(!isExpanded(row), row)} />
+                <GoalExpander expanded={isExpanded(row)} onToggle={() => expand(!isExpanded(row), row)} />
               </div>
               <div className="goal-card-meta">
                 {columns.find(column => column.key === 'status')?.render?.(undefined, row, index) as React.ReactNode}

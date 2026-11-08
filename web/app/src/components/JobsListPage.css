@@ -9,3 +9,10 @@ a.goal-prompt:focus-visible { outline: 2px solid #1677ff; outline-offset: 3px; }
 .goal-attempt-detail { background: #fff; }
 .goal-selected-attempt > td { background: #f5f7fa; }
 .job-completion { max-width: 60em; overflow-wrap: anywhere; }
+.goal-expander { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 17px; height: 17px; padding: 0; border: 0; background: transparent; cursor: pointer; vertical-align: middle; }
+.goal-expander-icon { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 17px; height: 17px; border: 1px solid var(--goal-expander-border); border-radius: 2px; background: var(--goal-expander-bg); font: 14px/1 Arial, sans-serif; }
+.goal-expander:hover .goal-expander-icon { color: var(--goal-expander-active); border-color: var(--goal-expander-active); }
+.goal-expander:focus-visible { outline: 2px solid var(--goal-expander-active); outline-offset: 3px; }
+@media (max-width: 767px) {
+  .goal-expander { width: 44px; height: 44px; }
+}

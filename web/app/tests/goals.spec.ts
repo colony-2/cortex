@@ -85,6 +85,9 @@ test('renders a single compact row or grouped attempts with metadata and waiting
   await expect(soloRow.locator(':scope > td')).toHaveCount(6);
   const expander = values.nth(2).getByRole('button', { name: 'Expand goal details', exact: true });
   await expect(expander).toHaveAttribute('aria-expanded', 'false');
+  await expect(expander.locator('.goal-expander-icon')).toHaveText('+');
+  await expect(expander.locator('.goal-expander-icon')).toHaveCSS('width', '17px');
+  await expect(expander.locator('.goal-expander-icon')).toHaveCSS('height', '17px');
 
   await expect(row.getByRole('link', { name: 'Open input/review' })).toHaveAttribute('href', '/project/goal-layout/reviews/first');
   await expect(row.getByRole('link', { name: 'Parent' })).toHaveAttribute('href', '/project/goal-layout/jobs/coordinator/story');
@@ -93,9 +96,12 @@ test('renders a single compact row or grouped attempts with metadata and waiting
   expect(detailsRead).toEqual([]);
   const initialReads = reads;
   await expander.focus();
+  await expect(expander).toBeFocused();
+  await expect(expander).toHaveCSS('outline-style', 'solid');
   await page.keyboard.press('Enter');
   const collapse = values.nth(2).getByRole('button', { name: 'Collapse goal details', exact: true });
   await expect(collapse).toHaveAttribute('aria-expanded', 'true');
+  await expect(collapse.locator('.goal-expander-icon')).toHaveText('−');
   await expect(table.locator('tr.ant-table-expanded-row > td')).toHaveAttribute('colspan', '6');
   await expect(values.first().getByRole('checkbox')).not.toBeChecked();
   await expect(page).toHaveURL(/\/goals\?/);
@@ -114,7 +120,9 @@ test('renders a single compact row or grouped attempts with metadata and waiting
   await expect(attempts).toHaveCount(1);
   await expect(attempts.getByText(second.completion_detail, { exact: true })).toBeVisible();
   await expect(page.getByText('shared-goal', { exact: true })).toHaveCount(0);
-  await page.screenshot({ path: '/tmp/cortex-goals-list.png', fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: process.env.GOAL_SCREENSHOT || '/tmp/cortex-goals-list.png', fullPage: true, animations: 'disabled' });
   await row.getByRole('link', { name: 'Goal overview' }).click();
   await expect(page.getByRole('heading', { name: 'Goal overview', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Archive selected', exact: true })).toHaveCount(0);

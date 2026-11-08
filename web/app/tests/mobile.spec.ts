@@ -378,6 +378,17 @@ test('phone goals start with concise cards and disclose existing controls and me
   const card = page.locator('.goal-card').first();
   // JC-014: the desktop swap must preserve the compact summary and secondary fields.
   await expect(card.locator('.goal-card-title')).toHaveCount(1);
+  const expander = card.getByRole('button', { name: 'Expand goal details' });
+  const target = await expander.boundingBox();
+  expect(target!.width).toBeGreaterThanOrEqual(44);
+  expect(target!.height).toBeGreaterThanOrEqual(44);
+  await expect(expander.locator('.goal-expander-icon')).toHaveText('+');
+  await expect(expander.locator('.goal-expander-icon')).toHaveCSS('width', '17px');
+  await expect(expander.locator('.goal-expander-icon')).toHaveCSS('height', '17px');
+  await expander.click();
+  await expect(card.getByRole('button', { name: 'Collapse goal details' }).locator('.goal-expander-icon')).toHaveText('−');
+  await card.getByRole('button', { name: 'Collapse goal details' }).click();
+
   await expect(card.locator('.goal-card-meta .ant-tag')).toHaveCount(1);
   await expect(card.locator('.goal-card-meta').getByText('platform', { exact: true })).toHaveCount(1);
   await expect(card.locator('.goal-card-meta')).toContainText('2 attempts on this page');
