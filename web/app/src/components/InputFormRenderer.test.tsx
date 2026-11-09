@@ -38,7 +38,7 @@ describe('InputFormRenderer', () => {
 
   it.each([
     { id: 'decision', options: ['revise'], value: 'revise', label: 'Revise the plan' },
-    { id: 'decision', options: ['approve', 'revise'], value: 'revise', label: 'Revise the plan' },
+    { id: 'decision', options: ['approve', 'revise', 'defer'], value: 'revise', label: 'Revise the plan' },
     { id: 'disposition', options: ['accept', 'return'], value: 'return', label: 'Send back for discussion' },
   ])('submits review action $id=$value with exact values', async ({ id, options, value, label }) => {
     const form: InputForm = { id: 'review', title: 'Review', kind: 'review', fields: [
@@ -59,6 +59,29 @@ describe('InputFormRenderer', () => {
     await waitFor(() => expect(mockOnSubmit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       fields: { [id]: value, feedback: 'Please clarify ownership.' },
     })));
+  });
+
+  it.each([true, false])('REV-006/007 retains rejection draft and sends revise (required=%s)', async required => {
+    const user = userEvent.setup();
+    render(<InputFormRenderer form={{ id: 'review', title: 'Review', kind: 'review', fields: [
+      { id: 'decision', label: 'Decision', type: 'multiple_choice', required: true, options: ['approve', 'revise'] },
+      { id: 'feedback', label: 'Reason', type: 'paragraph_text', required },
+    ] }} onSubmit={mockOnSubmit} />);
+    await user.click(screen.getByRole('button', { name: 'Reject', exact: true }));
+    expect(screen.getByLabelText('Reason')).toHaveFocus();
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+    await user.type(screen.getByLabelText('Reason'), '   ');
+    await user.click(screen.getByRole('button', { name: 'Submit rejection' }));
+    await screen.findByText('Reason is required');
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+    await user.clear(screen.getByLabelText('Reason'));
+    await user.type(screen.getByLabelText('Reason'), 'Please clarify');
+    await user.click(screen.getByRole('button', { name: 'Back', exact: true }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Reject', exact: true })).toHaveFocus());
+    await user.click(screen.getByRole('button', { name: 'Reject', exact: true }));
+    expect(screen.getByLabelText('Reason')).toHaveValue('Please clarify');
+    await user.click(screen.getByRole('button', { name: 'Submit rejection' }));
+    await waitFor(() => expect(mockOnSubmit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ fields: { decision: 'revise', feedback: 'Please clarify' } })));
   });
 
   it.each(['optional', 'multiple'])('keeps %s review choice questions as ordinary form fields', async kind => {

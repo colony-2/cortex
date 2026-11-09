@@ -36,6 +36,7 @@ export default function DocumentPreview({ data, name, markdownSource = false, se
     if (!navigationIntent) return;
     root.current?.focus({ preventScroll: true });
     if (navigationIntent.fragment !== undefined) scrollToFragment(navigationIntent.fragment);
+    else root.current?.scrollIntoView?.({ block: 'start' });
   }, [data, navigationIntent]);
   const [mode, setMode] = useState('rendered');
   const [textOverride, setTextOverride] = useState(false);

@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, Link } from 'react-router-dom';
 import { setupServer } from 'msw/node';
+import { http, HttpResponse } from 'msw';
 import { InputActivityProvider, inputActivityService } from '@colony2/shared';
 import InputDetailPage from './InputDetailPage';
 import {
@@ -61,6 +62,87 @@ describe('InputDetailPage - Single Question Flow', () => {
       </MemoryRouter>
     );
   };
+
+  const setupReview = () => {
+    const details = createMockSingleQuestionDetails(jobId);
+    details.form = { kind: 'review', request_id: 'request-1', documents: {}, fields: [
+      { id: 'decision', type: 'multiple_choice', question: 'Decision', required: true, options: [{ value: 'approve', label: 'Approve' }, { value: 'revise', label: 'Revise' }] },
+      { id: 'feedback', type: 'paragraph_text', question: 'Reason' },
+      { id: 'attachment', type: 'file_upload', question: 'Annotations' },
+    ] };
+    setupMockInputs(projectId, [createMockPendingInput(jobId)], [details]);
+    server.use(http.get('http://localhost:8080/api/projects/:tenant/jobs/:job', () => HttpResponse.json({job_id:jobId,status:'ACTIVE'})),
+      http.get('http://localhost:8080/api/projects/:tenant/jobs/:job/children', () => HttpResponse.json({jobs:[]})));
+    return details;
+  };
+
+  it('REV-011/012/013 retains drafts and attachments after failure and prevents overlapping submissions', async () => {
+    setupReview();
+    let fail!: (error: Error) => void;
+    const submit = vi.spyOn(inputActivityService, 'submitReview').mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; })).mockResolvedValueOnce(undefined as never);
+    const {container} = renderComponent();
+    const reject = await screen.findByRole('button',{name:'Reject',exact:true});
+    await userEvent.click(reject);
+    await userEvent.type(screen.getByLabelText('Reason'),'Keep this draft');
+    const file = new File(['notes'],'notes.md',{type:'text/markdown'});
+    await userEvent.upload(container.querySelector('input[type=file]')!,file);
+    const send = screen.getByRole('button',{name:'Submit rejection'});
+    fireEvent.click(send); fireEvent.click(send);
+    await waitFor(()=>expect(submit).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button',{name:'Cancel job',exact:true})).toBeDisabled();
+    fail(new Error('Stale request: reload to continue'));
+    await screen.findByText('Stale request: reload to continue');
+    expect(screen.getByLabelText('Reason')).toHaveValue('Keep this draft');
+    expect(screen.getByText('notes.md')).toBeInTheDocument();
+    expect(container.querySelector('.review-actions')).toHaveTextContent('Stale request: reload to continue');
+    await userEvent.click(send);
+    await waitFor(()=>expect(submit).toHaveBeenCalledTimes(2));
+    expect(submit).toHaveBeenLastCalledWith(projectId,jobId,'request-1',expect.objectContaining({fields:{decision:'revise',feedback:'Keep this draft'},attachments:{attachment:file}}));
+    submit.mockRestore();
+  });
+
+  it('REV-013 disables review submission during pending cancellation', async () => {
+    setupReview();
+    let finish!: () => void;
+    server.use(http.post('http://localhost:8080/api/projects/:tenant/jobs/:job/cancel', async () => {
+      await new Promise<void>(resolve=>{finish=resolve;}); return HttpResponse.json({});
+    }));
+    renderComponent();
+    await userEvent.click(await screen.findByRole('button',{name:'Cancel job',exact:true}));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(dialog.querySelector('.ant-modal-footer button.ant-btn-primary')!);
+    await waitFor(()=>expect(screen.getByRole('button',{name:'Approve',exact:true})).toBeDisabled());
+    expect(screen.getByRole('button',{name:'Reject',exact:true})).toBeDisabled();
+    await waitFor(()=>expect(finish).toBeTypeOf('function'));
+    finish();
+    await waitFor(()=>expect(mockNavigate).toHaveBeenCalled());
+  });
+
+  it('REV-014 resets request-owned draft when the tenant changes', async () => {
+    const details=setupReview();
+    setupMockInputs('other-tenant',[],[details]);
+    const view=(tenant:string)=><MemoryRouter initialEntries={[`/reviews/${jobId}`]}><Routes><Route path="/reviews/:jobId" element={<InputDetailPage projectId={tenant}/>}/></Routes></MemoryRouter>;
+    const {rerender}=render(view(projectId));
+    await userEvent.click(await screen.findByRole('button',{name:'Reject',exact:true}));
+    await userEvent.type(screen.getByLabelText('Reason'),'Tenant owned draft');
+    rerender(view('other-tenant'));
+    await userEvent.click(await screen.findByRole('button',{name:'Reject',exact:true}));
+    expect(screen.getByLabelText('Reason')).toHaveValue('');
+  });
+
+  it.each(['job', 'request'])('REV-014 resets drafts when %s identity changes', async identity => {
+    const details=setupReview();
+    const getDetails=vi.spyOn(inputActivityService,'getInputDetails').mockResolvedValue(details);
+    const view=()=> <MemoryRouter initialEntries={[`/reviews/${jobId}`]}><Link to="/reviews/next-job">Next request</Link><Routes><Route path="/reviews/:jobId" element={<InputDetailPage projectId={projectId}/>}/></Routes></MemoryRouter>;
+    const {rerender}=render(view());
+    await userEvent.click(await screen.findByRole('button',{name:'Reject',exact:true}));
+    await userEvent.type(screen.getByLabelText('Reason'),'Earlier request draft');
+    if(identity==='job') await userEvent.click(screen.getByRole('link',{name:'Next request'}));
+    else { details.form.request_id='request-2'; rerender(view()); }
+    await userEvent.click(await screen.findByRole('button',{name:'Reject',exact:true}));
+    expect(screen.getByLabelText('Reason')).toHaveValue('');
+    getDetails.mockRestore();
+  });
 
   it('should show loading state initially', () => {
     setupMockInputs(projectId, [createMockPendingInput(jobId)], [createMockSingleQuestionDetails(jobId)]);

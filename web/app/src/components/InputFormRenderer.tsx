@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { 
   Form, 
   Input, 
@@ -17,7 +17,7 @@ import { UploadOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd/es/upload/interface';
 import type { Rule } from 'antd/es/form';
 import type { Dayjs } from 'dayjs';
-import { reviewActionField } from '../utils/reviewForm';
+import { conventionalReviewFeedback, reviewActionField } from '../utils/reviewForm';
 import type { 
   InputForm, 
   InputField, 
@@ -34,6 +34,7 @@ interface InputFormRendererProps {
   onCancel?: () => void;
   loading?: boolean;
   reviewPromptShown?: boolean;
+  submissionError?: string | null;
 }
 
 export default function InputFormRenderer({ 
@@ -43,6 +44,7 @@ export default function InputFormRenderer({
   onCancel, 
   loading = false,
   reviewPromptShown = false,
+  submissionError,
 }: InputFormRendererProps) {
   // Context is accepted for future use (display/telemetry) even if not rendered currently.
   void context;
@@ -50,6 +52,39 @@ export default function InputFormRenderer({
   const [fileList, setFileList] = useState<Record<string, UploadFile[]>>({});
   const [validationError, setValidationError] = useState(false);
   const actionField = reviewActionField(form);
+  const feedback = conventionalReviewFeedback(form);
+  const conventional = !!feedback;
+  const [rejecting, setRejecting] = useState(false);
+  const actions = useRef<HTMLDivElement>(null);
+  const rejectButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!rejecting || !feedback) return;
+    antForm.getFieldInstance(feedback.id)?.focus();
+    antForm.scrollToField(feedback.id, { block: 'center' });
+  }, [rejecting, feedback?.id, antForm]);
+  useEffect(() => {
+    if (form.kind !== 'review' || !actions.current) return;
+    const root = document.documentElement;
+    const measure = () => {
+      const viewport = window.visualViewport;
+      const bottom = viewport ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : 0;
+      actions.current!.style.bottom = `${bottom}px`;
+      root.style.setProperty('--review-action-height', `${actions.current!.getBoundingClientRect().height + bottom}px`);
+    };
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure);
+    observer?.observe(actions.current);
+    measure();
+    window.addEventListener('resize', measure);
+    window.visualViewport?.addEventListener('resize', measure);
+    window.visualViewport?.addEventListener('scroll', measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+      window.visualViewport?.removeEventListener('resize', measure);
+      window.visualViewport?.removeEventListener('scroll', measure);
+      root.style.removeProperty('--review-action-height');
+    };
+  }, [form.kind]);
 
   const handleFinish = (values: any) => {
     setValidationError(false);
@@ -110,7 +145,8 @@ export default function InputFormRenderer({
   const renderField = (field: InputField) => {
     const rules: Rule[] = [
       {
-        required: field.required,
+        required: field.required || (conventional && rejecting && field === feedback),
+        ...(conventional && field === feedback && (rejecting || field.required) ? { whitespace: true } : {}),
         message: `${field.label} is required`,
       },
     ];
@@ -311,7 +347,7 @@ export default function InputFormRenderer({
         setValidationError(true);
         if (actionField) antForm.setFieldValue(actionField.id, undefined);
       }}
-      scrollToFirstError
+      scrollToFirstError={form.kind === 'review' ? { block: 'center', focus: true } : true}
       disabled={loading}
     >
       {actionField && !reviewPromptShown && <div style={{ whiteSpace: 'pre-wrap', marginBottom: 24 }}>{actionField.label}</div>}
@@ -321,11 +357,14 @@ export default function InputFormRenderer({
         </div>
       )}
       
-      {form.fields.filter(field => field !== actionField).map((field: InputField) => renderField(field))}
+      {form.fields.filter(field => field !== actionField && !(conventional && field === feedback && !field.required)).map((field: InputField) => renderField(field))}
       {actionField && <Form.Item name={actionField.id} hidden rules={[{ required: true }]}><Input /></Form.Item>}
+      <div ref={actions} role={form.kind === 'review' ? 'region' : undefined} className={form.kind === 'review' ? 'review-actions' : undefined} aria-label={form.kind === 'review' ? 'Review decisions' : undefined}>
+      {conventional && feedback && !feedback.required && <div hidden={!rejecting}>{renderField(feedback)}</div>}
+      {submissionError && <Alert type="error" showIcon message={submissionError} />}
       {validationError && <Alert type="error" showIcon message="Please complete the required fields and correct any errors before submitting." />}
       
-      <Form.Item style={{ marginTop: '32px' }}>
+      <Form.Item style={{ marginTop: form.kind === 'review' ? 0 : 32 }}>
         <Space wrap>
           {onCancel && (
             <Button onClick={onCancel} disabled={loading}>
@@ -333,7 +372,13 @@ export default function InputFormRenderer({
             </Button>
           )}
           {/* Keep action names stable while Ant Design animates its loading icon. */}
-          {actionField ? actionField.options!.map(option => (
+          {conventional ? rejecting ? <>
+            <Button disabled={loading} onClick={() => { setRejecting(false); requestAnimationFrame(() => rejectButton.current?.focus()); }}>Back</Button>
+            <Button type="primary" disabled={loading} loading={loading} onClick={() => { antForm.setFieldValue(actionField!.id, 'revise'); antForm.submit(); }}>Submit rejection</Button>
+          </> : <>
+            <Button type="primary" disabled={loading} loading={loading} aria-busy={loading} aria-label="Approve" onClick={() => { antForm.setFieldValue(actionField!.id, 'approve'); antForm.submit(); }}>Approve</Button>
+            <Button ref={rejectButton} disabled={loading} onClick={() => setRejecting(true)}>Reject</Button>
+          </> : actionField ? actionField.options!.map(option => (
             <Button key={option} type="primary" loading={loading}
               aria-label={actionField.optionLabels?.[option] || option} aria-busy={loading} onClick={() => {
               antForm.setFieldValue(actionField.id, option);
@@ -346,6 +391,7 @@ export default function InputFormRenderer({
           </Button>}
         </Space>
       </Form.Item>
+      </div>
     </Form>
   );
 }

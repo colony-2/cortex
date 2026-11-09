@@ -28,6 +28,8 @@ export default function InputDetailPage({ projectId }: InputDetailPageProps) {
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const submitBusy = useRef(false);
+  const cancelBusy = useRef(false);
   const formRequest = useRef<{ key: string; promise: Promise<UserInputDetails> }>();
 
   useEffect(() => {
@@ -52,7 +54,8 @@ export default function InputDetailPage({ projectId }: InputDetailPageProps) {
   }, [projectId, jobId]);
 
   const handleSubmit = async (response: FormResponse) => {
-    if (!jobId) return;
+    if (!jobId || submitBusy.current || cancelBusy.current) return;
+    submitBusy.current = true;
 
     setSubmitting(true);
     setError(null);
@@ -70,6 +73,7 @@ export default function InputDetailPage({ projectId }: InputDetailPageProps) {
       if (reviews) setError(err instanceof Error ? err.message : 'Failed to submit review.');
       else message.error('Failed to submit response. Please try again.');
     } finally {
+      submitBusy.current = false;
       setSubmitting(false);
     }
   };
@@ -113,7 +117,7 @@ export default function InputDetailPage({ projectId }: InputDetailPageProps) {
             Back to Reviews
           </Button>
           {reviews && <CancelJobButton key={`${projectId}/${jobId}`} projectId={projectId} jobId={jobId}
-            disabled={submitting} onBusyChange={setCancelling} onCancelled={handleCancel} />}
+            disabled={submitting} onBusyChange={busy => { cancelBusy.current = busy; setCancelling(busy); }} onCancelled={handleCancel} />}
         </Space>
 
         <div className={compact && reviews ? "review-secondary" : undefined}>
@@ -155,8 +159,8 @@ export default function InputDetailPage({ projectId }: InputDetailPageProps) {
           documentMetadata={details.form.document_metadata} overviewDocumentId={details.form.overview_document_id}
           requestId={details.form.request_id!} documents={details.form.documents || {}} />}
         <Card title={reviews ? 'Your response' : form.title}>
-          {error && <Alert type="error" showIcon message={error} closable onClose={() => setError(null)} style={{ marginBottom: 16 }} />}
-          <InputFormRenderer key={details.form.request_id || jobId} form={form} reviewPromptShown={!!reviewPrompt} onSubmit={handleSubmit} onCancel={handleCancel} loading={submitting || cancelling} />
+          {error && !reviews && <Alert type="error" showIcon message={error} closable onClose={() => setError(null)} style={{ marginBottom: 16 }} />}
+          <InputFormRenderer key={JSON.stringify([projectId, jobId, details.form.request_id])} submissionError={reviews ? error : undefined} form={form} reviewPromptShown={!!reviewPrompt} onSubmit={handleSubmit} onCancel={handleCancel} loading={submitting || cancelling} />
         </Card>
       </Space>
     </div>

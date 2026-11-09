@@ -474,7 +474,6 @@ for (const clarification of [false, true]) {
       await expect(page.getByRole('heading', { name: 'Review the release' })).toBeVisible();
       await page.getByRole('button', { name: 'Read design.md', exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
-      await page.getByText('Document options', { exact: true }).click();
       await expect(page.getByLabel('Rendered document').getByRole('table')).toBeVisible();
       await expect(page.locator('[contenteditable=true]')).toHaveCount(0);
       await page.getByText('Markdown', { exact: true }).click();
@@ -485,7 +484,6 @@ for (const clarification of [false, true]) {
       await page.getByText('Rendered', { exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Rollout', exact: true })).toBeVisible();
       await expect(page.getByRole('checkbox')).toBeDisabled();
-      await page.getByRole('button', { name: 'Back to review', exact: true }).click();
 
       const details = await (await request.get(`/api/projects/${tenant}/user-inputs/${jobID}`)).json();
       const stale = await page.request.post(`/api/projects/${tenant}/reviews/${jobID}/respond`, {
@@ -515,8 +513,7 @@ for (const clarification of [false, true]) {
       await feedback.fill('Please use the proposed mandate and clarify the ownership boundary.');
       if (!clarification) await page.locator('input[type=file]').setInputFiles({ name: 'feedback.md', mimeType: 'text/markdown', buffer: Buffer.from('# Feedback from browser') });
       await page.getByRole('button', { name: 'Read design.md', exact: true }).click();
-      await expect(page.getByRole('dialog').getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
-      await page.getByRole('button', { name: 'Back to review', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
       await expect(feedback).toHaveValue('Please use the proposed mandate and clarify the ownership boundary.');
 
       for (const viewport of [{ width: 320, height: 568 }, { width: 768, height: 1024 }, { width: 1440, height: 900 }, { width: 390, height: 844 }]) {
@@ -673,7 +670,6 @@ test.describe('review job metadata', () => {
     await expect(region.locator('script, strong')).toHaveCount(0);
     await page.getByRole('button', { name: 'Read design.md', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Back to review', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Back to Reviews' })).toBeVisible();
     expect(await fits()).toBe(true);
@@ -698,19 +694,16 @@ test.describe('multi-format review viewers', () => {
     expect(fetched).toHaveLength(0);
     await setNativeZoom(page,2);
     await page.getByRole('button',{name:'Open Review',exact:true}).click();
-    expect(fetched).toHaveLength(0);
+    await expect(page.getByLabel('Document preview')).toBeVisible();
     const feedback=page.getByLabel('What should change?',{exact:true});
     await feedback.fill('Multi-format feedback');
     await page.locator('input[type=file]').setInputFiles({name:'feedback.md',mimeType:'text/markdown',buffer:Buffer.from('# Feedback')});
-    let lastRead = '';
-    const read=async(name:string)=>{lastRead = name;await page.getByRole('button',{name:`Read ${name}`,exact:true}).click();await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'Back to review',exact:true}).scrollIntoViewIfNeeded();
-      // Wait for finite Drawer opening transitions before closing or resizing it.
-      await page.evaluate(async () => {
-        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        await Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})));
-      });
+    const read=async(name:string)=>{
+      await page.getByRole('button',{name:`Read ${name}`,exact:true}).click();
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(page.getByRole('region',{name:'Selected document',exact:true})).toBeVisible();
     };
-    const back=async()=>{const close=page.getByRole('button',{name:'Back to review',exact:true});await close.focus();await expect(close).toBeInViewport({ratio:1});await page.keyboard.press('Enter');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('button',{name:`Read ${lastRead}`,exact:true})).toBeFocused();};
+    const back=async()=>{ await page.getByRole('navigation', {name:'Review documents'}).scrollIntoViewIfNeeded(); };
     await read('data.json');await expect(page.getByLabel('Formatted JSON')).toContainText('9007199254740993');
     await page.getByText('Formatted JSON — collapse / expand',{exact:true}).click();await expect(page.getByLabel('Formatted JSON')).toBeHidden();
     await page.getByText('Formatted JSON — collapse / expand',{exact:true}).click();await back();
@@ -766,5 +759,31 @@ test.describe('multi-format review viewers', () => {
     startWorker();await expect.poll(async()=>{
       const response=await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`);return response.status()===200?response.json():null;
     },{timeout:30000}).toMatchObject({status:'completed',output:{answers:{feedback:'Multi-format feedback',annotation:{kind:'stored'}},receipt:{actor:{id:'browser@example.com',kind:'human'}}}});
+  });
+});
+
+test.describe('conventional rejection',()=>{
+  test.use({recipeFixture:'browser-review'});
+  test('REV-007 submits rejection feedback with the original revise value through c2j',async({page,request,recipeRun})=>{
+    const {tenant,jobID,stopWorker,startWorker}=recipeRun;
+    await stopWorker();
+    await page.goto(`/project/${tenant}/reviews/${jobID}`);
+    await page.getByRole('button',{name:'Reject',exact:true}).click();
+    const reason=page.getByLabel('What should change?',{exact:true});
+    await expect(reason).toBeFocused();
+    await reason.fill('   ');
+    await page.getByRole('button',{name:'Submit rejection'}).click();
+    await expect(page.getByText('What should change? is required')).toBeVisible();
+    await reason.fill('Clarify ownership before approval.');
+    const [response]=await Promise.all([
+      page.waitForResponse(r=>r.url().endsWith(`/reviews/${jobID}/respond`) && r.request().method()==='POST'),
+      page.getByRole('button',{name:'Submit rejection'}).click(),
+    ]);
+    expect(response.status(),await response.text()).toBe(200);
+    startWorker();
+    await expect.poll(async()=>{
+      const r=await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`);
+      return r.status()===200?r.json():null;
+    },{timeout:30000}).toMatchObject({status:'completed',output:{answers:{decision:'revise',feedback:'Clarify ownership before approval.'}}});
   });
 });

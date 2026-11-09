@@ -306,17 +306,15 @@ it('RDM-007,008,019,024 preserves fallback labels and disables sources after mem
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
 
-it.each([false,true])('RDM-014,016 returns compact focus when the opener disappears, empty=%s', async empty => {
+it.each([false,true])('RDM-014,016 recovers inline catalog focus when the selection disappears, empty=%s', async empty => {
   const previous=window.innerWidth;Object.defineProperty(window,'innerWidth',{value:375,configurable:true});
   vi.stubGlobal('fetch',vi.fn(async()=>new Response('# Loaded')));
   const doc=(name:string)=>({kind:'stored' as const,stored:{key:{jobId:'p',taskOrdinal:1,name,sizeBytes:1}}});
   const props={projectId:'t',jobId:'j',requestId:'r'};
   try {
     const {rerender}=render(<ReviewDocuments {...props} documents={{a:doc('a.md'),b:doc('b.md')}} overviewDocumentId="b"/>);
-    expect(fetch).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button',{name:'Read b.md'}));await screen.findByRole('heading',{name:'Loaded'});
     rerender(<ReviewDocuments {...props} documents={empty ? {} : {a:doc('a.md')}}/>);
-    if (!empty) fireEvent.click(screen.getByRole('button',{name:'Back to review'}));
     await waitFor(()=>expect(document.querySelector('.review-document-catalog')).toHaveFocus());
   } finally {Object.defineProperty(window,'innerWidth',{value:previous,configurable:true});}
 });

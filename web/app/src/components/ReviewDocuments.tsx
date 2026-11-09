@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, Drawer, Empty, Select, Spin, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Empty, Select, Spin, Tag, Typography } from 'antd';
 import { useCompact } from '../hooks/useCompact';
 import { inputActivityService, type ReviewDocument, type ReviewDocumentMetadata } from '@colony2/shared';
 import DocumentPreview from './review/DocumentPreview';
@@ -13,17 +13,12 @@ export default function ReviewDocuments(props: Props) {
 }
 function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata = {}, overviewDocumentId }: Props) {
   const compact = useCompact();
-  const [readerOpen, setReaderOpen] = useState(false);
-  useEffect(() => { if (!compact) setReaderOpen(false); }, [compact]);
   const ids = Object.keys(documents).sort((a, b) => displayOrder(documentMetadata[a]?.order) - displayOrder(documentMetadata[b]?.order) || (a < b ? -1 : a > b ? 1 : 0));
   const attached = (id?: string): id is string => id !== undefined && Object.prototype.hasOwnProperty.call(documents, id);
   const initial = attached(overviewDocumentId) ? overviewDocumentId : ids[0];
   const [selection, setSelection] = useState(initial);
   const selected = attached(selection) ? selection : initial;
   const catalog = useRef<HTMLDivElement>(null);
-  const readerVisible = useRef(false);
-  readerVisible.current = compact && readerOpen;
-  useEffect(() => { if (!selected) setReaderOpen(false); }, [selected]);
   const [navigationIntent, setNavigationIntent] = useState<(NavigationIntent & { documentId: string })>();
   const [dual, setDual] = useState(false);
   const [markdownSource, setMarkdownSource] = useState(false);
@@ -31,39 +26,35 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
   const cached = useRef(content);
   const [error, setError] = useState<string>();
   const [retry, setRetry] = useState(0);
-  const opener = useRef<HTMLElement>();
-  const wasReaderVisible = useRef(false);
-  const restoreFocus = () => requestAnimationFrame(() => {
-    if (!readerVisible.current) (opener.current?.isConnected ? opener.current : catalog.current)?.focus();
-  });
-  useEffect(() => {
-    // A cached preview can be closed before the drawer's enter animation ends;
-    // rc-drawer may skip afterOpenChange in that case.
-    const visible = compact && readerOpen;
-    if (wasReaderVisible.current && !visible) restoreFocus();
-    wasReaderVisible.current = visible;
-  }, [compact, readerOpen]);
+  const previewRoot = useRef<HTMLElement>(null);
+  const reveal = useRef(false);
   const doc = documents[selected];
   const name = doc?.name || doc?.stored.key.name || selected;
   const url = selected ? inputActivityService.reviewDocumentURL(projectId, jobId, requestId, selected) : '';
-  const previewActive = !compact || readerOpen;
+  useEffect(() => {
+    if (reveal.current && (error || content?.url === url)) {
+      previewRoot.current?.scrollIntoView?.({ block: 'start' });
+      reveal.current = false;
+    }
+  }, [content, url, error]);
   useEffect(() => {
     if (selection !== selected) {
       // Membership changes are a fallback, not a request to navigate to the old target.
       setSelection(selected);
+      catalog.current?.focus();
       setNavigationIntent(undefined);
     }
   }, [selection, selected]);
   useEffect(() => {
     setError(undefined);
-    if (!url || !previewActive || cached.current?.url === url) return;
+    if (!url || cached.current?.url === url) return;
     setContent(undefined); cached.current = undefined;
     const controller = new AbortController();
     loadDocument(url, name, controller.signal).then(data => {
       if (!controller.signal.aborted) { cached.current = { url, data }; setContent(cached.current); }
     }).catch(e => { if (!controller.signal.aborted) setError(e.message); });
     return () => controller.abort();
-  }, [url, name, retry, previewActive]);
+  }, [url, name, retry]);
   const filename = (id: string) => documents[id]?.name || documents[id]?.stored.key.name || id;
   const title = (id: string) => documentMetadata[id]?.title?.trim() ? documentMetadata[id].title! : filename(id);
   const openDocument = (id: string, focus = false, fragment?: string) => {
@@ -71,7 +62,8 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
     setSelection(id);
     setNavigationIntent(focus ? previous => ({ documentId: id, token: (previous?.token || 0) + 1, fragment }) : undefined);
     if (focus) setMarkdownSource(false);
-    if (compact) setReaderOpen(true);
+    reveal.current = !focus;
+    if (!focus && id === selected) previewRoot.current?.scrollIntoView?.({ block: 'start' });
     return true;
   };
   const summary = (id: string) => {
@@ -89,13 +81,12 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
       ? <a key={source} href={inputActivityService.reviewDocumentURL(projectId, jobId, requestId, source)} onClick={event => {
         if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
-        if (compact && !readerOpen) opener.current = event.currentTarget;
         openDocument(source, true);
       }}>{title(source)}{title(source) !== filename(source) ? ` · ${filename(source)}` : ''} ({source})</a>
       : <span key={source}>{source} (unavailable)</span>)}</div> : null;
   };
   const toolbar = <div className="review-document-toolbar">
-    {compact && <Select aria-label="Review document" value={selected} onChange={id => { setNavigationIntent(undefined); setSelection(id); }} style={{ minWidth: 220, maxWidth: '100%' }} options={ids.map(id => ({ value: id, label: `${id} · ${title(id)}` }))} />}
+    {compact && <Select aria-label="Review document" value={selected} onChange={id => openDocument(id)} style={{ minWidth: 220, maxWidth: '100%' }} options={ids.map(id => ({ value: id, label: `${id} · ${title(id)}` }))} />}
     <Typography.Text type="secondary">{doc?.stored.key.sizeBytes?.toLocaleString() ?? 'Unknown'} bytes</Typography.Text>
     <Button href={url} download={name}>Download</Button>
   </div>;
@@ -116,20 +107,13 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
       {!selected ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents attached" />
         : <div className={compact ? 'review-document-cards' : 'review-document-layout'}>
           <nav aria-label="Review documents" className="review-document-list">{ids.map(id => <div key={id} className="review-document-entry">
-            {compact ? <>{summary(id)}{id === initial && <Tag>Starting document</Tag>}{sources(id)}<Button block onClick={event => { opener.current = event.currentTarget; openDocument(id); }}>Read {title(id)}</Button></>
+            {compact ? <>{summary(id)}{id === initial && <Tag>Starting document</Tag>}{sources(id)}<Button block onClick={() => openDocument(id)}>Read {title(id)}</Button></>
               : <button type="button" aria-current={id === selected ? 'true' : undefined} onClick={() => openDocument(id)}>{summary(id)}</button>}
           </div>)}</nav>
-          {!compact && <section className="review-document-content" aria-label="Selected document">{details}{preview}</section>}
+          <section ref={previewRoot} className="review-document-content" aria-label="Selected document">{details}{preview}</section>
         </div>}
 
     </Card>
-    <Drawer rootClassName="review-reader" title={selected ? title(selected) : name} width="100%" open={compact && readerOpen} destroyOnHidden closable={false} onClose={() => setReaderOpen(false)} afterOpenChange={open => {
-      // Run after rc-drawer's own last-active-element restoration as well.
-      if (!open) restoreFocus();
-    }} extra={<Button onClick={() => setReaderOpen(false)}>Back to review</Button>}>
-      {selected && <>{summary(selected)}{sources(selected)}</>}
-      <details className="reader-options"><summary>Document options</summary>{toolbar}</details>{preview}
-    </Drawer>
   </>;
 }
 

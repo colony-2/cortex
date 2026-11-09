@@ -266,18 +266,6 @@ body {
   }
 }
 
-/* Full-screen phone reading has one vertical scroller, owned by the Drawer.
-   The form stays mounted underneath, so returning keeps answers and attachments. */
-.review-reader .review-markdown, .review-reader .review-markdown-source {
-  max-height: none; overflow: visible; border: 0; padding: 12px 0;
-}
-.review-reader .ant-drawer-header { padding: 12px; }
-.review-reader .ant-drawer-body { padding: 12px; }
-.review-reader .ant-drawer-title { overflow-wrap: anywhere; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.review-reader .ant-drawer-extra { margin-left: 8px; }
-.review-reader .reader-options { margin-bottom: 12px; }
-.review-reader summary { min-height: 44px; cursor: pointer; }
-.review-reader pre { overflow-wrap: anywhere; }
 @media (max-width: 767px) {
   .goal-card-summary { display: grid; grid-template-columns: 28px minmax(0, 1fr) 44px; gap: 8px; align-items: center; }
   .goal-card-summary .ant-checkbox-wrapper { min-width: 44px; margin-left: -8px; padding-left: 8px; }
@@ -308,7 +296,6 @@ body {
 .diff-delete { background: #ffebe9; color: #67221d; }
 .diff-meta { background: #eaf3ff; color: #24456a; }
 .review-image-scroll img { display: block; }
-.review-reader .review-source-body, .review-reader .review-image-scroll, .review-reader .review-diff-scroll { max-height: none; }
 .review-markdown-paragraph { margin: 1em 0; }
 
 .story-artifact-modal .ant-modal-body { max-height: 70vh; overflow: auto; }
@@ -342,7 +329,6 @@ body {
 .review-document-cards .review-document-entry { border: 1px solid #d9d9d9; border-radius: 8px; padding: 12px; }
 .review-document-cards .review-document-entry > button { text-align: center; margin-top: 8px; }
 .review-document-cards .review-document-entry > button { white-space: normal; height: auto; min-height: 44px; overflow-wrap: anywhere; }
-.review-reader .ant-drawer-title { overflow-wrap: anywhere; }
 
 .job-relationships { min-width: 0; overflow-wrap: anywhere; }
 .relationship-disclosure { background: #fff; border: 1px solid #f0f0f0; border-radius: 8px; }
@@ -359,3 +345,18 @@ body {
 @media (max-width: 767px) {
   .relationship-group { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Review documents participate in the page scroll; story viewers keep their caps. */
+.review-page .review-document-list,
+.review-page .review-markdown,
+.review-page .review-markdown-source,
+.review-page .review-source-body,
+.review-page .review-diff-scroll,
+.review-page .review-image-scroll { max-height: none; overflow-x: auto; overflow-y: auto; }
+.review-page .review-document-list { overflow: visible; }
+.review-actions { position: fixed; z-index: 100; inset-inline: 0; bottom: 0; background: white; border-top: 1px solid #ddd; padding: 12px 24px calc(12px + env(safe-area-inset-bottom)); box-shadow: 0 -2px 8px #0001; }
+.review-actions .ant-form-item { margin-bottom: 8px; }
+.review-actions textarea { max-height: min(160px, 25dvh); }
+.review-page { padding-bottom: calc(var(--review-action-height, 90px) + 24px) !important; }
+html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-height, 0px) + 24px); }
+.review-page .review-document-content, .review-page .ant-form-item { scroll-margin-bottom: calc(var(--review-action-height, 0px) + 24px); scroll-margin-top: 16px; }

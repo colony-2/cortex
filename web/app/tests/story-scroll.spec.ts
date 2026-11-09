@@ -374,3 +374,18 @@ for (const width of [1280, 390]) {
     await page.screenshot({ path: testInfo.outputPath(`job-cell-${width}.png`), fullPage: true });
   });
 }
+
+
+test('REV-017 story artifact modal keeps bounded scrolling',async({page})=>{
+  await page.route('**/api/projects/*/jobs/one/story',r=>r.fulfill({json:{...jobIdentity,job_id:'one',status:'completed',root:{id:'root',kind:'op',title:'Artifact',path:[],attempt:1,status:'completed',artifact_keys:[{taskOrdinal:1,name:'long.md'}]}}}));
+  await page.route('**/jobs/one/tasks/1/artifacts/long.md',r=>r.fulfill({contentType:'text/markdown',body:'# Story artifact\n\n'+'Paragraph.\n\n'.repeat(200)}));
+  await page.goto('/project/phone/jobs/one/story?nodeId=root');
+  await page.getByRole('tab',{name:'Artifacts (1)',exact:true}).click();
+  await page.getByRole('link',{name:'long.md',exact:true}).click();
+  const modal=page.getByRole('dialog');
+  await expect(modal.getByRole('heading',{name:'Story artifact',exact:true})).toBeVisible();
+  const body=modal.locator('.ant-modal-body');
+  expect(await body.evaluate(e=>getComputedStyle(e).overflowY)).toBe('auto');
+  expect(await body.evaluate(e=>getComputedStyle(e).maxHeight)).not.toBe('none');
+  expect(await modal.locator('.review-markdown').evaluate(e=>getComputedStyle(e).maxHeight)).not.toBe('none');
+});

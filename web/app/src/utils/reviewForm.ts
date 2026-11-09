@@ -7,3 +7,10 @@ export function reviewActionField(form: InputForm) {
   return form.kind === 'review' && choices.length === 1 && choices[0].required && choices[0].options?.length
     ? choices[0] : undefined;
 }
+
+// Only the established two-value convention gets the rejection reason editor.
+export function conventionalReviewFeedback(form: InputForm) {
+  const action = reviewActionField(form);
+  if (action?.options?.length !== 2 || !action.options.includes('approve') || !action.options.includes('revise')) return undefined;
+  return form.fields.find(field => field.id === 'feedback' && field.type === 'paragraph_text');
+}

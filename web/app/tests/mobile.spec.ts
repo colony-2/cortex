@@ -413,7 +413,7 @@ test('phone goals start with concise cards and disclose existing controls and me
 });
 
 for (const width of [320, 390]) {
-  test(`phone review reads large documents in one full-screen scroller at ${width}`, async ({ page }, testInfo) => {
+  test(`phone review reads large documents in the page scroller at ${width}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
     let reads = 0;
     const source = '# Large design\n\n' + 'A paragraph with enough detail to review comfortably.\n\n'.repeat(350) + 'Last paragraph.';
@@ -428,43 +428,30 @@ for (const width of [320, 390]) {
         ],
       },
     } }));
-    await page.route('**/reviews/one/documents?*', route => { reads++; return route.fulfill({ contentType: 'text/markdown', body: source }); });
+    page.on('requestfinished', request => { if (request.url().includes('/reviews/one/documents?')) reads++; });
+    await page.route('**/reviews/one/documents?*', route => route.fulfill({ contentType: 'text/markdown', body: source }));
     await page.goto('/project/phone/reviews/one');
     const feedback = page.getByLabel('Feedback', { exact: true });
     await feedback.fill('Keep my draft while reading.');
     await page.locator('input[type=file]').setInputFiles({ name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('Notes') });
-    await expect(page.getByLabel('Rendered document')).toHaveCount(0);
-    expect(reads).toBe(0);
-    await page.screenshot({ path: testInfo.outputPath(`phone-review-response-${width}.png`), fullPage: true });
+    await expect(page.getByLabel('Rendered document')).toContainText('Last paragraph.');
     const read = page.getByRole('button', { name: 'Read design.md', exact: true });
     await read.click();
-    const reader = page.getByRole('dialog', { name: 'design.md', exact: true });
-    const article = reader.getByLabel('Rendered document');
-    await expect(article).toContainText('Last paragraph.');
-    expect(await article.evaluate(element => getComputedStyle(element).maxHeight)).toBe('none');
+    const article = page.getByLabel('Rendered document');
     expect(await article.evaluate(element => element.scrollHeight <= element.clientHeight + 1)).toBe(true);
-    const scroller = page.locator('.review-reader .ant-drawer-body');
-    expect(await scroller.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
-    expect(await page.evaluate(() => getComputedStyle(document.body).overflowY)).toBe('hidden');
-    await scroller.evaluate(element => { element.scrollTop = element.scrollHeight; });
-    await expect(reader.getByRole('button', { name: 'Back to review', exact: true })).toBeInViewport({ ratio: 1 });
+    expect(await page.evaluate(() => getComputedStyle(document.body).overflowY)).not.toBe('hidden');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByText('Markdown', { exact: true }).click();
+    await expect(page.getByLabel('Markdown source')).toHaveText(source);
+    expect(await page.getByLabel('Markdown source').evaluate(element => element.scrollHeight <= element.clientHeight + 1)).toBe(true);
+    await expect(page.getByRole('link', { name: 'Download', exact: true })).toHaveAttribute('download', 'design.md');
     await noOverflow(page);
-    await reader.getByText('Document options', { exact: true }).click();
-    await reader.getByText('Markdown', { exact: true }).click();
-    await expect(reader.getByLabel('Markdown source')).toHaveText(source);
-    expect(await reader.getByLabel('Markdown source').evaluate(element => element.scrollHeight <= element.clientHeight + 1)).toBe(true);
-    await expect(reader.getByRole('link', { name: 'Download', exact: true })).toHaveAttribute('download', 'design.md');
-    await page.screenshot({ path: testInfo.outputPath(`phone-review-reader-${width}.png`) });
-    await reader.getByRole('button', { name: 'Back to review', exact: true }).click();
-    await expect(reader).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath(`phone-review-inline-${width}.png`) });
     await expect(feedback).toHaveValue('Keep my draft while reading.');
     await expect(page.getByText('notes.md', { exact: true })).toBeVisible();
-    await expect(read).toBeFocused();
     await read.click();
-    await expect(page.getByRole('dialog').getByLabel('Markdown source')).toHaveText(source);
+    await expect(page.getByLabel('Markdown source')).toHaveText(source);
     expect(reads).toBe(1);
-    await page.keyboard.press('Escape');
-    await expect(reader).toHaveCount(0);
     await expect(feedback).toHaveValue('Keep my draft while reading.');
   });
 }

@@ -126,7 +126,7 @@ for (const viewport of [{width:1280,height:800},{width:390,height:844}]) {
         await page.locator('button').filter({hasText:'Refresh'}).evaluate((el:HTMLElement)=>el.click());
         await expect(page.getByRole('tab',{name:'Artifacts (4)',includeHidden:true})).toBeAttached();
       }
-      const scope=viewer==='story'||viewport.width<600?page.getByRole('dialog'):page.locator('.review-document-preview');
+      const scope=viewer==='story'?page.getByRole('dialog'):page.locator('.review-document-preview');
       const originalURL=page.url();
       const initialRequests=requested.length;
       await scope.getByRole('button',{name:'missing',exact:true}).click();
@@ -147,8 +147,11 @@ for (const viewport of [{width:1280,height:800},{width:390,height:844}]) {
       await scope.getByRole('button',{name:'json',exact:true}).click();await expect(scope.getByLabel('Formatted JSON')).toContainText('42');
       expect(new Set(requested).size).toBe(3);expect(writes).toEqual([]);
       if(viewer==='story')await scope.getByRole('button',{name:'Close',exact:true}).last().click();
-      else if(viewport.width<600)await page.getByRole('button',{name:'Back to review',exact:true}).click();
-      if(opener)await expect(opener).toBeFocused();
+      if(viewer==='story'&&opener)await expect(opener).toBeFocused();
+      if(viewer==='review') {
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+        await expect(page.getByLabel('Document preview',{exact:true})).toBeFocused();
+      }
       if(viewer==='review')await expect(page.getByRole('textbox',{name:'Notes'})).toHaveValue('Keep this draft');
       expect(requested.every(url=>url.includes('/projects/tenant/'))).toBe(true);
     });
@@ -183,17 +186,22 @@ for (const width of [375, 767, 768, 1280]) {
     await expect(nav).toContainText('Diagnostic');
     expect(await nav.locator('.review-document-entry strong').allTextContents()).toEqual(['Supporting','Diagnostic','Overview',...Array.from({length:24},(_,i)=>`other-${i}`).sort().map(id=>`${id}.md`)]);
     if(compact) {
-      expect(reads).toHaveLength(0);await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(page.getByRole('dialog')).toHaveCount(0);
       await expect(nav.getByText('Starting document')).toBeVisible();
+      await expect(page.getByRole('heading',{name:'Large overview'})).toBeVisible();
+      expect(reads.length).toBeGreaterThan(0);
+      expect(reads.every(url=>new URL(url).searchParams.get('document_id')==='z')).toBe(true);
+      const initialReads=reads.length;
       const read=page.getByRole('button',{name:'Read Overview',exact:true});await read.focus();await page.keyboard.press('Enter');
-      const dialog=page.getByRole('dialog');await expect(dialog.getByRole('heading',{name:'Large overview'})).toBeVisible();
-      await expect(dialog.getByLabel('Rendered document')).toContainText('Last paragraph.');
-      expect(await dialog.getByLabel('Rendered document').evaluate(el=>el.scrollHeight<=el.clientHeight+1)).toBe(true);
-      await dialog.getByText('Document options',{exact:true}).click();
-      await expect(dialog.getByRole('link',{name:'Download',exact:true})).toHaveAttribute('download',longName);
-      await dialog.getByRole('button',{name:'Back to review'}).click();await expect(read).toBeFocused();
-      expect(reads).toHaveLength(1);
-      await read.click();expect(reads).toHaveLength(1);
+      const selected=page.getByRole('region',{name:'Selected document'});
+      await expect(selected.getByRole('heading',{name:'Large overview'})).toBeInViewport();
+      await expect(selected.getByLabel('Rendered document')).toContainText('Last paragraph.');
+      expect(await selected.getByLabel('Rendered document').evaluate(el=>el.scrollHeight<=el.clientHeight+1)).toBe(true);
+      expect(await page.evaluate(()=>getComputedStyle(document.body).overflowY)).not.toBe('hidden');
+      await expect(selected.getByRole('link',{name:'Download',exact:true})).toHaveAttribute('download',longName);
+      await read.click();
+      await expect(selected.getByRole('heading',{name:'Large overview'})).toBeInViewport();
+      expect(reads).toHaveLength(initialReads);
     } else {
       await expect(page.getByRole('heading',{name:'Large overview'})).toBeVisible();
       expect(reads.length).toBeGreaterThan(0);
@@ -202,7 +210,7 @@ for (const width of [375, 767, 768, 1280]) {
       expect(await nav.locator('.review-document-entry').first().textContent()).toContain('Supporting');
       await expect(nav.locator('button').last()).toBeAttached();await nav.locator('button').last().scrollIntoViewIfNeeded();
     }
-    const scope=compact?page.getByRole('dialog'):page.getByRole('region',{name:'Selected document'});
+    const scope=page.getByRole('region',{name:'Selected document'});
     const source=scope.getByRole('link',{name:'Diagnostic · 雪/target.md (雪/target)',exact:true});
     await expect(source).toHaveAttribute('href',/document_id=%E9%9B%AA%2Ftarget/);
     await expect(scope.getByText('missing (unavailable)')).toBeVisible();
@@ -224,11 +232,14 @@ for (const width of [375, 767, 768, 1280]) {
     expect(await page.locator('button a, a button').count()).toBe(0);
     await page.screenshot({path:testInfo.outputPath(`metadata-${width}.png`)});
     if(compact) {
-      await scope.getByRole('button',{name:'Back to review'}).click();
       const cardSource=nav.getByRole('link',{name:'Diagnostic · 雪/target.md (雪/target)',exact:true});
-      await cardSource.click();await expect(page.getByRole('dialog').getByRole('heading',{name:'Target contents'})).toBeVisible();
-      await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);
-      await expect(cardSource).toBeFocused();
+      const initialReads=reads.length;
+      await cardSource.focus();await page.keyboard.press('Enter');
+      await expect(scope.getByRole('heading',{name:'Target contents'})).toBeInViewport();
+      await expect(scope.getByLabel('Document preview')).toBeFocused();
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      expect(reads).toHaveLength(initialReads);
+      await expect(notes).toHaveValue('Keep this draft');
     } else {
       await page.setViewportSize({width:375,height:844});await expect(page.getByRole('dialog')).toHaveCount(0);
       await page.setViewportSize({width,height:844});await expect(nav.locator('[aria-current=true]')).toContainText('Diagnostic');

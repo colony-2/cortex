@@ -15,7 +15,7 @@ export default function CancelJobButton({ projectId, jobId, disabled, onCancelle
   const [cancelled, setCancelled] = useState(false);
   return <>
     <Button danger disabled={disabled || cancelled} onClick={() => setOpen(true)}>Cancel job</Button>
-    {open && <JobActionDialog projectId={projectId} jobIds={[jobId]} action="cancel"
+    {open && <JobActionDialog projectId={projectId} jobIds={[jobId]} action="cancel" disabled={disabled}
       onClose={() => setOpen(false)} onBusyChange={onBusyChange}
       onComplete={async () => { setCancelled(true); await onCancelled(); }} />}
   </>;

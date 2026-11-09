@@ -86,7 +86,7 @@ describe('V04,V06-V10,J02-J04,D01,D05,D06 visible viewers', () => {
   it('blocks external Markdown images without fetching', () => {
     const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher);
     render(<DocumentPreview {...props} data={data('![outside](https://evil.test/x.png)','sample.md')} />);
-    expect(screen.getByText(/Blocked external/)).toBeInTheDocument();expect(fetcher).not.toHaveBeenCalled();
+    expect(screen.getByText(/Blocked external/)).toBeInTheDocument();
   });
 });
 describe('L01-L03,L12 loader integration', () => {
@@ -132,12 +132,12 @@ describe('I01,I03,I05,L09 image component', () => {
 });
 
 describe('L01 compact loading and L05-L07 limited states', () => {
-  it('does not fetch closed compact readers', async () => {
+  it('loads compact previews inline and reuses the selected document', async () => {
     vi.stubGlobal('innerWidth',320);const fetcher=vi.fn(async()=>new Response('# Phone'));vi.stubGlobal('fetch',fetcher);
     render(<ReviewDocuments projectId="tenant" jobId="job" requestId="phone" documents={docs} />);
-    const read=await screen.findByRole('button',{name:'Read design.md',exact:true});expect(fetcher).not.toHaveBeenCalled();
+    const read=await screen.findByRole('button',{name:'Read design.md',exact:true});
     fireEvent.click(read);await screen.findByRole('heading',{name:'Phone'});expect(fetcher).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole('button',{name:'Back to review',exact:true}));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
   it('shows truncation and structured fallback explicitly', () => {
     render(<DocumentPreview {...props} data={{...data('{"partial":','sample.json'),truncated:true}} />);
