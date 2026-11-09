@@ -279,6 +279,10 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   const { jobId: routeJobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const treeReturn = (location.state as { treeReturnTo?: unknown } | null)?.treeReturnTo;
+  const treeReturnTo = typeof treeReturn === 'string'
+    && treeReturn.startsWith(`/project/${encodeURIComponent(projectId)}/jobs/`)
+    && /^\/project\/[^/]+\/jobs\/[^/]+\/tree$/.test(treeReturn) ? treeReturn : undefined;
   const [searchParams, setURLSearchParams] = useSearchParams();
   // Node/tab selections must retain the originating goal/list entry.
   const setSearchParams: typeof setURLSearchParams = (next, options) =>
@@ -739,6 +743,8 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
             <Title level={2} style={{ margin: 0, overflowWrap: 'anywhere' }}>
               {jobTitle ? `Job Story: ${jobTitle}` : 'Job Story'}
             </Title>
+            <Link className="compact-touch-link" to={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId || '')}/tree`}>Execution tree</Link>
+            {treeReturnTo && <Link className="compact-touch-link" to={treeReturnTo}>Return to execution tree</Link>}
             {overviewLink && <Link className="compact-touch-link" to={overviewLink} state={{ goalsReturnTo: returnTo }}>Goal overview</Link>}
           </Space>
           <Space wrap style={{ maxWidth: '100%' }}>

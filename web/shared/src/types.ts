@@ -165,3 +165,20 @@ export interface RestartContext {
   visible: Record<string, unknown>;
   redacted_paths: string[] | null;
 }
+
+/** Narrow raw summary projection. Runtime parentage is independent of recipe attribution. */
+export interface TreeNode {
+  tenant_id: string;
+  job_id: string;
+  parent_job_id?: string;
+  job_type: string;
+  status: string;
+  completion_status?: string;
+  cell?: string;
+  goal_id?: string;
+  created_at?: string;
+  updated_at?: string;
+  recipe_parent_job_id?: string;
+}
+export interface TreeNodeResponse { node: TreeNode; observed_at: string }
+export interface TreeChildrenResponse { nodes: TreeNode[]; next_page_token?: string; observed_at: string }

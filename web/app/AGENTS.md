@@ -9,7 +9,7 @@ new decomponentized model:
 - pending inputs are job input requests
 
 Do not reintroduce removed legacy work-item screens, recipe management screens,
-legacy project editing/admin pages, graph traversal UI, old task-runner commands, or
+legacy project editing/admin pages, retired graph traversal screens, old task-runner commands, or
 the retired auxiliary UI packages.
 
 Tenant administration is available under Admin for hook policies, configuration,
@@ -46,3 +46,5 @@ Primary routes:
 - `/project/:projectId/admin`
 
 Use `@colony2/shared` for API calls and input activity state.
+
+The current-model read-only job execution tree is permitted at `/project/:projectId/jobs/:jobId/tree`. Runtime parentage defines its edges.

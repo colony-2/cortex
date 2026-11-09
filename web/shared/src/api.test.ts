@@ -231,3 +231,17 @@ it.each(['job_id', 'goal_id', 'tenant_id', 'cell_id', 'cell_name', 'repo'])('CID
  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(identity))));
  for (const files of [undefined, [new File([], 'empty')]]) await expect(submitJob('tenant', { cell: 'platform' }, files)).rejects.toThrow();
 });
+
+it('TREE-026 encodes tree scope and opaque tokens, forwards abort, preserves generic summaries and errors', async () => {
+  const {getTreeNode,getTreeChildren,APIError}=await import('./api');
+  const signal=new AbortController().signal;
+  const node={tenant_id:'t/雪',job_id:'j/#',job_type:'generic',status:'READY'};
+  const fetch=vi.fn(async(url:string)=>new Response(JSON.stringify(url.includes('tree-children')?{nodes:[node],next_page_token:'opaque+/=',observed_at:'now'}:{node,observed_at:'now'})));
+  vi.stubGlobal('fetch',fetch);
+  expect((await getTreeNode('t/雪','j/#',signal)).node).toEqual(node);
+  const result=await getTreeChildren('t/雪','j/#','opaque+/=',signal);expect(result.nodes[0].job_type).toBe('generic');
+  const [url, options]=fetch.mock.calls[1] as unknown as [string,RequestInit];
+  expect(url).toContain('/t%2F%E9%9B%AA/jobs/j%2F%23/tree-children');expect(new URL(url).searchParams.get('pageToken')).toBe('opaque+/=');expect(options.signal).toBe(signal);
+  fetch.mockImplementation(async()=>new Response('{"error":"Execution tree records unavailable"}',{status:403}));
+  await expect(getTreeNode('t','j')).rejects.toBeInstanceOf(APIError);
+});

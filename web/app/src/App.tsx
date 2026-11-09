@@ -9,6 +9,7 @@ import {
   listProjects,
   useInputActivity,
 } from '@colony2/shared';
+import TreePage from './executionTree/TreePage';
 import CellsList from './components/CellsList';
 import CellPage from './components/CellPage';
 import AdminPage from './components/AdminPage';
@@ -174,6 +175,7 @@ function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
             <Route path="/project/:projectId/jobs" element={<JobsRoute fallbackProjectId={tenantId} />} />
             <Route path="/project/:projectId/goals" element={<JobsRoute fallbackProjectId={tenantId} />} />
             <Route path="/project/:projectId/goals/:goalId" element={<JobsRoute fallbackProjectId={tenantId} />} />
+            <Route path="/project/:projectId/jobs/:jobId/tree" element={<TreePage />} />
             <Route path="/project/:projectId/jobs/:jobId/story" element={<StoryRoute fallbackProjectId={tenantId} />} />
             <Route path="/reviews" element={<PendingInputsListPage projectId={tenantId} />} />
             <Route path="/project/:projectId/reviews" element={<ReviewsRoute fallbackProjectId={tenantId} />} />

@@ -19,6 +19,7 @@ func TestSPADeepLinksAndAPINotFound(t *testing.T) {
 	}{
 		{"/", http.StatusOK, "<html>cortex</html>"},
 		{"/project/42/jobs", http.StatusOK, "<html>cortex</html>"},
+		{"/project/42/jobs/example/tree", http.StatusOK, "<html>cortex</html>"},
 		{"/project/42/jobs/example/story", http.StatusOK, "<html>cortex</html>"},
 		{"/assets/app.js", http.StatusOK, "console.log('cortex')"},
 		{"/api/missing", http.StatusNotFound, "404 page not found\n"},

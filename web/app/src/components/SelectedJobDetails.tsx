@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Spin } from 'antd';
 import { getJob } from '@colony2/shared/api';
@@ -33,6 +34,7 @@ export default function SelectedJobDetails({ projectId, jobId, summary, refresh,
     return () => { active = false; };
   }, [projectId, jobId, refresh, retry, inspectionRequests]);
   return <>
+    <Link className="compact-touch-link" to={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/tree`}>Execution tree</Link>
     {error && <Alert type="error" showIcon message="Could not load job details" description={error}
       action={<Button onClick={() => setRetry(value => value + 1)}>Retry details</Button>} />}
     {loading && <Spin size="small" aria-label="Loading dependency and membership details" />}

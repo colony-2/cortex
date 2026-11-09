@@ -205,3 +205,15 @@ export async function getJobInputArtifacts(projectId: string, jobId: string, sig
   await handleResponse(response, 'Load input artifacts');
   return response.json();
 }
+
+export async function getTreeNode(tenant: string, job: string, signal?: AbortSignal): Promise<import('./types').TreeNodeResponse> {
+  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(job)}/tree-node`, { signal });
+  await handleResponse(response, 'Load tree node');
+  return response.json();
+}
+export async function getTreeChildren(tenant: string, job: string, token = '', signal?: AbortSignal): Promise<import('./types').TreeChildrenResponse> {
+  const query = new URLSearchParams({ pageSize: '100', pageToken: token });
+  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(job)}/tree-children?${query}`, { signal });
+  await handleResponse(response, 'Load tree children');
+  return response.json();
+}
