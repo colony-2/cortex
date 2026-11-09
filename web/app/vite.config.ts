@@ -1,9 +1,11 @@
 import { defineConfig } from 'vite';
+import { resolveUIBuild } from './build-info';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  define: { __CORTEX_UI_BUILD__: JSON.stringify(resolveUIBuild(process.env)) },
   server: {
     port: 3000,
     proxy: {

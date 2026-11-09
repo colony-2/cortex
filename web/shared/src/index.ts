@@ -13,3 +13,5 @@ export * from './auth';
 export * from './services/inputActivityService';
 export * from './contexts/InputActivityContext';
 export * from './admin';
+
+export * from './buildInfo';

@@ -177,7 +177,7 @@ body {
 .app-header.ant-layout-header { display: flex; align-items: center; gap: 20px; height: auto; min-height: 64px; padding: 12px 24px; line-height: normal; background: #fff; border-bottom: 1px solid #f0f0f0; }
 .app-brand, .tenant-control { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .tenant-control .ant-input-search { width: 220px; min-width: 0; }
-.logout-button { margin-left: auto; }
+.account-button { margin-left: auto; flex-shrink: 0; }
 .app-body { flex: 1; min-width: 0; }
 .app-content, .app-page, .ant-space-item, .ant-tabs-content-holder { min-width: 0; }
 .app-content { overflow-wrap: anywhere; }
@@ -393,3 +393,10 @@ html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-heig
 @media (max-width: 767px) {
   .review-page .review-markup-source .review-source-body { max-height: 65vh; }
 }
+
+.account-dropdown { max-width: calc(100vw - 24px); width: 300px; }
+.account-email { display: block; overflow-wrap: anywhere; white-space: normal; user-select: text; color: #595959; }
+.build-identity dl { margin: 0 0 20px; }
+.build-identity dl > div { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 12px; margin: 8px 0; }
+.build-identity dt { color: #595959; }
+.build-identity dd { margin: 0; overflow-wrap: anywhere; user-select: text; }

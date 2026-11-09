@@ -82,6 +82,7 @@ func (s *Server) buildRouter(inputService ops.ManagementService) http.Handler {
 	r.Use(s.corsMiddleware)
 
 	api := r.PathPrefix("/api").Subrouter()
+	api.HandleFunc("/build-info", s.handleBuildInfo).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/health", s.handleHealth).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects", s.handleListProjects).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}", s.handleGetProject).Methods(http.MethodGet, http.MethodOptions)

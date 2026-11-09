@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 import { accessSync, constants } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { accountUIBuildEnvironment } from './tests/helpers/uiBuild.ts';
 
 function executableOnPath(name: string): string | undefined {
   return (process.env.PATH ?? '').split(path.delimiter)
@@ -72,7 +73,7 @@ export default defineConfig({
     },
     {
       name: 'production',
-      testMatch: ['api-integration.spec.ts', 'recipe-input.spec.ts', 'admin.spec.ts'],
+      testMatch: ['api-integration.spec.ts', 'recipe-input.spec.ts', 'admin.spec.ts', 'account-menu.spec.ts'],
       use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:18083' },
     },
   ],
@@ -87,7 +88,7 @@ export default defineConfig({
     {
       command: 'make build test-worker && exec ./build/cortex serve --addr 127.0.0.1:18083 --working-dir web/app/tests/fixtures/cell',
       url: 'http://127.0.0.1:18083/api/health',
-      env: { C2J_JOBDB: '', JOBDB_URL: '', CORTEX_TENANT_ID: '' },
+      env: { ...accountUIBuildEnvironment, C2J_JOBDB: '', JOBDB_URL: '', CORTEX_TENANT_ID: '' },
       reuseExistingServer: false,
       timeout: 180_000,
       cwd: '../..',
@@ -102,7 +103,7 @@ export default defineConfig({
     {
       command: 'pnpm exec vite --host 127.0.0.1 --port 15173 --strictPort',
       url: webURL,
-      env: { CORTEX_API_URL: apiURL, VITE_CORTEX_API_BASE: '/api' },
+      env: { ...accountUIBuildEnvironment, CORTEX_API_URL: apiURL, VITE_CORTEX_API_BASE: '/api' },
       reuseExistingServer: false,
       timeout: 120_000,
       cwd: '.',

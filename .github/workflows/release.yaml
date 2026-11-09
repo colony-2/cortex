@@ -156,7 +156,7 @@ jobs:
       - name: Build embedded web UI
         run: |
           pnpm install --frozen-lockfile
-          make web-embed
+          CORTEX_UI_VERSION="$VERSION" CORTEX_UI_COMMIT="$COMMIT" make web-embed
           test -s server/internal/webdist/dist/index.html
 
       - name: Build release binaries

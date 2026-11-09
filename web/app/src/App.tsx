@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { FileSearchOutlined, MenuOutlined, LogoutOutlined, OrderedListOutlined, PlayCircleOutlined, SettingOutlined } from '@ant-design/icons';
+import { FileSearchOutlined, MenuOutlined, OrderedListOutlined, PlayCircleOutlined, SettingOutlined } from '@ant-design/icons';
 import { Alert, Badge, Button, Drawer, Empty, Input, Layout, Menu, Spin, Typography } from 'antd';
 import {
   InputActivityProvider,
@@ -18,6 +18,7 @@ import PendingInputsListPage from './components/PendingInputsListPage';
 import InputDetailPage from './components/InputDetailPage';
 import JobStoryPage from './components/JobStoryPage';
 import { useCompact } from './hooks/useCompact';
+import AccountMenu from './components/AccountMenu';
 import LoginPage from './components/LoginPage';
 
 const { Header, Content, Sider } = Layout;
@@ -159,7 +160,7 @@ function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
           <Typography.Text type="secondary">Tenant</Typography.Text>
           <Input.Search aria-label="Tenant ID" value={tenantDraft} onChange={event => setTenantDraft(event.target.value)} onSearch={applyTenant} enterButton="Use" />
         </div>
-        <Button className="logout-button" icon={<LogoutOutlined />} onClick={handleLogout}>Logout</Button>
+        <AccountMenu onLogout={handleLogout} />
       </Header>
       <Layout className="app-body">
         {compact ? <Drawer title="Navigation" width="min(320px, 100%)" open={menuOpen} onClose={closeMenu} afterOpenChange={open => {

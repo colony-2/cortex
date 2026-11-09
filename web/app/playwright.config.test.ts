@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { expect, test } from 'vitest';
+import { accountUIBuildEnvironment } from './tests/helpers/uiBuild.ts';
 
 test.each([
   { name: 'uses the CI browser installation despite Chromium alone on PATH', managed: true, binaries: ['chromium'], system: false },
@@ -32,6 +33,10 @@ test.each([
         launchOptions: config.use.launchOptions,
         ffmpeg: registry.findExecutable('ffmpeg').executablePath(),
         video: config.use.video,
+        uiBuildInputs: config.webServer.filter(server => server.env?.CORTEX_UI_COMMIT).map(server => ({
+          CORTEX_UI_VERSION: server.env.CORTEX_UI_VERSION,
+          CORTEX_UI_COMMIT: server.env.CORTEX_UI_COMMIT,
+        })),
       }));
     `], {
       cwd: __dirname,
@@ -52,6 +57,7 @@ test.each([
       expect(config.ffmpeg.startsWith(`${browsers}${path.sep}`)).toBe(true);
     }
     expect(config.video).toBe('retain-on-failure');
+    expect(config.uiBuildInputs).toEqual([accountUIBuildEnvironment, accountUIBuildEnvironment]);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
