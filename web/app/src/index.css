@@ -388,3 +388,8 @@ html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-heig
 .tree-outline li { margin: 10px 0; overflow-wrap: anywhere; }
 .tree-outline small { display: block; color: #526174; }
 @media (max-width: 767px) { .execution-tree { padding: 12px; } .tree-workspace { grid-template-columns: minmax(0,1fr); } .tree-viewport { display: none; } .tree-outline button { max-width: 100%; min-height: 44px; } .tree-outline ul { padding-left: 12px; } }
+
+/* Long original markup remains scrollable beside the inline phone controls. */
+@media (max-width: 767px) {
+  .review-page .review-markup-source .review-source-body { max-height: 65vh; }
+}

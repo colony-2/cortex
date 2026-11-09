@@ -10,11 +10,22 @@ const data = (text: string,name='sample'): DocumentData => { const bytes = new T
 const docs = { design: {kind:'stored' as const,name:'design.md',stored:{key:{jobId:'producer',taskOrdinal:1,name:'design.md',sizeBytes:10}}},log:{kind:'stored' as const,name:'tests.log',stored:{key:{jobId:'producer',taskOrdinal:1,name:'tests.log',sizeBytes:10}}} };
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('V04,V06-V10,J02-J04,D01,D05,D06 visible viewers', () => {
-  it('shows inert markup, explanatory text and no executable elements', () => {
-    const text='<script>alert(1)</script><meta http-equiv="refresh" content="0;url=https://evil.test"><svg onload="alert(1)"/>';
+  it('HSV-006,016 isolates HTML and preserves searchable original source', () => {
+    const OriginalURL = URL;
+    vi.stubGlobal('URL', class extends OriginalURL { static createObjectURL = vi.fn(() => 'blob:test'); static revokeObjectURL = vi.fn(); });
+    const text='<p style="color:red">Hello</p><script>alert(1)</script><meta http-equiv="refresh" content="0;url=https://evil.test"><svg onload="alert(1)"/>';
     const {container}=render(<DocumentPreview {...props} data={data(text,'mock.html')} />);
+    const frame=container.querySelector('iframe')!;
+    expect(frame).toHaveAttribute('sandbox','');
+    expect(frame).toHaveAttribute('referrerpolicy','no-referrer');
+    expect(frame.srcdoc).toContain('Content-Security-Policy');
+    expect(frame.srcdoc).not.toMatch(/<script|onload|http-equiv="refresh"/);
+    expect(screen.getByText(/Static preview:/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio',{name:'Source',exact:true}));
     expect(screen.getByLabelText('Document source').textContent).toBe(text);
-    expect(container.querySelector('script,iframe,svg,meta,a')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Search document'),{target:{value:'alert'}});
+    expect(screen.getByText('1 / 2')).toBeInTheDocument();
+    expect(container.querySelector('iframe,script,svg,meta,a')).toBeNull();
   });
   it('exposes text override for binary without removing original content', () => {
     render(<DocumentPreview {...props} data={{...data('readable'),format:'binary'}} />);
@@ -222,4 +233,59 @@ it('MAL-026 focuses explicit navigation but preserves focus during background re
   screen.getByRole('button',{name:'Outside'}).focus();
   rerender(<><button>Outside</button><DocumentPreview {...props} data={document} navigationIntent={intent} navigation={{resolve:()=>({kind:'unavailable',reason:'missing'}),open:()=>false}}/></>);
   expect(screen.getByRole('button',{name:'Outside'})).toHaveFocus();
+});
+
+
+describe('HSV-003,018,019 markup fallback and lifetime', () => {
+  function urls() {
+    const OriginalURL = URL;
+    const create = vi.fn(() => 'blob:generated'); const revoke=vi.fn();
+    vi.stubGlobal('URL', class extends OriginalURL { static createObjectURL=create; static revokeObjectURL=revoke; });
+    return {create,revoke};
+  }
+  it.each([
+    {...data('<p>partial','a.html'),truncated:true},
+    data('<p>'+'x'.repeat(1048576),'a.html'),
+    data('<p>\n'+'\n'.repeat(20000),'a.html'),
+  ])('never renders incomplete or excessive input', d => {
+    urls();const {container}=render(<DocumentPreview {...props} data={d}/>);
+    expect(screen.getByText(/Rendering limit exceeded/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Document source').textContent!.length).toBeLessThanOrEqual(24000);
+    expect(container.querySelector('iframe,img')).toBeNull();
+  });
+  it('keeps source when rendering is unavailable', () => {
+    const {container}=render(<DocumentPreview {...props} data={data('<p>hello</p>','a.html')}/>);
+    expect(screen.getByText(/Rendering unavailable/)).toBeInTheDocument();
+    expect(container.querySelector('iframe')).toBeNull();
+    expect(screen.getByLabelText('Document source')).toHaveTextContent('hello');
+  });
+  it('resets source/zoom, revokes URLs and handles decode failure and retry', () => {
+    const {create,revoke}=urls();
+    const a=data('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>','a.svg');
+    const b=data('<p>second</p>','b.html');
+    const {rerender,unmount}=render(<DocumentPreview {...props} data={a}/>);
+    expect(create).toHaveBeenCalledOnce();
+    fireEvent.error(screen.getByRole('img'));
+    expect(screen.getByText(/Could not display/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Document source')).toHaveTextContent('svg');
+    fireEvent.click(screen.getByRole('button',{name:'Retry rendering'}));
+    expect(screen.getByRole('img')).toBeInTheDocument();expect(revoke).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('radio',{name:'Source',exact:true}));
+    rerender(<DocumentPreview {...props} data={b}/>);
+    expect(screen.getByTitle('Static HTML preview: sample')).toHaveAttribute('srcdoc',expect.stringContaining('second'));
+    expect(screen.queryByRole('img')).toBeNull();
+    unmount();expect(revoke).toHaveBeenCalledTimes(2);
+  });
+});
+
+it('HSV-024 renders validated embedded HTML without allocating blob images', () => {
+  const OriginalURL=URL;const revoke=vi.fn();
+  vi.stubGlobal('URL',class extends OriginalURL {static createObjectURL=vi.fn(()=>'blob:embedded'); static revokeObjectURL=revoke;});
+  const content='<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=">';
+  const {container,unmount}=render(<DocumentPreview {...props} data={data(content,'a.html')}/>);
+  expect(container.querySelector('iframe')).toHaveAttribute('sandbox','');
+  expect(container.querySelector('iframe')?.getAttribute('srcdoc')).toContain(content);
+  fireEvent.click(screen.getByRole('radio',{name:'Source',exact:true}));
+  expect(screen.getByLabelText('Document source').textContent).toBe(content);
+  unmount();expect(revoke).not.toHaveBeenCalled();
 });

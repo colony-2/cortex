@@ -6,7 +6,7 @@ const bytes = (s: string) => new TextEncoder().encode(s);
 const data = (text: string): DocumentData => ({ text, bytes: bytes(text), format: 'json', truncated: false });
 afterEach(() => vi.unstubAllGlobals());
 describe('V01-V03 inventory dispatch and encoding', () => {
-  it.each([['a.md','markdown'],['a.json','json'],['a.log','source'],['a.diff','diff'],['a.patch','diff'],['a.html','markup'],['a.svg','markup'],['a.yaml','source'],['a.py','source'],['a.go','source'],['go.mod','source'],['go.sum','source'],['a.sh','source'],['a.txt','source'],['a.unknown','source'],['a.jsonl','jsonl'],['a.ndjson','jsonl'],['a.tar.gz','container'],['__git_state_thin_pack__','container']])('%s → %s',(name,format) => expect(classify(name,bytes('sample'))).toBe(format));
+  it.each([['a.md','markdown'],['a.json','json'],['a.log','source'],['a.diff','diff'],['a.patch','diff'],['a.html','html'],['a.svg','source'],['a.yaml','source'],['a.py','source'],['a.go','source'],['go.mod','source'],['go.sum','source'],['a.sh','source'],['a.txt','source'],['a.unknown','source'],['a.jsonl','jsonl'],['a.ndjson','jsonl'],['a.tar.gz','container'],['__git_state_thin_pack__','container']])('%s → %s',(name,format) => expect(classify(name,bytes('sample'))).toBe(format));
   it('recognizes binary/container signatures regardless of suffix', () => {
     expect(classify('misleading.md',new Uint8Array([31,139,0]))).toBe('container');
     expect(classify('misleading.json',new Uint8Array([137,80,78,71]))).toBe('image');
@@ -123,5 +123,22 @@ describe('I02 L09 raster header variants', () => {
     const cancel=vi.fn();vi.stubGlobal('fetch',vi.fn(async()=>new Response(new ReadableStream({cancel}))));
     const controller=new AbortController();const promise=loadDocument('/pending','a.txt',controller.signal);
     await new Promise(resolve=>setTimeout(resolve,0));controller.abort();await expect(promise).rejects.toThrow(/Aborted/);expect(cancel).toHaveBeenCalled();
+  });
+});
+
+
+describe('HSV-001,002 markup dispatch', () => {
+  it.each([
+    ['PAGE.HTML','<p>fragment</p>','html'],['page.HTM','hello','html'],
+    ['a.SVG','<svg xmlns="http://www.w3.org/2000/svg"/>','svg'],
+    ['unknown','<?xml version="1.0"?>\n<svg/>','svg'],
+    ['unknown','<!DOCTYPE html><html/>','html'],['unknown','<html lang="en">','html'],
+    ['wrong.html','<svg/>','source'],['wrong.svg','<html/>','source'],
+    ['unknown','<svg-not-really/>','source'],['unknown','<p>ambiguous</p>','source'],
+    ['invalid.svg','arbitrary','source'],['unknown','<?xml version="1.0"?><root/>','source'],
+  ])('%s %s selects %s', (name,text,format) => expect(classify(name,bytes(text))).toBe(format));
+  it('keeps binary and raster priority for markup suffixes', () => {
+    expect(classify('a.html',new Uint8Array([255,0,128]))).toBe('binary');
+    expect(classify('a.svg',new Uint8Array([137,80,78,71]))).toBe('image');
   });
 });

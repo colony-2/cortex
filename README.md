@@ -54,8 +54,18 @@ pagination. Goal overview includes archived attempts.
 
 Reviews support Markdown, unified and side-by-side patches, raster images, JSON,
 JSONL, logs and source files. Source views provide line numbers, search and wrapping.
-JSON formatting preserves large numbers and duplicate keys. HTML and SVG appear
-as source; archives remain downloads. Unknown binary files have a hex preview.
+JSON formatting preserves large numbers and duplicate keys. HTML/HTM pages and
+standalone SVG diagrams open as static rendered previews, with Rendered / Source
+controls and searchable original source. HTML uses an opaque-origin sandbox with a
+restrictive content policy; SVG uses an isolated image with fit and zoom. Scripts,
+navigation, forms, embedded documents and external/relative dependencies are
+disabled. Only validated, bounded embedded raster data images are supported in HTML and SVG.
+HTML styles use a conservative layout and typography subset; CSS resources, custom
+properties, substitutions, quoted values and advanced selectors are omitted. SVG
+filters and excessive references fall back to source with an explanation, as do
+invalid SVG, incomplete inputs and unavailable rendering. Markdown links can open
+HTML/SVG artifacts; SVG Markdown image embedding remains unsupported. Archives
+remain downloads. Unknown binary files have a hex preview.
 
 Previews are read-only and bounded. Text loads up to 2 MiB; structured previews
 require complete inputs within 1 MiB and 20,000 lines. Raster previews allow up to
@@ -65,11 +75,12 @@ attachments in the current review.
 
 ## Phones and new goals
 
-Phone reviews list documents without embedding their full contents. **Read** opens
-a full-screen reader with one vertical scrolling area; **Back to review** returns
-to the same response draft and attachments. **Document options** provides source,
-document selection, and download. Request details, goal context, and instructions
-remain available through disclosures.
+Phone reviews show previews inline in the **Selected document** region. **Read**
+scrolls to the selected preview; document selection and Markdown artifact links
+switch its contents. Rendered/Source, source search, SVG fit/zoom and original
+Download remain available there. Continue down the same page to the response and
+review decisions with your draft preserved. Request details, goal context and
+instructions remain available through disclosures. Story artifacts keep their reader.
 
 Below 768px, navigation opens from **Open navigation**, and goals, attempts, and
 cells use cards. Goal cards start with a two-line prompt, status, cell, and attempt

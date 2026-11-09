@@ -3,7 +3,7 @@ export const TEXT_LIMIT = 2 * 1024 * 1024;
 export const STRUCTURED_LIMIT = 1024 * 1024;
 export const IMAGE_LIMIT = 16 * 1024 * 1024;
 export const HEX_LIMIT = 64 * 1024;
-export type Format = 'markdown' | 'diff' | 'json' | 'jsonl' | 'source' | 'markup' | 'image' | 'container' | 'binary';
+export type Format = 'markdown' | 'diff' | 'json' | 'jsonl' | 'source' | 'html' | 'svg' | 'image' | 'container' | 'binary';
 export interface DocumentData { bytes: Uint8Array; text: string; format: Format; truncated: boolean; mime?: string }
 const ascii = (b: Uint8Array, start = 0, end = b.length) => String.fromCharCode(...b.subarray(start, Math.min(end, start + 512)));
 export function rasterType(b: Uint8Array): string | undefined {
@@ -25,7 +25,13 @@ export function classify(name: string, b: Uint8Array): Format {
   let text: string;
   try { text = decodeText(b, true); } catch { return 'binary'; }
   if (text.includes('\0')) return 'binary';
-  if (/\.(html?|svg)$/i.test(name) || /^\s*(?:<!doctype html|<html|<svg)/i.test(text)) return 'markup';
+  const root = text.replace(/^\s*<\?xml[^?]*\?>/i, '').trimStart();
+  const svg = /^<svg(?:\s|\/?>)/i.test(root);
+  const html = /^(?:<!doctype\s+html(?:\s|>)|<html(?:\s|\/?>))/i.test(root);
+  if (/\.svg$/i.test(name)) return svg ? 'svg' : 'source';
+  if (/\.html?$/i.test(name)) return svg || /^<(?:\?xml|!doctype\s+svg)/i.test(text.trimStart()) ? 'source' : 'html';
+  if (svg) return 'svg';
+  if (html) return 'html';
   if (/\.(md|markdown)$/i.test(name)) return 'markdown';
   if (/\.(diff|patch)$/i.test(name) || /^(diff --git |--- .+\r?\n\+\+\+ )/m.test(text)) return 'diff';
   if (/\.(jsonl|ndjson)$/i.test(name)) return 'jsonl';

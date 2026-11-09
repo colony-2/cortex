@@ -831,7 +831,7 @@ describe('SAV rich story formats and attachment boundaries', () => {
     ['data.json','{"n":bad}', 'JSON preview unavailable'],
     ['data.jsonl','{}\nbad','Line 2: invalid JSON'],
     ['file.patch','--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new\n','Unified'],
-    ['index.html','<script>bad()</script>','HTML and SVG are shown as source only'],
+    ['index.html','<script>bad()</script>','Static preview: scripts'],
     ['data.zip','PK\x03\x04','Archives are not extracted'],
   ])('SAV-004,005,006,011 shared %s behavior',async(name,content,expected)=>{
     await start(name,content);

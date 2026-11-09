@@ -718,9 +718,28 @@ test.describe('multi-format review viewers', () => {
     await read('checks.log');await expect(page.getByText(/Could not load this document/)).toBeVisible();await page.getByRole('button',{name:'Retry',exact:true}).click();await page.getByLabel('Search document').fill('needle');await expect(page.locator('mark')).toHaveText('needle');await back();
     await read('changes.patch');await expect(page.getByLabel('Side by side diff')).toBeVisible();await back();
     for(const name of ['mock.html','delayed.html','vector.svg']){
-      await read(name);await expect(page.getByLabel('Document source')).toContainText('blocked.invalid');
-      await page.waitForTimeout(2100);expect(external).toHaveLength(0);await expect(page.locator('iframe')).toHaveCount(0);
-      await expect(page).toHaveURL(new RegExp(`/reviews/${jobID}$`));await back();
+      await read(name);
+      await expect(page.getByText(/Static preview:/)).toBeVisible();
+      if(name.endsWith('.html')) {
+        const iframe=page.getByTitle(`Static HTML preview: ${name}`);
+        await expect(iframe).toHaveAttribute('sandbox','');
+        await expect(iframe).toHaveAttribute('referrerpolicy','no-referrer');
+        const frame=page.frameLocator(`iframe[title="Static HTML preview: ${name}"]`);
+        await expect(frame.locator('body')).toBeAttached();
+        await expect(frame.locator('script, iframe, meta[http-equiv="refresh"], a[href]')).toHaveCount(0);
+        await expect(frame.locator('meta[http-equiv="Content-Security-Policy"]')).toHaveAttribute('content',/default-src 'none'/);
+      } else {
+        const image=page.getByRole('img',{name,exact:true});
+        await expect(image).toBeVisible();
+        await expect.poll(()=>image.evaluate((el:HTMLImageElement)=>el.complete&&el.naturalWidth>0)).toBe(true);
+        await expect(page.locator('iframe')).toHaveCount(0);
+      }
+      // Observe delayed refresh/navigation while the rendered preview is active.
+      await page.waitForTimeout(2100);expect(external).toHaveLength(0);
+      await expect(page).toHaveURL(new RegExp(`/reviews/${jobID}$`));
+      await page.getByRole('radio',{name:'Source',exact:true}).focus();await page.keyboard.press('Space');
+      await expect(page.getByLabel('Document source')).toContainText('blocked.invalid');
+      await expect(page.locator('iframe')).toHaveCount(0);await back();
     }
     await read('screenshot.png');
     const png=page.getByRole('img',{name:'screenshot.png',exact:true});
@@ -737,9 +756,28 @@ test.describe('multi-format review viewers', () => {
     await imageRegion.focus();await expect(imageRegion).toBeFocused();await page.keyboard.press('ArrowRight');
     await expect.poll(()=>imageRegion.evaluate(el=>el.scrollLeft)).toBeGreaterThan(0);
     await imageRegion.evaluate(el=>{el.scrollLeft=0;});
-    const box = await imageRegion.boundingBox();
+    // The tall image can start above the viewport after keyboard focus. Target
+    // its visible intersection, above the fixed review decisions, for touch.
+    const touchPoint = await imageRegion.evaluate(el=>{
+      const box=el.getBoundingClientRect();
+      const actions=document.querySelector('.review-actions')?.getBoundingClientRect();
+      const left=Math.max(0,box.left),right=Math.min(innerWidth,box.right);
+      const top=Math.max(0,box.top),bottom=Math.min(innerHeight,box.bottom,actions?.top??innerHeight);
+      const x=Math.round((left+right)/2),y=Math.round((top+bottom)/2);
+      return {x,y,visible:right>left&&bottom>top,hit:el.contains(document.elementFromPoint(x,y))};
+    });
+    expect(touchPoint.visible).toBe(true);expect(touchPoint.hit).toBe(true);
+    await testInfo.attach('image-touch-target',{body:JSON.stringify(touchPoint),contentType:'application/json'});
+    await page.bringToFront();
     const touchSession = await page.context().newCDPSession(page);
-    await touchSession.send('Input.synthesizeScrollGesture',{x:Math.round(box!.x+100),y:Math.round(Math.min(box!.y+50,600)),xDistance:-100,yDistance:0,gestureSourceType:'touch'});
+    await touchSession.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
+    await touchSession.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:touchPoint.x,y:touchPoint.y}]});
+    for(let step=1;step<=10;step++) {
+      await touchSession.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:touchPoint.x-step*10,y:touchPoint.y}]});
+      // Deliver a swipe over compositor frames so Chromium performs native panning.
+      await page.waitForTimeout(20);
+    }
+    await touchSession.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
     await touchSession.detach();await expect.poll(()=>imageRegion.evaluate(el=>el.scrollLeft)).toBeGreaterThan(0);await back();
     await read('pictures.md');await expect(page.getByRole('img',{name:'screenshot.png',exact:true})).toBeVisible();
     await expect(page.getByText(/Blocked external or ambiguous image/)).toBeVisible();expect(external).toHaveLength(0);await back();
@@ -748,7 +786,7 @@ test.describe('multi-format review viewers', () => {
     await expect(feedback).toHaveValue('Multi-format feedback');
     const details=await(await request.get(`/api/projects/${tenant}/user-inputs/${jobID}`)).json();
     expect(details.form.documents.external.stored.key.jobId).not.toBe(jobID);
-    for(const id of ['json','patch','png','archive']){
+    for(const id of ['json','patch','png','archive','html','delayed','svg']){
       const url=`/api/projects/${tenant}/reviews/${jobID}/documents?request_id=${encodeURIComponent(details.form.request_id)}&document_id=${id}`;
       const downloaded=await request.get(url);expect(downloaded.status()).toBe(200);
       const key=details.form.documents[id].stored.key;

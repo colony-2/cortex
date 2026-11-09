@@ -8,6 +8,7 @@ import { formatJSON, jsonLineErrors } from './structured';
 import SourceView from './SourceView';
 import DiffView from './DiffView';
 import ImageView from './ImageView';
+import MarkupView from './MarkupView';
 import { artifactHeadingIds, resolveArtifactLink, type PreviewNavigation, type NavigationIntent } from './artifactLinks';
 
 function AttachedImage({ id, name, url }: { id: string; name: string; url: string }) {
@@ -40,6 +41,7 @@ export default function DocumentPreview({ data, name, markdownSource = false, se
   }, [data, navigationIntent]);
   const [mode, setMode] = useState('rendered');
   const [textOverride, setTextOverride] = useState(false);
+  useEffect(() => { setMode('rendered'); setTextOverride(false); }, [data]);
   const structured = structuredAllowed(data);
   const json = useMemo(() => {
     if (data.format !== 'json' || !structured) return {};
@@ -58,12 +60,13 @@ export default function DocumentPreview({ data, name, markdownSource = false, se
       {format === 'diff' && structured && <><Radio.Group aria-label="Diff layout" value={dual ? 'dual' : 'unified'} onChange={e => { setDual(e.target.value === 'dual'); setMode('rendered'); }} optionType="button" options={[{ label: 'Unified', value: 'unified' }, { label: 'Side by side', value: 'dual' }]} /><Button onClick={() => setMode(mode === 'source' ? 'rendered' : 'source')}>{mode === 'source' ? 'Show diff' : 'Source'}</Button></>}
       {format === 'json' && structured && <Radio.Group aria-label="JSON display" value={mode} onChange={e => setMode(e.target.value)} optionType="button" options={[{label:'Formatted',value:'rendered'},{label:'Source',value:'source'}]} />}
     </Space>
+    {format === 'source' && /\.(svg|html?)$/i.test(name) && <Alert type="info" message="Markup preview unavailable: unrecognized or conflicting document root; showing source." />}
     {(data.truncated || overrideLimited) && <Alert type="warning" message="Preview truncated. Search covers only loaded content. Download the complete original." />}
     {['json','diff','jsonl','markdown'].includes(format) && !structured && <Alert type="info" message="Structured preview limit exceeded or input incomplete; showing bounded source." />}
     {data.bytes.length === 0 ? <Alert type="info" message="Empty document" /> : format === 'container' ? <Alert type="info" message="Container data: download the original file to inspect its contents. Archives are not extracted." />
       : format === 'image' ? <ImageView data={data} name={name} />
       : format === 'binary' ? <><p>Binary preview: first 64 KiB at most.</p><SourceView text={hexDump(data.bytes)} label="Binary bytes" /></>
-      : format === 'markup' ? <><Alert type="info" message="HTML and SVG are shown as source only; active markup is not rendered." />{source}</>
+      : format === 'html' || format === 'svg' ? <MarkupView key={name} data={data} name={name} />
       : format === 'markdown' && !markdownSource && structured ? <article tabIndex={0} className="review-markdown" aria-label="Rendered document"><Markdown remarkPlugins={[remarkGfm, artifactHeadingIds]} skipHtml components={{
         p: ({ children }) => <div className="review-markdown-paragraph">{children}</div>,
         a: ({ children, href }) => {
