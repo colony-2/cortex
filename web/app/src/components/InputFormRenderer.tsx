@@ -17,7 +17,7 @@ import { UploadOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd/es/upload/interface';
 import type { Rule } from 'antd/es/form';
 import type { Dayjs } from 'dayjs';
-import { conventionalReviewFeedback, reviewActionField } from '../utils/reviewForm';
+import { conventionalReviewFeedback, reviewActionField, reviewFeedbackField } from '../utils/reviewForm';
 import type { 
   InputForm, 
   InputField, 
@@ -52,22 +52,24 @@ export default function InputFormRenderer({
   const [fileList, setFileList] = useState<Record<string, UploadFile[]>>({});
   const [validationError, setValidationError] = useState(false);
   const actionField = reviewActionField(form);
-  const feedback = conventionalReviewFeedback(form);
-  const conventional = !!feedback;
-  const [rejecting, setRejecting] = useState(false);
+  const feedback = reviewFeedbackField(form);
+  const conventional = !!conventionalReviewFeedback(form);
+  const [pending, setPending] = useState<string>();
   const actions = useRef<HTMLDivElement>(null);
-  const rejectButton = useRef<HTMLButtonElement>(null);
+  const opener = useRef<string>();
+  const explicitOK = useRef(false);
   useEffect(() => {
-    if (!rejecting || !feedback) return;
-    antForm.getFieldInstance(feedback.id)?.focus();
-    antForm.scrollToField(feedback.id, { block: 'center' });
-  }, [rejecting, feedback?.id, antForm]);
+    if (pending === undefined) return;
+    if (feedback) antForm.getFieldInstance(feedback.id)?.focus();
+    else actions.current?.querySelector<HTMLButtonElement>('[data-confirm]')?.focus();
+  }, [pending, feedback?.id, antForm]);
   useEffect(() => {
     if (form.kind !== 'review' || !actions.current) return;
     const root = document.documentElement;
     const measure = () => {
       const viewport = window.visualViewport;
       const bottom = viewport ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : 0;
+      actions.current!.style.maxHeight = `${(viewport?.height ?? window.innerHeight) * 0.75}px`;
       actions.current!.style.bottom = `${bottom}px`;
       root.style.setProperty('--review-action-height', `${actions.current!.getBoundingClientRect().height + bottom}px`);
     };
@@ -87,6 +89,8 @@ export default function InputFormRenderer({
   }, [form.kind]);
 
   const handleFinish = (values: any) => {
+    if (loading || (actionField && (!explicitOK.current || pending === undefined))) return;
+    explicitOK.current = false;
     setValidationError(false);
     // Transform values based on field types
     const transformedValues: Record<string, any> = {};
@@ -145,8 +149,8 @@ export default function InputFormRenderer({
   const renderField = (field: InputField) => {
     const rules: Rule[] = [
       {
-        required: field.required || (conventional && rejecting && field === feedback),
-        ...(conventional && field === feedback && (rejecting || field.required) ? { whitespace: true } : {}),
+        required: field.required || (conventional && pending === 'revise' && field === feedback),
+        ...(field === feedback && ((conventional && pending === 'revise') || field.required) ? { whitespace: true } : {}),
         message: `${field.label} is required`,
       },
     ];
@@ -178,10 +182,10 @@ export default function InputFormRenderer({
           <Form.Item
             key={field.id}
             name={field.id}
-            label={field.label}
+            label={field === feedback ? <div><span>Why?</span><span style={{ display: 'block', fontWeight: 'normal' }}>{field.label}</span></div> : field.label}
             rules={rules}
           >
-            <TextArea 
+            <TextArea aria-label={field.label}
               rows={4} 
               placeholder={field.placeholder}
               showCount
@@ -343,9 +347,12 @@ export default function InputFormRenderer({
       form={antForm}
       layout="vertical"
       onFinish={handleFinish}
+      onSubmitCapture={event => {
+        if (actionField && !explicitOK.current) { event.preventDefault(); event.stopPropagation(); }
+      }}
       onFinishFailed={() => {
+        explicitOK.current = false;
         setValidationError(true);
-        if (actionField) antForm.setFieldValue(actionField.id, undefined);
       }}
       scrollToFirstError={form.kind === 'review' ? { block: 'center', focus: true } : true}
       disabled={loading}
@@ -357,10 +364,13 @@ export default function InputFormRenderer({
         </div>
       )}
       
-      {form.fields.filter(field => field !== actionField && !(conventional && field === feedback && !field.required)).map((field: InputField) => renderField(field))}
+      {form.fields.filter(field => field !== actionField && field !== feedback).map((field: InputField) => renderField(field))}
       {actionField && <Form.Item name={actionField.id} hidden rules={[{ required: true }]}><Input /></Form.Item>}
       <div ref={actions} role={form.kind === 'review' ? 'region' : undefined} className={form.kind === 'review' ? 'review-actions' : undefined} aria-label={form.kind === 'review' ? 'Review decisions' : undefined}>
-      {conventional && feedback && !feedback.required && <div hidden={!rejecting}>{renderField(feedback)}</div>}
+      {actionField && <div hidden={pending === undefined}>
+        <p aria-live="polite">Selected response: {actionField.optionLabels?.[pending ?? ''] || pending}</p>
+        {feedback && renderField(feedback)}
+      </div>}
       {submissionError && <Alert type="error" showIcon message={submissionError} />}
       {validationError && <Alert type="error" showIcon message="Please complete the required fields and correct any errors before submitting." />}
       
@@ -372,21 +382,27 @@ export default function InputFormRenderer({
             </Button>
           )}
           {/* Keep action names stable while Ant Design animates its loading icon. */}
-          {conventional ? rejecting ? <>
-            <Button disabled={loading} onClick={() => { setRejecting(false); requestAnimationFrame(() => rejectButton.current?.focus()); }}>Back</Button>
-            <Button type="primary" disabled={loading} loading={loading} onClick={() => { antForm.setFieldValue(actionField!.id, 'revise'); antForm.submit(); }}>Submit rejection</Button>
-          </> : <>
-            <Button type="primary" disabled={loading} loading={loading} aria-busy={loading} aria-label="Approve" onClick={() => { antForm.setFieldValue(actionField!.id, 'approve'); antForm.submit(); }}>Approve</Button>
-            <Button ref={rejectButton} disabled={loading} onClick={() => setRejecting(true)}>Reject</Button>
-          </> : actionField ? actionField.options!.map(option => (
-            <Button key={option} type="primary" loading={loading}
-              aria-label={actionField.optionLabels?.[option] || option} aria-busy={loading} onClick={() => {
-              antForm.setFieldValue(actionField.id, option);
-              antForm.submit();
-            }}>
-              {actionField.optionLabels?.[option] || option}
-            </Button>
-          )) : <Button type="primary" htmlType="submit" loading={loading} aria-label="Submit" aria-busy={loading}>
+          {actionField ? pending !== undefined ? <>
+            <Button data-confirm disabled={loading} onClick={() => {
+              setPending(undefined); explicitOK.current = false;
+              requestAnimationFrame(() => {
+                const button = Array.from(actions.current?.querySelectorAll<HTMLButtonElement>('[data-response]') ?? []).find(button => button.dataset.response === opener.current);
+                button?.focus();
+              });
+            }}>Back</Button>
+            <Button type="primary" disabled={loading} loading={loading} aria-busy={loading} aria-label="OK" onClick={() => {
+              if (loading || explicitOK.current) return;
+              explicitOK.current = true; antForm.submit();
+            }}>OK</Button>
+          </> : actionField.options!.map(option => {
+            const label = conventional ? (option === 'approve' ? 'Approve' : 'Reject') : actionField.optionLabels?.[option] || option;
+            return <Button key={option} type={option === 'revise' ? 'default' : 'primary'}
+              data-response={option} disabled={loading} aria-label={label} onClick={() => {
+                opener.current = option;
+                antForm.setFieldValue(actionField.id, option);
+                setPending(option);
+              }}>{label}</Button>;
+          }) : <Button type="primary" htmlType="submit" loading={loading} aria-label="Submit" aria-busy={loading}>
             Submit
           </Button>}
         </Space>

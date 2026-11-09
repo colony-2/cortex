@@ -86,7 +86,7 @@ describe('InputDetailPage - Single Question Flow', () => {
     await userEvent.type(screen.getByLabelText('Reason'),'Keep this draft');
     const file = new File(['notes'],'notes.md',{type:'text/markdown'});
     await userEvent.upload(container.querySelector('input[type=file]')!,file);
-    const send = screen.getByRole('button',{name:'Submit rejection'});
+    const send = screen.getByRole('button',{name:'OK'});
     fireEvent.click(send); fireEvent.click(send);
     await waitFor(()=>expect(submit).toHaveBeenCalledTimes(1));
     expect(screen.getByRole('button',{name:'Cancel job',exact:true})).toBeDisabled();

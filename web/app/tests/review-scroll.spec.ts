@@ -34,7 +34,12 @@ async function fixture(page: Page, count=2, required=false) {
 async function geometry(page: Page) {
   await expect.poll(() => page.evaluate(() => {
     const bar=document.querySelector('.review-actions')!;
-    return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--review-action-height')) >= bar.getBoundingClientRect().height - 1;
+    const bounds=bar.getBoundingClientRect();
+    // Viewport resize events and the ResizeObserver arrive asynchronously.
+    // Old reserved space can exceed the new bar height before either runs.
+    return bounds.top >= 0 && bounds.bottom <= innerHeight
+      && bounds.height <= (window.visualViewport?.height ?? innerHeight) * 0.75 + 1
+      && parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--review-action-height')) >= bounds.height - 1;
   })).toBe(true);
   const result=await page.evaluate(()=>{
     const bar=document.querySelector('.review-actions')!;
@@ -67,14 +72,17 @@ for(const count of [2,45]) test(`REV-001 taller ${count===2?'document':'catalog'
     await expect(page.getByRole('heading',{name:'Short document',exact:true})).toBeInViewport({ratio:1});
   }
   await page.getByRole('button',{name:'Approve',exact:true}).click();
+  await page.getByRole('button',{name:'OK',exact:true}).click();
   await expect(page.getByText('Required context is required')).toBeVisible();
   await aboveBar(page,'Required context');
 });
 for(const width of [320,390,1440]) test(`REV-002/004/005/008 inline previews and measured bar at ${width}`,async({page})=>{
   await page.setViewportSize({width,height:844});await fixture(page,4,true);
   await page.getByRole('button',{name:'Approve',exact:true}).click();
+  await page.getByRole('button',{name:'OK',exact:true}).click();
   await expect(page.getByText('Reason is required')).toBeVisible();
-  await aboveBar(page,'Reason');
+  await expect(page.getByLabel('Reason',{exact:true})).toBeInViewport({ratio:1});
+  await page.getByRole('button',{name:'Back',exact:true}).click();
   await page.getByRole('button',{name:'Reject',exact:true}).click();
   await expect(page.getByLabel('Reason',{exact:true})).toBeFocused();
   await geometry(page);
@@ -96,8 +104,9 @@ for(const width of [320,390,1440]) test(`REV-002/004/005/008 inline previews and
   await page.setViewportSize({width,height:400});
   await geometry(page);
   await page.getByLabel('Reason',{exact:true}).fill('Reason remains reachable');
-  await aboveBar(page,'Reason');
-  await expect(page.getByRole('button',{name:'Submit rejection'})).toBeInViewport({ratio:1});
+  await expect(page.getByLabel('Reason',{exact:true})).toBeInViewport({ratio:1});
+  await page.getByRole('button',{name:'OK'}).scrollIntoViewIfNeeded();
+  await expect(page.getByRole('button',{name:'OK'})).toBeInViewport({ratio:1});
 });
 test.describe('zoom',()=>{
   test.use({nativeZoom:true});
@@ -106,7 +115,8 @@ test.describe('zoom',()=>{
     await page.getByRole('button',{name:'Reject',exact:true}).click();
     await page.getByLabel('Reason',{exact:true}).fill('Zoomed feedback');
     await geometry(page);
-    await expect(page.getByRole('button',{name:'Submit rejection'})).toBeInViewport({ratio:1});
+    await page.getByRole('button',{name:'OK'}).scrollIntoViewIfNeeded();
+  await expect(page.getByRole('button',{name:'OK'})).toBeInViewport({ratio:1});
     await page.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight));
     await aboveBar(page,'Required context');
     await captureNativeZoom(page,test.info().outputPath('review-200.png'));
@@ -117,16 +127,65 @@ test('REV-004/007/011 optional reason, wrapped errors and network retry retain m
   await page.setViewportSize({width:320,height:568});await fixture(page);
   await page.getByRole('button',{name:'Reject',exact:true}).click();
   await page.getByLabel('Reason',{exact:true}).fill('   ');
-  await page.getByRole('button',{name:'Submit rejection'}).click();
+  await page.getByRole('button',{name:'OK'}).click();
   await expect(page.getByText('Reason is required')).toBeVisible();
   await geometry(page);
   await page.getByLabel('Reason',{exact:true}).fill('Please revise');
   await page.getByLabel('Required context',{exact:true}).fill('Context');
   await page.route('**/reviews/one/respond',r=>r.fulfill({status:503,json:{error:'Temporarily unavailable; retry this review after checking your connection.'}}));
-  await page.getByRole('button',{name:'Submit rejection'}).click();
+  await page.getByRole('button',{name:'OK'}).click();
   await expect(page.locator('.review-actions')).toContainText('Temporarily unavailable');
   await expect(page.getByLabel('Reason',{exact:true})).toHaveValue('Please revise');
   await geometry(page);
-  await expect(page.getByRole('button',{name:'Submit rejection'})).toBeInViewport({ratio:1});
+  await page.getByRole('button',{name:'OK'}).scrollIntoViewIfNeeded();
+  await expect(page.getByRole('button',{name:'OK'})).toBeInViewport({ratio:1});
   await page.screenshot({path:test.info().outputPath('review-error-320.png')});
+});
+
+test('RC-001/017/018 confirmation captures and visual viewport clearance',async({page},testInfo)=>{
+  await page.setViewportSize({width:1440,height:900}); await fixture(page,2);
+  let requests=0;
+  await page.route('**/reviews/one/respond',route=>{requests++;return route.fulfill({json:{ok:true}});});
+  await page.screenshot({path:testInfo.outputPath('review-collapsed-desktop.png')});
+  const collapsed=await page.locator('.review-actions').evaluate(e=>e.getBoundingClientRect().height);
+  await page.getByRole('button',{name:'Approve',exact:true}).click();
+  expect(requests).toBe(0);
+  await expect(page.getByLabel('Reason',{exact:true})).toBeFocused();
+  await page.getByLabel('Reason',{exact:true}).fill('The proposal is ready to proceed.');
+  await geometry(page);
+  await page.screenshot({path:testInfo.outputPath('review-confirm-desktop.png')});
+  await page.getByRole('button',{name:'Back',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Approve',exact:true})).toBeFocused();
+  await expect.poll(()=>page.locator('.review-actions').evaluate(e=>e.getBoundingClientRect().height)).toBe(collapsed);
+  await page.setViewportSize({width:320,height:568});
+  await page.getByRole('button',{name:'Reject',exact:true}).click();
+  await expect(page.getByLabel('Reason',{exact:true})).toHaveValue('The proposal is ready to proceed.');
+  await geometry(page);
+  await page.screenshot({path:testInfo.outputPath('review-confirm-320.png')});
+  // Simulate a keyboard's visual viewport geometry, retaining the layout viewport.
+  await page.evaluate(()=>{
+    Object.defineProperty(window.visualViewport,'height',{configurable:true,value:280});
+    window.visualViewport!.dispatchEvent(new Event('resize'));
+  });
+  await expect.poll(()=>page.locator('.review-actions').evaluate(e=>e.getBoundingClientRect().bottom)).toBe(280);
+  await page.getByRole('button',{name:'Back',exact:true}).scrollIntoViewIfNeeded();
+  await expect(page.getByRole('button',{name:'Back',exact:true})).toBeInViewport({ratio:1});
+  await page.getByRole('button',{name:'OK',exact:true}).scrollIntoViewIfNeeded();
+  await expect(page.getByRole('button',{name:'OK',exact:true})).toBeInViewport({ratio:1});
+  const positions=await page.getByRole('button',{name:'OK',exact:true}).boundingBox();
+  expect(positions!.y+positions!.height).toBeLessThanOrEqual(280);
+  await geometry(page);
+  await page.screenshot({path:testInfo.outputPath('review-keyboard-geometry-320.png')});
+  expect(requests).toBe(0);
+  await page.evaluate(()=>{
+    delete (window.visualViewport as any).height;
+    window.visualViewport!.dispatchEvent(new Event('resize'));
+  });
+  await page.getByRole('button',{name:/Back to Reviews/}).click();
+  await expect.poll(()=>page.evaluate(()=>document.documentElement.style.getPropertyValue('--review-action-height'))).toBe('');
+  await page.evaluate(()=>window.visualViewport!.dispatchEvent(new Event('resize')));
+  await expect.poll(()=>page.evaluate(()=>document.documentElement.style.getPropertyValue('--review-action-height'))).toBe('');
+  await page.goto('/project/phone/reviews/one');
+  await expect(page.getByRole('button',{name:'Approve',exact:true})).toBeVisible();
+  await geometry(page);
 });

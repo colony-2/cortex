@@ -354,8 +354,9 @@ body {
 .review-page .review-diff-scroll,
 .review-page .review-image-scroll { max-height: none; overflow-x: auto; overflow-y: auto; }
 .review-page .review-document-list { overflow: visible; }
-.review-actions { position: fixed; z-index: 100; inset-inline: 0; bottom: 0; background: white; border-top: 1px solid #ddd; padding: 12px 24px calc(12px + env(safe-area-inset-bottom)); box-shadow: 0 -2px 8px #0001; }
+.review-actions { overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; position: fixed; z-index: 100; inset-inline: 0; bottom: 0; background: white; border-top: 1px solid #ddd; padding: 12px 24px calc(12px + env(safe-area-inset-bottom)); box-shadow: 0 -2px 8px #0001; }
 .review-actions .ant-form-item { margin-bottom: 8px; }
+.review-actions .ant-input-textarea-show-count { margin-bottom: 18px; }
 .review-actions textarea { max-height: min(160px, 25dvh); }
 .review-page { padding-bottom: calc(var(--review-action-height, 90px) + 24px) !important; }
 html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-height, 0px) + 24px); }

@@ -72,13 +72,14 @@ it.each([404, 503, 'network'] as const)('preserves review draft and submission t
   expect(screen.getByText('No documents attached')).toBeVisible();
   expect(screen.getByRole('region', { name: 'Review context' })).toHaveTextContent('Response question');
   const user = userEvent.setup();
+  await user.click(screen.getByRole('button', { name: 'Approve', exact: true }));
   await user.type(screen.getByLabelText('Feedback'), 'Keep this draft');
   await user.click(screen.getByRole('button', { name: 'Retry job context' }));
   await screen.findByText('Complete goal prompt');
   expect(screen.getByLabelText('Feedback')).toHaveValue('Keep this draft');
   expect(screen.getByText('Input status:')).toBeVisible();
   expect(screen.getByText('Input started:')).toBeVisible();
-  await user.click(screen.getByRole('button', { name: 'Approve', exact: true }));
+  await user.click(screen.getByRole('button', { name: 'OK', exact: true }));
   await waitFor(() => expect(received).toBe(true));
   expect(submit).toHaveBeenCalledWith('tenant', 'a', 'original-request', expect.objectContaining({ fields: { decision: 'approve', feedback: 'Keep this draft' } }));
   submit.mockRestore();
@@ -99,10 +100,11 @@ it('REL-001,030,031 preserves parent context and review draft through child fail
   await screen.findByText('Child jobs unavailable');
   expect(screen.getByRole('link',{name:'Job · parent'})).toHaveAttribute('href','/project/tenant/jobs/parent/story');
   expect(screen.getByRole('link',{name:'Goal · parent-goal'})).toHaveAttribute('href','/project/tenant/goals/parent-goal');
+  await userEvent.click(screen.getByRole('button',{name:'Approve',exact:true}));
   await userEvent.type(screen.getByLabelText('Feedback'),'Retained draft');
   fireEvent.click(screen.getByRole('button',{name:'Retry',exact:true}));
   await screen.findByText('Child jobs unavailable');
   expect(reads).toBe(1);
   expect(screen.getByLabelText('Feedback')).toHaveValue('Retained draft');
-  expect(screen.getByRole('button',{name:'Approve',exact:true})).toBeEnabled();
+  expect(screen.getByRole('button',{name:'OK',exact:true})).toBeEnabled();
 });

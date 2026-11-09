@@ -183,3 +183,20 @@ filenames remain visible. Source links open attached files without recursively
 expanding their sources. Metadata grants no additional artifact access and does
 not alter file contents or download names. Omitted metadata retains filename-based
 labels and document-ID ordering. Zero is a valid order, distinct from absence.
+
+## Confirming a response in Cortex
+
+For reviews with one required multiple-choice question, selecting a response
+expands the fixed bottom bar. Selection sends nothing; OK validates and submits.
+Back keeps the draft and restores focus to the selected response button.
+
+A declared paragraph question with ID `feedback` appears once as the Why? editor
+in that bar, with its original question. This applies to custom option values as
+well as approve/revise. Required flags and validation patterns still apply;
+the conventional Reject (raw value `revise`) also requires a nonblank reason.
+Approve permits blank optional feedback. Reviews without that field confirm
+without adding an answer. Other questions remain in the page.
+
+This replaces immediate response-button submission and the rejection-only
+Submit rejection control. Stored option values, field IDs, attachments, and
+review API contracts are unchanged.

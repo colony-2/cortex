@@ -201,6 +201,7 @@ test.describe('cancel review job', () => {
     const mutations: string[] = [];
     page.on('request', req => { if (req.method() === 'POST') mutations.push(req.url()); });
     await page.goto(`/project/${tenant}/reviews/${jobID}`);
+    await page.getByRole('button', { name: 'Revise the plan', exact: true }).click();
     const feedback = page.getByLabel('Feedback or answers to open questions. Select a revision decision to request changes.');
     await feedback.fill('Keep this draft if I dismiss cancellation.');
     await page.getByRole('button', { name: 'Cancel job', exact: true }).click();
@@ -506,8 +507,11 @@ for (const clarification of [false, true]) {
       const action = page.getByRole('button', { name: clarification ? 'Revise the plan' : 'Approve', exact: true });
       const feedback = page.getByLabel(clarification
         ? 'Feedback or answers to open questions. Select a revision decision to request changes.' : 'What should change?', { exact: true });
+      await action.click();
+      expect(await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).toHaveLength(1);
+      const confirm = page.getByRole('button', { name: 'OK', exact: true });
       if (!clarification) {
-        await action.click();
+        await confirm.click();
         await expect(page.getByText('What should change? is required')).toBeVisible();
       }
       await feedback.fill('Please use the proposed mandate and clarify the ownership boundary.');
@@ -533,22 +537,22 @@ for (const clarification of [false, true]) {
         });
       }, { times: 1 });
       try {
-        await action.click();
+        await confirm.click();
         // Keep the request in flight until we observe the loading state. The
         // spinner must not change the action's accessible name or allow duplicates.
-        await expect(action).toHaveAttribute('aria-busy', 'true');
-        await expect(action).toBeDisabled();
+        await expect(confirm).toHaveAttribute('aria-busy', 'true');
+        await expect(confirm).toBeDisabled();
       } finally {
         releaseFailure();
       }
       await expect(page.getByRole('alert').filter({ hasText: 'Review service temporarily unavailable' })).toBeVisible();
-      await expect(action).toHaveAttribute('aria-busy', 'false');
-      await expect(action).toBeEnabled();
+      await expect(confirm).toHaveAttribute('aria-busy', 'false');
+      await expect(confirm).toBeEnabled();
       await expect(feedback).toHaveValue('Please use the proposed mandate and clarify the ownership boundary.');
       expect(await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).toHaveLength(1);
       const [response] = await Promise.all([
         page.waitForResponse(r => r.url().endsWith(`/reviews/${jobID}/respond`) && r.request().method() === 'POST'),
-        action.click(),
+        confirm.click(),
       ]);
       expect(response.status(), await response.text()).toBe(200);
       await expect(page.getByText('No pending reviews')).toBeVisible();
@@ -623,6 +627,7 @@ test.describe('review job metadata', () => {
     await expect(page.getByText('Cell unavailable', { exact: true })).toBeVisible();
     await expect(page.getByText('Unknown cell', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Approve', exact: true }).click();
     const feedback = page.getByLabel('What should change?', { exact: true });
     await feedback.fill('Keep this feedback through context retry');
     await page.locator('input[type=file]').setInputFiles({ name: 'feedback.md', mimeType: 'text/markdown', buffer: Buffer.from('# Browser feedback') });
@@ -633,7 +638,7 @@ test.describe('review job metadata', () => {
     await expect(page.getByText('feedback.md', { exact: true })).toBeVisible();
     const [response] = await Promise.all([
       page.waitForResponse(r => r.url().endsWith(`/reviews/${jobID}/respond`) && r.request().method() === 'POST'),
-      page.getByRole('button', { name: 'Approve', exact: true }).click(),
+      page.getByRole('button', { name: 'OK', exact: true }).click(),
     ]);
     expect(response.status()).toBe(200);
     await expect(page.getByText('No pending reviews')).toBeVisible();
@@ -695,6 +700,7 @@ test.describe('multi-format review viewers', () => {
     await setNativeZoom(page,2);
     await page.getByRole('button',{name:'Open Review',exact:true}).click();
     await expect(page.getByLabel('Document preview')).toBeVisible();
+    await page.getByRole('button',{name:'Approve',exact:true}).click();
     const feedback=page.getByLabel('What should change?',{exact:true});
     await feedback.fill('Multi-format feedback');
     await page.locator('input[type=file]').setInputFiles({name:'feedback.md',mimeType:'text/markdown',buffer:Buffer.from('# Feedback')});
@@ -793,7 +799,7 @@ test.describe('multi-format review viewers', () => {
       const original=await request.get(`/api/projects/${tenant}/jobs/${key.jobId}/tasks/${key.taskOrdinal}/artifacts/${encodeURIComponent(key.name)}`);
       expect(await downloaded.body()).toEqual(await original.body());
     }
-    await page.getByRole('button',{name:'Approve',exact:true}).click();await expect(observer.getByText('No pending reviews')).toBeVisible();
+    await page.getByRole('button',{name:'OK',exact:true}).click();await expect(observer.getByText('No pending reviews')).toBeVisible();
     startWorker();await expect.poll(async()=>{
       const response=await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`);return response.status()===200?response.json():null;
     },{timeout:30000}).toMatchObject({status:'completed',output:{answers:{feedback:'Multi-format feedback',annotation:{kind:'stored'}},receipt:{actor:{id:'browser@example.com',kind:'human'}}}});
@@ -810,12 +816,12 @@ test.describe('conventional rejection',()=>{
     const reason=page.getByLabel('What should change?',{exact:true});
     await expect(reason).toBeFocused();
     await reason.fill('   ');
-    await page.getByRole('button',{name:'Submit rejection'}).click();
+    await page.getByRole('button',{name:'OK'}).click();
     await expect(page.getByText('What should change? is required')).toBeVisible();
     await reason.fill('Clarify ownership before approval.');
     const [response]=await Promise.all([
       page.waitForResponse(r=>r.url().endsWith(`/reviews/${jobID}/respond`) && r.request().method()==='POST'),
-      page.getByRole('button',{name:'Submit rejection'}).click(),
+      page.getByRole('button',{name:'OK'}).click(),
     ]);
     expect(response.status(),await response.text()).toBe(200);
     startWorker();

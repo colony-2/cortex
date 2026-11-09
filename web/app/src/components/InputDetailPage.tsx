@@ -97,7 +97,7 @@ export default function InputDetailPage({ projectId }: InputDetailPageProps) {
     return (
       <div className={reviews ? 'review-page' : undefined} style={{ padding: 24 }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
-          <Button icon={<ArrowLeftOutlined />} onClick={handleCancel}>
+          <Button icon={<ArrowLeftOutlined />} onClick={handleCancel} disabled={submitting || cancelling}>
             Back to Reviews
           </Button>
           <Alert message="Error" description={error || 'Input request not found'} type="error" showIcon />
@@ -113,7 +113,7 @@ export default function InputDetailPage({ projectId }: InputDetailPageProps) {
     <div className={reviews ? 'review-page' : undefined} style={{ padding: 24 }}>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
-          <Button icon={<ArrowLeftOutlined />} onClick={handleCancel}>
+          <Button icon={<ArrowLeftOutlined />} onClick={handleCancel} disabled={submitting || cancelling}>
             Back to Reviews
           </Button>
           {reviews && <CancelJobButton key={`${projectId}/${jobId}`} projectId={projectId} jobId={jobId}

@@ -433,6 +433,7 @@ for (const width of [320, 390]) {
     page.on('requestfinished', request => { if (request.url().includes('/reviews/one/documents?')) reads++; });
     await page.route('**/reviews/one/documents?*', route => route.fulfill({ contentType: 'text/markdown', body: source }));
     await page.goto('/project/phone/reviews/one');
+    await page.getByRole('button', { name: 'Approve', exact: true }).click();
     const feedback = page.getByLabel('Feedback', { exact: true });
     await feedback.fill('Keep my draft while reading.');
     await page.locator('input[type=file]').setInputFiles({ name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('Notes') });

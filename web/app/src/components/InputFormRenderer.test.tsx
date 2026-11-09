@@ -52,10 +52,12 @@ describe('InputFormRenderer', () => {
     expect(screen.getByText('Agent summary and open questions')).toBeInTheDocument();
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: label }));
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'OK', exact: true }));
     await screen.findByText('Feedback is required');
     expect(mockOnSubmit).not.toHaveBeenCalled();
     await user.type(screen.getByLabelText('Feedback'), 'Please clarify ownership.');
-    await user.click(screen.getByRole('button', { name: label }));
+    await user.click(screen.getByRole('button', { name: 'OK', exact: true }));
     await waitFor(() => expect(mockOnSubmit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       fields: { [id]: value, feedback: 'Please clarify ownership.' },
     })));
@@ -71,7 +73,7 @@ describe('InputFormRenderer', () => {
     expect(screen.getByLabelText('Reason')).toHaveFocus();
     expect(mockOnSubmit).not.toHaveBeenCalled();
     await user.type(screen.getByLabelText('Reason'), '   ');
-    await user.click(screen.getByRole('button', { name: 'Submit rejection' }));
+    await user.click(screen.getByRole('button', { name: 'OK' }));
     await screen.findByText('Reason is required');
     expect(mockOnSubmit).not.toHaveBeenCalled();
     await user.clear(screen.getByLabelText('Reason'));
@@ -80,8 +82,75 @@ describe('InputFormRenderer', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Reject', exact: true })).toHaveFocus());
     await user.click(screen.getByRole('button', { name: 'Reject', exact: true }));
     expect(screen.getByLabelText('Reason')).toHaveValue('Please clarify');
-    await user.click(screen.getByRole('button', { name: 'Submit rejection' }));
+    await user.click(screen.getByRole('button', { name: 'OK' }));
     await waitFor(() => expect(mockOnSubmit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ fields: { decision: 'revise', feedback: 'Please clarify' } })));
+  });
+
+
+  it('RC-002/008/010/011 preserves answers and files through Back, validates patterns, and sends only on OK', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<InputFormRenderer form={{id:'custom',title:'Custom review',kind:'review',responseField:'choice',fields:[
+      {id:'choice',label:'Choose',type:'multiple_choice',required:true,options:['accept','return'],optionLabels:{accept:'Accept',return:'Return'}},
+      {id:'feedback',label:'Explain the choice',type:'paragraph_text',required:true,validation:{pattern:'^Reason',message:'Start with Reason'}},
+      {id:'owner',label:'Owner',type:'short_answer',required:true},
+      {id:'file',label:'Attachment',type:'file_upload',required:false},
+    ]}} onSubmit={mockOnSubmit} />);
+    expect(screen.queryByText('Why?')).not.toBeVisible();
+    await user.type(screen.getByLabelText('Owner'),'Sam');
+    const file = new File(['evidence'],'evidence.txt',{type:'text/plain'});
+    await user.upload(container.querySelector('input[type=file]')!,file);
+    await user.click(screen.getByRole('button',{name:'Accept',exact:true}));
+    const editor = screen.getByLabelText('Explain the choice');
+    expect(editor).toHaveFocus();
+    expect(container.querySelectorAll('textarea')).toHaveLength(1);
+    expect(editor).toHaveAttribute('maxlength','1000');
+    await user.type(editor,'Invalid{Enter}details');
+    expect(editor).toHaveValue('Invalid\ndetails');
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button',{name:'OK',exact:true}));
+    await screen.findByText('Start with Reason');
+    expect(screen.getByText('Selected response: Accept')).toBeVisible();
+    await user.click(screen.getByRole('button',{name:'Back',exact:true}));
+    await waitFor(()=>expect(screen.getByRole('button',{name:'Accept',exact:true})).toHaveFocus());
+    await user.click(screen.getByRole('button',{name:'Return',exact:true}));
+    expect(editor).toHaveValue('Invalid\ndetails');
+    expect(screen.getByLabelText('Owner')).toHaveValue('Sam');
+    expect(screen.getByText('evidence.txt')).toBeVisible();
+    await user.clear(editor);
+    await user.type(editor,'Reason: ownership');
+    await user.click(screen.getByRole('button',{name:'OK',exact:true}));
+    await waitFor(()=>expect(mockOnSubmit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      fields:{choice:'return',feedback:'Reason: ownership',owner:'Sam'},response:'return',attachments:{file},
+    })));
+  });
+
+  it.each([false,true])('RC-005 confirms without paragraph feedback (other field=%s)',async other => {
+    const user = userEvent.setup();
+    render(<InputFormRenderer form={{id:'plain',title:'Review',kind:'review',fields:[
+      {id:'decision',label:'Proceed?',type:'multiple_choice',required:true,options:['go']},
+      ...(other ? [{id:'notes',label:'Notes',type:'paragraph_text' as const,required:false}] : []),
+    ]}} onSubmit={mockOnSubmit}/>);
+    if(other) await user.type(screen.getByLabelText('Notes'),'On page');
+    await user.click(screen.getByRole('button',{name:'go',exact:true}));
+    expect(screen.queryByText('Why?')).toBeNull();
+    expect(screen.getByRole('button',{name:'Back',exact:true})).toHaveFocus();
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button',{name:'OK',exact:true}));
+    await waitFor(()=>expect(mockOnSubmit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({fields:{decision:'go',...(other?{notes:'On page'}:{})}})));
+  });
+
+  it('RC-007 optional approval feedback allows blank and implicit form submission sends nothing',async()=>{
+    const user=userEvent.setup();
+    const {container}=render(<InputFormRenderer form={{id:'approval',title:'Review',kind:'review',fields:[
+      {id:'decision',label:'Decision',type:'multiple_choice',required:true,options:['approve','revise']},
+      {id:'feedback',label:'Reason',type:'paragraph_text',required:false},
+    ]}} onSubmit={mockOnSubmit}/>);
+    fireEvent.submit(container.querySelector('form')!);
+    await user.click(screen.getByRole('button',{name:'Approve',exact:true}));
+    fireEvent.submit(container.querySelector('form')!);
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button',{name:'OK',exact:true}));
+    await waitFor(()=>expect(mockOnSubmit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({fields:{decision:'approve'}})));
   });
 
   it.each(['optional', 'multiple'])('keeps %s review choice questions as ordinary form fields', async kind => {

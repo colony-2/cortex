@@ -133,11 +133,13 @@ test('REL-001,030,031,032,033,038 review context and document remain usable thro
   await related(page).getByRole('button',{name:'Refresh relationships',exact:true}).click();
   await expect(related(page).getByText('Child jobs unavailable')).toBeVisible();
   await expect(document).toBeVisible();
+  await page.getByRole('button',{name:'Approve',exact:true}).click();
+  expect(submissions).toHaveLength(0);
   await page.getByLabel('What should change?',{exact:true}).fill('Evidence reviewed');
   await expect(disclosure(page)).toHaveAttribute('open');
   await summary(page).click();
   await expect(disclosure(page)).not.toHaveAttribute('open');
-  await page.getByRole('button',{name:'Approve',exact:true}).click();
+  await page.getByRole('button',{name:'OK',exact:true}).click();
   await expect.poll(()=>submissions.length).toBe(1);
   expect(submissions[0]).toMatchObject({request_id:'review-evidence',fields:{decision:'approve',feedback:'Evidence reviewed'}});
 });
