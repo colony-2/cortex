@@ -1,0 +1,10 @@
+.job-lease-timeline { overflow-wrap: anywhere; width: 100%; }
+.job-lease-timeline button { font: inherit; color: inherit; background: transparent; border: 1px solid #bfbfbf; border-radius: 6px; padding: 4px 12px; cursor: pointer; }
+.job-lease-timeline button:disabled { opacity: .55; cursor: default; }
+.job-lease-timeline :is(button, summary):focus-visible { outline: 2px solid #1677ff; outline-offset: 3px; }
+.job-lease-timeline ol { margin-block: 16px; padding-inline-start: 24px; }
+.job-lease-timeline li { padding-block: 4px 12px; }
+.job-lease-timeline summary { cursor: pointer; }
+.job-lease-timeline dl { margin-block: 12px; }
+.job-lease-timeline dt { font-weight: 600; }
+.job-lease-timeline dd { margin-inline-start: 16px; margin-block-end: 8px; white-space: pre-wrap; }

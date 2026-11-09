@@ -182,3 +182,27 @@ export interface TreeNode {
 }
 export interface TreeNodeResponse { node: TreeNode; observed_at: string }
 export interface TreeChildrenResponse { nodes: TreeNode[]; next_page_token?: string; observed_at: string }
+
+/** Immutable historical snapshots. IDs and full-precision times stay strings. */
+export interface JobLeaseEvent {
+  eventId: string;
+  eventType: 'lease_acquired' | 'lease_renewed';
+  occurredAt: string;
+  jobKey: { tenantId: string; jobId: string };
+  cell: string;
+  cellId: string;
+  cellRepo: string;
+  goalId: string;
+  jobType: string;
+  route: { jobType: string; taskType?: string };
+  leaseId: string;
+  workerId: string;
+  leaseExpiresAt: string;
+  previousLeaseExpiresAt?: string;
+  acquisitionSource?: string;
+  previousLeaseId?: string;
+}
+export interface JobLeaseEventPage {
+  events: JobLeaseEvent[];
+  nextPageToken?: string;
+}

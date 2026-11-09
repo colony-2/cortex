@@ -563,6 +563,8 @@ func writeError(w http.ResponseWriter, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, jobdb.ErrLeasePermissionDenied):
+		writeJSON(w, http.StatusForbidden, errorResponse{Error: "Permission denied", Code: "lease_permission_denied"})
 	case errors.Is(err, story.ErrInvalidRestartBoundary), errors.Is(err, story.ErrInvalidProject):
 		writeHTTPError(w, http.StatusBadRequest, err)
 	case errors.Is(err, story.ErrRestartContextUnavailable):

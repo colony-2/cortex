@@ -20,6 +20,7 @@ export function setUserEmail(email: string): void {
   const expiryDate = new Date();
   expiryDate.setFullYear(expiryDate.getFullYear() + 1);
   document.cookie = `${USER_EMAIL_COOKIE}=${encodeURIComponent(email)}; expires=${expiryDate.toUTCString()}; path=/`;
+  window.dispatchEvent(new Event('cortex-ui-identity'));
 }
 
 export function clearUserEmail(): void {
@@ -27,6 +28,7 @@ export function clearUserEmail(): void {
 
   // Set cookie with past expiry date to delete it
   document.cookie = `${USER_EMAIL_COOKIE}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/`;
+  window.dispatchEvent(new Event('cortex-ui-identity'));
 }
 
 export function isAuthenticated(): boolean {

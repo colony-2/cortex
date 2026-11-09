@@ -3,8 +3,8 @@ module github.com/colony-2/colony2/server
 go 1.26
 
 require (
-	github.com/colony-2/c2j v0.0.122
-	github.com/colony-2/jobdb v0.0.74
+	github.com/colony-2/c2j v0.0.125-0.20261108054604-a563d5ea7ffa
+	github.com/colony-2/jobdb v0.0.77-0.20261108033303-ea45f87bf010
 	github.com/gorilla/mux v1.8.1
 	github.com/spf13/cobra v1.10.2
 	modernc.org/sqlite v1.50.1

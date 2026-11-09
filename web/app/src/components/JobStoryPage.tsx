@@ -1,3 +1,4 @@
+import JobLeaseTimeline from './JobLeaseTimeline';
 import NodePayloadView from './NodePayloadView';
 import JobRelationships from './JobRelationships';
 import { cellLabel } from '../utils/cellPresentation';
@@ -784,6 +785,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
         {job && <div aria-label="Job cell" style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
           <Text strong>Cell: </Text>{cellLabel(job.cell_name)}
         </div>}
+        {job && <JobLeaseTimeline projectId={projectId} jobId={job.job_id} createdAt={job.created_at} />}
         {job && <section aria-label="Job prompt">
           <Text strong>Prompt</Text>
           <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginBottom: 0 }}>{prompt || 'No prompt recorded for this job.'}</Typography.Paragraph>

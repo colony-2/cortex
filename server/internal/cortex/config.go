@@ -31,6 +31,7 @@ type Server struct {
 	engine        jobworkflow.Engine
 	jobDeletion   jobdb.JobDeletionRuntime
 	chapters      chapterReader
+	leaseEvents   jobdb.WorkflowRuntime
 	router        http.Handler
 	story         storyService
 	inputs        inputRuntime

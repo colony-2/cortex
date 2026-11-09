@@ -217,3 +217,32 @@ export async function getTreeChildren(tenant: string, job: string, token = '', s
   await handleResponse(response, 'Load tree children');
   return response.json();
 }
+
+/** One explicit page; never prefetch, traverse, log, or decode continuation tokens. */
+export async function getJobLeaseEvents(
+  projectId: string, jobId: string,
+  options: { pageSize?: number; pageToken?: string } = {}, signal?: AbortSignal,
+): Promise<import('./types').JobLeaseEventPage> {
+  const params = new URLSearchParams({ pageSize: String(options.pageSize ?? 100) });
+  if (options.pageToken) params.set('pageToken', options.pageToken);
+  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/events?${params}`, { signal });
+  await handleResponse(response, 'Load lease history');
+  const page = await response.json();
+  // A successful legacy/noncanonical response is incompatible, not empty history.
+  if (!page || !Array.isArray(page.events) || (page.nextPageToken !== undefined && typeof page.nextPageToken !== 'string')) {
+    throw new APIError('Incompatible lease history response', 502, 'incompatible_response');
+  }
+  for (const event of page.events) {
+    const strings = ['eventId', 'occurredAt', 'cell', 'cellId', 'cellRepo', 'goalId', 'jobType', 'leaseId', 'workerId', 'leaseExpiresAt'];
+    if (!event || strings.some(key => typeof event[key] !== 'string') ||
+        !['lease_acquired', 'lease_renewed'].includes(event.eventType) ||
+        typeof event.jobKey?.tenantId !== 'string' || typeof event.jobKey?.jobId !== 'string' ||
+        event.jobKey.tenantId !== projectId || event.jobKey.jobId !== jobId ||
+        typeof event.route?.jobType !== 'string' ||
+        ['previousLeaseExpiresAt', 'acquisitionSource', 'previousLeaseId'].some(key => event[key] !== undefined && typeof event[key] !== 'string') ||
+        (event.route.taskType !== undefined && typeof event.route.taskType !== 'string')) {
+      throw new APIError('Incompatible lease history event', 502, 'incompatible_response');
+    }
+  }
+  return page;
+}

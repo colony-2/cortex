@@ -1,3 +1,4 @@
+import JobLeaseTimeline from './JobLeaseTimeline';
 import type { ReactNode } from 'react';
 import { Alert, Descriptions, Space, Typography } from 'antd';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
@@ -57,6 +58,7 @@ export default function JobListDetails({ job, inspection, projectId, showPrompt 
 
   return <Space direction="vertical" size="middle" style={{ width: '100%', overflowWrap: 'anywhere' }}>
     {showPrompt && job.prompt && <div style={{ whiteSpace: 'pre-wrap' }}>{job.prompt}</div>}
+    <JobLeaseTimeline projectId={projectId} jobId={job.job_id} createdAt={job.created_at} />
     <JobWaitLinks job={job} projectId={projectId} details={inspection} />
     {inspection?.blocking_wait?.dependencies.map((dependency, index) => <div key={index}>
       {dependency.target.goalId ? <Link className="compact-touch-link" to={goalPath(projectId, dependency.target.goalId)}>View goal</Link> : dependency.target.jobId ? jobLink(dependency.target.jobId) : null}
