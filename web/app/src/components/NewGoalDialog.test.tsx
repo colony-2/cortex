@@ -23,7 +23,7 @@ it('refreshes a selected stable ID and submits its renamed canonical name withou
   await screen.findAllByText('platform · github.com/acme/platform');
   vi.mocked(getCell).mockResolvedValue({ ...registryCell('platform', 'one'), name: 'renamed' });
   fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
-  await waitFor(() => expect(submitJob).toHaveBeenCalledWith('one', { cell: 'renamed', job_id: expect.any(String), inputs: { prompt: 'Build a tool', type: 'build' } }));
+  await waitFor(() => expect(submitJob).toHaveBeenCalledWith('one', { cell: 'renamed', inputs: { prompt: 'Build a tool', type: 'build' } }));
   expect(created).toHaveBeenCalledWith('g');
 });
 it('registers an explicit name and repo before submitting a new-cell goal', async () => {
@@ -37,6 +37,7 @@ it('registers an explicit name and repo before submitting a new-cell goal', asyn
   fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'new-cell' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
   await waitFor(() => expect(submitJob).toHaveBeenCalledWith('one', expect.objectContaining({ cell: 'new-cell', repo: 'github.com/acme/new' })));
+  expect(vi.mocked(submitJob).mock.calls[0][1]).not.toHaveProperty('job_id');
   expect(createCell).toHaveBeenCalledWith('one', { name: 'new-cell', repo: 'git@github.com:acme/new.git', requestId: expect.any(String) });
   expect(vi.mocked(createCell).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(submitJob).mock.invocationCallOrder[0]);
 });
@@ -48,7 +49,8 @@ it('preserves fields and reuses the original submission after an uncertain failu
   const first = vi.mocked(submitJob).mock.calls[0][1];
   fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
   await waitFor(() => expect(submitJob).toHaveBeenCalledTimes(2));
-  expect(vi.mocked(submitJob).mock.calls[1][1]).toEqual(first);
+  expect(vi.mocked(submitJob).mock.calls[1][1]).toBe(first);
+  expect(first).not.toHaveProperty('job_id');
 });
 it('rejects a cell retired since selection', async () => {
   open();
@@ -138,7 +140,9 @@ it('ATT-013 ATT-014 ATT-016 ATT-019 retains exact files on retry and distinguish
  await screen.findByRole('button', { name: 'Remove x' });
  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
  await waitFor(() => expect(submitJob).toHaveBeenCalledTimes(3));
- expect(vi.mocked(submitJob).mock.calls[2][1].job_id).not.toBe(first[1].job_id);
+ expect(vi.mocked(submitJob).mock.calls[2][1]).not.toBe(first[1]);
+ expect(vi.mocked(submitJob).mock.calls.every(call => !('job_id' in call[1]))).toBe(true);
+ expect(vi.mocked(submitJob).mock.calls[2][2]![0]).toBe(replacement);
  expect(vi.mocked(submitJob).mock.calls[2][2]).toEqual([replacement]);
 });
 it('ATT-010 preserves files across modes and rejects a missing prompt before registration', async () => {
@@ -215,6 +219,31 @@ it('ATT-015 allocates new attempts when files are added, removed, or reordered b
  fireEvent.click(screen.getByRole('button', { name: 'Remove a' })); await submitAndWait(3);
  attach([a]); await screen.findByRole('button', { name: 'Remove a' }); await submitAndWait(4);
  const calls = vi.mocked(submitJob).mock.calls;
- expect(new Set(calls.map(call => call[1].job_id)).size).toBe(4);
+ expect(new Set(calls.map(call => call[1])).size).toBe(4);
+ expect(calls.every(call => !('job_id' in call[1]))).toBe(true);
+ expect(calls.map(call => call[2])).toEqual([[a], [a, b], [b], [b, a]]);
  expect(calls[3][2]).toEqual([b, a]);
+});
+
+it('CID-001 CID-003 CID-006 refreshes edited prompts and modes while returning the complete goal identity', async () => {
+ const goalId = '3LfLqNNl2VVLo8Cg5a032Lm0igK';
+ vi.mocked(submitJob).mockRejectedValue(new Error('Try again'));
+ const created = fillNewCell();
+ fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
+ await screen.findByText('Try again');
+ const first = vi.mocked(submitJob).mock.calls[0][1];
+ fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Edited prompt' } });
+ fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
+ await waitFor(() => expect(submitJob).toHaveBeenCalledTimes(2));
+ await screen.findByRole('button', { name: 'Create goal' });
+ expect(vi.mocked(submitJob).mock.calls[1][1]).not.toBe(first);
+ expect(vi.mocked(submitJob).mock.calls[1][1].inputs?.prompt).toBe('Edited prompt');
+ fireEvent.click(screen.getByRole('radio', { name: 'Existing cell' }));
+ fireEvent.mouseDown(screen.getByRole('combobox'));
+ fireEvent.click(await screen.findByText('platform · github.com/acme/platform', { selector: '.ant-select-item-option-content' }));
+ vi.mocked(submitJob).mockResolvedValueOnce({ goal_id: goalId } as any);
+ fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
+ await waitFor(() => expect(created).toHaveBeenCalledWith(goalId));
+ expect(vi.mocked(submitJob).mock.calls[2][1]).not.toHaveProperty('repo');
+ expect(vi.mocked(submitJob).mock.calls.every(call => !('job_id' in call[1]))).toBe(true);
 });

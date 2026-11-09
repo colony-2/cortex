@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/colony-2/colony2/server/internal/testjobdb"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -300,4 +302,72 @@ func doJSON[T any](t *testing.T, req *http.Request, wantStatus int) T {
 		t.Fatalf("Decode(): %v", err)
 	}
 	return out
+}
+
+// Explicit IDs remain opaque across the browser's transition to backend allocation.
+func TestExplicitJobIDCompatibility(t *testing.T) {
+	srv, err := NewUITestServer(Config{WorkingDir: writeC2JConfig(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := httptest.NewServer(srv)
+	defer api.Close()
+	base := api.URL + "/api/projects/compat"
+	postJSON[jobdb.Cell](t, base+"/cells", map[string]string{"name": "platform", "repo": "github.com/acme/platform"})
+	for _, multipartBody := range []bool{false, true} {
+		for _, id := range []string{"1fac9e89-36cf-4a4f-a797-7d4fe887c65c", "3LfLqNNl2VVLo8Cg5a032Lm0igK", "custom-ID"} {
+			t.Run(fmt.Sprintf("%t/%s", multipartBody, id), func(t *testing.T) {
+				// Separate tenants allow the same ID to exercise both transports.
+				tenantBase := base
+				if multipartBody {
+					tenantBase = api.URL + "/api/projects/compat-files"
+				}
+				if multipartBody && id == "1fac9e89-36cf-4a4f-a797-7d4fe887c65c" {
+					postJSON[jobdb.Cell](t, tenantBase+"/cells", map[string]string{"name": "platform", "repo": "github.com/acme/platform"})
+				}
+				input := map[string]any{"cell": "platform", "job_id": id, "inputs": map[string]any{"prompt": "hello", "type": "build"}}
+				raw, _ := json.Marshal(input)
+				var req *http.Request
+				if multipartBody {
+					var body bytes.Buffer
+					w := multipart.NewWriter(&body)
+					_ = w.WriteField("submission", string(raw))
+					part, e := w.CreateFormFile("files", "brief")
+					if e != nil {
+						t.Fatal(e)
+					}
+					_, _ = io.WriteString(part, "hello")
+					_ = w.Close()
+					req, _ = http.NewRequest(http.MethodPost, tenantBase+"/jobs", &body)
+					req.Header.Set("Content-Type", w.FormDataContentType())
+				} else {
+					req, _ = http.NewRequest(http.MethodPost, tenantBase+"/jobs", bytes.NewReader(raw))
+					req.Header.Set("Content-Type", "application/json")
+				}
+				submitted := doJSON[map[string]any](t, req, http.StatusCreated)
+				if submitted["job_id"] != id {
+					t.Fatalf("identity changed: %#v", submitted)
+				}
+				for _, suffix := range []string{"", "/story"} {
+					job := getJSON[map[string]any](t, tenantBase+"/jobs/"+id+suffix)
+					if job["job_id"] != id {
+						t.Fatalf("read identity changed: %#v", job)
+					}
+				}
+				archive, _ := http.NewRequest(http.MethodDelete, tenantBase+"/jobs/"+id, nil)
+				response, e := http.DefaultClient.Do(archive)
+				if e != nil {
+					t.Fatal(e)
+				}
+				response.Body.Close()
+				if response.StatusCode >= 300 {
+					t.Fatalf("archive: %d", response.StatusCode)
+				}
+				job := getJSON[map[string]any](t, tenantBase+"/jobs/"+id)
+				if job["job_id"] != id {
+					t.Fatalf("archived identity changed: %#v", job)
+				}
+			})
+		}
+	}
 }

@@ -64,7 +64,7 @@ export default function NewGoalDialog({ projectId, filters, onClose, onCreated }
         if (active.current) setSelected(current);
         const cell = current.name;
         const repo = mode === 'new' ? registration.current!.cell!.repo : undefined;
-        attempt.current = { payload, files: attachments.map(item => item.file), input: { cell, ...(repo ? { repo } : {}), job_id: createRequestId(), inputs: { prompt: values.prompt, type: 'build' } } };
+        attempt.current = { payload, files: attachments.map(item => item.file), input: { cell, ...(repo ? { repo } : {}), inputs: { prompt: values.prompt, type: 'build' } } };
       }
       if (!active.current) return;
       const job = await (attempt.current.files.length ? submitJob(projectId, attempt.current.input, attempt.current.files) : submitJob(projectId, attempt.current.input));

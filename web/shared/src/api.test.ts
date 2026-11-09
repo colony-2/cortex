@@ -205,3 +205,29 @@ it('IA-007 lists typed input metadata with encoded identity, cancellation and er
   controller.abort();
   await expect(pending).rejects.toThrow('Aborted');
 });
+
+it.each([undefined, '1fac9e89-36cf-4a4f-a797-7d4fe887c65c', '3LfLqNNl2VVLo8Cg5a032Lm0igK', 'custom-ID'])('CID-002 CID-003 CID-009 preserves optional request ID %s and full returned identities', async jobId => {
+ const identity = { tenant_id: 'Tenant-Case', job_id: '3LfLqNNl2VVLo8Cg5a032Lm0igK', goal_id: 'Goal-Complete', cell_id: 'cell', cell_name: 'platform', repo: 'github.com/acme/platform' };
+ const fetchMock = vi.fn(async (_url: string, _options?: RequestInit) => new Response(JSON.stringify(identity)));
+ vi.stubGlobal('fetch', fetchMock);
+ const input = { cell: 'platform', repo: identity.repo, inputs: { prompt: 'hello', type: 'build' }, ...(jobId === undefined ? {} : { job_id: jobId }) };
+ for (const files of [undefined, [new File(['binary\u0000bytes'], 'brief')]]) {
+  expect(await submitJob(identity.tenant_id, input, files)).toEqual(identity);
+  const body = fetchMock.mock.calls.at(-1)![1]!.body;
+  const submission = JSON.parse(body instanceof FormData ? body.get('submission') as string : body as string);
+  expect(submission).toEqual(input);
+  if (jobId === undefined) expect(submission).not.toHaveProperty('job_id');
+  if (body instanceof FormData) {
+   const reader = new FileReader();
+   const bytes = new Promise(resolve => { reader.onload = () => resolve(reader.result); });
+   reader.readAsText(body.get('files') as File);
+   expect(await bytes).toBe('binary\u0000bytes');
+  }
+ }
+});
+it.each(['job_id', 'goal_id', 'tenant_id', 'cell_id', 'cell_name', 'repo'])('CID-004 rejects missing returned %s for both transports', async field => {
+ const identity: Record<string, string> = { tenant_id: 'tenant', job_id: 'job', goal_id: 'goal', cell_id: 'cell', cell_name: 'platform', repo: 'github.com/acme/platform' };
+ delete identity[field];
+ vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(identity))));
+ for (const files of [undefined, [new File([], 'empty')]]) await expect(submitJob('tenant', { cell: 'platform' }, files)).rejects.toThrow();
+});

@@ -476,7 +476,7 @@ test('registers an ordinary cell named root and creates its goal on a phone', as
   await dialog.getByRole('button', { name: 'Create goal', exact: true }).click();
   const response = await responsePromise;
   expect(response.status(), await response.text()).toBe(201);
-  expect(response.request().postDataJSON()).toEqual({ cell: 'root', repo: 'github.com/colony-2/cortex', job_id: expect.any(String), inputs: { prompt: 'Build a phone-friendly dashboard', type: 'build' } });
+  expect(response.request().postDataJSON()).toEqual({ cell: 'root', repo: 'github.com/colony-2/cortex', inputs: { prompt: 'Build a phone-friendly dashboard', type: 'build' } });
   expect(mutations).toEqual([`/api/projects/${tenant}/cells`, `/api/projects/${tenant}/jobs`]);
   const job = await response.json();
   const stored = await (await request.get(`/api/projects/${tenant}/jobs/${job.job_id}`)).json();

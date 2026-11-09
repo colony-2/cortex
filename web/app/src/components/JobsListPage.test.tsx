@@ -429,7 +429,7 @@ it('submits a goal to a selected cell and opens the returned goal identity', asy
   fireEvent.click(within(dialog).getByRole('button', { name: 'Create goal' }));
   await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/project/tenant/goals/created-goal'));
   const call = fetch.mock.calls.find(([, init]) => init?.method === 'POST')!;
-  expect(JSON.parse(call[1]!.body as string)).toEqual({ cell: 'platform', job_id: expect.any(String), inputs: { prompt: 'Build a small tool', type: 'build' } });
+  expect(JSON.parse(call[1]!.body as string)).toEqual({ cell: 'platform', inputs: { prompt: 'Build a small tool', type: 'build' } });
 });
 
 it.each(['self', 'platform'])('uses explicit cell identity in list and attempts (%j)', async cell_name => {
@@ -794,4 +794,25 @@ it.each(['cancel', 'archive'] as const)('prompts for a single selected job on %s
   fireEvent.click(within(dialog).getByRole('button',{name: action === 'cancel' ? 'Cancel job' : 'Archive job',exact:true}));
   await waitFor(() => expect(mutations).toHaveLength(1));
   expect(JSON.parse(mutations[0].body as string)).toEqual({reason:'chosen 雪\nreason'});
+});
+
+it.each(['ACTIVE', 'ARCHIVED'])('CID-010 opens an existing UUID job from the %s store', async store => {
+ const id = '1fac9e89-36cf-4a4f-a797-7d4fe887c65c';
+ vi.mocked(getJob).mockResolvedValue({ ...jobIdentity, job_id: id, goal_id: 'goal', store, status: 'READY' } as RecipeJob);
+ const fetchMock = vi.fn(async (input: string) => new Response(JSON.stringify(input.includes('/story')
+  ? { job_id: id, status: 'completed', root: { id: 'root', kind: 'recipe', title: 'UUID history', status: 'succeeded', path: [] } }
+  : { jobs: [{ ...jobIdentity, job_id: id, store, status: 'READY' }] })));
+ vi.stubGlobal('fetch', fetchMock);
+ render(<MemoryRouter initialEntries={['/project/tenant/jobs?view=all']}>
+  <Location /><Routes>
+   <Route path="/project/:projectId/jobs" element={<JobsListPage projectId="tenant" />} />
+   <Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId="tenant" />} />
+  </Routes>
+ </MemoryRouter>);
+ const link = await screen.findByRole('link', { name: `Job ${id}: Ready`, exact: true });
+ expect(link.getAttribute('href')).toContain(`/project/tenant/jobs/${id}/story`);
+ fireEvent.click(link);
+ await screen.findByText('Run Summary');
+ expect(getJob).toHaveBeenCalledWith('tenant', id);
+ expect(fetchMock.mock.calls.some(([url]) => url.includes(`/projects/tenant/jobs/${id}/story`))).toBe(true);
 });
