@@ -245,3 +245,21 @@ it('TREE-026 encodes tree scope and opaque tokens, forwards abort, preserves gen
   fetch.mockImplementation(async()=>new Response('{"error":"Execution tree records unavailable"}',{status:403}));
   await expect(getTreeNode('t','j')).rejects.toBeInstanceOf(APIError);
 });
+
+it('GS-009 serializes root scope independently and preserves continuation and failures', async () => {
+  const fetch = vi.fn(async (_url: string) => new Response('{"jobs":[],"next_page_token":"opaque+/="}'));
+  vi.stubGlobal('fetch', fetch);
+  for (const rootOnly of [undefined, false, true]) {
+    const page = await listJobs('tenant', { rootOnly, includeHidden: true, cellNames: ['alpha'], displayStatus: ['success'], pageToken: 'before+/=' });
+    const query = new URL(fetch.mock.calls.at(-1)![0]).searchParams;
+    expect(query.get('rootOnly')).toBe(rootOnly === undefined ? null : String(rootOnly));
+    expect(query.get('includeHidden')).toBe('true');
+    expect(query.get('cellNames')).toBe('alpha');
+    expect(query.get('displayStatus')).toBe('success');
+    expect(query.get('pageToken')).toBe('before+/=');
+    expect(page.next_page_token).toBe('opaque+/=');
+  }
+  fetch.mockImplementation(async () => new Response('root filtering unsupported', { status: 501 }));
+  await expect(listJobs('tenant', { rootOnly: true })).rejects.toThrow('root filtering unsupported');
+  expect(fetch).toHaveBeenCalledTimes(4);
+});

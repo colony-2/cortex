@@ -32,6 +32,7 @@ export function jobFilterSearch(params: URLSearchParams): string {
   if (filters.cell?.length === 0) query.set('cellSelection', 'none');
   for (const cell of filters.cell || []) query.append('cellId', cell);
   if (filters.view === 'all') query.set('view', 'all');
+  if (params.get('scope') === 'roots') query.set('scope', 'roots');
   for (const key of ['q', 'sort', 'order', 'expanded', 'detail', 'inspect', 'pageToken']) {
     for (const value of params.getAll(key)) query.append(key, value);
   }

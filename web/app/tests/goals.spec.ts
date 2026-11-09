@@ -504,3 +504,51 @@ test('Goals and Jobs aliases expose the same six desktop columns', async ({ page
     expect((await headers.allTextContents()).map(text => text.trim())).toEqual(['', 'Cell', 'Goal', 'Status', 'Submitted', 'Links']);
   }
 });
+
+// GS-012/015/018: navigation and accessible scope controls in the real app.
+for (const width of [1280, 375]) {
+  test(`root scope retains full overview, history and keyboard controls at ${width}px`, async ({ page, context, baseURL }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+    await mockCells(page, ['platform']);
+    const direct = { ...jobIdentity, job_id: 'direct', goal_id: 'mixed', prompt: 'Root listed work', status: 'READY', store: 'ACTIVE', parent: { job_id: 'parent', tenant_id: 'scope-test' } };
+    const child = { ...direct, job_id: 'child', prompt: 'Parented history', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'failed_app' };
+    const reads: URLSearchParams[] = [];
+    await page.route('**/api/projects/scope-test/jobs?*', route => {
+      const query = new URL(route.request().url()).searchParams; reads.push(query);
+      return route.fulfill({ json: { jobs: query.get('goal') ? [child, direct] : query.get('rootOnly') === 'true' ? [direct] : [direct, child] } });
+    });
+    await page.route('**/api/projects/scope-test/jobs/*', route => {
+      const path = new URL(route.request().url()).pathname;
+      return route.fulfill({ json: path.endsWith('/story') ? { job_id: 'direct', status: 'active', root: { id: 'root', kind: 'recipe', title: 'Root story', status: 'running', path: [] } } : path.endsWith('/children') ? { jobs: [] } : direct });
+    });
+    await page.goto('/project/scope-test/goals');
+    const selector = page.getByLabel('Goal scope', { exact: true });
+    await expect(selector).toHaveValue('all');
+    await expect(page.getByText('2 attempts on this page')).toBeVisible();
+    await selector.focus(); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
+    await expect(selector).toHaveValue('roots');
+    await expect(page).toHaveURL(/scope=roots/);
+    await expect(page.getByText('2 attempts on this page')).toHaveCount(0);
+    await expect(page.getByText('Shows attempts with no recorded submitting parent; direct restarts can appear here.')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.reload(); await expect(selector).toHaveValue('roots');
+    await page.getByRole('link', { name: 'Root listed work', exact: true }).click();
+    await expect(page).toHaveURL(/\/direct\/story\?.*scope=roots/);
+    await page.goBack(); await expect(selector).toHaveValue('roots');
+    if (width < 768) await page.getByRole('button', { name: 'Expand goal details' }).click();
+    await page.getByRole('link', { name: 'Goal overview', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Goal overview', exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Attempts', exact: true }).locator('a[href$="/child/story"]').first()).toBeVisible();
+    const overviewRead = reads.findLast(query => query.get('goal') === 'mixed')!;
+    expect(overviewRead.has('rootOnly')).toBe(false);
+    await page.getByRole('link', { name: 'Back to Goals', exact: true }).click();
+    await expect(selector).toHaveValue('roots');
+    await selector.selectOption('all'); await expect(selector).toHaveValue('all');
+    await page.goBack(); await expect(selector).toHaveValue('roots');
+    await page.goForward(); await expect(selector).toHaveValue('all');
+    await page.goto('/project/scope-test/jobs?scope=unrecognized');
+    await expect(selector).toHaveValue('all');
+    expect(reads.at(-1)!.get('rootOnly')).toBe('false');
+  });
+}

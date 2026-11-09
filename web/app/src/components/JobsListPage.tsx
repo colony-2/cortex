@@ -76,6 +76,7 @@ function JobsList({ projectId, goalId }: Props) {
   const [params, setParams] = useSearchParams();
   const filters = useMemo(() => readJobFilters(params), [params]);
   const pageToken = params.get('executionState') === 'cells-v1' ? params.get('pageToken') || undefined : undefined;
+  const rootOnly = !goalId && params.get('scope') === 'roots';
   const statusesKey = JSON.stringify(filters.status);
   const cellsKey = JSON.stringify(filters.cell);
   // Goal overview is history for that goal, including attempts archived from the inbox.
@@ -97,17 +98,18 @@ function JobsList({ projectId, goalId }: Props) {
   useEffect(() => {
     const version = ++loadVersion.current;
     setLoading(true); setError(undefined);
-    const scope = JSON.stringify([projectId, goalId, statusesKey, cellsKey, includeHidden]);
+    const scope = JSON.stringify([projectId, goalId, statusesKey, cellsKey, includeHidden, rootOnly]);
     if (loadedScope.current !== scope) {
       setJobs([]); setNextPage(undefined); setSelectedIds([]);
+      inspectionRequests.current.clear();
       loadedScope.current = scope;
     }
     (async () => {
       const cellNames = !goalId && filters.cell?.length ? await Promise.all(filters.cell.map(async id => (await getCell(projectId, id)).name)) : undefined;
       if (version !== loadVersion.current) return;
-      const key = JSON.stringify([projectId, goalId, statusesKey, cellsKey, cellNames, includeHidden, pageToken, refresh]);
+      const key = JSON.stringify([projectId, goalId, statusesKey, cellsKey, cellNames, includeHidden, rootOnly, pageToken, refresh]);
       if (listRequest.current?.key !== key) listRequest.current = { key, promise: noStatuses || noCells ? Promise.resolve({ jobs: [] })
-        : listJobs(projectId, { cellNames, goal: goalId, includeHidden, displayStatus: goalId ? [] : JSON.parse(statusesKey) || [], pageToken }) };
+        : listJobs(projectId, { cellNames, goal: goalId, includeHidden, ...(goalId ? {} : { rootOnly }), displayStatus: goalId ? [] : JSON.parse(statusesKey) || [], pageToken }) };
       const page = await listRequest.current.promise;
       if (version !== loadVersion.current) return;
       setJobs(page.jobs); setNextPage(page.next_page_token);
@@ -119,7 +121,7 @@ function JobsList({ projectId, goalId }: Props) {
       }
     }).finally(() => { if (version === loadVersion.current) setLoading(false); });
     return () => { loadVersion.current++; };
-  }, [projectId, goalId, pageToken, statusesKey, cellsKey, includeHidden, noStatuses, noCells, refresh]);
+  }, [projectId, goalId, pageToken, statusesKey, cellsKey, includeHidden, rootOnly, noStatuses, noCells, refresh]);
 
   // The backend applies cell selection before pagination and goal grouping.
   const groups = useMemo(() => {
@@ -225,6 +227,14 @@ function JobsList({ projectId, goalId }: Props) {
       if (!visibleInspectionIds.includes(id) || revision !== refresh) inspectionRequests.current.delete(key);
     }
   }, [visibleInspectionKey, refresh]);
+  const emptyMessage = loading ? 'Loading goals…' : error ? 'Could not load goals.' : noStatuses ? 'No statuses selected' : noCells ? 'No cells selected' : searchTerm ? <><span>No goals match this search on this page</span>{nextPage && <div>No matches on this page. More results may be available.</div>}</> : nextPage ? 'No matches on this page. More results may be available.' : rootOnly ? 'No root goals found' : 'No goals found';
+  const changeScope = (roots: boolean) => {
+    setSelectedIds([]); inspectionRequests.current.clear();
+    changeQuery(query => {
+      if (roots) query.set('scope', 'roots'); else query.delete('scope');
+      for (const key of ['pageToken', 'expanded', 'inspect', 'detail']) query.delete(key);
+    });
+  };
   const mobileSort = columns.find(column => column.key === params.get('sort'));
   const mobileRows = [...rows];
   if (mobileSort && typeof mobileSort.sorter === 'function' && sortOrder(String(mobileSort.key))) {
@@ -247,8 +257,11 @@ function JobsList({ projectId, goalId }: Props) {
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <div className="goal-toolbar">
         <Title level={3} style={{ margin: 0 }}>{goalId ? 'Goal overview' : 'Goals'}</Title>
-        <Space wrap>
-          {!goalId && <select className="compact-sort" aria-label="Job visibility" value={filters.view} onChange={event => {
+        <Space wrap className="goal-toolbar-actions">
+          {!goalId && <span className="goal-scope-control"><label htmlFor="goal-scope">Goal scope</label>{' '}<select id="goal-scope" className="compact-sort" aria-describedby="goal-scope-help" value={rootOnly ? 'roots' : 'all'} onChange={event => changeScope(event.target.value === 'roots')}>
+            <option value="all">All goals</option><option value="roots">Root goals</option>
+          </select></span>}
+          {!goalId && <select className="compact-sort goal-visibility" aria-label="Job visibility" value={filters.view} onChange={event => {
             const view = event.target.value;
             setSelectedIds([]);
             changeQuery(query => {
@@ -258,19 +271,20 @@ function JobsList({ projectId, goalId }: Props) {
           }}><option value="inbox">Inbox</option><option value="all">All jobs</option></select>}
           {goalId && <Link className="compact-touch-link" to={goalsReturnTo}>Back to Goals</Link>}
           {!compact && <Button icon={<ReloadOutlined aria-hidden />} onClick={() => setRefresh(value => value + 1)}>Refresh</Button>}
-          <Button type="primary" icon={<PlusOutlined aria-hidden />} onClick={() => setSubmitOpen(true)}>New goal</Button>
+          <Button className="goal-new-action" type="primary" icon={<PlusOutlined aria-hidden />} onClick={() => setSubmitOpen(true)}>New goal</Button>
         </Space>
       </div>
+      {!goalId && <Text id="goal-scope-help" type="secondary">Shows attempts with no recorded submitting parent; direct restarts can appear here.</Text>}
       {!goalId && !compact && <Text type="secondary">Cell filtering applies across pages. Search and sorting apply to the current page.</Text>}
       {registry.error && <Alert type="error" showIcon message={registry.error} action={<Button onClick={registry.reload}>Retry cells</Button>} />}
-      {error && <Alert type="error" showIcon message={error} />}
+      {error && <Alert type="error" showIcon message={error} action={<Space wrap><Button onClick={() => setRefresh(value => value + 1)}>Retry</Button>{rootOnly && <Button onClick={() => changeScope(false)}>All goals</Button>}</Space>} />}
       {goalId ? <Spin spinning={loading}>
         <section aria-label="Goal overview">
           <GoalJobOverview inspectionRequests={inspectionRequests.current} jobs={jobs} projectId={projectId} refresh={refresh} navigationState={navigationState(goalId)} />
         </section>
       </Spin> : <>
         {compact && <Button aria-expanded={controlsOpen} onClick={() => setControlsOpen(value => !value)}>Filters and sorting{filters.cell !== null || filters.status !== null || search || params.get('sort') ? ' (active)' : ''}</Button>}
-        <div className="goal-list-actions">
+        {(!compact || selectedIds.length > 0 || controlsOpen) && <div className="goal-list-actions">
           {(!compact || selectedIds.length > 0) && <Space wrap>
             <Text>{selectedIds.length} selected</Text>
             <Button danger disabled={loading || !!operation || !selectedIds.length} onClick={() => startOperation('cancel')}>Cancel selected</Button>
@@ -282,7 +296,7 @@ function JobsList({ projectId, goalId }: Props) {
               const value = event.target.value;
               changeQuery(query => { if (value) query.set('q', value); else query.delete('q'); }, true);
             }} /></div>
-        </div>
+        </div>}
         {compact ? <Spin spinning={loading}>
           <div hidden={!controlsOpen}><Space wrap className="compact-controls">
             <CompactFilter label="Filter statuses" options={statusOptions} selected={filters.status} onApply={values => applyCompactFilter('status', values)} />
@@ -315,11 +329,11 @@ function JobsList({ projectId, goalId }: Props) {
               </div>}
               {isExpanded(row) && details(row)}
             </Card>)}
-            {!rows.length && !loading && <Empty description={noStatuses ? 'No statuses selected' : noCells ? 'No cells selected' : searchTerm ? 'No goals match this search on this page' : 'No goals found'} />}
+            {!rows.length && !loading && <Empty description={emptyMessage} />}
           </div>
         </Spin> :         <Table<Row> rowKey="key" columns={columns} dataSource={rows} loading={loading} pagination={false} size="small" scroll={{ x: 1000 }}
           onChange={onTableChange} locale={{ filterCheckAll: 'Select all', filterReset: 'Select none', filterConfirm: 'Apply',
-            emptyText: noStatuses ? 'No statuses selected' : noCells ? 'No cells selected' : searchTerm ? 'No goals match this search on this page' : undefined }}
+            emptyText: emptyMessage }}
           rowSelection={{
             selectedRowKeys: rows.filter(row => row.group.jobs.every(job => selectedIds.includes(job.job_id))).map(row => row.key),
             onSelect: (row, selected) => setSelection(row.group.jobs.map(job => job.job_id), selected),

@@ -73,6 +73,7 @@ export async function listJobs(
     pageToken?: string;
     goal?: string;
     includeHidden?: boolean;
+    rootOnly?: boolean;
   } = {},
 ): Promise<ListRecipeJobsResponse> {
   const params = new URLSearchParams();
@@ -84,6 +85,7 @@ export async function listJobs(
   for (const status of options.displayStatus || []) params.append('displayStatus', status);
   for (const cell of options.cellNames || []) params.append('cellNames', cell);
   if (options.goal) params.set('goal', options.goal);
+  if (options.rootOnly !== undefined) params.set('rootOnly', String(options.rootOnly));
   if (options.includeHidden !== undefined) params.set('includeHidden', String(options.includeHidden));
   if (options.pageSize) params.set('pageSize', String(options.pageSize));
   if (options.pageToken) params.set('pageToken', options.pageToken);

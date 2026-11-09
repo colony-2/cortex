@@ -94,6 +94,14 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 		}
 		includeHidden = values[0] == "true"
 	}
+	rootOnly := false
+	if values, ok := r.URL.Query()["rootOnly"]; ok {
+		if len(values) != 1 || (values[0] != "true" && values[0] != "false") {
+			writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("rootOnly must be true or false"))
+			return
+		}
+		rootOnly = values[0] == "true"
+	}
 	statuses, allStatuses, err := parseStatuses(r.URL.Query()["status"])
 	if err != nil {
 		writeHTTPError(w, http.StatusBadRequest, err)
@@ -139,7 +147,7 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 		Stores:        stores,
 		PageSize:      pageSize,
 		PageToken:     r.URL.Query().Get("pageToken"),
-	}, displayStatuses)
+	}, displayStatuses, rootOnly)
 	if err != nil {
 		writeError(w, err)
 		return

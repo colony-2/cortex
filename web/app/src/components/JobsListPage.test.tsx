@@ -23,7 +23,7 @@ beforeEach(() => { vi.mocked(listCells).mockResolvedValue({ cells: ['platform', 
  vi.mocked(getCell).mockImplementation(async (tenant, id) => registryCell(id.replace(/^cell-/, ''), tenant)); vi.mocked(getJob).mockReset().mockResolvedValue({ ...jobIdentity, goal_id: 'goal', job_id: 'job', status: 'READY', store: 'ACTIVE' } as RecipeJob); });
 afterEach(() => vi.unstubAllGlobals());
 
-it.each(['cancel', 'archive'] as const)('confirms selected jobs and keeps failed %s operations available for retry', async action => {
+it.each([['cancel', ''], ['archive', ''], ['cancel', '?scope=roots'], ['archive', '?scope=roots']] as const)('confirms selected jobs and keeps failed %s operations available for retry in %s', async (action, query) => {
   const jobs = ['first', 'second', 'unselected'].map(job_id => ({ ...jobIdentity, job_id, status: 'READY', store: 'ACTIVE' }));
   const changes: string[] = [];
   let failSecond = true;
@@ -36,7 +36,7 @@ it.each(['cancel', 'archive'] as const)('confirms selected jobs and keeps failed
     }
     return new Response(JSON.stringify(path.endsWith('/cells') ? [] : { jobs }));
   }));
-  render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={[`/project/tenant/goals${query}`]}><JobsListPage projectId="tenant" /></MemoryRouter>);
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Select job first' }));
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select job second' }));
   const verb = action === 'cancel' ? 'Cancel' : 'Archive';
@@ -199,7 +199,7 @@ it.each(['', '?view=all', '?status=ACTIVE&status=READY&cellId=cell-platform', '?
   }
 });
 
-it('searches full prompts across attempts without fetching and clears hidden selections', async () => {
+it.each(['', '?scope=roots'])('searches full prompts across attempts without fetching and clears hidden selections in %s', async query => {
   const jobs = [
     { ...jobIdentity, job_id: 'new', goal_id: 'grouped', title: 'Short title', prompt: `${'Long preamble '.repeat(12)}deep\n  needle`, status: 'READY', store: 'ACTIVE', created_at: '2026-10-29T12:00:00Z' },
     { ...jobIdentity, job_id: 'old', goal_id: 'grouped', prompt: 'Earlier attempt contains an older requirement', status: 'COMPLETED', completion_status: 'failed_app', store: 'ARCHIVED', created_at: '2026-10-28T12:00:00Z' },
@@ -208,7 +208,7 @@ it('searches full prompts across attempts without fetching and clears hidden sel
   ];
   const fetch = vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs })));
   vi.stubGlobal('fetch', fetch);
-  render(<MemoryRouter><Navigation /><Location /><JobsListPage projectId="tenant" /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={[`/project/tenant/goals${query}`]}><Navigation /><Location /><JobsListPage projectId="tenant" /></MemoryRouter>);
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Select job unrelated' }));
   const search = screen.getByRole('textbox', { name: 'Search goals' });
   fireEvent.change(search, { target: { value: ' DEEP needle ' } });
@@ -815,4 +815,94 @@ it.each(['ACTIVE', 'ARCHIVED'])('CID-010 opens an existing UUID job from the %s 
  await screen.findByText('Run Summary');
  expect(getJob).toHaveBeenCalledWith('tenant', id);
  expect(fetchMock.mock.calls.some(([url]) => url.includes(`/projects/tenant/jobs/${id}/story`))).toBe(true);
+});
+
+it.each(['/goals', '/jobs', '/goals?scope=unknown'])('GS-010 defaults %s to All goals', async path => {
+  const fetch = vi.fn(async (_url: string) => new Response('{"jobs":[]}'));
+  vi.stubGlobal('fetch', fetch);
+  render(<MemoryRouter initialEntries={[`/project/tenant${path}`]}><JobsListPage projectId="tenant" /></MemoryRouter>);
+  await waitFor(() => expect(fetch).toHaveBeenCalled());
+  expect(screen.getByLabelText('Goal scope')).toHaveValue('all');
+  expect(new URL(fetch.mock.calls[0][0]).searchParams.get('rootOnly')).toBe('false');
+});
+
+it('GS-011/013/019 resets scope state and cache while preserving other filters and grouping inherited parents', async () => {
+  const jobs = ['first', 'second'].map(job_id => ({ ...jobIdentity, job_id, goal_id: 'shared', prompt: 'Find this work', status: 'READY', store: 'ACTIVE', parent: { job_id: 'parent', tenant_id: 'tenant' } }));
+  const reads: URL[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => { reads.push(new URL(url)); return new Response(JSON.stringify({ jobs })); }));
+  render(<MemoryRouter initialEntries={['/project/tenant/goals?executionState=cells-v1&pageToken=old&cellId=cell-platform&status=READY&view=all&q=Find&sort=prompt&order=descend&expanded=goal:shared&inspect=second']}>
+    <Location /><JobsListPage projectId="tenant" />
+  </MemoryRouter>);
+  await screen.findByText('2 attempts on this page');
+  await waitFor(() => expect(getJob).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select attempts for Find this work' }));
+  expect(screen.getByText('2 selected')).toBeVisible();
+  const inspections = vi.mocked(getJob).mock.calls.length;
+  fireEvent.change(screen.getByLabelText('Goal scope'), { target: { value: 'roots' } });
+  await waitFor(() => expect(reads.at(-1)!.searchParams.get('rootOnly')).toBe('true'));
+  await screen.findByText('2 attempts on this page');
+  expect(screen.getByText('0 selected')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Expand goal details' })).toHaveAttribute('aria-expanded', 'false');
+  const location = new URL('http://localhost' + screen.getByTestId('location').textContent!);
+  for (const key of ['pageToken', 'expanded', 'inspect', 'detail']) expect(location.searchParams.has(key)).toBe(false);
+  for (const [key, value] of Object.entries({ scope: 'roots', cellId: 'cell-platform', status: 'READY', view: 'all', q: 'Find', sort: 'prompt', order: 'descend' })) expect(location.searchParams.get(key)).toBe(value);
+  const query = reads.at(-1)!.searchParams;
+  expect(query.get('cellNames')).toBe('platform'); expect(query.get('displayStatus')).toBe('READY'); expect(query.get('includeHidden')).toBe('true'); expect(query.has('pageToken')).toBe(false);
+  // Root results can retain a Parent link; no client-side classification.
+  expect(screen.getByRole('link', { name: 'Parent', exact: true })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Expand goal details' }));
+  await waitFor(() => expect(vi.mocked(getJob).mock.calls.length).toBeGreaterThan(inspections));
+  expect(screen.getByRole('checkbox', { name: 'Select attempts for Find this work' })).not.toBeChecked();
+});
+
+it.each(['success', 'error'])('GS-014 ignores late earlier-scope %s and clears stale rows while loading', async outcome => {
+  const requests: { url: URL; resolve: (response: Response) => void }[] = [];
+  vi.stubGlobal('fetch', vi.fn((url: string) => new Promise<Response>(resolve => requests.push({ url: new URL(url), resolve }))));
+  render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
+  const job = { ...jobIdentity, job_id: 'old', prompt: 'Old scope work', status: 'READY', store: 'ACTIVE' };
+  await act(async () => requests[0].resolve(new Response(JSON.stringify({ jobs: [job] }))));
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh', exact: true }));
+  expect(requests).toHaveLength(2);
+  fireEvent.change(screen.getByLabelText('Goal scope'), { target: { value: 'roots' } });
+  expect(requests).toHaveLength(3);
+  expect(screen.queryByText('Old scope work')).not.toBeInTheDocument();
+  await waitFor(() => expect(document.querySelector('.ant-spin-spinning')).toBeInTheDocument());
+  await act(async () => requests[2].resolve(new Response(JSON.stringify({ jobs: [{ ...job, job_id: 'root', prompt: 'Current root work' }] }))));
+  await act(async () => requests[1].resolve(outcome === 'success' ? new Response(JSON.stringify({ jobs: [job] })) : new Response('old error', { status: 500 })));
+  expect(screen.getByText('Current root work')).toBeVisible();
+  expect(screen.queryByText('Old scope work')).not.toBeInTheDocument(); expect(screen.queryByText('old error')).not.toBeInTheDocument();
+  expect(screen.getByLabelText('Goal scope')).toHaveValue('roots');
+});
+
+it('GS-016/017 retains root scope across errors, retry and continued empty pages until an explicit switch', async () => {
+  let stage = 0;
+  const reads: URL[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    reads.push(new URL(url));
+    return stage === 0 ? new Response('root filtering unsupported', { status: 501 }) : new Response(JSON.stringify(stage === 1 ? { jobs: [], next_page_token: 'more' } : { jobs: [] }));
+  }));
+  render(<MemoryRouter initialEntries={['/project/tenant/jobs?scope=roots']}><JobsListPage projectId="tenant" /></MemoryRouter>);
+  expect(await screen.findByText(/root filtering unsupported/)).toBeVisible();
+  expect(screen.getByLabelText('Goal scope')).toHaveValue('roots'); expect(reads).toHaveLength(1);
+  stage = 1; fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
+  expect(await screen.findByText('No matches on this page. More results may be available.')).toBeVisible();
+  stage = 2; fireEvent.click(screen.getByRole('button', { name: 'Next jobs' }));
+  expect(await screen.findByText('No root goals found')).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Next jobs' })).not.toBeInTheDocument();
+  expect(reads.every(url => url.searchParams.get('rootOnly') === 'true')).toBe(true);
+  expect(reads.at(-1)!.searchParams.get('pageToken')).toBe('more');
+  stage = 0; fireEvent.click(screen.getByRole('button', { name: 'Refresh', exact: true }));
+  await screen.findByText(/root filtering unsupported/);
+  stage = 2; fireEvent.click(screen.getByRole('button', { name: 'All goals', exact: true }));
+  await waitFor(() => expect(screen.getByLabelText('Goal scope')).toHaveValue('all'));
+  await waitFor(() => expect(reads.at(-1)!.searchParams.get('rootOnly')).toBe('false'));
+});
+
+it.each(['status=none', 'cellSelection=none'])('GS-019 preserves empty selection %s when changing scope', async query => {
+  const fetch = vi.fn(async () => new Response('{"jobs":[]}')); vi.stubGlobal('fetch', fetch);
+  render(<MemoryRouter initialEntries={[`/project/tenant/goals?${query}`]}><Location /><JobsListPage projectId="tenant" /></MemoryRouter>);
+  fireEvent.change(screen.getByLabelText('Goal scope'), { target: { value: 'roots' } });
+  await waitFor(() => expect(document.querySelector('.ant-spin-spinning')).not.toBeInTheDocument());
+  expect(screen.getByText(query.startsWith('status') ? 'No statuses selected' : 'No cells selected')).toBeVisible();
+  expect(screen.getByTestId('location')).toHaveTextContent(query); expect(fetch).not.toHaveBeenCalled();
 });

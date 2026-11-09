@@ -368,9 +368,10 @@ for (const width of [320, 390]) {
   });
 }
 
-test('phone goals start with concise cards and disclose existing controls and metadata', async ({ page }, testInfo) => {
+for (const scope of ['', '?scope=roots']) {
+test(`phone goals start with concise cards and disclose existing controls and metadata ${scope}`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/project/phone/goals');
+  await page.goto(`/project/phone/goals${scope}`);
   await expect(page.getByRole('button', { name: 'Filter cells', exact: true })).toBeHidden();
   await expect(page.getByRole('textbox', { name: 'Search goals' })).toBeHidden();
   await expect(page.getByRole('button', { name: 'Cancel selected', exact: true })).toHaveCount(0);
@@ -411,6 +412,7 @@ test('phone goals start with concise cards and disclose existing controls and me
   await expect(page.locator('.goal-card-secondary .goal-card-field').nth(1)).toContainText('Links:');
   await noOverflow(page);
 });
+}
 
 for (const width of [320, 390]) {
   test(`phone review reads large documents in the page scroller at ${width}`, async ({ page }, testInfo) => {

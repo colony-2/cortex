@@ -53,9 +53,9 @@ func jobDisplayStatus(job recipejob.RecipeJob) string {
 // Bound scans per request; sparse pages retain the cursor so nothing is lost.
 const maxDisplayStatusPages = 20
 
-func listJobsByDisplayStatus(ctx context.Context, lister recipejob.Lister, req recipejob.ListRecipeJobsRequest, statuses []string) (recipejob.ListRecipeJobsResponse, error) {
+func listJobsByDisplayStatus(ctx context.Context, lister recipejob.Lister, req recipejob.ListRecipeJobsRequest, statuses []string, rootOnly bool) (recipejob.ListRecipeJobsResponse, error) {
 	if len(statuses) == 0 {
-		return recipejob.ListRecipeJobs(ctx, lister, req)
+		return listScopedRecipeJobs(ctx, lister, req, rootOnly)
 	}
 	result := recipejob.ListRecipeJobsResponse{Jobs: make([]recipejob.RecipeJob, 0, req.PageSize)}
 	pageSize := req.PageSize
@@ -71,7 +71,7 @@ func listJobsByDisplayStatus(ctx context.Context, lister recipejob.Lister, req r
 		// Fetch at most the remaining capacity so the backend cursor can be
 		// returned unchanged, without discarding matches or buffering job data.
 		req.PageSize = pageSize - len(result.Jobs)
-		page, err := recipejob.ListRecipeJobs(ctx, lister, req)
+		page, err := listScopedRecipeJobs(ctx, lister, req, rootOnly)
 		if err != nil {
 			return recipejob.ListRecipeJobsResponse{}, err
 		}
@@ -85,6 +85,34 @@ func listJobsByDisplayStatus(ctx context.Context, lister recipejob.Lister, req r
 			break
 		}
 		req.PageToken = result.NextPageToken
+	}
+	return result, nil
+}
+
+// Apply structural parentage in JobDB before pagination. Converted Parent may
+// retain inherited metadata on a direct restart and must not classify roots.
+func listScopedRecipeJobs(ctx context.Context, lister recipejob.Lister, req recipejob.ListRecipeJobsRequest, rootOnly bool) (recipejob.ListRecipeJobsResponse, error) {
+	if lister == nil {
+		return recipejob.ListRecipeJobsResponse{}, fmt.Errorf("job lister is required")
+	}
+	listReq, err := recipejob.BuildListJobsRequest(req)
+	if err != nil {
+		return recipejob.ListRecipeJobsResponse{}, err
+	}
+	listReq.RootOnly = rootOnly
+	page, err := recipejob.ListExecutionJobs(ctx, lister, listReq, req.ExecutionFilter)
+	if err != nil {
+		return recipejob.ListRecipeJobsResponse{}, err
+	}
+	result := recipejob.ListRecipeJobsResponse{Jobs: make([]recipejob.RecipeJob, 0, len(page.Jobs)), NextPageToken: page.NextPageToken}
+	for _, summary := range page.Jobs {
+		job, include, err := recipejob.RecipeJobFromSummary(summary)
+		if err != nil {
+			return recipejob.ListRecipeJobsResponse{}, err
+		}
+		if include {
+			result.Jobs = append(result.Jobs, job)
+		}
 	}
 	return result, nil
 }

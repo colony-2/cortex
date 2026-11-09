@@ -14,5 +14,16 @@ a.goal-prompt:focus-visible { outline: 2px solid #1677ff; outline-offset: 3px; }
 .goal-expander:hover .goal-expander-icon { color: var(--goal-expander-active); border-color: var(--goal-expander-active); }
 .goal-expander:focus-visible { outline: 2px solid var(--goal-expander-active); outline-offset: 3px; }
 @media (max-width: 767px) {
+  .goal-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .goal-toolbar > .ant-typography { grid-area: 1 / 1; }
+  .goal-toolbar-actions, .goal-toolbar-actions > .ant-space-item { display: contents; }
+  .goal-toolbar .goal-new-action { grid-area: 1 / 2; justify-self: end; }
+  .goal-scope-control { grid-area: 2 / 1; white-space: nowrap; }
+  .goal-visibility { grid-area: 2 / 2; }
   .goal-expander { width: 44px; height: 44px; }
+}
+
+@media (max-width: 359px) {
+  .goal-scope-control { grid-area: 2 / 1 / 3 / 3; }
+  .goal-visibility { grid-area: 3 / 1 / 4 / 3; justify-self: start; }
 }

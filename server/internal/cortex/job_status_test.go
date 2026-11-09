@@ -97,59 +97,74 @@ func displayStatusPage(t *testing.T, server *Server, query url.Values) recipejob
 }
 
 func TestDisplayStatusPaginationAcrossEmptyPages(t *testing.T) {
-	jobs := compactJobs(3)
-	for i := range jobs {
-		jobs[i].Status, jobs[i].CompletionStatus = jobdb.JobStatusCompleted, "failed_app"
-	}
-	engine := &compactListEngine{pages: map[string]jobdb.ListJobsResponse{
-		"":          {Jobs: compactJobs(2), NextPageToken: "empty"},
-		"empty":     {NextPageToken: "first"},
-		"first":     {Jobs: jobs[:1], NextPageToken: "second"},
-		"second":    {Jobs: jobs[1:2], NextPageToken: "cursor+/="},
-		"cursor+/=": {Jobs: jobs[2:]},
-	}}
-	server := &Server{engine: engine}
-	query := url.Values{"displayStatus": {"failed_app"}, "pageSize": {"2"}, "goal": {"goal"}, "includeHidden": {"true"}}
-	first := displayStatusPage(t, server, query)
-	if len(first.Jobs) != 2 || first.Jobs[0].JobID != "0" || first.Jobs[1].JobID != "1" || first.NextPageToken != "cursor+/=" {
-		t.Fatalf("first page: %+v", first)
-	}
-	query.Set("pageToken", first.NextPageToken)
-	last := displayStatusPage(t, server, query)
-	if len(last.Jobs) != 1 || last.Jobs[0].JobID != "2" || last.NextPageToken != "" {
-		t.Fatalf("last page: %+v", last)
-	}
-	for i, req := range engine.requests {
-		if !req.IncludeHidden || !reflect.DeepEqual(req.TenantIds, []string{"tenant"}) || !reflect.DeepEqual(req.GoalIDs, []string{"goal"}) {
-			t.Fatalf("lost scope on request %d: %+v", i, req)
-		}
-	}
-	if engine.requests[3].PageSize != 1 {
-		t.Fatal("must limit backend page to remaining result capacity")
+	for _, rootOnly := range []bool{false, true} {
+		t.Run(fmt.Sprint(rootOnly), func(t *testing.T) {
+			jobs := compactJobs(3)
+			for i := range jobs {
+				jobs[i].Status, jobs[i].CompletionStatus = jobdb.JobStatusCompleted, "failed_app"
+			}
+			engine := &compactListEngine{pages: map[string]jobdb.ListJobsResponse{
+				"":          {Jobs: compactJobs(2), NextPageToken: "empty"},
+				"empty":     {NextPageToken: "first"},
+				"first":     {Jobs: jobs[:1], NextPageToken: "second"},
+				"second":    {Jobs: jobs[1:2], NextPageToken: "cursor+/="},
+				"cursor+/=": {Jobs: jobs[2:]},
+			}}
+			server := &Server{engine: engine}
+			query := url.Values{"rootOnly": {fmt.Sprint(rootOnly)}, "displayStatus": {"failed_app"}, "pageSize": {"2"}, "goal": {"goal"}, "includeHidden": {"true"}}
+			first := displayStatusPage(t, server, query)
+			if len(first.Jobs) != 2 || first.Jobs[0].JobID != "0" || first.Jobs[1].JobID != "1" || first.NextPageToken != "cursor+/=" {
+				t.Fatalf("first page: %+v", first)
+			}
+			query.Set("pageToken", first.NextPageToken)
+			last := displayStatusPage(t, server, query)
+			if len(last.Jobs) != 1 || last.Jobs[0].JobID != "2" || last.NextPageToken != "" {
+				t.Fatalf("last page: %+v", last)
+			}
+			for i, req := range engine.requests {
+				if req.RootOnly != rootOnly || !req.IncludeHidden || !reflect.DeepEqual(req.TenantIds, []string{"tenant"}) || !reflect.DeepEqual(req.GoalIDs, []string{"goal"}) {
+					t.Fatalf("lost scope on request %d: %+v", i, req)
+				}
+			}
+			if engine.requests[3].PageSize != 1 {
+				t.Fatal("must limit backend page to remaining result capacity")
+			}
+
+		})
 	}
 }
 
 func TestDisplayStatusScanLimitPreservesContinuation(t *testing.T) {
-	engine := &compactListEngine{pages: make(map[string]jobdb.ListJobsResponse)}
-	token := ""
-	for i := 0; i < maxDisplayStatusPages; i++ {
-		next := fmt.Sprint(i)
-		engine.pages[token] = jobdb.ListJobsResponse{Jobs: compactJobs(1), NextPageToken: next}
-		token = next
-	}
-	jobs := compactJobs(1)
-	jobs[0].Status, jobs[0].CompletionStatus = jobdb.JobStatusCompleted, "success"
-	engine.pages[token] = jobdb.ListJobsResponse{Jobs: jobs}
-	server := &Server{engine: engine}
-	query := url.Values{"displayStatus": {"success"}, "pageSize": {"1"}}
-	first := displayStatusPage(t, server, query)
-	if len(first.Jobs) != 0 || first.NextPageToken != token || len(engine.requests) != maxDisplayStatusPages {
-		t.Fatalf("bounded scan: %+v requests=%d", first, len(engine.requests))
-	}
-	query.Set("pageToken", first.NextPageToken)
-	last := displayStatusPage(t, server, query)
-	if len(last.Jobs) != 1 || last.NextPageToken != "" {
-		t.Fatalf("lost continuation: %+v", last)
+	for _, rootOnly := range []bool{false, true} {
+		t.Run(fmt.Sprint(rootOnly), func(t *testing.T) {
+			engine := &compactListEngine{pages: make(map[string]jobdb.ListJobsResponse)}
+			token := ""
+			for i := 0; i < maxDisplayStatusPages; i++ {
+				next := fmt.Sprint(i)
+				engine.pages[token] = jobdb.ListJobsResponse{Jobs: compactJobs(1), NextPageToken: next}
+				token = next
+			}
+			jobs := compactJobs(1)
+			jobs[0].Status, jobs[0].CompletionStatus = jobdb.JobStatusCompleted, "success"
+			engine.pages[token] = jobdb.ListJobsResponse{Jobs: jobs}
+			server := &Server{engine: engine}
+			query := url.Values{"rootOnly": {fmt.Sprint(rootOnly)}, "displayStatus": {"success"}, "pageSize": {"1"}}
+			first := displayStatusPage(t, server, query)
+			if len(first.Jobs) != 0 || first.NextPageToken != token || len(engine.requests) != maxDisplayStatusPages {
+				t.Fatalf("bounded scan: %+v requests=%d", first, len(engine.requests))
+			}
+			query.Set("pageToken", first.NextPageToken)
+			last := displayStatusPage(t, server, query)
+			for _, req := range engine.requests {
+				if req.RootOnly != rootOnly {
+					t.Fatal("RootOnly lost during bounded scan")
+				}
+			}
+			if len(last.Jobs) != 1 || last.NextPageToken != "" {
+				t.Fatalf("lost continuation: %+v", last)
+			}
+
+		})
 	}
 }
 
