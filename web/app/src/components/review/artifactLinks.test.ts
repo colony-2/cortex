@@ -51,3 +51,14 @@ describe('MAL artifact link resolution', () => {
     expect(resolve('opaque-id','bar.md',list)).toMatchObject({key:'id'});
   });
 });
+
+
+it('RGI-005,008 rejects unsafe aliases and duplicate canonical paths before a unique alias', () => {
+  for (const reference of ['bad%', '%FF', 'a%2fb', 'a%5Cb', 'a\\b', '../../escape.png']) {
+    expect(resolve(reference,'captures/gallery.md',[{key:'alias',path:'other.png',aliases:[reference]}]).kind).toBe('unavailable');
+  }
+  expect(resolve('same.png','captures/gallery.md',[
+    {key:'a',path:'captures/same.png'}, {key:'b',path:'captures/./same.png'},
+    {key:'alias',path:'other.png',aliases:['same.png']},
+  ])).toEqual({kind:'unavailable',reason:'ambiguous'});
+});

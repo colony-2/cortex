@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ReviewDocuments from './ReviewDocuments';
 import type { ReviewDocument } from '@colony2/shared';
 
 const documents: Record<string, ReviewDocument> = {
   design: { kind: 'stored', name: 'design.md', stored: { key: { jobId: 'child', taskOrdinal: 5, name: 'design.md', sizeBytes: 20 } } },
 };
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('review documents', () => {
   it('renders Markdown safely and exposes the exact immutable source', async () => {
@@ -317,4 +317,74 @@ it.each([false,true])('RDM-014,016 recovers inline catalog focus when the select
     rerender(<ReviewDocuments {...props} documents={empty ? {} : {a:doc('a.md')}}/>);
     await waitFor(()=>expect(document.querySelector('.review-document-catalog')).toHaveFocus());
   } finally {Object.defineProperty(window,'innerWidth',{value:previous,configurable:true});}
+});
+
+
+describe('RGI attached nested galleries', () => {
+  const doc = (path: string, name?: string): ReviewDocument => ({kind:'stored', name, stored:{key:{jobId:'producer',taskOrdinal:7,name:path}}});
+  const filenames = ['review-collapsed-desktop.png','review-confirm-desktop.png','review-confirm-320.png','review-keyboard-geometry-320.png','review-200.png','review-error-320.png'];
+  const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='), c => c.charCodeAt(0));
+  function fixture(source: string) {
+    const OriginalURL = URL;
+    vi.stubGlobal('URL', class extends OriginalURL { static createObjectURL = vi.fn(()=>'blob:fixture'); static revokeObjectURL = vi.fn(); });
+    const fetcher = vi.fn(async (url: string) => new Response(new URL(url,'http://local').searchParams.get('document_id') === 'gallery' ? source : png));
+    vi.stubGlobal('fetch', fetcher);
+    return fetcher;
+  }
+  const props = {projectId:'tenant',jobId:'job',requestId:'request',overviewDocumentId:'gallery'};
+  it('RGI-001–004,009 resolves siblings, normalized paths and exact aliases with canonical precedence', async () => {
+    const refs = [...filenames,'./review-200.png','nested/../review-200.png','../root.png','a%20%E9%9B%AA.png','id/雪','Display.png','captures/review-200.png','review-200.png?ignored=1#fragment'];
+    const fetcher = fixture(refs.map((ref,i)=>`![image${i}](${ref})`).join('\n'));
+    const docs: Record<string,ReviewDocument> = {gallery:doc('captures/gallery.md','Different title.md'),root:doc('root.png'),space:doc('captures/a 雪.png'),'id/雪':doc('elsewhere/id.png','Display.png'),conflict:doc('elsewhere/conflict.png','review-200.png')};
+    filenames.forEach((name,i)=>{docs[`image/${i}`]=doc(`captures/${name}`);});
+    render(<ReviewDocuments {...props} documents={docs}/>);
+    await waitFor(()=>expect(screen.getAllByRole('img').filter(el=>el.tagName==='IMG')).toHaveLength(refs.length));
+    expect(fetcher).toHaveBeenCalledTimes(refs.length+1);
+    const ids = fetcher.mock.calls.slice(1).map(([url])=>new URL(url,'http://local').searchParams.get('document_id'));
+    expect(ids).toEqual(expect.arrayContaining(['image/0','image/1','image/2','image/3','image/4','image/5','root','space','id/雪']));
+    expect(ids).not.toContain('conflict');
+    for (const [url] of fetcher.mock.calls) {
+      expect(url).toContain('/projects/tenant/reviews/job/documents?');
+      expect(url).toContain('request_id=request');
+      expect(url).not.toMatch(/producer|artifacts|ignored|fragment/);
+    }
+    expect(fetcher.mock.calls.some(([url])=>url.includes('document_id=id%2F%E9%9B%AA'))).toBe(true);
+  });
+  it('RGI-005–008 blocks collisions, missing, unsafe references and alias bypasses without fetching', async () => {
+    const refs = ['duplicate.png','alias.png','missing.png','basename.png','https://blocked.invalid/x','//blocked.invalid/x','/absolute.png','data:image/png;base64,AA','javascript:alert','../../escape.png','bad%FF','a%2fb','a%5Cb','a\\b','#fragment'];
+    const fetcher = fixture(refs.map((ref,i)=>`![blocked${i}](${ref})`).join('\n'));
+    const docs: Record<string,ReviewDocument> = {gallery:doc('captures/gallery.md'),a:doc('captures/duplicate.png'),b:doc('captures/duplicate.png'),c:doc('elsewhere/c.png','alias.png'),d:doc('elsewhere/d.png','alias.png'),e:doc('elsewhere/basename.png'),uniqueAlias:doc('elsewhere/alias.png','duplicate.png')};
+    refs.slice(4).forEach((ref,i)=>{docs[`unsafe${i}`]=doc(`elsewhere/unsafe${i}.png`,ref);});
+    render(<ReviewDocuments {...props} documents={docs}/>);
+    await waitFor(()=>expect(screen.getAllByText(/Blocked external or ambiguous image/).map(el=>el.textContent)).toEqual(refs.map((_,i)=>`Blocked external or ambiguous image: blocked${i}`)));
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it('RGI-010 uses the selected stored directory and current attachment membership', async () => {
+    const fetcher = fixture('![sibling](image.png)');
+    const docs = {gallery:doc('captures/gallery.md','First.md'),second:doc('other/gallery.md','Second.md'),one:doc('captures/image.png'),two:doc('other/image.png')};
+    // Both Markdown documents share the same gallery source.
+    fetcher.mockImplementation(async(url:string)=>new Response(['gallery','second'].includes(new URL(url,'http://local').searchParams.get('document_id')!) ? '![sibling](image.png)' : png));
+    const {rerender}=render(<ReviewDocuments {...props} documents={docs}/>);
+    await waitFor(()=>expect(fetcher.mock.calls.some(([url])=>url.includes('document_id=one'))).toBe(true));
+    fireEvent.click(screen.getByRole('button',{name:'Second.md second'}));
+    await waitFor(()=>expect(fetcher.mock.calls.some(([url])=>url.includes('document_id=two'))).toBe(true));
+    rerender(<ReviewDocuments {...props} documents={{gallery:docs.gallery,second:docs.second,one:docs.one}}/>);
+    await screen.findByText(/Blocked external or ambiguous image/);
+    const count=fetcher.mock.calls.length;
+    rerender(<ReviewDocuments {...props} documents={{gallery:docs.gallery,second:docs.second,one:docs.one}}/>);
+    expect(fetcher).toHaveBeenCalledTimes(count);
+  });
+});
+
+
+it.each(['fetch-error','not-raster'])('RGI-011 retains inline attachment %s handling', async mode => {
+  const doc = (name:string): ReviewDocument => ({kind:'stored',stored:{key:{jobId:'producer',taskOrdinal:1,name}}});
+  const fetcher=vi.fn(async(url:string)=>url.includes('document_id=gallery')
+    ? new Response('![image](image.png)')
+    : new Response('plain text',{status:mode==='fetch-error'?503:200}));
+  vi.stubGlobal('fetch',fetcher);
+  render(<ReviewDocuments projectId="t" jobId="j" requestId="r" overviewDocumentId="gallery" documents={{gallery:doc('captures/gallery.md'),image:doc('captures/image.png')}}/>);
+  await screen.findByText(mode==='fetch-error'?/Could not load/:/Attachment is not a raster image/);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(document.querySelector('.review-markdown img')).toBeNull();
 });

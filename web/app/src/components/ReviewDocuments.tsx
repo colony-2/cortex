@@ -96,9 +96,9 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
       resolve: reference => resolveArtifactLink(reference, doc.stored.key.name, Object.entries(documents).map(([key, d]) => ({key, path: d.stored.key.name, aliases: [key, ...(d.name ? [d.name] : [])]}))),
       open: (key, fragment) => openDocument(key, true, fragment),
     }} resolveAttachment={reference => {
-      const matches = Object.entries(documents).filter(([id, d]) => reference === id || reference === d.name || reference === d.stored.key.name);
-      if (matches.length !== 1) return undefined;
-      const [id, d] = matches[0];
+      const target = resolveArtifactLink(reference, doc.stored.key.name, Object.entries(documents).map(([key, d]) => ({ key, path: d.stored.key.name, aliases: [key, ...(d.name ? [d.name] : []), d.stored.key.name] })));
+      if (target.kind !== 'target' || !attached(target.key)) return undefined;
+      const id = target.key, d = documents[id];
       return { key: id, name: d.name || d.stored.key.name, url: inputActivityService.reviewDocumentURL(projectId, jobId, requestId, id) };
     }} />;
   const details = selected ? <>{summary(selected)}{sources(selected)}{toolbar}</> : null;

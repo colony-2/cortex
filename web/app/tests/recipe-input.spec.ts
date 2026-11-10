@@ -831,3 +831,67 @@ test.describe('conventional rejection',()=>{
     },{timeout:30000}).toMatchObject({status:'completed',output:{answers:{decision:'revise',feedback:'Clarify ownership before approval.'}}});
   });
 });
+
+test.describe('nested review gallery', () => {
+  test.use({recipeFixture:'browser-review'});
+  test('RGI-013 decodes six attached siblings and never requests blocked images', async ({page,recipeRun},testInfo) => {
+    const {tenant,jobID,stopWorker}=recipeRun;
+    await stopWorker();
+    const names=['review-collapsed-desktop.png','review-confirm-desktop.png','review-confirm-320.png','review-keyboard-geometry-320.png','review-200.png','review-error-320.png'];
+    const png=Buffer.from(await page.evaluate(() => {
+      const canvas=document.createElement('canvas');canvas.width=240;canvas.height=80;
+      const ctx=canvas.getContext('2d')!;ctx.fillStyle='#dbeafe';ctx.fillRect(0,0,240,80);
+      ctx.fillStyle='#17345c';ctx.font='18px sans-serif';ctx.fillText('Attached raster fixture',16,46);
+      return canvas.toDataURL('image/png').split(',')[1];
+    }),'base64');
+    const blocked=['https://blocked.invalid/x.png','//blocked.invalid/y.png','/absolute.png','data:image/png;base64,AA','javascript:alert','duplicate.png','missing.png','../../escape.png','bad%FF','a%2fb'];
+    const source='# Attached nested gallery\n\n'+names.map((name,i)=>`![capture${i}](${name})`).join('\n\n')+'\n\n'+blocked.map((ref,i)=>`![blocked${i}](${ref})`).join('\n\n');
+    const doc=(name:string,display?:string)=>({kind:'stored',name:display,stored:{key:{jobId:'fixture-producer',taskOrdinal:1,name}}});
+    await page.route(`**/api/projects/${tenant}/user-inputs/${jobID}`,async route=>{
+      const response=await route.fetch();const details=await response.json();
+      const documents:Record<string,unknown>={gallery:doc('captures/gallery.md','Gallery title.md'),duplicate1:doc('captures/duplicate.png'),duplicate2:doc('captures/duplicate.png')};
+      names.forEach((name,i)=>{documents[`image/${i}`]=doc(`captures/${name}`);});
+      await route.fulfill({response,json:{...details,form:{...details.form,documents,overview_document_id:'gallery'}}});
+    });
+    const fetched:string[]=[],external:string[]=[];
+    page.on('request',request=>{if(request.url().includes('blocked.invalid')) external.push(request.url());});
+    await page.route(`**/api/projects/${tenant}/reviews/${jobID}/documents?*`,async route=>{
+      const id=new URL(route.request().url()).searchParams.get('document_id')!;fetched.push(id);
+      await route.fulfill({contentType:id==='gallery'?'text/markdown':'image/png',body:id==='gallery'?source:png});
+    });
+    await page.setViewportSize({width:1440,height:900});
+    await page.goto(`/project/${tenant}/reviews/${jobID}`);
+    const images=page.locator('.review-markdown img');
+    await expect(images).toHaveCount(6);
+    await expect.poll(()=>images.evaluateAll(elements=>elements.every(el=>{const img=el as HTMLImageElement;return img.complete&&img.naturalWidth>0&&img.naturalHeight>0;}))).toBe(true);
+    await expect(page.getByText(/Blocked external or ambiguous image/)).toHaveCount(blocked.length);
+    expect(fetched.sort()).toEqual(['gallery',...names.map((_,i)=>`image/${i}`)].sort());
+    expect(external).toEqual([]);
+    const evidence=JSON.stringify({fetched,external,decodedImages:6,blockedReferences:blocked},null,2);
+    writeFileSync(testInfo.outputPath('gallery-requests.json'),evidence);
+    await testInfo.attach('gallery-requests',{body:evidence,contentType:'application/json'});
+    // Capture without Playwright's full-page viewport changes, which can remount responsive previews.
+    const session=await page.context().newCDPSession(page);
+    const capture=async(name:string)=>{
+      await expect.poll(()=>images.evaluateAll(elements=>elements.length===6&&elements.every(el=>{const img=el as HTMLImageElement;return img.complete&&img.naturalWidth>0;}))).toBe(true);
+      await page.locator('.review-markdown').scrollIntoViewIfNeeded();
+      await expect(page.getByText('Loading attached image…',{exact:true})).toHaveCount(0);
+      await expect.poll(()=>images.evaluateAll(elements=>elements.length===6&&elements.every(el=>{const img=el as HTMLImageElement;return img.complete&&img.naturalWidth>0;}))).toBe(true);
+      await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
+      const {cssContentSize}=await session.send('Page.getLayoutMetrics');
+      const {data}=await session.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true,clip:{x:0,y:0,width:cssContentSize.width,height:cssContentSize.height,scale:1}});
+      writeFileSync(testInfo.outputPath(name),Buffer.from(data,'base64'));
+    };
+
+    await page.setViewportSize({width:390,height:844});
+    await expect(images).toHaveCount(6);
+    await capture('gallery-phone.png');
+    await page.setViewportSize({width:1440,height:900});
+    await expect(page.locator('.review-document-layout')).toBeVisible();
+    await page.locator('.review-markdown').evaluate(el=>el.scrollIntoView());
+    await expect(page.getByText('Loading attached image…',{exact:true})).toHaveCount(0);
+    await expect.poll(()=>images.evaluateAll(elements=>elements.length===6&&elements.every(el=>(el as HTMLImageElement).naturalWidth>0))).toBe(true);
+    await page.screenshot({path:testInfo.outputPath('gallery-desktop.png')});
+    await session.detach();
+  });
+});
