@@ -32,7 +32,7 @@ async function open(page: Page) {
   await page.goto('/project/phone/jobs/one/story');
   await page.getByRole('tab', { name: 'Input artifacts', exact: true }).click();
   await expect(page.getByText('No input artifacts', { exact: true })).toBeVisible();
-  await page.getByRole('tab', { name: 'Execution', exact: true }).click();
+  await page.getByRole('tab', { name: 'Steps', exact: true }).click();
   await page.getByRole('button', { name: 'Expand all', exact: true }).click();
   await expect(page.getByRole('treeitem')).toHaveCount(132);
 }
@@ -176,7 +176,7 @@ for (const state of ['empty', 'failed', 'loading']) {
       return route.fulfill({ json: { ...jobIdentity, status: 'completed', root: null } });
     });
     await page.goto('/project/phone/jobs/one/story');
-    await page.getByRole('tab', { name: 'Execution', exact: true }).click();
+    await page.getByRole('tab', { name: 'Steps', exact: true }).click();
     if (state === 'failed') await expect(page.getByText('Failed to load job story')).toBeVisible();
     else if (state === 'empty') {
       await expect(page.getByText('The story API returned no steps for this finished job.')).toBeVisible();
@@ -299,7 +299,7 @@ for (const width of [390, 1440]) {
     test('JS-SC-023 fitting short tree', async ({page}, info) => {
       await page.route('**/api/projects/*/jobs/one/story', route => route.fulfill({json:{...jobIdentity,job_id:'one',status:'completed',root:{id:'root',kind:'recipe',title:'root',path:['root'],attempt:1,status:'completed',children:[]}}}));
       await page.goto('/project/phone/jobs/one/story');
-      await page.getByRole('tab', { name: 'Execution', exact: true }).click();
+      await page.getByRole('tab', { name: 'Steps', exact: true }).click();
       const region=page.locator('#execution-story-tree'); await expect(region.getByRole('treeitem')).toHaveCount(1);
       expect(await region.evaluate(e=>e.scrollWidth-e.clientWidth)).toBeLessThanOrEqual(1);
       expect(await region.evaluate(e=>e.scrollHeight-e.clientHeight)).toBeLessThanOrEqual(1);
@@ -344,7 +344,7 @@ for (const size of [{width:320,height:568},{width:768,height:1024},{width:1100,h
     await page.setViewportSize(size);
     await page.route('**/api/projects/*/jobs/one/story',route=>route.fulfill({json:{...jobIdentity,job_id:'one',status:'completed',root:{id:'root',kind:'recipe',title:'root',path:['root'],attempt:1,status:'completed',children:[]}}}));
     await page.goto('/project/phone/jobs/one/story');
-    await page.getByRole('tab', { name: 'Execution', exact: true }).click();
+    await page.getByRole('tab', { name: 'Steps', exact: true }).click();
     const region=page.locator('#execution-story-tree'); await expect(region.getByRole('treeitem')).toHaveCount(1);
     expect(await region.evaluate(e=>e.scrollWidth-e.clientWidth)).toBeLessThanOrEqual(1);
     expect(await region.evaluate(e=>e.scrollHeight-e.clientHeight)).toBeLessThanOrEqual(1);

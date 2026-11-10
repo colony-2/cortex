@@ -278,6 +278,11 @@ interface JobStoryPageProps {
 }
 
 export default function JobStoryPage({ projectId }: JobStoryPageProps) {
+  const { jobId } = useParams<{ jobId: string }>();
+  return <JobStoryContent key={JSON.stringify([projectId, jobId])} projectId={projectId} />;
+}
+
+function JobStoryContent({ projectId }: JobStoryPageProps) {
   const [activeTreeKey, setActiveTreeKey] = useState<string | null>(null);
   const { jobId: routeJobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
@@ -344,6 +349,8 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   const [historyRevision, setHistoryRevision] = useState(0);
   const historyRefreshKey = useMemo(() => ({ revision: historyRevision, pendingInputs }), [historyRevision, pendingInputs]);
   const activeTab = jobDetailTab(searchParams);
+  const stepsActive = useRef(activeTab === 'execution');
+  stepsActive.current = activeTab === 'execution';
   const requestId = searchParams.has('occurrenceId') ? searchParams.get('occurrenceId') : searchParams.get('requestId');
   const selectTab = (tab: JobDetailTab) => setSearchParams(previous => {
     const next = new URLSearchParams(previous);
@@ -368,8 +375,8 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   const focusTaskOrdinal = taskOrdinalParam !== null && Number.isFinite(taskOrdinalParam) ? taskOrdinalParam : pendingTaskOrdinal;
 
   const treeModel = useMemo(
-    () => buildTree(story?.root, { pendingTaskOrdinal: focusTaskOrdinal }),
-    [story?.root, focusTaskOrdinal]
+    () => buildTree(activeTab === 'execution' ? story?.root : undefined, { pendingTaskOrdinal: focusTaskOrdinal }),
+    [story?.root, focusTaskOrdinal, activeTab]
   );
 
   const { keyToRef, keyToParent, keyFor, ancestorsByKey, projectionByKey, visibleKeyByKey, childrenByNode, renderNodes } = treeModel;
@@ -421,18 +428,18 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   const latestAttempt = attempts[0];
   const jobRoots = story?.root ? [story.root, ...(story.root.past_attempts || [])] : [];
   const displayedRoot = jobRoots.find(root => (root.job_attempt || 1) === selectedRef?.jobAttempt) || story?.root;
-  const treeData = displayedRoot ? renderNodes(projectionByKey.get(keyFor.get(displayedRoot)!) || []) : [];
+  const treeData = activeTab === 'execution' && displayedRoot ? renderNodes(projectionByKey.get(keyFor.get(displayedRoot)!) || []) : [];
   const isPastJob = !!story?.root && selectedRef?.jobAttempt !== (story.root.job_attempt || 1);
   const operation = selectedNode?.kind === 'op' ? selectedNode : [...selectedAncestors].reverse().find(n => n.kind === 'op');
   const contextNodes = selectedNode ? [...selectedAncestors, ...(childrenByNode.get(selectedNode) || [])] : [];
 
 
   const storyGeneration = useRef(0);
-  const load = async (opts?: { preserveSelection?: boolean }) => {
-    if (!jobId) return;
+  const inFlight = useRef(false);
+  const loadStory = async (opts?: { preserveSelection?: boolean }) => {
+    if (!jobId || !stepsActive.current || inFlight.current) return;
+    inFlight.current = true;
     const generation = ++storyGeneration.current;
-    setHistoryRevision(value => value + 1);
-    loadMetadata();
     setLoading(true);
     setError(null);
     try {
@@ -466,7 +473,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
       if (nextSelectedKey && nextKeyToRef.has(nextSelectedKey)) {
         setSelectedKey(nextSelectedKey);
         const ancestors = ancestorKeysForKey(nextSelectedKey, nextKeyToParent);
-        setExpandedKeys((prev) => opts?.preserveSelection
+        setExpandedKeys((prev) => opts?.preserveSelection && !!story
           ? unionKeys(prev, ancestors)
           : Array.from(nextKeyToRef.keys()));
       }
@@ -475,7 +482,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
       console.error('Failed to load job story', e);
       setError(e instanceof Error ? e.message : 'Failed to load job story');
     } finally {
-      if (generation === storyGeneration.current) setLoading(false);
+      if (generation === storyGeneration.current) { setLoading(false); inFlight.current = false; }
     }
   };
 
@@ -483,10 +490,32 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
     setLoadedJob(undefined);
     setStory(null);
     setSelectedKey(null);
-    load();
+    setError(null);
+    setLoading(false);
+    setExpandedKeys([]);
+    loadMetadata();
     return () => { ++metadataGeneration.current; ++storyGeneration.current; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, jobId]);
+
+  const load = async (opts?: { preserveSelection?: boolean }) => {
+    setHistoryRevision(value => value + 1);
+    loadMetadata();
+    await loadStory(opts);
+  };
+
+  useEffect(() => {
+    stepsActive.current = activeTab === 'execution';
+    if (activeTab === 'execution' && (!story || (autoRefresh && story.status === 'running'))) {
+      void loadStory({ preserveSelection: !!story });
+    }
+    return () => {
+      stepsActive.current = false;
+      ++storyGeneration.current;
+      inFlight.current = false;
+    };
+    // Cache stays above the inspector; only activation/identity changes trigger retrieval.
+  }, [activeTab, projectId, jobId]);
 
   useEffect(() => {
     const shouldLoadDetails = !!jobId && requestId === null && (isPendingInput || wantInput);
@@ -558,9 +587,9 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
       refreshTimerRef.current = null;
     }
 
-    if (autoRefresh && story?.status === 'running') {
+    if (activeTab === 'execution' && autoRefresh && story?.status === 'running') {
       refreshTimerRef.current = window.setInterval(() => {
-        load({ preserveSelection: true });
+        loadStory({ preserveSelection: true });
       }, refreshIntervalMs);
     }
 
@@ -571,12 +600,12 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRefresh, refreshIntervalMs, story?.status, projectId, jobId, selectedKey]);
+  }, [activeTab, autoRefresh, refreshIntervalMs, story?.status, projectId, jobId, selectedKey]);
 
   // Conversation completion must keep refreshing even if execution inspection
-  // is unavailable. The execution poll already refreshes metadata when running.
+  // is unavailable or hidden. Metadata polling is independent of story polling.
   useEffect(() => {
-    if (!autoRefresh || !job || !terminalStatus || isFinishedJob(job) || story?.status === 'running') return;
+    if (!autoRefresh || !job || !terminalStatus || isFinishedJob(job)) return;
     const timer = window.setInterval(loadMetadata, refreshIntervalMs);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -785,7 +814,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
           </Space>
           <Space wrap style={{ maxWidth: '100%' }}>
             <DownloadChaptersButton key={JSON.stringify([projectId, jobId])} projectId={projectId} jobId={jobId} />
-            {story?.status === 'running' ? (
+            {(terminalStatus ? !isFinishedJob(job!) : story?.status === 'running') ? (
               <Space>
                 <Text type="secondary">Auto-refresh</Text>
                 <Switch aria-label="Auto-refresh" checked={autoRefresh} onChange={setAutoRefresh} />
@@ -805,7 +834,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
               Refresh
             </Button>
             <CancelJobButton key={`${projectId}/${jobId}`} projectId={projectId} jobId={jobId}
-              disabled={!jobId || ['completed', 'failed', 'canceled', 'terminated', 'timed_out'].includes(story?.status || '')}
+              disabled={!jobId || !!job && !!terminalStatus && isFinishedJob(job)}
               onCancelled={async () => { await Promise.all([load({ preserveSelection: true }), refreshPendingInputs()]); }} />
           </Space>
         </div>
@@ -913,17 +942,18 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
         <section role="tabpanel" id="job-panel-summary" aria-labelledby="job-tab-summary" hidden={activeTab !== 'summary'} tabIndex={0} className="job-detail-panel">
         <details className="relationship-disclosure story-summary-disclosure" open>
           <summary>Run Summary</summary>
+          {!story && <Alert type="info" message="Execution timing and recipe metadata load when you open Steps." action={<Button onClick={() => selectTab('execution')}>Open Steps to load execution timing and recipe metadata</Button>} />}
           <Card size="small" variant="borderless">
             <Descriptions column={2} bordered size="small">
               <Descriptions.Item label="Status">
                 {story?.status ? (
                   <Tag color={statusTagColor(story.status)}>{story.status.toUpperCase()}</Tag>
                 ) : (
-                  '-'
+                  terminalStatus || '-'
                 )}
               </Descriptions.Item>
               <Descriptions.Item label="Recipe">
-                {extractRecipeLabel(story?.recipe)}
+                {story ? extractRecipeLabel(story.recipe) : job?.recipe || '-'}
               </Descriptions.Item>
               <Descriptions.Item label="Started">
                 {formatTimestamp(story?.started_at)}
@@ -977,6 +1007,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
 
         </section>
         <section role="tabpanel" id="job-panel-execution" aria-labelledby="job-tab-execution" hidden={activeTab !== 'execution'} tabIndex={0} className="job-detail-panel">
+        {activeTab === 'execution' && <>
         {loading && !story && <Spin size="large" />}
 
         {error ? (
@@ -986,7 +1017,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
             message="Failed to load job story"
             description={error}
             action={
-              <Button size="small" onClick={() => load()}>
+              <Button size="small" onClick={() => loadStory({ preserveSelection: true })}>
                 Retry
               </Button>
             }
@@ -1331,6 +1362,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
             )}
           </Card>
         </div>
+        </>}
         </section>
       </Space>
 

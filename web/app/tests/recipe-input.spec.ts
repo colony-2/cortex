@@ -12,7 +12,7 @@ import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 
 async function openPendingInput(page: Page) {
-  await page.getByRole('tab', { name: 'Execution', exact: true }).click();
+  await page.getByRole('tab', { name: 'Steps', exact: true }).click();
   await page.getByRole('tab', { name: 'Pending Input', exact: true }).click();
 }
 
@@ -305,10 +305,12 @@ for (const multiField of [false, true]) {
         await stopWorker();
         const storyResponse = page.waitForResponse(r => r.url().endsWith(`/jobs/${jobID}/story`));
         await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
+        await expect(page.getByRole('tab', { name: 'Conversation', exact: true })).toHaveAttribute('aria-selected', 'true');
+        await page.getByRole('tab', { name: 'Steps', exact: true }).click();
         const story = await (await storyResponse).json();
         expect(story.restart_scopes.length).toBeGreaterThan(0);
         await page.setViewportSize({ width: 390, height: 844 });
-        await page.getByRole('tab', { name: 'Execution', exact: true }).click();
+        await page.getByRole('tab', { name: 'Steps', exact: true }).click();
         await page.getByRole('button', { name: 'Restart job', exact: true }).click();
         const restartDialog = page.getByRole('dialog');
         await expect(restartDialog.getByRole('button', { name: 'Restart', exact: true })).toBeEnabled();

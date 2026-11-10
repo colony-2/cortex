@@ -101,7 +101,7 @@ test('REL-001,010,011,012,030,033,038 story links navigate to correct identities
   await selectStoryTab(page, 'Summary');
   await expect(page.getByText('Run Summary',{exact:true})).toBeVisible();
   await expect(related(page)).toBeHidden();
-  await selectStoryTab(page, 'Execution');
+  await selectStoryTab(page, 'Steps');
   await page.getByText('Compatibility checks',{exact:true}).first().click();
   await selectStoryTab(page, 'Relationships');
   expect(inspections).toEqual(['evidence-105', 'evidence-105']); // Existing development StrictMode replay.
@@ -231,7 +231,7 @@ for(const width of [1440,390,320]) test(`REL-040,041,042 story default and reloa
   await page.keyboard.press('Space');
   await expect(disclosure(page)).toHaveAttribute('open');
   await expect(related(page).getByRole('link',{name:'Job · Check API compatibility'})).toBeVisible();
-  await selectStoryTab(page, 'Execution');
+  await selectStoryTab(page, 'Steps');
   await page.getByText('Compatibility checks',{exact:true}).first().click();
   await selectStoryTab(page, 'Relationships');
   await expect(disclosure(page)).toHaveAttribute('open');

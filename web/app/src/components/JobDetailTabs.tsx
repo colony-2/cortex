@@ -2,10 +2,10 @@ import type { KeyboardEvent } from 'react';
 
 export const jobDetailTabs = [
   ['conversation', 'Conversation'],
-  ['execution', 'Execution'],
   ['relationships', 'Relationships'],
   ['input-artifacts', 'Input artifacts'],
   ['summary', 'Summary'],
+  ['execution', 'Steps'],
 ] as const;
 export type JobDetailTab = typeof jobDetailTabs[number][0];
 

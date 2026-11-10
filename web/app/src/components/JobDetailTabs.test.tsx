@@ -20,7 +20,7 @@ it('CT-007 supports arrows, wraparound, Home and End with a single tab stop', ()
   }
   render(<Host />);
   const tabs = screen.getAllByRole('tab');
-  expect(tabs.map(tab => tab.textContent)).toEqual(jobDetailTabs.map(([, name]) => name));
+  expect(tabs.map(tab => tab.textContent)).toEqual(['Conversation', 'Relationships', 'Input artifacts', 'Summary', 'Steps']);
   const press = (key: string, expected: number) => {
     fireEvent.keyDown(screen.getByRole('tab', { selected: true }), { key });
     expect(tabs[expected]).toHaveAttribute('aria-selected', 'true');
