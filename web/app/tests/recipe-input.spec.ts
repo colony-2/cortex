@@ -11,6 +11,11 @@ import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 
+async function openPendingInput(page: Page) {
+  await page.getByRole('tab', { name: 'Execution', exact: true }).click();
+  await page.getByRole('tab', { name: 'Pending Input', exact: true }).click();
+}
+
 const reviewGoalPrompt = 'Build a release dashboard with clear review context and reliable metadata. '.repeat(2);
 
 // Real production Cortex, HTTP JobDB, pinned c2j CLI, Git recipe, and browser SSE.
@@ -237,7 +242,7 @@ for (const multiField of [false, true]) {
       await stopWorker();
       if (multiField) {
         await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
-        await page.getByRole('tab', { name: 'Pending Input', exact: true }).click();
+        await openPendingInput(page);
       } else {
         const inspections: string[] = [];
         page.on('request', req => {
@@ -255,7 +260,7 @@ for (const multiField of [false, true]) {
       const question = multiField ? 'Release note' : 'What should the recipe publish?';
       await expect(page.getByLabel(question)).toBeVisible();
       await page.reload();
-      if (multiField) await page.getByRole('tab', { name: 'Pending Input', exact: true }).click();
+      if (multiField) await openPendingInput(page);
       // Required-field validation must keep the real request pending.
       await page.getByRole('button', { name: 'Submit', exact: true }).click();
       await expect(page.getByText(`${question} is required`, { exact: true })).toBeVisible();
@@ -280,7 +285,8 @@ for (const multiField of [false, true]) {
         output: multiField ? { answer, decision: 'approve' } : { answer },
       });
       if (!multiField) await page.goto(`/project/${tenant}/jobs/${jobID}/story`);
-      await expect(page.getByRole('cell', { name: 'COMPLETED', exact: true }).first()).toBeVisible();
+      await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+      await expect(page.getByRole('region', { name: 'Job completion', exact: true })).toContainText('Succeeded');
       await page.setViewportSize({ width: 1440, height: 900 });
       await page.goto(`/project/${tenant}/jobs`);
       await expect(page.getByRole('heading', { name: 'Goals', exact: true })).toBeVisible();
@@ -302,6 +308,7 @@ for (const multiField of [false, true]) {
         const story = await (await storyResponse).json();
         expect(story.restart_scopes.length).toBeGreaterThan(0);
         await page.setViewportSize({ width: 390, height: 844 });
+        await page.getByRole('tab', { name: 'Execution', exact: true }).click();
         await page.getByRole('button', { name: 'Restart job', exact: true }).click();
         const restartDialog = page.getByRole('dialog');
         await expect(restartDialog.getByRole('button', { name: 'Restart', exact: true })).toBeEnabled();
@@ -368,7 +375,7 @@ for (const multiField of [false, true]) {
 test('cancellation removes a pending prompt in open tabs and rejects late answers', async ({ page, request, recipeRun }) => {
   const { tenant, jobID, observer, stopWorker, startWorker } = recipeRun;
   await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
-  await page.getByRole('tab', { name: 'Pending Input', exact: true }).click();
+  await openPendingInput(page);
   await expect(page.getByLabel('What should the recipe publish?')).toBeVisible();
   await stopWorker();
 
@@ -403,7 +410,7 @@ test.describe('sequential prompts', () => {
     ]) {
       await expect(observer.getByText(`Job ID: ${jobID}`, { exact: true })).toBeVisible({ timeout: 30_000 });
       await stopWorker();
-      await page.getByRole('tab', { name: 'Pending Input', exact: true }).click();
+      await openPendingInput(page);
       await expect(page.getByLabel(question)).toHaveValue('');
       await page.getByLabel(question).fill(value);
       const responded = page.waitForResponse(r => r.url().endsWith(`/user-inputs/${jobID}/respond`) && r.request().method() === 'POST');
@@ -417,7 +424,8 @@ test.describe('sequential prompts', () => {
     await expect.poll(async () => (await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`)).json(), {
       timeout: 30_000,
     }).toMatchObject({ status: 'completed', output: { answer, reviewer } });
-    await expect(page.getByRole('cell', { name: 'COMPLETED', exact: true }).first()).toBeVisible();
+    await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+    await expect(page.getByRole('region', { name: 'Job completion', exact: true })).toContainText('Succeeded');
     await expect(observer.getByText('No pending reviews')).toBeVisible();
   });
 });
@@ -427,7 +435,7 @@ test.describe('input timeout', () => {
   test('expires an unanswered input and clears open browser prompts', async ({ page, request, recipeRun }) => {
     const { tenant, jobID, observer } = recipeRun;
     await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
-    await page.getByRole('tab', { name: 'Pending Input', exact: true }).click();
+    await openPendingInput(page);
     await expect(page.getByLabel('What should the recipe publish?')).toBeVisible();
 
     // Let the real c2j/JobDB task deadline expire; do not advance a browser clock
@@ -490,7 +498,8 @@ for (const clarification of [false, true]) {
       const stale = await page.request.post(`/api/projects/${tenant}/reviews/${jobID}/respond`, {
         data: { request_id: 'old-request', submission_id: randomUUID(), fields: { decision: 'approve' } },
       });
-      expect(stale.status()).toBe(400);
+      expect(stale.status()).toBe(409);
+      expect(await stale.text()).toContain('request_id does not match the pending input');
       const invalid = await page.request.post(`/api/projects/${tenant}/reviews/${jobID}/respond`, {
         data: { request_id: details.form.request_id, submission_id: randomUUID(), fields: { decision: 'unknown' } },
       });

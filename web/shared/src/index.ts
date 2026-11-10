@@ -15,3 +15,5 @@ export * from './contexts/InputActivityContext';
 export * from './admin';
 
 export * from './buildInfo';
+
+export * from './conversation';

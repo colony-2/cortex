@@ -166,7 +166,7 @@ func (s *Server) handleReviewResponse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := s.inputs.SubmitFormResponse(r.Context(), s.tenantID(r), mux.Vars(r)["jobId"], submission, input.Actor{ID: email, Kind: "human"})
-	if errors.Is(err, input.ErrInputNotPending) {
+	if errors.Is(err, input.ErrInputNotPending) || errors.Is(err, input.ErrStaleRequest) {
 		writeHTTPError(w, http.StatusConflict, err)
 		return
 	}

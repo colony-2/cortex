@@ -86,3 +86,10 @@
 @media (max-width: 600px) {
   .input-artifacts .ant-list-item { flex-direction: column; align-items: flex-start; }
 }
+
+.job-detail-tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid #d9d9d9; }
+.job-detail-tabs button { font: inherit; background: transparent; color: inherit; border: 0; border-bottom: 3px solid transparent; padding: 10px 16px; min-height: 44px; cursor: pointer; }
+.job-detail-tabs button[aria-selected="true"] { color: #1677ff; border-bottom-color: #1677ff; }
+.job-detail-tabs button:focus-visible, .job-detail-panel:focus-visible { outline: 2px solid #1677ff; outline-offset: 2px; }
+.job-detail-panel { min-width: 0; overflow-wrap: anywhere; }
+.job-detail-panel:not([hidden]) { display: flex; flex-direction: column; gap: 16px; }

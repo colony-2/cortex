@@ -62,7 +62,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      testIgnore: ['recipe-input.spec.ts', 'artifact-viewer.spec.ts', 'markup-preview.spec.ts'],
+      testIgnore: ['job-conversation-runtime.spec.ts', 'recipe-input.spec.ts', 'artifact-viewer.spec.ts', 'markup-preview.spec.ts'],
       use: { ...devices['Desktop Chrome'] },
     },
     {

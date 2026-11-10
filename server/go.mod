@@ -3,10 +3,11 @@ module github.com/colony-2/colony2/server
 go 1.26
 
 require (
-	github.com/colony-2/c2j v0.0.125-0.20261108054604-a563d5ea7ffa
-	github.com/colony-2/jobdb v0.0.77-0.20261108033303-ea45f87bf010
+	github.com/colony-2/c2j v0.0.125-0.20261109155012-f04763b5cca3
+	github.com/colony-2/jobdb v0.0.78-0.20261108193348-5dee36022e67
 	github.com/gorilla/mux v1.8.1
 	github.com/spf13/cobra v1.10.2
+	github.com/stretchr/testify v1.11.1
 	golang.org/x/mod v0.35.0
 	modernc.org/sqlite v1.50.1
 )
@@ -30,6 +31,7 @@ require (
 	github.com/cockroachdb/swiss v0.0.0-20260820225851-333444432258 // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/colony-2/strata-go v0.0.0-20260621025934-747fa0c819c0 // indirect
+	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
@@ -66,6 +68,7 @@ require (
 	github.com/oapi-codegen/runtime v1.4.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.16.0 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.42.0 // indirect

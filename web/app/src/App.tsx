@@ -211,6 +211,9 @@ function ReviewsRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
 function InputRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
   const projectId = useRouteProjectId(fallbackProjectId);
   const { jobId } = useParams();
+  const location = useLocation();
+  const selectors = new URLSearchParams(location.search);
+  if (selectors.has('occurrenceId') || selectors.has('requestId')) return <Navigate replace to={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId!)}/story${location.search}`} />;
   return <InputDetailPage key={JSON.stringify([projectId, jobId])} projectId={projectId} />;
 }
 

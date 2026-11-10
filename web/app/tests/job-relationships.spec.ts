@@ -62,7 +62,13 @@ async function capture(page: Page, name: string) {
 const related=(page:Page)=>page.getByRole('region',{name:'Related jobs and goals'});
 const disclosure=(page:Page)=>related(page).locator('details');
 const summary=(page:Page)=>related(page).locator('summary');
+async function selectStoryTab(page: Page, name: string) {
+  if (!new URL(page.url()).pathname.endsWith('/story')) return;
+  const tab = page.getByRole('tab', { name, exact: true });
+  if (await tab.getAttribute('aria-selected') !== 'true') await tab.click();
+}
 async function initiallyClosed(page:Page) {
+  await selectStoryTab(page, 'Relationships');
   await expect(summary(page)).toBeVisible();
   await expect(disclosure(page)).not.toHaveAttribute('open');
   await expect(related(page).getByRole('link',{name:'Job · release-104',exact:true})).toBeHidden();
@@ -73,6 +79,7 @@ async function initiallyClosed(page:Page) {
   expect(await related(page).evaluate(e=>e.contains(document.activeElement))).toBe(false);
 }
 async function openFresh(page:Page) {
+  await selectStoryTab(page, 'Relationships');
   await expect(summary(page)).toBeVisible();
   await expect(disclosure(page)).not.toHaveAttribute('open');
   await summary(page).click();
@@ -91,9 +98,12 @@ test('REL-001,010,011,012,030,033,038 story links navigate to correct identities
   await expect(related(page).getByRole('link',{name:'Goal · goal-release',exact:true})).toHaveAttribute('href','/project/other/goals/goal-release');
   await expect(related(page).getByRole('link',{name:'Job · Check API compatibility'})).toBeVisible();
   expect(inspections).toEqual(['evidence-105', 'evidence-105']); // Existing development StrictMode replay.
+  await selectStoryTab(page, 'Summary');
   await expect(page.getByText('Run Summary',{exact:true})).toBeVisible();
-  expect(await related(page).evaluate(e=>e.getBoundingClientRect().top)).toBeLessThan(await page.getByText('Run Summary',{exact:true}).evaluate(e=>e.getBoundingClientRect().top));
+  await expect(related(page)).toBeHidden();
+  await selectStoryTab(page, 'Execution');
   await page.getByText('Compatibility checks',{exact:true}).first().click();
+  await selectStoryTab(page, 'Relationships');
   expect(inspections).toEqual(['evidence-105', 'evidence-105']); // Existing development StrictMode replay.
   await capture(page,'story-desktop-expanded.png');
   await related(page).getByRole('link',{name:'Job · Check API compatibility'}).click();
@@ -102,7 +112,8 @@ test('REL-001,010,011,012,030,033,038 story links navigate to correct identities
   await expect(page.getByRole('link',{name:'Goal overview',exact:true})).toHaveAttribute('href','/project/demo/goals/goal-api');
   await openFresh(page);
   await expect(related(page).getByText('No parent recorded')).toBeVisible();
-  await page.goBack();
+  await page.goBack(); // Child's Conversation, before selecting its Relationships tab.
+  await page.goBack(); // Return to the parent job.
   await openFresh(page);
   await related(page).getByRole('link',{name:'Goal · goal-api',exact:true}).click();
   await expect(page).toHaveURL(/\/goals\/goal-api/);
@@ -220,7 +231,9 @@ for(const width of [1440,390,320]) test(`REL-040,041,042 story default and reloa
   await page.keyboard.press('Space');
   await expect(disclosure(page)).toHaveAttribute('open');
   await expect(related(page).getByRole('link',{name:'Job · Check API compatibility'})).toBeVisible();
+  await selectStoryTab(page, 'Execution');
   await page.getByText('Compatibility checks',{exact:true}).first().click();
+  await selectStoryTab(page, 'Relationships');
   await expect(disclosure(page)).toHaveAttribute('open');
   await summary(page).focus(); await page.keyboard.press('Enter');
   await expect(disclosure(page)).not.toHaveAttribute('open');

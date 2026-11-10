@@ -39,7 +39,7 @@ func (f *reviewRuntimeStub) GetForm(_ context.Context, tenant, job string) (inpu
 func (f *reviewRuntimeStub) SubmitFormResponse(_ context.Context, tenant, job string, sub input.FormSubmission, actor input.Actor) (input.Output, error) {
 	f.tenant, f.submission, f.actor = tenant, sub, actor
 	if sub.RequestID != f.forms[job].RequestID {
-		return input.Output{}, fmt.Errorf("request_id mismatch")
+		return input.Output{}, fmt.Errorf("submission rejected: %w", input.ErrStaleRequest)
 	}
 	return input.Output{Receipt: &input.Receipt{RequestID: sub.RequestID, Actor: actor}}, nil
 }
@@ -155,7 +155,7 @@ func TestReviewHTTPAdapters(t *testing.T) {
 			router.ServeHTTP(w, req)
 			want := 401
 			if signedIn {
-				want = 400
+				want = 409
 			}
 			if w.Code != want {
 				t.Fatalf("%d %s", w.Code, w.Body.String())

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/colony-2/c2j/pkg/input"
 	"github.com/colony-2/jobdb/pkg/jobdb"
 	jobworkflow "github.com/colony-2/jobdb/pkg/workflow"
 )
@@ -35,6 +36,7 @@ type Server struct {
 	router        http.Handler
 	story         storyService
 	inputs        inputRuntime
+	history       input.HistoryService
 	cells         jobdb.CellRuntime
 	configuration jobdb.ConfigurationAdmin
 	secretAdmin   secretAdmin

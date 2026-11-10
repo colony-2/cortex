@@ -123,7 +123,7 @@ for (const viewport of [{width:1280,height:800},{width:390,height:844}]) {
         opener=page.getByRole('link',{name:'docs/bar.md',exact:true});await opener.click();
         backgroundChanged=true;
         // Refresh behind the modal without changing its attachment scope.
-        await page.locator('button').filter({hasText:'Refresh'}).evaluate((el:HTMLElement)=>el.click());
+        await page.getByRole('button',{name:'reload Refresh',exact:true}).evaluate((el:HTMLElement)=>el.click());
         await expect(page.getByRole('tab',{name:'Artifacts (4)',includeHidden:true})).toBeAttached();
       }
       const scope=viewer==='story'?page.getByRole('dialog'):page.locator('.review-document-preview');
@@ -293,6 +293,7 @@ for (const width of [1280, 390]) {
       await route.fulfill({ json: body });
     });
     await page.goto('/project/tenant/jobs/job/story');
+    await page.getByRole('tab', { name: 'Input artifacts', exact: true }).click();
     await expect(page.getByText('Input artifacts (5)', { exact: true })).toBeVisible();
     // The dev app uses StrictMode, which may repeat the initial effect.
     const loadedInventoryRequests = inventoryRequests;
@@ -301,22 +302,28 @@ for (const width of [1280, 390]) {
     const inputPane = page.locator('.input-artifacts-disclosure');
     await expect(runSummary).toHaveAttribute('open', '');
     await expect(inputPane).toHaveAttribute('open', '');
-    await runSummary.locator(':scope > summary').click();
     await inputPane.locator(':scope > summary').click();
+    await page.getByRole('tab', { name: 'Summary', exact: true }).click();
+    await runSummary.locator(':scope > summary').click();
     await expect(runSummary).not.toHaveAttribute('open');
     await expect(inputPane).not.toHaveAttribute('open');
     await expect(runSummary.locator(':scope > summary')).toHaveText('Run Summary');
     await expect(inputPane.locator(':scope > summary')).toHaveText('Input artifacts (5)');
     await expect(page.getByRole('button', { name: longName, exact: true })).not.toBeVisible();
+    await page.getByRole('tab', { name: 'Input artifacts', exact: true }).click();
+    await expect(page.getByRole('button', { name: longName, exact: true })).not.toBeVisible();
     await capture(`input-panes-collapsed-${width}.png`, true);
+    await page.getByRole('tab', { name: 'Summary', exact: true }).click();
     await runSummary.locator(':scope > summary').focus();
     await page.keyboard.press('Enter');
+    await page.getByRole('tab', { name: 'Input artifacts', exact: true }).click();
     await inputPane.locator(':scope > summary').focus();
     await page.keyboard.press('Space');
     await expect(runSummary).toHaveAttribute('open', '');
     await expect(inputPane).toHaveAttribute('open', '');
     // Each native disclosure supports both activation keys and retains inventory.
-    for (const pane of [runSummary, inputPane]) {
+    for (const [tab, pane] of [['Summary', runSummary], ['Input artifacts', inputPane]] as const) {
+      await page.getByRole('tab', { name: tab, exact: true }).click();
       await pane.locator(':scope > summary').focus();
       await page.keyboard.press('Space');
       await expect(pane).not.toHaveAttribute('open');

@@ -60,7 +60,13 @@ func NewServer(cfg Config, engine jobworkflow.Engine) (*Server, error) {
 		return nil, err
 	}
 
+	history, err := input.NewHistoryService(input.HistoryConfig{Reader: ctl})
+	if err != nil {
+		return nil, err
+	}
+
 	s := &Server{
+		history: history,
 		inputs:  runtime,
 		cfg:     cfg,
 		engine:  engine,
@@ -103,6 +109,9 @@ func (s *Server) buildRouter(inputService ops.ManagementService) http.Handler {
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/restart-context", s.requireJob(s.handleRestartContext)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/chapters/download", s.requireJob(s.handleChapterDownload)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/input-artifacts", s.requireArchivedJob(s.handleInputArtifacts)).Methods(http.MethodGet, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/conversation", s.requireArchivedJob(s.handleConversation)).Methods(http.MethodGet, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/conversation/entry", s.requireArchivedJob(s.handleConversationEntry)).Methods(http.MethodGet, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/conversation/artifact", s.requireArchivedJob(s.handleConversationArtifact)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/events", s.handleJobLeaseEvents).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/story", s.requireArchivedJob(s.handleJobStory)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/outcome", s.requireArchivedJob(s.handleJobOutcome)).Methods(http.MethodGet, http.MethodOptions)

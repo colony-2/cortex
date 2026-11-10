@@ -1,4 +1,6 @@
 import JobLeaseTimeline from './JobLeaseTimeline';
+import JobConversation from './JobConversation';
+import JobDetailTabs, { jobDetailTab, type JobDetailTab } from './JobDetailTabs';
 import NodePayloadView from './NodePayloadView';
 import JobRelationships from './JobRelationships';
 import { cellLabel } from '../utils/cellPresentation';
@@ -41,7 +43,7 @@ import CancelJobButton from './CancelJobButton';
 import DownloadChaptersButton from './DownloadChaptersButton';
 import { getJob, getJobInputArtifacts, type InputArtifact } from '@colony2/shared/api';
 import type { RecipeJob } from '@colony2/shared/types';
-import { jobStatusValue } from '../utils/jobStatus';
+import { isFinishedJob, jobStatusPresentation, jobStatusValue } from '../utils/jobStatus';
 import { goalPath } from './JobWaitLinks';
 import { jobFilterSearch } from '../utils/jobFilters';
 import { buildStoryTree, storyAttempts, storyNodeName, type ArtifactKey, type StoryNode, type StoryKind, type StoryNodeRef } from '../utils/storyTree';
@@ -339,6 +341,18 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
     return () => controller.abort();
   }, [projectId, jobId, artifactIdentity, inputRetry]);
 
+  const [historyRevision, setHistoryRevision] = useState(0);
+  const historyRefreshKey = useMemo(() => ({ revision: historyRevision, pendingInputs }), [historyRevision, pendingInputs]);
+  const activeTab = jobDetailTab(searchParams);
+  const requestId = searchParams.has('occurrenceId') ? searchParams.get('occurrenceId') : searchParams.get('requestId');
+  const selectTab = (tab: JobDetailTab) => setSearchParams(previous => {
+    const next = new URLSearchParams(previous);
+    next.set('tab', tab);
+    next.delete('requestId');
+    next.delete('occurrenceId');
+    next.delete('input');
+    return next;
+  });
   const wantInput = searchParams.get('input') === '1';
   const taskOrdinalParamRaw = searchParams.get('taskOrdinal');
   const taskOrdinalParam = taskOrdinalParamRaw ? Number(taskOrdinalParamRaw) : null;
@@ -413,13 +427,17 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   const contextNodes = selectedNode ? [...selectedAncestors, ...(childrenByNode.get(selectedNode) || [])] : [];
 
 
+  const storyGeneration = useRef(0);
   const load = async (opts?: { preserveSelection?: boolean }) => {
     if (!jobId) return;
+    const generation = ++storyGeneration.current;
+    setHistoryRevision(value => value + 1);
     loadMetadata();
     setLoading(true);
     setError(null);
     try {
       const data = await fetchStory(projectId, jobId);
+      if (generation !== storyGeneration.current) return;
       const { treeData: nextTreeData, keyToRef: nextKeyToRef, keyToParent: nextKeyToParent, legacyKeyToKey: nextLegacyKeyToKey } =
         buildTree(data.root);
       setStory(data);
@@ -453,22 +471,25 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
           : Array.from(nextKeyToRef.keys()));
       }
     } catch (e) {
+      if (generation !== storyGeneration.current) return;
       console.error('Failed to load job story', e);
       setError(e instanceof Error ? e.message : 'Failed to load job story');
     } finally {
-      setLoading(false);
+      if (generation === storyGeneration.current) setLoading(false);
     }
   };
 
   useEffect(() => {
     setLoadedJob(undefined);
+    setStory(null);
+    setSelectedKey(null);
     load();
-    return () => { ++metadataGeneration.current; };
+    return () => { ++metadataGeneration.current; ++storyGeneration.current; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, jobId]);
 
   useEffect(() => {
-    const shouldLoadDetails = !!jobId && (isPendingInput || wantInput);
+    const shouldLoadDetails = !!jobId && requestId === null && (isPendingInput || wantInput);
     if (!shouldLoadDetails) {
       setPendingInputDetails(null);
       setPendingInputError(null);
@@ -477,6 +498,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
     }
 
     let cancelled = false;
+    setPendingInputDetails(null);
     setPendingInputLoading(true);
     setPendingInputError(null);
 
@@ -500,7 +522,20 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
     return () => {
       cancelled = true;
     };
-  }, [projectId, jobId, isPendingInput, wantInput, pendingInputs]);
+  }, [projectId, jobId, isPendingInput, wantInput, pendingInputs, requestId]);
+
+  // Browser history changes the URL without reloading the job. Restore the
+  // recorded execution selection while retaining the selected top-level tab.
+  useEffect(() => {
+    const nodeID = searchParams.get('nodeId');
+    const path = searchParams.get('path');
+    const legacy = path !== null ? `${path}|attempt:${searchParams.get('attempt') || '1'}` : null;
+    const key = nodeID && keyToRef.has(nodeID) ? nodeID
+      : treeModel.legacyKeyToKey.get(nodeID || legacy || '');
+    if (!key) return;
+    setSelectedKey(key);
+    setExpandedKeys(previous => unionKeys(previous, ancestorKeysForKey(key, keyToParent)));
+  }, [searchParams, keyToRef, keyToParent, treeModel.legacyKeyToKey]);
 
   useEffect(() => {
     if (!focusTaskOrdinal || !story?.root) return;
@@ -514,15 +549,6 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
     setExpandedKeys((prev) => unionKeys(prev, ancestors));
     setSelectedKey(key);
     setActiveDetailsTab(wantInput ? 'pending_input' : 'overview');
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.set('nodeId', key);
-      next.set('path', ref.node.path.join('/'));
-      next.set('attempt', String(ref.attempt));
-      next.set('taskOrdinal', String(focusTaskOrdinal));
-      if (wantInput) next.set('input', '1');
-      return next;
-    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusTaskOrdinal, story?.root, keyToRef, keyToParent]);
 
@@ -546,6 +572,15 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRefresh, refreshIntervalMs, story?.status, projectId, jobId, selectedKey]);
+
+  // Conversation completion must keep refreshing even if execution inspection
+  // is unavailable. The execution poll already refreshes metadata when running.
+  useEffect(() => {
+    if (!autoRefresh || !job || !terminalStatus || isFinishedJob(job) || story?.status === 'running') return;
+    const timer = window.setInterval(loadMetadata, refreshIntervalMs);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRefresh, refreshIntervalMs, projectId, jobId, terminalStatus, story?.status]);
 
   const openArtifact = (artifact: ArtifactKey, attachments = selectedNode?.artifact_keys || []) => {
     artifactOpener.current = document.activeElement as HTMLElement;
@@ -782,34 +817,24 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
             <div>{metadata.error}</div>
           </div>}
           action={<Button size="small" onClick={loadMetadata}>Retry</Button>} />}
+        {job && <Tag color={jobStatusPresentation(terminalStatus || 'unknown').color} aria-label="Job status">{jobStatusPresentation(terminalStatus || 'unknown').label}</Tag>}
         {job && <div aria-label="Job cell" style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
           <Text strong>Cell: </Text>{cellLabel(job.cell_name)}
         </div>}
         {job && <JobLeaseTimeline projectId={projectId} jobId={job.job_id} createdAt={job.created_at} />}
+        <JobDetailTabs activeTab={activeTab} onChange={selectTab} />
+        <section role="tabpanel" id="job-panel-conversation" aria-labelledby="job-tab-conversation" hidden={activeTab !== 'conversation'} tabIndex={0} className="job-detail-panel">
         {job && <section aria-label="Job prompt">
           <Text strong>Prompt</Text>
           <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginBottom: 0 }}>{prompt || 'No prompt recorded for this job.'}</Typography.Paragraph>
         </section>}
-        {failed && <Alert type="error" showIcon
-          message={terminalStatus === 'failed_timeout' ? 'Job timed out' : 'Job failed'}
-          description={<div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{failureDetail || 'No failure details recorded for this job.'}</div>} />}
-        {loading && !story && <Spin size="large" />}
-
-        {error ? (
-          <Alert
-            type="error"
-            showIcon
-            message="Failed to load job story"
-            description={error}
-            action={
-              <Button size="small" onClick={() => load()}>
-                Retry
-              </Button>
-            }
-          />
-        ) : null}
-
-        {pendingInputLoading ? (
+        <JobConversation tenant={projectId} job={jobId} occurrence={searchParams.get('occurrenceId') ?? undefined}
+          requestId={searchParams.get('requestId') ?? undefined} running={!!job && !!terminalStatus && !isFinishedJob(job)}
+          refreshKey={historyRefreshKey} onOpen={entry => setSearchParams(previous => {
+            const next = new URLSearchParams(previous); next.set('occurrenceId', entry); next.set('tab', 'conversation');
+            next.delete('requestId'); next.delete('input'); return next;
+          })} />
+        {requestId === null && (pendingInputLoading ? (
           <Alert
             type="warning"
             showIcon
@@ -846,6 +871,9 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                   setSearchParams((prev) => {
                     const next = new URLSearchParams(prev);
                     next.set('input', '1');
+                    next.set('tab', 'conversation');
+                    next.delete('requestId');
+                    next.delete('occurrenceId');
                     if (focusTaskOrdinal !== null) next.set('taskOrdinal', String(focusTaskOrdinal));
                     return next;
                   });
@@ -856,10 +884,33 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
               </Button>
             }
           />
-        ) : null}
+        ) : null)}
 
+        {wantInput && requestId === null && pendingInputDetails && (pendingInputDetails.form.kind === 'review' ? (
+          <Card title={pendingInputDetails.form.title || 'Review'} size="small">
+            <Link to={`/project/${encodeURIComponent(projectId)}/reviews/${encodeURIComponent(jobId)}`}>Open Review</Link>
+          </Card>
+        ) : pendingInputForm ? (
+          <Card title={pendingInputForm.title || 'Input request'} size="small">
+            <InputFormRenderer form={pendingInputForm} onSubmit={submitPendingInput}
+              onCancel={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('input'); return next; })}
+              loading={pendingInputSubmitting} />
+          </Card>
+        ) : null)}
+        {job && terminalStatus && (job.store === 'ARCHIVED' || isFinishedJob(job)) && <section aria-label="Job completion">
+          <Title level={3}>Completion</Title>
+        {failed && <Alert type="error" showIcon
+          message={terminalStatus === 'failed_timeout' ? 'Job timed out' : 'Job failed'}
+          description={<div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{failureDetail || 'No failure details recorded for this job.'}</div>} />}
+          {!failed && <><Text strong>{jobStatusPresentation(terminalStatus || 'unknown').label}</Text>
+            <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{failureDetail || 'No completion details recorded for this job.'}</Typography.Paragraph></>}
+        </section>}
+        </section>
+        <section role="tabpanel" id="job-panel-relationships" aria-labelledby="job-tab-relationships" hidden={activeTab !== 'relationships'} tabIndex={0} className="job-detail-panel">
         {job && <JobRelationships projectId={projectId} jobId={jobId!} job={job} />}
 
+        </section>
+        <section role="tabpanel" id="job-panel-summary" aria-labelledby="job-tab-summary" hidden={activeTab !== 'summary'} tabIndex={0} className="job-detail-panel">
         <details className="relationship-disclosure story-summary-disclosure" open>
           <summary>Run Summary</summary>
           <Card size="small" variant="borderless">
@@ -906,6 +957,8 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
           </Card>
         </details>
 
+        </section>
+        <section role="tabpanel" id="job-panel-input-artifacts" aria-labelledby="job-tab-input-artifacts" hidden={activeTab !== 'input-artifacts'} tabIndex={0} className="job-detail-panel">
         <details className="relationship-disclosure input-artifacts-disclosure" open>
           <summary>{`Input artifacts${inputs?.artifacts ? ` (${inputs.artifacts.length})` : ''}`}</summary>
           <Card size="small" variant="borderless" className="input-artifacts">
@@ -921,6 +974,24 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
               )} />}
           </Card>
         </details>
+
+        </section>
+        <section role="tabpanel" id="job-panel-execution" aria-labelledby="job-tab-execution" hidden={activeTab !== 'execution'} tabIndex={0} className="job-detail-panel">
+        {loading && !story && <Spin size="large" />}
+
+        {error ? (
+          <Alert
+            type="error"
+            showIcon
+            message="Failed to load job story"
+            description={error}
+            action={
+              <Button size="small" onClick={() => load()}>
+                Retry
+              </Button>
+            }
+          />
+        ) : null}
 
         {detailsLink}
         <div className="story-panels">
@@ -1260,6 +1331,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
             )}
           </Card>
         </div>
+        </section>
       </Space>
 
       {activeArtifact && <Modal
