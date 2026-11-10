@@ -5,7 +5,7 @@ import config from './playwright.config';
 // Keep actual-runtime coverage in the normal configuration.
 export default defineConfig({
   ...config,
-  testMatch: ['job-conversation.spec.ts', 'node-payload.spec.ts', 'story-scroll.spec.ts', 'mobile.spec.ts', 'job-relationships.spec.ts'],
+  testMatch: ['review-queue.spec.ts', 'job-conversation.spec.ts', 'node-payload.spec.ts', 'story-scroll.spec.ts', 'mobile.spec.ts', 'job-relationships.spec.ts'],
   projects: config.projects?.filter(project => project.name === 'chromium'),
   webServer: Array.isArray(config.webServer) ? [config.webServer[3]] : undefined,
 });

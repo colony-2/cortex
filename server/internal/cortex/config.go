@@ -28,6 +28,7 @@ type Config struct {
 }
 
 type Server struct {
+	timing        pendingTiming
 	cfg           Config
 	engine        jobworkflow.Engine
 	jobDeletion   jobdb.JobDeletionRuntime

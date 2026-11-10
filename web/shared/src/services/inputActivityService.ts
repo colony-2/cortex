@@ -170,6 +170,9 @@ export interface FormResponse {
 // API response types
 export interface PendingInput extends Partial<Omit<RecipeJobSummary, 'cell_id' | 'cell_name' | 'repo'>>, Pick<RecipeJobSummary, 'cell_id' | 'cell_name' | 'repo'> {
   id: string;
+  requested_at?: string;
+  request_id?: string;
+  task_ordinal?: number;
 }
 
 export interface UserInputDetails {

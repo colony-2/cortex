@@ -22,10 +22,12 @@ type inputRuntime interface {
 	SubmitFormResponse(context.Context, string, string, input.FormSubmission, input.Actor) (input.Output, error)
 }
 
-// Pending rows intentionally contain only compact job metadata. Form kind,
-// documents and request identity belong to selected-item inspection.
+// Pending rows add occurrence timing without exposing form fields or documents.
 type pendingInputSummary struct {
-	ID string `json:"id"`
+	ID          string `json:"id"`
+	RequestedAt string `json:"requested_at,omitempty"`
+	RequestID   string `json:"request_id,omitempty"`
+	TaskOrdinal *int64 `json:"task_ordinal,omitempty"`
 	recipejob.RecipeJob
 }
 
@@ -59,7 +61,7 @@ func (s *Server) pendingInputSummaries(ctx context.Context, tenant string) ([]pe
 }
 
 func (s *Server) handlePendingInputs(w http.ResponseWriter, r *http.Request) {
-	summaries, err := s.pendingInputSummaries(r.Context(), s.tenantID(r))
+	summaries, err := s.timedPendingInputs(r.Context(), s.tenantID(r))
 	if err != nil {
 		writeError(w, err)
 		return

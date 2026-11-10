@@ -10,9 +10,9 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Poll compact summaries, including payload revisions, so changed requests and
-// expiry reach browsers without reading task handles or forms. Send one snapshot
-// per change rather than triggering a new list request for every pending job.
+// Poll compact summaries, including payload revisions, and reuse cached timing
+// between occurrence changes. Send one snapshot per change rather than triggering
+// a new list request for every pending job.
 func (s *Server) handleInputStream(w http.ResponseWriter, r *http.Request) {
 	projectID := mux.Vars(r)["projectId"]
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -39,7 +39,7 @@ func (s *Server) handleInputStream(w http.ResponseWriter, r *http.Request) {
 	heartbeat := time.NewTicker(30 * time.Second)
 	defer heartbeat.Stop()
 	for {
-		inputs, err := s.pendingInputSummaries(r.Context(), projectID)
+		inputs, err := s.timedPendingInputs(r.Context(), projectID)
 		if err != nil {
 			if r.Context().Err() != nil {
 				return

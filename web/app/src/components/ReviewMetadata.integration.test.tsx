@@ -108,3 +108,36 @@ it('REL-001,030,031 preserves parent context and review draft through child fail
   expect(screen.getByLabelText('Feedback')).toHaveValue('Retained draft');
   expect(screen.getByRole('button',{name:'OK',exact:true})).toBeEnabled();
 });
+
+it('PR-009,015 orders load, refresh and live replacements and preserves unavailable, empty and disconnected states', async () => {
+  const row=(id:string,requested_at?:string)=>({...jobIdentity,id,title:`Queue ${id}`,requested_at});
+  setupMockInputs('tenant',[row('new','2026-11-10T00:00:00Z'),row('old','2026-11-01T00:00:00Z'),row('unknown')], []);
+  const {container}=render(view());
+  const source=await waitForSSEConnection(); source.emitConnected();
+  await screen.findByText('Queue old');
+  const titles=()=>Array.from(container.querySelectorAll('.ant-card strong')).map(el=>el.textContent);
+  expect(titles()).toEqual(['Queue old','Queue new','Queue unknown']);
+  setupMockInputs('tenant',[row('new','2026-11-10T00:00:00Z'),row('old','2026-11-01T00:00:00Z')], []);
+  fireEvent.click(screen.getByRole('button',{name:/Refresh/}));
+  await waitFor(()=>expect(titles()).toEqual(['Queue old','Queue new']));
+  source.dispatchEvent(new MessageEvent('inputs_changed',{data:JSON.stringify({inputs:[row('future','2030-01-01T00:00:00Z'),row('earliest','2026-01-01T00:00:00Z'),row('unknown')]})}));
+  await waitFor(()=>expect(titles()).toEqual(['Queue earliest','Queue future','Queue unknown']));
+  expect(screen.getByText('Request time unavailable')).toBeVisible();
+  inputActivityService.emit('connection_failed');
+  expect(await screen.findByText('Live updates unavailable. Refresh to check for requests.')).toBeVisible();
+  expect(titles()).toEqual(['Queue earliest','Queue future','Queue unknown']);
+  source.dispatchEvent(new MessageEvent('inputs_changed',{data:JSON.stringify({inputs:[]})}));
+  expect(await screen.findByText('No pending reviews')).toBeVisible();
+});
+
+it('PR-015 keeps load errors distinct from empty state and retries the queue', async () => {
+  server.use(http.get('http://localhost:8080/api/projects/tenant/user-inputs/pending',()=>new HttpResponse(null,{status:503})));
+  render(view()); (await waitForSSEConnection()).emitConnected();
+  expect(await screen.findByText('Could not load reviews')).toBeVisible();
+  expect(screen.queryByText('No pending reviews')).toBeNull();
+  setupMockInputs('tenant',[{...jobIdentity,id:'a',title:'Recovered review'}], []);
+  server.use(http.get('http://localhost:8080/api/projects/tenant/user-inputs/pending',()=>HttpResponse.json([{...jobIdentity,id:'a',title:'Recovered review'}])));
+  fireEvent.click(screen.getByRole('button',{name:'Retry reviews'}));
+  expect(await screen.findByText('Recovered review')).toBeVisible();
+  expect(screen.getByText('Request time unavailable')).toBeVisible();
+});

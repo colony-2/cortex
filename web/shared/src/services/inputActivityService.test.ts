@@ -72,13 +72,13 @@ describe('InputActivityService', () => {
 
   describe('SSE Connection', () => {
     it('preserves exact payloads with their revision through HTTP caching and streamed replacement', async () => {
-      const raw = '{"cell_id":"cell-1","cell_name":"platform","repo":"github.com/acme/platform","id":"job","client_payload":{"other":9007199254740993},"client_payload_revision":7}';
+      const raw = '{"requested_at":"2026-11-01T00:00:00Z","request_id":"first","task_ordinal":12,"cell_id":"cell-1","cell_name":"platform","repo":"github.com/acme/platform","id":"job","client_payload":{"other":9007199254740993},"client_payload_revision":7}';
       vi.mocked(fetch).mockResolvedValueOnce(new Response(`[${raw}]`));
       expect(stringifyJobJSON((await inputActivityService.getPendingInputs(projectId))[0])).toBe(raw);
       inputActivityService.connect(projectId);
       const source = EventSourceMock.mock.results[0].value;
       const snapshot = source.addEventListener.mock.calls.find(([name]: [string]) => name === 'inputs_changed')[1];
-      const replacement = '{"cell_id":"cell-1","cell_name":"platform","repo":"github.com/acme/platform","id":"job","client_payload":null,"client_payload_revision":8}';
+      const replacement = '{"requested_at":"2026-11-02T00:00:00Z","request_id":"second","task_ordinal":13,"cell_id":"cell-1","cell_name":"platform","repo":"github.com/acme/platform","id":"job","client_payload":null,"client_payload_revision":8}';
       snapshot({ data: `{"inputs":[${replacement}]}` });
       expect(stringifyJobJSON((await inputActivityService.getPendingInputs(projectId))[0])).toBe(replacement);
       expect(fetch).toHaveBeenCalledTimes(1);
