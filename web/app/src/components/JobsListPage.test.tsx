@@ -914,3 +914,12 @@ it.each(['status=none', 'cellSelection=none'])('GS-019 preserves empty selection
   expect(screen.getByText(query.startsWith('status') ? 'No statuses selected' : 'No cells selected')).toBeVisible();
   expect(screen.getByTestId('location')).toHaveTextContent(query); expect(fetch).not.toHaveBeenCalled();
 });
+
+it.each(['recipe','generic'])('DAG-09 selected %s jobs use the appropriate DAG destination', async job_type => {
+ const job={...jobIdentity,job_id:'entry',goal_id:'goal',prompt:'Grouped goal',tenant_id:'tenant',status:'READY',store:'ACTIVE',job_type} as RecipeJob;
+ vi.mocked(getJob).mockResolvedValue(job);
+ vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({jobs:[job]}))));
+ render(<MemoryRouter initialEntries={['/?expanded=goal:goal']}><JobsListPage projectId="tenant" /></MemoryRouter>);
+ await waitFor(()=>expect(getJob).toHaveBeenCalled());
+ expect(await screen.findByRole('link',{name:'DAG',exact:true})).toHaveAttribute('href',`/project/tenant/jobs/entry/${job_type==='recipe'?'story?tab=dag':'tree'}`);
+});

@@ -96,3 +96,46 @@ it('TREE-010 retains ancestry preferentially when ascent reaches the node cap',a
  const t=create(fixture([n('entry','middle'),n('middle','root'),n('root')]),'entry',{nodes:2});await t.run();
  expect([...t.state.nodes.keys()]).toEqual(['entry','middle']);expect(t.state.boundary).toBe('Node limit');expect(t.canResume).toBe(false);
 });
+
+it('DAG-06 paused entry can resume and ignores late transport and old finalizers', async () => {
+  let finish!: (value: any) => void;
+  let oldSignal!: AbortSignal;
+  const source = fixture([n('entry')]);
+  vi.mocked(source.node).mockImplementationOnce((_, __, signal) => { oldSignal = signal; return new Promise(r => finish = r); });
+  const t = create(source);
+  const old = t.run(); t.pause();
+  expect(oldSignal.aborted).toBe(true);
+  expect(t.canResume).toBe(true);
+  expect(t.state.error).toBeUndefined();
+  const next = t.run(); await old; await next;
+  finish({node:n('obsolete'), observed_at}); await Promise.resolve();
+  expect([...t.state.nodes.keys()]).toEqual(['entry']);
+  expect(t.state.loading).toBe(false);
+  expect(t.state.error).toBeUndefined();
+});
+it('DAG-06 interrupted child cursor resumes without stale nodes or overlapping requests', async () => {
+  let finish!: (value: any) => void;
+  let ready!: () => void; const started = new Promise<void>(r => ready = r);
+  const source = fixture([n('entry')]);
+  vi.mocked(source.children).mockImplementationOnce(async () => page([], 'next')).mockImplementationOnce(() => {ready(); return new Promise(r => finish = r);});
+  const t = create(source); const old = t.run(); await started; t.pause();
+  expect(t.state.branches.get('entry')).toMatchObject({state:'more', token:'next'});
+  const next = t.run(); const duplicate = t.run(); await Promise.all([old,next,duplicate]);
+  finish(page([n('stale','entry')])); await Promise.resolve();
+  expect(t.state.nodes.has('stale')).toBe(false);
+  expect(source.children).toHaveBeenCalledTimes(3);
+  expect(t.state.branches.get('entry')?.state).toBe('exhausted');
+});
+it('DAG-06 old finalizers cannot mark a new pending run idle or accept obsolete ancestry', async () => {
+ let first!: (value:any)=>void, second!: (value:any)=>void;
+ const source=fixture([n('entry')]);
+ vi.mocked(source.node).mockImplementationOnce(()=>new Promise(r=>first=r)).mockImplementationOnce(()=>new Promise(r=>second=r));
+ const t=create(source); const old=t.run(); t.pause(); const current=t.run(); await old;
+ expect(t.state.loading).toBe(true);
+ first({node:n('wrong','obsolete-parent'),observed_at}); await Promise.resolve();
+ expect(t.state.nodes.size).toBe(0);
+ expect(t.state.loading).toBe(true);
+ second({node:n('entry'),observed_at}); await current;
+ expect(t.state.nodes.size).toBe(1);
+ expect(t.state.loading).toBe(false);
+});

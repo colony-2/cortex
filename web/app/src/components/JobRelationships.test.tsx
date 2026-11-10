@@ -11,7 +11,6 @@ const job = { tenant_id: 'tenant', job_id: 'current', goal_id: 'current-goal' } 
 const child = (id: string, extra = {}) => ({ ...job, job_id: id, goal_id: 'shared', cell_name: 'platform', status: 'READY', store: 'ACTIVE', ...extra } as RecipeJob);
 function mount(current = job, tenant = 'tenant', id = 'current') {
   const result = render(<MemoryRouter><JobRelationships projectId={tenant} jobId={id} job={current} /></MemoryRouter>);
-  fireEvent.click(screen.getByText('Related jobs and goals', { selector: 'summary' }));
   return result;
 }
 beforeEach(() => api.mockReset().mockResolvedValue({ jobs: [] }));
@@ -99,29 +98,24 @@ it('REL-029 clears identity and ignores obsolete responses', async () => {
   api.mockImplementationOnce(() => new Promise(done => {finish=done;})).mockResolvedValueOnce({jobs:[child('new')]});
   const {rerender}=mount();
   rerender(<MemoryRouter><JobRelationships projectId="other" jobId="different" job={{...job,parent:{job_id:'new-parent'}}} /></MemoryRouter>);
-  expect(document.querySelector('details')).not.toHaveAttribute('open');
-  fireEvent.click(screen.getByText('Related jobs and goals', { selector: 'summary' }));
+  expect(document.querySelector('details')).toBeNull();
   await screen.findByRole('link',{name:'Job · new'});
   await act(async()=>finish({jobs:[child('obsolete')]}));
   expect(screen.queryByRole('link',{name:'Job · obsolete'})).toBeNull();
   expect(api).toHaveBeenLastCalledWith('other','different',{pageSize:20,pageToken:undefined});
 });
 
-it('REL-040,042 fetches while closed and preserves rows, cursor and expansion through toggles and rerenders', async () => {
+it('REL-040,042 DAG-16 shows content directly and preserves rows and cursor through rerenders', async () => {
   api.mockResolvedValueOnce({jobs:[child('one')],next_page_token:'cursor+/='}).mockResolvedValueOnce({jobs:[child('two')],next_page_token:'last'});
   const view=render(<MemoryRouter><JobRelationships projectId="tenant" jobId="current" job={job} /></MemoryRouter>);
-  const summary=screen.getByText('Related jobs and goals', {selector:'summary'});
-  const details=summary.parentElement!;
-  expect(details).not.toHaveAttribute('open');
+  expect(screen.getByRole('heading', {name:'Related jobs and goals'})).toBeVisible();
+  expect(document.querySelector('details')).toBeNull();
   await waitFor(()=>expect(screen.getByText('one · platform')).toBeInTheDocument());
-  expect(screen.getByRole('link',{name:'Job · one'})).not.toBeVisible();
+  expect(screen.getByRole('link',{name:'Job · one'})).toBeVisible();
   expect(api).toHaveBeenCalledTimes(1);
-  fireEvent.click(summary);
   fireEvent.click(screen.getByRole('button',{name:'Load more child jobs'}));
   await screen.findByRole('link',{name:'Job · two'});
-  fireEvent.click(summary); fireEvent.click(summary);
   view.rerender(<MemoryRouter><JobRelationships projectId="tenant" jobId="current" job={{...job,title:'Updated',parent:{job_id:'parent'}}} /></MemoryRouter>);
-  expect(details).toHaveAttribute('open');
   expect(screen.getByText('2 child jobs shown · More available')).toBeVisible();
   expect(screen.getByRole('link',{name:'Job · one'})).toBeVisible();
   expect(api).toHaveBeenCalledTimes(2);

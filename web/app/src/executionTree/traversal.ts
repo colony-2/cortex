@@ -18,6 +18,7 @@ export class Traversal {
   state: TreeState = { nodes: new Map(), branches: new Map(), warnings: [], blocked: new Set(), loading: false, started: new Date().toISOString() };
   private controller = new AbortController();
   private disposed = false;
+  private generation = 0;
   private pages = 0;
   private ascentHops = 0;
   private ancestor?: string;
@@ -25,11 +26,20 @@ export class Traversal {
   constructor(readonly tenant: string, readonly entry: string, private changed: () => void, private source: TreeAPI = api, readonly budgets: Budgets = DEFAULT_BUDGETS, private now = () => performance.now()) {}
   get viewCapped() { return this.pages >= this.budgets.pages || this.state.nodes.size >= this.budgets.nodes; }
   get canResume() {
-    return !this.viewCapped && (!!this.ancestor && this.ascentHops < this.budgets.ascent
+    return !this.disposed && !this.viewCapped && (!this.initialized || !!this.ancestor && this.ascentHops < this.budgets.ascent
       || [...this.state.branches.values()].some(b => ['pending','more'].includes(b.state)
         || b.state === 'limited' && ['Request limit','Elapsed-time limit'].includes(b.reason || '')));
   }
-  cancel() { this.disposed = true; this.controller.abort(); }
+  pause() {
+    ++this.generation;
+    this.controller.abort();
+    this.state.loading = false;
+    for (const branch of this.state.branches.values()) if (branch.state === 'loading') {
+      branch.state = branch.token ? 'more' : 'pending'; branch.reason = undefined;
+    }
+    this.emit();
+  }
+  cancel() { this.disposed = true; this.pause(); }
   private emit() { if (!this.disposed) this.changed(); }
   private warning(message: string) { if (!this.state.warnings.includes(message)) this.state.warnings.push(message); }
   private accept(node: TreeNode, parent?: string): boolean {
@@ -54,11 +64,13 @@ export class Traversal {
   }
   async run(retry?: string) {
     if (this.disposed || this.state.loading) return;
+    const generation = ++this.generation;
+    const stale = () => this.disposed || generation !== this.generation;
     this.state.loading = true; this.state.error = undefined; this.state.stop = undefined;
     this.controller = new AbortController();
     const signal = this.controller.signal;
     const start = this.now(); let requests = 0;
-    const timeout = setTimeout(() => this.controller.abort(), this.budgets.milliseconds);
+    const timeout = setTimeout(() => { if (!stale()) this.controller.abort(); }, this.budgets.milliseconds);
     const limit = () => {
       if (this.now() - start >= this.budgets.milliseconds || signal.aborted) return 'Elapsed-time limit';
       if (requests >= this.budgets.requests) return 'Request limit';
@@ -78,7 +90,7 @@ export class Traversal {
     try {
       if (!this.initialized) {
         const result = await call(() => this.source.node(this.tenant, this.entry, signal));
-        if (this.disposed) return;
+        if (stale()) return;
         if (result.node.job_id !== this.entry || !this.accept(result.node)) throw new Error('Entry unavailable');
         this.state.observed = result.observed_at; this.ancestor = result.node.parent_job_id;
         this.initialized = true; this.emit();
@@ -91,18 +103,18 @@ export class Traversal {
         if (this.state.nodes.has(id)) { this.state.boundary = 'Cycle boundary'; this.ancestor = undefined; break; }
         try {
           const result = await call(() => this.source.node(this.tenant, id, signal));
-          if (this.disposed) return;
+          if (stale()) return;
           if (result.node.job_id !== id || !this.accept(result.node)) { this.state.boundary = 'Malformed ancestor boundary'; this.ancestor = undefined; break; }
           this.state.observed = result.observed_at; this.ascentHops++;
           this.ancestor = result.node.parent_job_id; this.state.boundary = undefined; this.emit();
-        } catch { this.state.boundary = limit() || 'Ancestor unavailable; known component retained'; break; }
+        } catch { if (stale()) return; this.state.boundary = limit() || 'Ancestor unavailable; known component retained'; break; }
       }
       // All known ancestry is seeded, even if an upper child listing fails.
       const depth = (id: string) => { let d = 0, p = this.state.nodes.get(id)?.parent_job_id; const seen = new Set([id]); while (p && this.state.nodes.has(p) && !seen.has(p)) { seen.add(p); d++; p = this.state.nodes.get(p)?.parent_job_id; } return d; };
       const queue = [...this.state.nodes.keys()].filter(id => retry ? id === retry : !['exhausted', 'failed', 'malformed'].includes(this.state.branches.get(id)!.state));
       queue.sort((a,b) => depth(a)-depth(b) || a.localeCompare(b));
       for (let i = 0; i < queue.length; i++) {
-        if (this.disposed) return;
+        if (stale()) return;
         const id = queue[i], branch = this.state.branches.get(id)!;
         branch.depth = depth(id);
         if (branch.depth >= this.budgets.depth) { branch.state = 'limited'; branch.reason = 'Depth limit'; continue; }
@@ -113,7 +125,7 @@ export class Traversal {
           const token = branch.token; this.pages++;
           try {
             const page = await call(() => this.source.children(this.tenant, id, token, signal));
-            if (this.disposed) return;
+            if (stale()) return;
             if (!Array.isArray(page.nodes)) throw new Error('Malformed child page');
             this.state.observed = page.observed_at;
             let omitted = false, malformed = false;
@@ -132,7 +144,7 @@ export class Traversal {
             if (page.next_page_token === token || branch.seen.has(page.next_page_token)) { branch.state = 'malformed'; branch.reason = 'Repeated cursor; incomplete branch'; break; }
             branch.seen.add(page.next_page_token); branch.token = page.next_page_token; branch.state = 'more'; this.emit();
           } catch {
-            if (this.disposed) return;
+            if (stale()) return;
             branch.state = signal.aborted ? 'limited' : 'failed'; branch.reason = signal.aborted ? 'Elapsed-time limit' : 'Child page unavailable';
             if (signal.aborted) this.state.stop = 'Elapsed-time limit';
             break;
@@ -141,7 +153,7 @@ export class Traversal {
         this.emit();
         if (limit() || this.pages >= this.budgets.pages) { this.state.stop ||= limit() || 'Page limit'; break; }
       }
-    } catch { if (!this.disposed) { if (!this.initialized) this.state.error = 'Entry job unavailable. Retry or return to jobs.'; else this.state.stop = limit() || 'Discovery interrupted'; } }
-    finally { clearTimeout(timeout); if (!this.disposed) { this.state.loading = false; this.emit(); } }
+    } catch { if (!stale()) { if (!this.initialized) this.state.error = 'Entry job unavailable. Retry or return to jobs.'; else this.state.stop = limit() || 'Discovery interrupted'; } }
+    finally { clearTimeout(timeout); if (!stale()) { this.state.loading = false; this.emit(); } }
   }
 }

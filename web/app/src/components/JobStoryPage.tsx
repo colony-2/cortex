@@ -1,3 +1,5 @@
+import { dagReturnPath } from '../executionTree/navigation';
+import { TreeWorkspace } from '../executionTree/TreePage';
 import InboxPanel, { inboxCount } from './InboxPanel';
 import JobLeaseTimeline from './JobLeaseTimeline';
 import JobConversation from './JobConversation';
@@ -289,9 +291,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const treeReturn = (location.state as { treeReturnTo?: unknown } | null)?.treeReturnTo;
-  const treeReturnTo = typeof treeReturn === 'string'
-    && treeReturn.startsWith(`/project/${encodeURIComponent(projectId)}/jobs/`)
-    && /^\/project\/[^/]+\/jobs\/[^/]+\/tree$/.test(treeReturn) ? treeReturn : undefined;
+  const treeReturnTo = dagReturnPath(treeReturn, projectId);
   const [searchParams, setURLSearchParams] = useSearchParams();
   // Node/tab selections must retain the originating goal/list entry.
   const setSearchParams: typeof setURLSearchParams = (next, options) =>
@@ -350,6 +350,9 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const [historyRevision, setHistoryRevision] = useState(0);
   const historyRefreshKey = useMemo(() => ({ revision: historyRevision, pendingInputs }), [historyRevision, pendingInputs]);
   const activeTab = jobDetailTab(searchParams);
+  const dagIdentity = JSON.stringify([projectId, jobId]);
+  const [dagVisited, setDagVisited] = useState<string>();
+  useEffect(() => { if (activeTab === 'dag') setDagVisited(dagIdentity); }, [activeTab, dagIdentity]);
   const stepsActive = useRef(activeTab === 'execution');
   stepsActive.current = activeTab === 'execution';
   const requestId = searchParams.has('occurrenceId') ? searchParams.get('occurrenceId') : searchParams.get('requestId');
@@ -809,8 +812,8 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
             <Title level={2} style={{ margin: 0, overflowWrap: 'anywhere' }}>
               {jobTitle ? `Job Story: ${jobTitle}` : 'Job Story'}
             </Title>
-            <Link className="compact-touch-link" to={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId || '')}/tree`}>Execution tree</Link>
-            {treeReturnTo && <Link className="compact-touch-link" to={treeReturnTo}>Return to execution tree</Link>}
+            <Link className="compact-touch-link" to={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId || '')}/story?tab=dag`} state={location.state}>DAG</Link>
+            {treeReturnTo && <Link className="compact-touch-link" to={treeReturnTo}>Return to DAG</Link>}
             {overviewLink && <Link className="compact-touch-link" to={overviewLink} state={{ goalsReturnTo: returnTo }}>Goal overview</Link>}
           </Space>
           <Space wrap style={{ maxWidth: '100%' }}>
@@ -853,6 +856,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         </div>}
         {job && <JobLeaseTimeline projectId={projectId} jobId={job.job_id} createdAt={job.created_at} />}
         <JobDetailTabs activeTab={activeTab} onChange={selectTab} />
+        <div className="job-detail-panels">
         <section role="tabpanel" id="job-panel-conversation" aria-labelledby="job-tab-conversation" hidden={activeTab !== 'conversation'} tabIndex={0} className="job-detail-panel">
         {job && <section aria-label="Job prompt">
           <Text strong>Prompt</Text>
@@ -941,8 +945,8 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
 
         </section>
         <section role="tabpanel" id="job-panel-summary" aria-labelledby="job-tab-summary" hidden={activeTab !== 'summary'} tabIndex={0} className="job-detail-panel">
-        <details className="relationship-disclosure story-summary-disclosure" open>
-          <summary>Run Summary</summary>
+        <section className="story-summary-disclosure">
+          <h2>Run Summary</h2>
           {!story && <Alert type="info" message="Execution timing and recipe metadata load when you open Steps." action={<Button onClick={() => selectTab('execution')}>Open Steps to load execution timing and recipe metadata</Button>} />}
           <Card size="small" variant="borderless">
             <Descriptions column={2} bordered size="small">
@@ -986,12 +990,12 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
               </details>
             ) : null}
           </Card>
-        </details>
+        </section>
 
         </section>
         <section role="tabpanel" id="job-panel-input-artifacts" aria-labelledby="job-tab-input-artifacts" hidden={activeTab !== 'input-artifacts'} tabIndex={0} className="job-detail-panel">
-        <details className="relationship-disclosure input-artifacts-disclosure" open>
-          <summary>{`Input artifacts${inputs?.artifacts ? ` (${inputs.artifacts.length})` : ''}`}</summary>
+        <section className="input-artifacts-disclosure">
+          <h2>{`Input artifacts${inputs?.artifacts ? ` (${inputs.artifacts.length})` : ''}`}</h2>
           <Card size="small" variant="borderless" className="input-artifacts">
             {inputs?.error ? <Alert type="error" message="Unable to load input artifacts" description={inputs.error} action={<Button onClick={() => setInputRetry(value => value + 1)}>Retry</Button>} />
               : !inputs?.artifacts ? <Text>Loading input artifacts</Text>
@@ -1004,8 +1008,11 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                 </List.Item>
               )} />}
           </Card>
-        </details>
+        </section>
 
+        </section>
+        <section role="tabpanel" id="job-panel-dag" aria-labelledby="job-tab-dag" hidden={activeTab !== 'dag'} tabIndex={0} className="job-detail-panel">
+          {(activeTab === 'dag' || dagVisited === dagIdentity) && <TreeWorkspace key={dagIdentity} tenant={projectId} entry={jobId!} active={activeTab === 'dag'} embedded />}
         </section>
         <section role="tabpanel" id="job-panel-execution" aria-labelledby="job-tab-execution" hidden={activeTab !== 'execution'} tabIndex={0} className="job-detail-panel">
         {activeTab === 'execution' && <>
@@ -1371,6 +1378,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         </div>
         </>}
         </section>
+        </div>
       </Space>
 
       {activeArtifact && <Modal

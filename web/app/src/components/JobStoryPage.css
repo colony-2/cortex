@@ -93,3 +93,5 @@
 .job-detail-tabs button:focus-visible, .job-detail-panel:focus-visible { outline: 2px solid #1677ff; outline-offset: 2px; }
 .job-detail-panel { min-width: 0; overflow-wrap: anywhere; }
 .job-detail-panel:not([hidden]) { display: flex; flex-direction: column; gap: 16px; }
+
+.job-detail-panel > .execution-tree { padding: 0; }

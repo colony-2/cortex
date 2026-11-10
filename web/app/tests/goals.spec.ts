@@ -132,7 +132,7 @@ test('renders a single compact row or grouped attempts with metadata and waiting
   await page.screenshot({ path: '/tmp/cortex-goal-overview.png', fullPage: true });
   await page.getByRole('region', { name: 'Attempts', exact: true }).getByRole('button', { name: 'Details', exact: true }).nth(1).click();
   const details = page.locator('.goal-attempt-detail');
-  await expect(details.getByRole('link', { name: 'Execution tree', exact: true })).toHaveAttribute('href', '/project/goal-layout/jobs/second/tree');
+  await expect(details.getByRole('link', { name: 'DAG', exact: true })).toHaveAttribute('href', '/project/goal-layout/jobs/second/story?tab=dag');
   await expect(details.locator('.ant-alert').getByText(second.completion_detail, { exact: true })).toBeVisible();
   await page.getByText('Technical details', { exact: true }).click();
   await expect(details.getByText(second.completion_detail, { exact: true }).last()).toBeVisible();

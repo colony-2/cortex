@@ -96,7 +96,9 @@ it('REL-001,030,031 preserves parent context and review draft through child fail
     http.get('http://localhost:8080/api/projects/tenant/jobs/a/children',()=>new HttpResponse(null,{status:503})),
   );
   render(<MemoryRouter initialEntries={['/reviews/a']}><Routes><Route path="/reviews/:jobId" element={<InputDetailPage projectId="tenant" />} /></Routes></MemoryRouter>);
-  fireEvent.click(await screen.findByText('Related jobs and goals', {selector:'summary'}));
+  const heading = await screen.findByRole('heading', { name: 'Related jobs and goals' });
+  expect(heading).toBeVisible();
+  expect(heading.closest('details')).toBeNull();
   await screen.findByText('Child jobs unavailable');
   expect(screen.getByRole('link',{name:'Job · parent'})).toHaveAttribute('href','/project/tenant/jobs/parent/story');
   expect(screen.getByRole('link',{name:'Goal · parent-goal'})).toHaveAttribute('href','/project/tenant/goals/parent-goal');

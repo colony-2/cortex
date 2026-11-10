@@ -1,3 +1,4 @@
+import { dagPath } from '../executionTree/navigation';
 import { Link } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Spin } from 'antd';
@@ -34,7 +35,7 @@ export default function SelectedJobDetails({ projectId, jobId, summary, refresh,
     return () => { active = false; };
   }, [projectId, jobId, refresh, retry, inspectionRequests]);
   return <>
-    <Link className="compact-touch-link" to={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/tree`}>Execution tree</Link>
+    <Link className="compact-touch-link" to={dagPath(projectId, jobId, (job || summary).job_type)}>DAG</Link>
     {error && <Alert type="error" showIcon message="Could not load job details" description={error}
       action={<Button onClick={() => setRetry(value => value + 1)}>Retry details</Button>} />}
     {loading && <Spin size="small" aria-label="Loading dependency and membership details" />}

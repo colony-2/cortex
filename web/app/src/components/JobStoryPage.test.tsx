@@ -1004,7 +1004,6 @@ it('REL-001,010,030,031 keeps URL relationships through past-attempt selection a
   vi.mocked(listJobChildren).mockReset().mockRejectedValueOnce(new Error('offline'));
   mount();
   fireEvent.click(screen.getByRole('tab', { name: 'Relationships', exact: true }));
-  fireEvent.click(await screen.findByText('Related jobs and goals', {selector:'summary'}));
   await screen.findByText('Child jobs unavailable');
   expect(screen.getByRole('link',{name:'Job · parent'})).toHaveAttribute('href','/project/tenant/jobs/parent/story');
   expect(screen.getByRole('link',{name:'Goal · parent-goal'})).toHaveAttribute('href','/project/tenant/goals/parent-goal');
@@ -1245,26 +1244,17 @@ it('IA-014 ignores a late inventory result from the previous job', async () => {
   expect(screen.getByText('No input artifacts')).toBeVisible();
 });
 
-it('IA-020 collapses Run Summary and Input artifacts independently without losing the inventory', async () => {
+it('DAG-17,18 shows Summary and Input artifacts without outer disclosures', async () => {
   vi.mocked(getJobInputArtifacts).mockResolvedValue({ artifacts: [{ jobId: 'job', taskOrdinal: 0, name: 'input.md', sizeBytes: 5 }] });
   mount('?tab=input-artifacts');
   const input = await screen.findByRole('button', { name: 'input.md', exact: true });
-  const summary = screen.getByText('Run Summary');
-  const inputs = screen.getByText('Input artifacts (1)');
-  expect(summary.closest('details')).toHaveAttribute('open');
-  expect(inputs.closest('details')).toHaveAttribute('open');
+  expect(input).toBeVisible();
+  expect(input.closest('details')).toBeNull();
   fireEvent.click(screen.getByRole('tab', { name: 'Summary', exact: true }));
-  fireEvent.click(summary);
-  expect(summary.closest('details')).not.toHaveAttribute('open');
+  expect(screen.getByRole('heading', {name:'Run Summary'}).closest('details')).toBeNull();
+  expect(screen.getByText('Execution timing and recipe metadata load when you open Steps.')).toBeVisible();
   fireEvent.click(screen.getByRole('tab', { name: 'Input artifacts', exact: true }));
   expect(input).toBeVisible();
-  fireEvent.click(inputs);
-  expect(inputs.closest('details')).not.toHaveAttribute('open');
-  expect(input).not.toBeVisible();
-  expect(inputs).toBeVisible();
-  fireEvent.click(inputs);
-  expect(input).toBeVisible();
-  expect(summary.closest('details')).not.toHaveAttribute('open');
   expect(getJobInputArtifacts).toHaveBeenCalledTimes(1);
 });
 
@@ -1416,7 +1406,6 @@ describe('Steps on demand', () => {
     const requests = mount('');
     let finish!: (value: unknown) => void;
     requests.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Conversation', exact: true }), { key: 'End' });
     fireEvent.click(screen.getByRole('tab', { name: 'Steps', exact: true }));
     expect(requests.mock.calls.filter(([url]) => String(url).endsWith('/story'))).toHaveLength(1);
     fireEvent.click(screen.getByRole('tab', { name: 'Conversation', exact: true }));

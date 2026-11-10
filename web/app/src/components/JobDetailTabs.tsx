@@ -6,6 +6,7 @@ export const jobDetailTabs = [
   ['input-artifacts', 'Input artifacts'],
   ['summary', 'Summary'],
   ['execution', 'Steps'],
+  ['dag', 'DAG'],
 ] as const;
 export type JobDetailTab = typeof jobDetailTabs[number][0];
 

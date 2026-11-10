@@ -46,8 +46,8 @@ function Relationships({ projectId, jobId, job }: { projectId: string; jobId: st
   const parent = job.parent;
   const parentTenant = parent?.tenant_id || projectId;
   return <section aria-label="Related jobs and goals" className="job-relationships">
-    <details className="relationship-disclosure">
-      <summary>Related jobs and goals</summary>
+    <div>
+      <h2>Related jobs and goals</h2>
       <Card size="small" variant="borderless">
         <Button disabled={loading} onClick={() => load(true)}>Refresh relationships</Button>
         <div className="relationship-group">
@@ -81,7 +81,7 @@ function Relationships({ projectId, jobId, job }: { projectId: string; jobId: st
           </div>
         </div>
       </Card>
-    </details>
+    </div>
   </section>;
 }
 

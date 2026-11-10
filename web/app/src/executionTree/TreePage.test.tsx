@@ -1,0 +1,31 @@
+import { StrictMode } from 'react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { expect, it, vi } from 'vitest';
+import { getTreeNode, getTreeChildren } from '@colony2/shared';
+import { TreeWorkspace } from './TreePage';
+vi.mock('@colony2/shared', () => ({getTreeNode:vi.fn(), getTreeChildren:vi.fn()}));
+it('DAG-05,06,07 retains presentation while paused, and isolates keyed tenant/job identities under effect replay', async () => {
+ const signals: AbortSignal[]=[];
+ vi.mocked(getTreeNode).mockImplementation(async (tenant,id,signal) => {
+  signals.push(signal!);
+  return {node:{tenant_id:tenant,job_id:id,job_type:'recipe',status:'READY'},observed_at:'now'};
+ });
+ vi.mocked(getTreeChildren).mockResolvedValue({nodes:[],observed_at:'now'});
+ const view = (tenant:string, entry:string, active=true) => <StrictMode><MemoryRouter><TreeWorkspace key={JSON.stringify([tenant,entry])} tenant={tenant} entry={entry} active={active} embedded /></MemoryRouter></StrictMode>;
+ const {rerender} = render(view('t','one'));
+ await screen.findByText('Discovery finished:',{exact:false});
+ fireEvent.change(screen.getByRole('searchbox'),{target:{value:'saved'}});
+ fireEvent.click(screen.getByRole('button',{name:'Zoom in'}));
+ const count=vi.mocked(getTreeNode).mock.calls.length;
+ rerender(view('t','one',false)); rerender(view('t','one'));
+ expect(screen.getByRole('searchbox')).toHaveValue('saved');
+ expect(screen.getByLabelText('Zoom',{exact:true})).toHaveTextContent('120%');
+ expect(getTreeNode).toHaveBeenCalledTimes(count);
+ rerender(view('other','two'));
+ await waitFor(()=>expect(screen.getByRole('complementary')).toHaveTextContent('two'));
+ expect(signals.slice(0,count).every(signal=>signal.aborted)).toBe(true);
+ expect(screen.getByRole('searchbox')).toHaveValue('');
+ expect(screen.getByLabelText('Zoom',{exact:true})).toHaveTextContent('100%');
+ expect(screen.queryByText('one', {exact:true})).toBeNull();
+});

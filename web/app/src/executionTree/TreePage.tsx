@@ -1,14 +1,15 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { TreeNode } from '@colony2/shared';
+import { dagPath } from './navigation';
 import { Traversal } from './traversal';
 
 const jobPath = (tenant: string, job: string) => `/project/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(job)}`;
 export default function TreePage() {
   const { projectId = '', jobId = '' } = useParams();
-  return <TreeView key={JSON.stringify([projectId, jobId])} tenant={projectId} entry={jobId} />;
+  return <main><TreeWorkspace key={JSON.stringify([projectId, jobId])} tenant={projectId} entry={jobId} /></main>;
 }
-function TreeView({ tenant, entry }: { tenant: string; entry: string }) {
+export function TreeWorkspace({ tenant, entry, active = true, embedded = false }: { tenant: string; entry: string; active?: boolean; embedded?: boolean }) {
   const [, update] = useReducer(n => n + 1, 0);
   const [version, refresh] = useReducer(n => n + 1, 0);
   const traversal = useRef<Traversal>();
@@ -16,11 +17,14 @@ function TreeView({ tenant, entry }: { tenant: string; entry: string }) {
   const viewport = useRef<HTMLDivElement>(null);
   const selectedCard = useRef<HTMLButtonElement>(null);
   const entryOutline = useRef<HTMLButtonElement>(null);
+  // Identity/Refresh creates a controller. Visibility only pauses it; showing the
+  // retained workspace leaves continuation to the Resume discovery control.
   useEffect(() => {
     const controller = new Traversal(tenant, entry, update); traversal.current = controller;
-    select(entry); collapse(new Set()); void controller.run();
+    select(entry); collapse(new Set()); if (active) void controller.run();
     return () => controller.cancel();
   }, [tenant, entry, version]);
+  useEffect(() => { if (!active) traversal.current?.pause(); }, [active]);
   const controller = traversal.current, state = controller?.state;
   const nodes = state ? [...state.nodes.values()] : [];
   const byID = state?.nodes || new Map<string, TreeNode>();
@@ -61,10 +65,10 @@ function TreeView({ tenant, entry }: { tenant: string; entry: string }) {
     {!!visibleChildren(n.job_id).length && outline(visibleChildren(n.job_id))}
   </li>)}</ul>;
   const detail = byID.get(selected);
-  const incomplete = !!state?.boundary || !!state?.stop || !!state?.warnings.length || [...(state?.branches.values() || [])].some(b => b.state !== 'exhausted');
-  return <main className="app-page execution-tree">
-    <nav><Link className="compact-touch-link" to={`/project/${encodeURIComponent(tenant)}/goals`}>Back to jobs</Link></nav>
-    <h1>Execution tree</h1>
+  const incomplete = !!controller?.canResume || !!state?.boundary || !!state?.stop || !!state?.warnings.length || [...(state?.branches.values() || [])].some(b => b.state !== 'exhausted');
+  return <section className={embedded ? "execution-tree" : "app-page execution-tree"}>
+    {!embedded && <><nav><Link className="compact-touch-link" to={`/project/${encodeURIComponent(tenant)}/goals`}>Back to jobs</Link></nav>
+    <h1>DAG</h1></>}
     <p>Recorded submission family · Tenant {tenant} · Entry {entry}</p>
     <div className="tree-toolbar">
       <button onClick={() => refresh()}>Refresh tree</button>
@@ -105,10 +109,10 @@ function TreeView({ tenant, entry }: { tenant: string; entry: string }) {
       {detail && <aside aria-label="Selected job details" className="tree-details"><h2>Selected job</h2>
         <dl>{Object.entries({Tenant:detail.tenant_id,Job:detail.job_id,Cell:detail.cell || 'Unknown',Type:detail.job_type,Status:detail.status,Completion:detail.completion_status || 'Unknown',Created:detail.created_at || 'Unknown','Runtime parent':detail.parent_job_id || 'No recorded parent','Recipe attribution':detail.recipe_parent_job_id || 'None recorded',Coverage:branchText(detail.job_id)}).map(([key,value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>
         {detail.goal_id && <p><Link className="compact-touch-link" to={`/project/${encodeURIComponent(tenant)}/goals/${encodeURIComponent(detail.goal_id)}`}>Goal · {detail.goal_id}</Link></p>}
-        {detail.job_type === 'recipe' ? <p><Link className="compact-touch-link" to={`${jobPath(tenant,detail.job_id)}/story`} state={{ treeReturnTo: `${jobPath(tenant,entry)}/tree` }}>Open story</Link></p> : <p>Generic job summary; no recipe story available.</p>}
+        {detail.job_type === 'recipe' ? <p><Link className="compact-touch-link" to={`${jobPath(tenant,detail.job_id)}/story`} state={{ treeReturnTo: dagPath(tenant, entry, byID.get(entry)?.job_type) }}>Open story</Link></p> : <p>Generic job summary; no recipe story available.</p>}
         {state?.branches.get(detail.job_id)?.state === 'failed' && <button disabled={state.loading || controller?.viewCapped} onClick={() => void controller?.run(detail.job_id)}>Retry child page</button>}
-        {(controller?.viewCapped || ['limited','malformed'].includes(state?.branches.get(detail.job_id)?.state || '')) && <p><Link className="compact-touch-link" to={`${jobPath(tenant,detail.job_id)}/tree`}>Open branch as entry</Link></p>}
+        {(controller?.viewCapped || ['limited','malformed'].includes(state?.branches.get(detail.job_id)?.state || '')) && <p><Link className="compact-touch-link" to={dagPath(tenant, detail.job_id, detail.job_type)}>Open branch as entry</Link></p>}
       </aside>}
     </div>}
-  </main>;
+  </section>;
 }

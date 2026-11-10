@@ -304,36 +304,29 @@ for (const width of [1280, 390]) {
     await capture(`input-artifacts-${width}.png`, true);
     const runSummary = page.locator('.story-summary-disclosure');
     const inputPane = page.locator('.input-artifacts-disclosure');
-    await expect(runSummary).toHaveAttribute('open', '');
-    await expect(inputPane).toHaveAttribute('open', '');
-    await inputPane.locator(':scope > summary').click();
-    await page.getByRole('tab', { name: 'Summary', exact: true }).click();
-    await runSummary.locator(':scope > summary').click();
-    await expect(runSummary).not.toHaveAttribute('open');
+    await expect(inputPane.getByRole('heading', { name: 'Input artifacts (5)', exact: true })).toBeVisible();
+    await expect(inputPane.locator(':scope > summary')).toHaveCount(0);
     await expect(inputPane).not.toHaveAttribute('open');
-    await expect(runSummary.locator(':scope > summary')).toHaveText('Run Summary');
-    await expect(inputPane.locator(':scope > summary')).toHaveText('Input artifacts (5)');
-    await expect(page.getByRole('button', { name: longName, exact: true })).not.toBeVisible();
-    await page.getByRole('tab', { name: 'Input artifacts', exact: true }).click();
-    await expect(page.getByRole('button', { name: longName, exact: true })).not.toBeVisible();
-    await capture(`input-panes-collapsed-${width}.png`, true);
-    await page.getByRole('tab', { name: 'Summary', exact: true }).click();
-    await runSummary.locator(':scope > summary').focus();
-    await page.keyboard.press('Enter');
-    await page.getByRole('tab', { name: 'Input artifacts', exact: true }).click();
-    await inputPane.locator(':scope > summary').focus();
-    await page.keyboard.press('Space');
-    await expect(runSummary).toHaveAttribute('open', '');
-    await expect(inputPane).toHaveAttribute('open', '');
-    // Each native disclosure supports both activation keys and retains inventory.
-    for (const [tab, pane] of [['Summary', runSummary], ['Input artifacts', inputPane]] as const) {
-      await page.getByRole('tab', { name: tab, exact: true }).click();
-      await pane.locator(':scope > summary').focus();
-      await page.keyboard.press('Space');
-      await expect(pane).not.toHaveAttribute('open');
-      await page.keyboard.press('Enter');
-      await expect(pane).toHaveAttribute('open', '');
+    await expect(page.getByRole('button', { name: longName, exact: true })).toBeVisible();
+    for (let visit = 0; visit < 2; visit++) {
+      await page.getByRole('tab', { name: 'Summary', exact: true }).click();
+      await expect(runSummary.getByRole('heading', { name: 'Run Summary', exact: true })).toBeVisible();
+      await expect(runSummary.locator(':scope > summary')).toHaveCount(0);
+      await expect(runSummary).not.toHaveAttribute('open');
+      await expect(runSummary.getByRole('button', { name: 'Open Steps to load execution timing and recipe metadata' })).toBeVisible();
+      await expect(page.getByRole('button', { name: longName, exact: true })).not.toBeVisible();
+      await page.getByRole('tab', { name: 'Input artifacts', exact: true }).click();
+      await expect(page.getByRole('button', { name: longName, exact: true })).toBeVisible();
     }
+    await capture(`input-panes-direct-${width}.png`, true);
+    // Keyboard selection of the tabs exposes content without a second activation.
+    await page.getByRole('tab', { name: 'Input artifacts', exact: true }).focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('tab', { name: 'Summary', exact: true })).toBeFocused();
+    await expect(runSummary.getByRole('heading', { name: 'Run Summary', exact: true })).toBeVisible();
+    await page.keyboard.press('ArrowLeft');
+    await expect(page.getByRole('tab', { name: 'Input artifacts', exact: true })).toBeFocused();
+    await expect(page.getByRole('button', { name: longName, exact: true })).toBeVisible();
     expect(inventoryRequests).toBe(loadedInventoryRequests);
 
     const opener = page.getByRole('button', { name: longName, exact: true });

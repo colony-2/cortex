@@ -53,13 +53,13 @@ test('CT-001–007 default, panel visibility, keyboard navigation and URL restor
   await expect(tabs.getByRole('tab', { name: 'Relationships', exact: true })).toBeFocused();
   expect(await tabs.getByRole('tab', { name: 'Relationships', exact: true }).evaluate(element => getComputedStyle(element).outlineStyle)).toBe('solid');
   await page.keyboard.press('End');
-  await expect(tabs.getByRole('tab', { name: 'Steps', exact: true })).toBeFocused();
+  await expect(tabs.getByRole('tab', { name: 'DAG', exact: true })).toBeFocused();
   await page.reload();
-  await expect(tabs.getByRole('tab', { name: 'Steps', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(tabs.getByRole('tab', { name: 'DAG', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.goBack();
   await expect(tabs.getByRole('tab', { name: 'Relationships', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.goForward();
-  await expect(tabs.getByRole('tab', { name: 'Steps', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(tabs.getByRole('tab', { name: 'DAG', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.goto('/project/demo/jobs/job/story?tab=invalid&nodeId=root');
   await expect(conversation).toHaveAttribute('aria-selected', 'true');
   await page.goto('/project/demo/jobs/job/story?nodeId=root');

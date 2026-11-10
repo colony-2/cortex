@@ -61,29 +61,19 @@ async function capture(page: Page, name: string) {
 }
 const related=(page:Page)=>page.getByRole('region',{name:'Related jobs and goals'});
 const disclosure=(page:Page)=>related(page).locator('details');
-const summary=(page:Page)=>related(page).locator('summary');
 async function selectStoryTab(page: Page, name: string) {
   if (!new URL(page.url()).pathname.endsWith('/story')) return;
   const tab = page.getByRole('tab', { name, exact: true });
   if (await tab.getAttribute('aria-selected') !== 'true') await tab.click();
 }
-async function initiallyClosed(page:Page) {
+async function initiallyVisible(page:Page) {
   await selectStoryTab(page, 'Relationships');
-  await expect(summary(page)).toBeVisible();
-  await expect(disclosure(page)).not.toHaveAttribute('open');
-  await expect(related(page).getByRole('link',{name:'Job · release-104',exact:true})).toBeHidden();
-  await expect(related(page).getByRole('button',{name:'Refresh relationships',exact:true})).toBeHidden();
+  await expect(related(page).getByRole('heading',{name:'Related jobs and goals'})).toBeVisible();
+  await expect(disclosure(page)).toHaveCount(0);
+  await expect(related(page).getByRole('button',{name:'Refresh relationships',exact:true})).toBeVisible();
   await expect.poll(()=>childRequests).toBeGreaterThan(0);
-  await summary(page).focus();
-  await page.keyboard.press('Tab');
-  expect(await related(page).evaluate(e=>e.contains(document.activeElement))).toBe(false);
 }
-async function openFresh(page:Page) {
-  await selectStoryTab(page, 'Relationships');
-  await expect(summary(page)).toBeVisible();
-  await expect(disclosure(page)).not.toHaveAttribute('open');
-  await summary(page).click();
-}
+async function openFresh(page:Page) { await initiallyVisible(page); }
 
 
 test.beforeEach(async({page})=>fixtures(page));
@@ -91,9 +81,8 @@ test.beforeEach(async({page})=>fixtures(page));
 test('REL-001,010,011,012,030,033,038 story links navigate to correct identities and preserve story inspection',async({page})=>{
   await page.setViewportSize({width:1440,height:1000});
   await page.goto('/project/demo/jobs/evidence-105/story');
-  await initiallyClosed(page);
-  await capture(page,'story-desktop-collapsed.png');
-  await summary(page).click();
+  await initiallyVisible(page);
+  await capture(page,'story-desktop-direct.png');
   await expect(related(page).getByRole('link',{name:'Job · release-104',exact:true})).toHaveAttribute('href','/project/other/jobs/release-104/story');
   await expect(related(page).getByRole('link',{name:'Goal · goal-release',exact:true})).toHaveAttribute('href','/project/other/goals/goal-release');
   await expect(related(page).getByRole('link',{name:'Job · Check API compatibility'})).toBeVisible();
@@ -105,7 +94,7 @@ test('REL-001,010,011,012,030,033,038 story links navigate to correct identities
   await page.getByText('Compatibility checks',{exact:true}).first().click();
   await selectStoryTab(page, 'Relationships');
   expect(inspections).toEqual(['evidence-105', 'evidence-105']); // Existing development StrictMode replay.
-  await capture(page,'story-desktop-expanded.png');
+  await capture(page,'story-desktop-restored.png');
   await related(page).getByRole('link',{name:'Job · Check API compatibility'}).click();
   await expect(page).toHaveURL(/\/jobs\/check-api-106\/story/);
   await expect(page.getByRole('heading',{name:'Job Story: Check API compatibility'})).toBeVisible();
@@ -128,9 +117,8 @@ test('REL-001,010,011,012,030,033,038 story links navigate to correct identities
 test('REL-001,030,031,032,033,038 review context and document remain usable through child failure',async({page})=>{
   await page.setViewportSize({width:1440,height:1000});
   await page.goto('/project/demo/reviews/evidence-105');
-  await initiallyClosed(page);
-  await capture(page,'review-desktop-collapsed.png');
-  await summary(page).click();
+  await initiallyVisible(page);
+  await capture(page,'review-desktop-direct.png');
   await expect(related(page).getByRole('link',{name:'Job · release-104',exact:true})).toBeVisible();
   await expect(related(page).getByRole('link',{name:'Goal · goal-api',exact:true})).toBeVisible();
   await expect(page.getByRole('link',{name:'Open execution',exact:true})).toBeVisible();
@@ -139,7 +127,7 @@ test('REL-001,030,031,032,033,038 review context and document remain usable thro
   expect(await related(page).evaluate(e=>!!(e.previousElementSibling?.classList.contains('review-goal-context')))).toBe(true);
   const document=page.getByText('API checks passed. Navigation evidence is ready.',{exact:true}).first();
   await expect(document).toBeVisible();
-  await capture(page,'review-desktop-expanded.png');
+  await capture(page,'review-desktop-response.png');
   failChildren=true;
   await related(page).getByRole('button',{name:'Refresh relationships',exact:true}).click();
   await expect(related(page).getByText('Child jobs unavailable')).toBeVisible();
@@ -147,9 +135,6 @@ test('REL-001,030,031,032,033,038 review context and document remain usable thro
   await page.getByRole('button',{name:'Approve',exact:true}).click();
   expect(submissions).toHaveLength(0);
   await page.getByLabel('What should change?',{exact:true}).fill('Evidence reviewed');
-  await expect(disclosure(page)).toHaveAttribute('open');
-  await summary(page).click();
-  await expect(disclosure(page)).not.toHaveAttribute('open');
   await page.getByRole('button',{name:'OK',exact:true}).click();
   await expect.poll(()=>submissions.length).toBe(1);
   expect(submissions[0]).toMatchObject({request_id:'review-evidence',fields:{decision:'approve',feedback:'Evidence reviewed'}});
@@ -159,18 +144,10 @@ for(const width of [1440,390,320]) test(`REL-034/D3,035,036,040,041,042 review o
   long=width!==390;
   await page.setViewportSize({width,height:1000});
   await page.goto('/project/demo/reviews/evidence-105');
-  await initiallyClosed(page);
+  await initiallyVisible(page);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
-  await summary(page).focus();
-  expect(await summary(page).evaluate(e=>getComputedStyle(e).outlineStyle)).toBe('solid');
-  if(width===390) await capture(page,'review-mobile-collapsed.png');
+  if(width===390) await capture(page,'review-mobile-direct.png');
   const requests=childRequests;
-  await page.keyboard.press('Enter');
-  await expect(disclosure(page)).toHaveAttribute('open');
-  await page.keyboard.press('Space');
-  await expect(disclosure(page)).not.toHaveAttribute('open');
-  await expect(summary(page)).toBeFocused();
-  await summary(page).click();
   expect(childRequests).toBe(requests);
   if(width===390) {
     long=true;
@@ -192,9 +169,7 @@ for(const width of [1440,390,320]) test(`REL-034/D3,035,036,040,041,042 review o
   await expect(documents).toBeVisible();
   await expect(response).toBeVisible();
   expect(await related(page).evaluate(e=>e.closest('.review-goal-context')===null)).toBe(true);
-  for (const expanded of [false,true]) {
-    await summary(page).click();
-    expect(await disclosure(page).evaluate(e=>(e as HTMLDetailsElement).open)).toBe(expanded);
+  {
     for (const [before,after] of [[context,related(page)],[related(page),documents],[documents,response]]) {
     const handle=await after.elementHandle();
     expect(await before.evaluate((e,target)=>Boolean(e.compareDocumentPosition(target!) & Node.DOCUMENT_POSITION_FOLLOWING),handle)).toBe(true);
@@ -206,9 +181,7 @@ for(const width of [1440,390,320]) test(`REL-034/D3,035,036,040,041,042 review o
   if(width<768){
     expect(await related(page).evaluate(e=>e.closest('.review-secondary')!==null)).toBe(true);
     expect(await page.locator('.review-goal-context').evaluate(e=>(e as HTMLDetailsElement).open)).toBe(false);
-    expect(await summary(page).evaluate(e=>e.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
     await page.locator('.review-goal-context > summary').click();
-    await expect(disclosure(page)).toHaveAttribute('open');
     await page.locator('.review-goal-context > summary').click();
     expect(await link.evaluate(e=>e.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
     await expect(page.getByRole('button',{name:'Approve',exact:true})).toBeAttached();
@@ -216,29 +189,22 @@ for(const width of [1440,390,320]) test(`REL-034/D3,035,036,040,041,042 review o
   if(width===390){
     long=false; await related(page).getByRole('button',{name:'Refresh relationships',exact:true}).click();
     await expect(related(page).getByRole('link',{name:'Job · Check API compatibility'})).toBeVisible();
-    await capture(page,'review-mobile-expanded.png');
-    await summary(page).click();
+    await capture(page,'review-mobile-wrapped.png');
   }
 });
 
-for(const width of [1440,390,320]) test(`REL-040,041,042 story default and reload ${width}`,async({page})=>{
+for(const width of [1440,390,320]) test(`REL-040,041,042 story direct content and reload ${width}`,async({page})=>{
   await page.setViewportSize({width,height:1000});
   await page.goto('/project/demo/jobs/evidence-105/story');
-  await initiallyClosed(page);
+  await initiallyVisible(page);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
   const requests=childRequests;
-  await summary(page).focus();
-  await page.keyboard.press('Space');
-  await expect(disclosure(page)).toHaveAttribute('open');
   await expect(related(page).getByRole('link',{name:'Job · Check API compatibility'})).toBeVisible();
   await selectStoryTab(page, 'Steps');
   await page.getByText('Compatibility checks',{exact:true}).first().click();
   await selectStoryTab(page, 'Relationships');
-  await expect(disclosure(page)).toHaveAttribute('open');
-  await summary(page).focus(); await page.keyboard.press('Enter');
-  await expect(disclosure(page)).not.toHaveAttribute('open');
-  await expect(summary(page)).toBeFocused();
   expect(childRequests).toBe(requests);
+  if(width===390) await capture(page,'story-mobile-direct.png');
   await page.reload();
-  await initiallyClosed(page);
+  await initiallyVisible(page);
 });

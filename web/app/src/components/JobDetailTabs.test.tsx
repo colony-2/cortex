@@ -10,7 +10,7 @@ describe('CT-004,006 tab URL precedence', () => {
     ['?path=root&attempt=2', 'execution'], ['?taskOrdinal=2', 'execution'], ['?attempt=2', 'execution'],
     ['?input=1&taskOrdinal=2', 'conversation'], ['?tab=summary&input=1&nodeId=n', 'summary'],
     ['?requestId=opaque%2Fid&tab=execution&input=1', 'conversation'],
-    ['?requestId=&tab=execution', 'conversation'],
+    ['?requestId=&tab=execution', 'conversation'], ['?tab=dag', 'dag'], ['?occurrenceId=x&tab=dag', 'conversation'],
   ])('%s selects %s', (search, expected) => expect(jobDetailTab(new URLSearchParams(search))).toBe(expected));
 });
 it('CT-007 supports arrows, wraparound, Home and End with a single tab stop', () => {
@@ -20,14 +20,14 @@ it('CT-007 supports arrows, wraparound, Home and End with a single tab stop', ()
   }
   render(<Host />);
   const tabs = screen.getAllByRole('tab');
-  expect(tabs.map(tab => tab.textContent)).toEqual(['Conversation', 'Relationships', 'Input artifacts', 'Summary', 'Steps']);
+  expect(tabs.map(tab => tab.textContent)).toEqual(['Conversation', 'Relationships', 'Input artifacts', 'Summary', 'Steps', 'DAG']);
   const press = (key: string, expected: number) => {
     fireEvent.keyDown(screen.getByRole('tab', { selected: true }), { key });
     expect(tabs[expected]).toHaveAttribute('aria-selected', 'true');
     expect(tabs[expected]).toHaveFocus();
     expect(tabs.filter(tab => tab.tabIndex === 0)).toEqual([tabs[expected]]);
   };
-  press('ArrowLeft', 4); press('ArrowRight', 0); press('ArrowRight', 1); press('End', 4); press('Home', 0);
+  press('ArrowLeft', 5); press('ArrowRight', 0); press('ArrowRight', 1); press('End', 5); press('Home', 0);
 });
 it('selects a clicked tab', () => {
   const change = vi.fn(); render(<JobDetailTabs activeTab="conversation" onChange={change} />);
