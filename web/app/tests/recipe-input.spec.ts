@@ -745,22 +745,30 @@ test.describe('multi-format review viewers', () => {
     await read('changes.patch');await expect(page.getByLabel('Side by side diff')).toBeVisible();await back();
     for(const name of ['mock.html','delayed.html','vector.svg']){
       await read(name);
-      await expect(page.getByText(/Static preview:/)).toBeVisible();
       if(name.endsWith('.html')) {
-        const iframe=page.getByTitle(`Static HTML preview: ${name}`);
-        await expect(iframe).toHaveAttribute('sandbox','');
+        await expect(page.getByText(/Interactive HTML runs automatically/)).toBeVisible();
+        const iframe=page.getByTitle(`Interactive HTML preview: ${name}`);
+        await expect(iframe).toHaveAttribute('sandbox','allow-scripts');
+        await expect(iframe).toHaveAttribute('credentialless','');
         await expect(iframe).toHaveAttribute('referrerpolicy','no-referrer');
-        const frame=page.frameLocator(`iframe[title="Static HTML preview: ${name}"]`);
-        await expect(frame.locator('body')).toBeAttached();
-        await expect(frame.locator('script, iframe, meta[http-equiv="refresh"], a[href]')).toHaveCount(0);
-        await expect(frame.locator('meta[http-equiv="Content-Security-Policy"]')).toHaveAttribute('content',/default-src 'none'/);
+        await expect(iframe).toHaveAttribute('csp',/connect-src 'none'/);
+        const frame=page.frameLocator(`iframe[title="Interactive HTML preview: ${name}"]`);
+        if(name==='mock.html') {
+          await expect(frame.getByRole('heading')).toHaveCSS('color','rgb(20, 100, 160)');
+          await expect(frame.locator('output')).toHaveText('first second');
+          await expect.poll(()=>frame.getByAltText('Authorized screenshot').evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBe(1280);
+          await frame.getByRole('button',{name:'Activate'}).click();
+          await expect(frame.locator('output')).toHaveText('clicked');
+        } else await expect(frame.locator('output')).toHaveText('connection blocked');
+        await page.getByRole('region',{name:'Selected document',exact:true}).screenshot({path:testInfo.outputPath(`${name}-interactive.png`)});
       } else {
+        await expect(page.getByText(/Static preview:/)).toBeVisible();
         const image=page.getByRole('img',{name,exact:true});
         await expect(image).toBeVisible();
         await expect.poll(()=>image.evaluate((el:HTMLImageElement)=>el.complete&&el.naturalWidth>0)).toBe(true);
         await expect(page.locator('iframe')).toHaveCount(0);
       }
-      // Observe delayed refresh/navigation while the rendered preview is active.
+      // Observe delayed connection attempts while the rendered preview is active.
       await page.waitForTimeout(2100);expect(external).toHaveLength(0);
       await expect(page).toHaveURL(new RegExp(`/reviews/${jobID}$`));
       await page.getByRole('radio',{name:'Source',exact:true}).focus();await page.keyboard.press('Space');

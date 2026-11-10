@@ -21,7 +21,7 @@ sequence:
         printf '{"n":9007199254740993,"n":1e+40}' > data.json
         printf 'diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-old\n+new\n' > changes.patch
         printf 'first line\nneedle\nlast line\n' > checks.log
-        printf '<!doctype html><meta http-equiv="refresh" content="0;url=https://blocked.invalid"><script>fetch("https://blocked.invalid/script")</script><iframe src="https://blocked.invalid/frame"></iframe><a href="https://blocked.invalid">link</a>' > mock.html
+        printf '<!doctype html><html lang="en"><head><style>h1{color:rgb(20,100,160)}</style><script>window.order="first"</script></head><body><h1>Interactive original</h1><img alt="Authorized screenshot" width="120" src="wide.png"><button onclick="document.querySelector(&quot;output&quot;).textContent=&quot;clicked&quot;">Activate</button><output>pending</output><script>document.querySelector("output").textContent=window.order+" second";fetch("https://blocked.invalid/script").catch(()=>{})</script></body></html>' > mock.html
         printf '<svg xmlns="http://www.w3.org/2000/svg" onload="fetch(&quot;https://blocked.invalid/svg&quot;)"><image href="https://blocked.invalid/img"/></svg>' > vector.svg
         printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII=' | base64 -d > screenshot.png
         ffmpeg -v error -f lavfi -i color=c=blue:s=1280x900 -frames:v 1 -y wide.png
@@ -30,7 +30,7 @@ sequence:
         done
         printf '\037\213container-original' > evidence.tar.gz
         printf '# Pictures\n\n![attached](screenshot.png)\n\n![blocked](https://blocked.invalid/markdown.png)\n\n[Safe link](https://example.com)\n' > pictures.md
-        printf '<meta http-equiv="refresh" content="1;url=https://blocked.invalid/delayed"><script>location="https://blocked.invalid/nav"</script>' > delayed.html
+        printf '<!doctype html><h1>Delayed interaction</h1><output>pending</output><script>setTimeout(()=>fetch("https://blocked.invalid/delayed").catch(()=>{document.querySelector("output").textContent="connection blocked"}),1000)</script>' > delayed.html
   - id: review
     op: input
     inputs:

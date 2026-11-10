@@ -220,8 +220,9 @@ for (const width of [1280,390]) test(`CC-001 CC-009 CC-010 CC-013 CC-014 compact
  await reader.getByRole('button',{name:'Show documents',exact:true}).click();
  if(width===1280) await reader.getByRole('button',{name:/page.html/}).click();
  else await reader.getByRole('button',{name:'Read page.html',exact:true}).click();
- await expect(reader.locator('iframe[title="Static HTML preview: page.html"]')).toHaveAttribute('sandbox','');
+ await expect(reader.locator('iframe[title="Interactive HTML preview: page.html"]')).toHaveAttribute('sandbox','allow-scripts');
  await expect(reader.frameLocator('iframe').getByRole('heading',{name:'Saved markup'})).toBeVisible();
+ await reader.getByRole('region',{name:'Selected document',exact:true}).screenshot({path:info.outputPath(`historical-html-${width}.png`)});
  const back=reader.getByRole('button',{name:'Back to conversation'});
  // Allow Chromium's iframe hit-test surface to catch up after scrolling from
  // the distant preview to the reader header before dispatching a pointer click.

@@ -10,6 +10,8 @@ import SourceView from './SourceView';
 import DiffView from './DiffView';
 import ImageView from './ImageView';
 import MarkupView from './MarkupView';
+import HTMLView from './HTMLView';
+import type { HTMLContext } from './htmlPreparation';
 import { artifactHeadingIds, resolveArtifactLink, type PreviewNavigation, type NavigationIntent } from './artifactLinks';
 
 function AttachedImage({ id, name, url, onError }: { id: string; name: string; url: string; onError?: (error: unknown) => void }) {
@@ -24,8 +26,8 @@ function AttachedImage({ id, name, url, onError }: { id: string; name: string; u
 }
 export type PreviewAttachment = { key: string; name: string; url: string; onError?: (error: unknown) => void };
 export type ResolvePreviewAttachment = (reference: string) => PreviewAttachment | undefined;
-interface Props { reviewOptions?: { storedBytes?: number }; markdownSource?: boolean; setMarkdownSource?: (source: boolean) => void; data: DocumentData; name: string; dual: boolean; setDual: (value: boolean) => void; resolveAttachment?: ResolvePreviewAttachment; navigation?: PreviewNavigation; navigationIntent?: NavigationIntent }
-export default function DocumentPreview({ reviewOptions, data, name, markdownSource = false, setMarkdownSource, dual, setDual, resolveAttachment, navigation, navigationIntent }: Props) {
+interface Props { htmlContext?: HTMLContext; reviewOptions?: { storedBytes?: number }; markdownSource?: boolean; setMarkdownSource?: (source: boolean) => void; data: DocumentData; name: string; dual: boolean; setDual: (value: boolean) => void; resolveAttachment?: ResolvePreviewAttachment; navigation?: PreviewNavigation; navigationIntent?: NavigationIntent }
+export default function DocumentPreview({ htmlContext, reviewOptions, data, name, markdownSource = false, setMarkdownSource, dual, setDual, resolveAttachment, navigation, navigationIntent }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const [linkNotice, setLinkNotice] = useState('');
   const scrollToFragment = (fragment: string) => {
@@ -71,7 +73,8 @@ export default function DocumentPreview({ reviewOptions, data, name, markdownSou
     {data.bytes.length === 0 ? <Alert type="info" message="Empty document" /> : format === 'container' ? <Alert type="info" message="Container data: download the original file to inspect its contents. Archives are not extracted." />
       : format === 'image' ? <ImageView data={data} name={name} />
       : format === 'binary' ? <><p>Binary preview: first 64 KiB at most.</p><SourceView text={hexDump(data.bytes)} label="Binary bytes" /></>
-      : format === 'html' || format === 'svg' ? <MarkupView key={name} data={data} name={name} />
+      : format === 'html' ? <HTMLView key={name} data={data} name={name} context={htmlContext} />
+      : format === 'svg' ? <MarkupView key={name} data={data} name={name} />
       : format === 'markdown' && !markdownSource && structured ? <article tabIndex={0} className="review-markdown" aria-label="Rendered document"><Markdown remarkPlugins={[remarkGfm, artifactHeadingIds]} skipHtml components={{
         p: ({ children }) => <div className="review-markdown-paragraph">{children}</div>,
         a: ({ children, href }) => {

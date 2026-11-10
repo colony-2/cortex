@@ -1,9 +1,7 @@
 import { imageDimensions, rasterType, structuredAllowed, type DocumentData } from './document';
 
-export const HTML_POLICY = "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'";
 export const RESTRICTIONS = 'Static preview: scripts, navigation and external dependencies are disabled. Some content may be missing.';
 const svgNS = 'http://www.w3.org/2000/svg';
-const htmlTags = new Set('html head body title style div span p br hr h1 h2 h3 h4 h5 h6 main section article aside header footer nav address blockquote pre code kbd samp var em strong b i u s small sub sup mark abbr time a ul ol li dl dt dd table caption colgroup col thead tbody tfoot tr th td figure figcaption img details summary'.split(' '));
 const svgTags = new Set('svg g defs symbol use path rect circle ellipse line polyline polygon text tspan textPath linearGradient radialGradient stop clipPath mask pattern title desc image'.toLowerCase().split(' '));
 const attributes = new Set('id class title lang dir style role aria-label width height colspan rowspan scope start reversed open alt viewbox preserveaspectratio x y x1 x2 y1 y2 cx cy r rx ry dx dy d points transform fill fill-opacity fill-rule stroke stroke-width stroke-opacity stroke-linecap stroke-linejoin stroke-dasharray stroke-dashoffset opacity font-family font-size font-weight font-style text-anchor dominant-baseline offset stop-color stop-opacity gradientunits gradienttransform spreadmethod patternunits patterncontentunits patterntransform clip-path clip-rule mask maskunits maskcontentunits textlength lengthadjust'.split(' '));
 
@@ -131,76 +129,46 @@ function checkReferences(root: Element) {
   visit(root, new Set(), 0);
 }
 
+/** Standalone SVG keeps its existing static filtering and complexity limits. */
 export function prepareMarkup(data: DocumentData): MarkupPreview {
   if (!structuredAllowed(data)) throw new Error('Rendering limit exceeded or input incomplete (1 MiB / 20,000 lines); showing bounded source.');
+  if (data.format !== 'svg') throw new Error('HTML uses the interactive document renderer.');
   if (typeof DOMParser === 'undefined' || typeof URL.createObjectURL !== 'function') throw new Error('Rendering unavailable in this browser; showing source.');
-  const svg = data.format === 'svg';
-  const urls: string[] = [];
-  const release = () => urls.forEach(url => URL.revokeObjectURL(url));
-  try {
-    let root: Element;
-    let width = 800, height = 600;
-    if (svg) {
-      if (/<!\s*(?:DOCTYPE|ENTITY)/i.test(data.text)) throw new Error('SVG DTDs and entities are unsupported.');
-      const doc = new DOMParser().parseFromString(data.text, 'image/svg+xml');
-      root = doc.documentElement;
-      if (root.localName !== 'svg' || root.namespaceURI !== svgNS || doc.querySelector('parsererror')) throw new Error('Invalid SVG XML; showing source.');
-      [width, height] = svgDimensions(root);
-      if (root.querySelector('filter') || root.querySelector('[filter]')) throw new Error('SVG filters are unsupported; showing source.');
-    } else {
-      // Template content has no browsing context and is inert even while parsing.
-      // DOMParser text/html alone can start image/iframe fetches in some browsers.
-      const doc = document.implementation.createHTMLDocument('');
-      const template = doc.createElement('template');
-      template.innerHTML = data.text;
-      root = doc.createElement('div');
-      root.append(template.content);
-    }
-    let imageBytes = 0, imagePixels = 0, count = 0;
-    const clean = (el: Element, depth: number) => {
-      if (++count > 4000 || depth > 64) throw new Error('Markup complexity limit exceeded.');
-      const inSVG = el.namespaceURI === svgNS;
-      const tag = el.localName.toLowerCase();
-      if (!(inSVG ? svgTags : htmlTags).has(tag) || (!inSVG && el.namespaceURI !== 'http://www.w3.org/1999/xhtml')) { el.remove(); return; }
-      for (const attr of [...el.attributes]) {
-        const key = attr.name.toLowerCase();
-        const value = attr.value;
-        el.removeAttributeNode(attr);
-        if (attr.namespaceURI || key.includes(':')) continue;
-        if ((key === 'src' && !inSVG && tag === 'img') || (key === 'href' && inSVG && tag === 'image')) {
-          try {
-            const image = rasterData(value);
-            imageBytes += image.bytes.length; imagePixels += image.pixels;
-            if (imageBytes > 1048576 || imagePixels > 32000000) throw new Error('Embedded image aggregate limit exceeded.');
-            const binary = Array.from(image.bytes, byte => String.fromCharCode(byte)).join('');
-            el.setAttribute(key, `data:${image.mime};base64,${btoa(binary)}`);
-          } catch { /* Unsupported images are deliberately omitted from the rendering copy. */ }
-        } else if (key === 'href' && inSVG && ['use', 'textpath'].includes(tag) && /^#[a-zA-Z_][\w.-]*$/.test(value)) el.setAttribute('href', value);
-        else if (attributes.has(key)) {
-          const safe = key === 'style' ? declarations(value) : presentation(value, key, inSVG);
-          if (safe) el.setAttribute(attr.name, safe);
-        }
+  if (/<!\s*(?:DOCTYPE|ENTITY)/i.test(data.text)) throw new Error('SVG DTDs and entities are unsupported.');
+  const doc = new DOMParser().parseFromString(data.text, 'image/svg+xml');
+  const root = doc.documentElement;
+  if (root.localName !== 'svg' || root.namespaceURI !== svgNS || doc.querySelector('parsererror')) throw new Error('Invalid SVG XML; showing source.');
+  const [width, height] = svgDimensions(root);
+  if (root.querySelector('filter') || root.querySelector('[filter]')) throw new Error('SVG filters are unsupported; showing source.');
+  let imageBytes = 0, imagePixels = 0, count = 0;
+  const clean = (el: Element, depth: number) => {
+    if (++count > 4000 || depth > 64) throw new Error('Markup complexity limit exceeded.');
+    const tag = el.localName.toLowerCase();
+    if (el.namespaceURI !== svgNS || !svgTags.has(tag)) { el.remove(); return; }
+    for (const attr of [...el.attributes]) {
+      const key = attr.name.toLowerCase(), value = attr.value;
+      el.removeAttributeNode(attr);
+      if (attr.namespaceURI || key.includes(':')) continue;
+      if (key === 'href' && tag === 'image') {
+        try {
+          const image = rasterData(value);
+          imageBytes += image.bytes.length; imagePixels += image.pixels;
+          if (imageBytes > 1048576 || imagePixels > 32000000) throw new Error('Embedded image aggregate limit exceeded.');
+          const binary = Array.from(image.bytes, byte => String.fromCharCode(byte)).join('');
+          el.setAttribute(key, `data:${image.mime};base64,${btoa(binary)}`);
+        } catch { /* Invalid images stay omitted from the static SVG copy. */ }
+      } else if (key === 'href' && ['use', 'textpath'].includes(tag) && /^#[a-zA-Z_][\w.-]*$/.test(value)) el.setAttribute('href', value);
+      else if (attributes.has(key)) {
+        const safe = key === 'style' ? declarations(value) : presentation(value, key, true);
+        if (safe) el.setAttribute(attr.name, safe);
       }
-      if (tag === 'style') el.textContent = stylesheet(el.textContent || '');
-      for (const child of [...el.children]) clean(child, depth + 1);
-    };
-    if (svg) clean(root, 0); else for (const child of [...root.children]) clean(child, 0);
-    // Comments/processing instructions have no rendering purpose. XML processing
-    // instructions are not serialized because only the cleaned root is emitted.
-    if (svg) {
-      checkReferences(root);
-      root.setAttribute('xmlns', svgNS);
-      root.setAttribute('width', String(width)); root.setAttribute('height', String(height));
-      return { content: new XMLSerializer().serializeToString(root), width, height, release, embeddedImages: imageBytes };
     }
-    if (root.querySelector('svg')) {
-      for (const inline of root.querySelectorAll('svg')) {
-        const [w, h] = svgDimensions(inline);
-        inline.setAttribute('width', String(w)); inline.setAttribute('height', String(h));
-      }
-      checkReferences(root);
-    }
-    const content = `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${HTML_POLICY}"><meta name="referrer" content="no-referrer"><meta charset="utf-8"></head><body>${root.innerHTML}</body></html>`;
-    return { content, width, height, release, embeddedImages: imageBytes };
-  } catch (e) { release(); throw e; }
+    if (tag === 'style') el.textContent = stylesheet(el.textContent || '');
+    for (const child of [...el.children]) clean(child, depth + 1);
+  };
+  clean(root, 0);
+  checkReferences(root);
+  root.setAttribute('xmlns', svgNS);
+  root.setAttribute('width', String(width)); root.setAttribute('height', String(height));
+  return {content: new XMLSerializer().serializeToString(root), width, height, release: () => {}, embeddedImages: imageBytes};
 }

@@ -1393,6 +1393,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         ]}
       >
         {activeArtifact && <ArtifactContents
+          htmlContext={{canonicalPath: activeArtifact.name, attachments: artifactAttachments.map(a => ({key:JSON.stringify([a.jobId || jobId,a.taskOrdinal,a.name]), path:a.name, url:artifactUrl(projectId,jobId,a)}))}}
           key={JSON.stringify([projectId, activeArtifact.jobId || jobId, activeArtifact.taskOrdinal, activeArtifact.name])}
           url={artifactUrl(projectId, jobId, activeArtifact)} name={activeArtifact.name}
           navigationIntent={artifactNavigation}

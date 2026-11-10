@@ -94,7 +94,7 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
   };
   const preview = error ? <Alert type="error" showIcon message={error} action={<Button onClick={() => { cached.current = undefined; setContent(undefined); setRetry(v => v + 1); }}>Retry</Button>} />
     : !content || content.url !== url ? <Spin aria-label="Loading document" />
-    : <DocumentPreview reviewOptions={{ storedBytes: doc?.stored?.key.sizeBytes }} key={url} data={content.data} name={name} markdownSource={markdownSource} setMarkdownSource={setMarkdownSource} dual={dual} setDual={setDual} navigationIntent={navigationIntent?.documentId === selected ? navigationIntent : undefined} navigation={{
+    : <DocumentPreview htmlContext={{canonicalPath: path(selected), attachments: Object.keys(documents).filter(id => !!documentURL(id)).map(id => ({key:id, path:path(id), url:documentURL(id)}))}} reviewOptions={{ storedBytes: doc?.stored?.key.sizeBytes }} key={url} data={content.data} name={name} markdownSource={markdownSource} setMarkdownSource={setMarkdownSource} dual={dual} setDual={setDual} navigationIntent={navigationIntent?.documentId === selected ? navigationIntent : undefined} navigation={{
       resolve: reference => resolveArtifactLink(reference, path(selected), Object.entries(documents).map(([key, d]) => ({key, path: path(key), aliases: [key, ...(d.name ? [d.name] : [])]}))),
       open: (key, fragment) => openDocument(key, true, fragment),
       url: source ? documentURL : undefined,
