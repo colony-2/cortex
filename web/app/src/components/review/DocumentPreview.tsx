@@ -11,17 +11,17 @@ import ImageView from './ImageView';
 import MarkupView from './MarkupView';
 import { artifactHeadingIds, resolveArtifactLink, type PreviewNavigation, type NavigationIntent } from './artifactLinks';
 
-function AttachedImage({ id, name, url }: { id: string; name: string; url: string }) {
+function AttachedImage({ id, name, url, onError }: { id: string; name: string; url: string; onError?: (error: unknown) => void }) {
   const [data, setData] = useState<DocumentData>();
   const [error, setError] = useState('');
   useEffect(() => {
     const controller = new AbortController();
-    loadDocument(url,name,controller.signal).then(d => { if (!controller.signal.aborted) { if (d.format === 'image') setData(d); else setError('Attachment is not a raster image.'); } }).catch(e => { if (!controller.signal.aborted) setError(e.message); });
+    loadDocument(url,name,controller.signal).then(d => { if (!controller.signal.aborted) { if (d.format === 'image') setData(d); else setError('Attachment is not a raster image.'); } }).catch(e => { if (!controller.signal.aborted) {setError(e.message); onError?.(e);} });
     return () => controller.abort();
   }, [url, name]);
   return error ? <span>{error}</span> : data ? <ImageView data={data} name={name || id} /> : <span>Loading attached image…</span>;
 }
-export type PreviewAttachment = { key: string; name: string; url: string };
+export type PreviewAttachment = { key: string; name: string; url: string; onError?: (error: unknown) => void };
 export type ResolvePreviewAttachment = (reference: string) => PreviewAttachment | undefined;
 interface Props { markdownSource?: boolean; setMarkdownSource?: (source: boolean) => void; data: DocumentData; name: string; dual: boolean; setDual: (value: boolean) => void; resolveAttachment?: ResolvePreviewAttachment; navigation?: PreviewNavigation; navigationIntent?: NavigationIntent }
 export default function DocumentPreview({ data, name, markdownSource = false, setMarkdownSource, dual, setDual, resolveAttachment, navigation, navigationIntent }: Props) {
@@ -73,6 +73,13 @@ export default function DocumentPreview({ data, name, markdownSource = false, se
           // href has already passed react-markdown's default URL sanitization.
           const resolution = navigation?.resolve(href || '') || resolveArtifactLink(href || '', name, []);
           if (resolution.kind === 'browser') return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+          if (resolution.kind === 'target' && navigation?.url) {
+            const url = navigation.url(resolution.key);
+            return url ? <a href={url} onClick={event => {
+              if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+              event.preventDefault(); navigation.open(resolution.key, resolution.fragment);
+            }}>{children}</a> : <span>{children} (unavailable)</span>;
+          }
           return <button type="button" className="review-artifact-link" onClick={() => {
             const current = navigation?.resolve(href || '') || resolveArtifactLink(href || '', name, []);
             if (current.kind === 'fragment') { scrollToFragment(current.fragment); return; }
@@ -83,7 +90,7 @@ export default function DocumentPreview({ data, name, markdownSource = false, se
         img: ({ src, alt }) => {
           const attachment = src && !/^(?:[a-z][a-z\d+.-]*:|\/\/|\/)/i.test(src) ? resolveAttachment?.(src) : undefined;
           if (!attachment) return <span>Blocked external or ambiguous image: {alt || src}</span>;
-          return <AttachedImage key={JSON.stringify([attachment.key, attachment.url])} id={attachment.key} name={attachment.name} url={attachment.url} />;
+          return <AttachedImage key={JSON.stringify([attachment.key, attachment.url])} id={attachment.key} name={attachment.name} url={attachment.url} onError={attachment.onError} />;
         },
       }}>{data.text}</Markdown></article>
       : format === 'diff' && structured && mode !== 'source' ? <DiffView text={data.text} dual={dual} />

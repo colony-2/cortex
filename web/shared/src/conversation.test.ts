@@ -24,3 +24,18 @@ describe('CT-032 conversation transport', () => {
     await expect(getConversationEntry('t','j','selected')).rejects.toThrow('selected occurrence');
   });
 });
+
+describe('CC-020 legacy request identity',()=>{
+ it('rejects reused IDs across pages instead of selecting the first occurrence',async()=>{
+  const {getConversationRequest}=await import('./conversation');
+  const fetch=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({tenant_id:'t',job_id:'j',snapshot_token:'s',entries:[{entry_id:'one',request_id:'reused'}],next_page_token:'next'}))).mockResolvedValueOnce(new Response(JSON.stringify({tenant_id:'t',job_id:'j',snapshot_token:'s',entries:[{entry_id:'two',request_id:'reused'}]})));
+  vi.stubGlobal('fetch',fetch);
+  await expect(getConversationRequest('t','j','reused')).rejects.toThrow('ambiguous');expect(fetch).toHaveBeenCalledTimes(2);
+ });
+ it('opens a unique legacy request using its occurrence and snapshot',async()=>{
+  const {getConversationRequest}=await import('./conversation');
+  const fetch=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({tenant_id:'t',job_id:'j',snapshot_token:'s',entries:[{entry_id:'only',request_id:'unique'}]}))).mockResolvedValueOnce(new Response(JSON.stringify({entry_id:'only'})));
+  vi.stubGlobal('fetch',fetch);await getConversationRequest('t','j','unique');
+  expect(fetch.mock.calls[1][0]).toContain('entry_id=only&snapshot_token=s');
+ });
+});

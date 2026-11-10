@@ -833,9 +833,9 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
             <Button icon={<ReloadOutlined />} onClick={() => load({ preserveSelection: true })}>
               Refresh
             </Button>
-            <CancelJobButton key={`${projectId}/${jobId}`} projectId={projectId} jobId={jobId}
+            {requestId === null && <CancelJobButton key={`${projectId}/${jobId}`} projectId={projectId} jobId={jobId}
               disabled={!jobId || !!job && !!terminalStatus && isFinishedJob(job)}
-              onCancelled={async () => { await Promise.all([load({ preserveSelection: true }), refreshPendingInputs()]); }} />
+              onCancelled={async () => { await Promise.all([load({ preserveSelection: true }), refreshPendingInputs()]); }} />}
           </Space>
         </div>
 
@@ -857,7 +857,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
           <Text strong>Prompt</Text>
           <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginBottom: 0 }}>{prompt || 'No prompt recorded for this job.'}</Typography.Paragraph>
         </section>}
-        <JobConversation tenant={projectId} job={jobId} occurrence={searchParams.get('occurrenceId') ?? undefined}
+        <JobConversation onBack={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('occurrenceId'); next.delete('requestId'); return next; })} tenant={projectId} job={jobId} occurrence={searchParams.get('occurrenceId') ?? undefined}
           requestId={searchParams.get('requestId') ?? undefined} running={!!job && !!terminalStatus && !isFinishedJob(job)}
           refreshKey={historyRefreshKey} onOpen={entry => setSearchParams(previous => {
             const next = new URLSearchParams(previous); next.set('occurrenceId', entry); next.set('tab', 'conversation');

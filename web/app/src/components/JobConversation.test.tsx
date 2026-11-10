@@ -9,9 +9,9 @@ beforeEach(() => vi.clearAllMocks());
 describe('conversation retained evidence', () => {
  it('CT-009 CT-010 CT-016 CT-034 renders exact accepted feedback and caller provenance', () => {
   render(<HistoryPair entry={entry()} />);
-  expect(screen.getByText(/Keep original/)).toBeInTheDocument();
-  expect(screen.getByText(/Caller-reported identity/)).toBeInTheDocument();
-  expect(screen.getByText('Requested: not recorded')).toBeInTheDocument();
+  expect(screen.getAllByText(/Keep original/)[0]).toBeInTheDocument();
+  expect(screen.getAllByText(/Caller-reported identity/)[0]).toBeInTheDocument();
+  expect(screen.getAllByText('Time not recorded')[0]).toBeInTheDocument();
   expect(screen.getByText(/State: answered/)).toBeInTheDocument();
  });
  it.each(['ordinary', 'structured', 'review'])('CT-010 %s never promotes a missing accepted outcome', kind => {
@@ -92,4 +92,69 @@ describe('conversation retained evidence', () => {
   expect(vi.mocked(getConversationEntry).mock.calls[0][3]?.signal?.aborted).toBe(true);
  });
 
+});
+
+describe('CC compact presentation and saved interpretation', () => {
+ it('CC-002 CC-008 keeps full evidence behind Details, expands feedback and omits pending answers', () => {
+  const feedback = 'Complete feedback '.repeat(100);
+  const {container,rerender} = render(<HistoryPair entry={{...entry(),accepted_response:{present:true,raw:feedback},diagnostics:[{code:'gap',message:'Original diagnostic'}]}} />);
+  expect(container.querySelector('details')).not.toHaveAttribute('open');
+  expect(container.querySelector('details')).toHaveTextContent('Original diagnostic');
+  expect(container.querySelector('details')).toHaveTextContent('invoke');
+  fireEvent.click(screen.getByRole('button',{name:'Expand feedback'}));
+  expect(container.querySelector('.conversation-answer.expanded')).toHaveTextContent(feedback.trim());
+  rerender(<HistoryPair entry={{...entry(),kind:'ordinary',state:'pending',accepted_response:{present:false}}} />);
+  expect(screen.queryByLabelText('Accepted response')).toBeNull();
+  expect(container.querySelector('details')).toHaveTextContent('Proceed?');
+ });
+});
+
+describe('CC-017 snapshot recovery', () => {
+ const document={kind:'stored',name:'original.md',stored:{key:{jobId:'producer',taskOrdinal:4,name:'original.md',sizeBytes:10}}};
+ const detail=(token:string)=>({...entry('selected'),snapshot_token:token,completeness:'complete',raw_form:{question:'Saved instructions',documents:{original:document},document_metadata:{original:{order:0,title:'Original title'}}},request_manifest:[{artifact_id:'artifact',ref:document,associations:[],availability:'retained'}],response_manifest:[]} as any);
+ it('relocates exactly the selected occurrence in a fresh snapshot after byte expiry', async()=>{
+  vi.mocked(getConversation).mockResolvedValue({...page([entry('selected')]),snapshot_token:'fresh'});
+  vi.mocked(getConversationEntry).mockResolvedValueOnce(detail('expired')).mockResolvedValueOnce(detail('fresh'));
+  const transport=vi.fn(async(url:string)=>url.includes('snapshot_token=expired') ? new Response(JSON.stringify({code:'history_snapshot_expired',error:'expired'}),{status:410}) : new Response('# Retained original'));
+  vi.stubGlobal('fetch',transport);
+  render(<JobConversation tenant="tenant" job="job" occurrence="selected" running={false} onOpen={vi.fn()} />);
+  await screen.findByRole('heading',{name:'Retained original'});
+  expect(getConversationEntry).toHaveBeenLastCalledWith('tenant','job','selected',expect.objectContaining({snapshotToken:'fresh'}));
+  expect(transport.mock.calls.every(([url])=>url.includes('entry_id=selected&artifact_id=artifact'))).toBe(true);
+  vi.unstubAllGlobals();
+ });
+ it('keeps review text and shows unavailable selected occurrence without retry loops', async()=>{
+  vi.mocked(getConversation).mockResolvedValue(page([]));
+  vi.mocked(getConversationEntry).mockResolvedValue(detail('expired'));
+  const transport=vi.fn(async()=>new Response(JSON.stringify({code:'history_snapshot_expired',error:'expired'}),{status:410}));vi.stubGlobal('fetch',transport);
+  render(<JobConversation tenant="tenant" job="job" occurrence="selected" running={false} onOpen={vi.fn()} />);
+  await screen.findByText(/Snapshot recovery failed/);
+  expect(screen.getByLabelText('Review context')).toHaveTextContent('Saved instructions');
+  expect(getConversationEntry).toHaveBeenCalledTimes(1);expect(transport).toHaveBeenCalledTimes(1);
+  vi.unstubAllGlobals();
+ });
+});
+
+describe('CC compact occurrence and time provenance',()=>{
+ it('CC-003 CC-005 pairs response with its request in API order and labels reported receipt time',async()=>{
+  const entries=['second','first'].map(id=>({...entry(id),request_id:'same',requested_at:{present:true,raw:'2025-01-02T14:30:00Z'},actor:{...entry().actor,receipt:{submitted_at:'2025-01-02T14:35:00Z',actor:{id:'j@j.com',kind:'human'}}}}));
+  vi.mocked(getConversation).mockResolvedValue(page(entries));
+  const {container}=render(<JobConversation tenant="tenant" job="job" running={false} onOpen={vi.fn()}/>);
+  await screen.findByText('Occurrence: second');
+  expect([...container.querySelectorAll('.conversation-pair')].map(el=>el.getAttribute('data-occurrence'))).toEqual(['second','first']);
+  for(const pair of container.querySelectorAll('.conversation-pair'))expect([...pair.children].map(el=>el.getAttribute('aria-label'))).toEqual(['Recorded request step','Accepted response']);
+  expect(screen.getAllByText(/Reported time:/)).toHaveLength(2);
+  expect(screen.getAllByText(/Reported time:/)[0]).toHaveAttribute('title');
+ });
+ it('CC-019 refreshes the whole visible range in one snapshot and retains entries on inconsistent refresh',async()=>{
+  vi.mocked(getConversation).mockResolvedValueOnce(page([entry('one')],'next')).mockResolvedValueOnce(page([entry('two')])).mockResolvedValueOnce({...page([entry('new')],'fresh-next'),snapshot_token:'fresh'}).mockResolvedValueOnce({...page([entry('invalid')]),snapshot_token:'wrong'});
+  render(<JobConversation tenant="tenant" job="job" running={false} onOpen={vi.fn()}/>);
+  fireEvent.click(await screen.findByText('Load more requests'));await screen.findByText('Occurrence: two');
+  fireEvent.click(screen.getByText('Refresh history'));await screen.findByText(/snapshot changed during refresh/);
+  expect(screen.getByText('Occurrence: one')).toBeInTheDocument();expect(screen.getByText('Occurrence: two')).toBeInTheDocument();expect(screen.queryByText('Occurrence: invalid')).toBeNull();
+ });
+ it('CC-023 explicitly shows an empty retained history',async()=>{
+  vi.mocked(getConversation).mockResolvedValue(page([]));render(<JobConversation tenant="tenant" job="job" running={false} onOpen={vi.fn()}/>);
+  await screen.findByText('No retained requests in this history.');
+ });
 });

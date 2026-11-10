@@ -6,12 +6,14 @@ import DocumentPreview from './review/DocumentPreview';
 import { resolveArtifactLink, type NavigationIntent } from './review/artifactLinks';
 import { loadDocument, type DocumentData } from './review/document';
 
-interface Props { projectId: string; jobId: string; requestId: string; documents: Record<string, ReviewDocument>; documentMetadata?: Record<string, ReviewDocumentMetadata>; overviewDocumentId?: string }
+export interface DocumentSource { identity: string; url: (id: string) => string; onError?: (error: unknown) => void }
+export type ReaderDocument = { name?: string; stored?: ReviewDocument['stored'] };
+interface Props { source?: DocumentSource; projectId: string; jobId: string; requestId: string; documents: Record<string, ReaderDocument>; documentMetadata?: Record<string, ReviewDocumentMetadata>; overviewDocumentId?: string }
 export default function ReviewDocuments(props: Props) {
   // A fresh review identity owns all preview state; response drafts live above this component.
-  return <ReviewReader key={JSON.stringify([props.projectId, props.jobId, props.requestId])} {...props} />;
+  return <ReviewReader key={JSON.stringify([props.projectId, props.jobId, props.requestId, props.source?.identity])} {...props} />;
 }
-function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata = {}, overviewDocumentId }: Props) {
+function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata = {}, overviewDocumentId, source }: Props) {
   const compact = useCompact();
   const ids = Object.keys(documents).sort((a, b) => displayOrder(documentMetadata[a]?.order) - displayOrder(documentMetadata[b]?.order) || (a < b ? -1 : a > b ? 1 : 0));
   const attached = (id?: string): id is string => id !== undefined && Object.prototype.hasOwnProperty.call(documents, id);
@@ -29,8 +31,10 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
   const previewRoot = useRef<HTMLElement>(null);
   const reveal = useRef(false);
   const doc = documents[selected];
-  const name = doc?.name || doc?.stored.key.name || selected;
-  const url = selected ? inputActivityService.reviewDocumentURL(projectId, jobId, requestId, selected) : '';
+  const name = doc?.name || doc?.stored?.key.name || selected;
+  const documentURL = (id: string) => source ? source.url(id) : inputActivityService.reviewDocumentURL(projectId, jobId, requestId, id);
+  const path = (id: string) => documents[id]?.stored?.key.name || documents[id]?.name || id;
+  const url = selected ? documentURL(selected) : '';
   useEffect(() => {
     if (reveal.current && (error || content?.url === url)) {
       previewRoot.current?.scrollIntoView?.({ block: 'start' });
@@ -47,15 +51,16 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
   }, [selection, selected]);
   useEffect(() => {
     setError(undefined);
-    if (!url || cached.current?.url === url) return;
+    if (!url) { setError('Original document unavailable: no unambiguous retained mapping.'); setContent(undefined); cached.current = undefined; return; }
+    if (cached.current?.url === url) return;
     setContent(undefined); cached.current = undefined;
     const controller = new AbortController();
     loadDocument(url, name, controller.signal).then(data => {
       if (!controller.signal.aborted) { cached.current = { url, data }; setContent(cached.current); }
-    }).catch(e => { if (!controller.signal.aborted) setError(e.message); });
+    }).catch(e => { if (!controller.signal.aborted) { setError(e.message); source?.onError?.(e); } });
     return () => controller.abort();
   }, [url, name, retry]);
-  const filename = (id: string) => documents[id]?.name || documents[id]?.stored.key.name || id;
+  const filename = (id: string) => documents[id]?.name || documents[id]?.stored?.key.name || id;
   const title = (id: string) => documentMetadata[id]?.title?.trim() ? documentMetadata[id].title! : filename(id);
   const openDocument = (id: string, focus = false, fragment?: string) => {
     if (!attached(id)) return false;
@@ -77,8 +82,8 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
   };
   const sources = (id: string) => {
     const sourceIds = [...new Set(documentMetadata[id]?.source_document_ids || [])].filter(source => source !== id);
-    return sourceIds.length ? <div className="review-document-sources" aria-label="Source documents">Source documents: {sourceIds.map(source => attached(source)
-      ? <a key={source} href={inputActivityService.reviewDocumentURL(projectId, jobId, requestId, source)} onClick={event => {
+    return sourceIds.length ? <div className="review-document-sources" aria-label="Source documents">Source documents: {sourceIds.map(source => attached(source) && !!documentURL(source)
+      ? <a key={source} href={documentURL(source)} onClick={event => {
         if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
         openDocument(source, true);
@@ -87,19 +92,20 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
   };
   const toolbar = <div className="review-document-toolbar">
     {compact && <Select aria-label="Review document" value={selected} onChange={id => openDocument(id)} style={{ minWidth: 220, maxWidth: '100%' }} options={ids.map(id => ({ value: id, label: `${id} · ${title(id)}` }))} />}
-    <Typography.Text type="secondary">{doc?.stored.key.sizeBytes?.toLocaleString() ?? 'Unknown'} bytes</Typography.Text>
-    <Button href={url} download={name}>Download</Button>
+    <Typography.Text type="secondary">{doc?.stored?.key.sizeBytes?.toLocaleString() ?? 'Unknown'} bytes</Typography.Text>
+    <Button disabled={!url} href={url || undefined} download={name}>Download</Button>
   </div>;
   const preview = error ? <Alert type="error" showIcon message={error} action={<Button onClick={() => { cached.current = undefined; setContent(undefined); setRetry(v => v + 1); }}>Retry</Button>} />
     : !content || content.url !== url ? <Spin aria-label="Loading document" />
     : <DocumentPreview key={url} data={content.data} name={name} markdownSource={markdownSource} setMarkdownSource={setMarkdownSource} dual={dual} setDual={setDual} navigationIntent={navigationIntent?.documentId === selected ? navigationIntent : undefined} navigation={{
-      resolve: reference => resolveArtifactLink(reference, doc.stored.key.name, Object.entries(documents).map(([key, d]) => ({key, path: d.stored.key.name, aliases: [key, ...(d.name ? [d.name] : [])]}))),
+      resolve: reference => resolveArtifactLink(reference, path(selected), Object.entries(documents).map(([key, d]) => ({key, path: path(key), aliases: [key, ...(d.name ? [d.name] : [])]}))),
       open: (key, fragment) => openDocument(key, true, fragment),
+      url: source ? documentURL : undefined,
     }} resolveAttachment={reference => {
-      const target = resolveArtifactLink(reference, doc.stored.key.name, Object.entries(documents).map(([key, d]) => ({ key, path: d.stored.key.name, aliases: [key, ...(d.name ? [d.name] : []), d.stored.key.name] })));
-      if (target.kind !== 'target' || !attached(target.key)) return undefined;
+      const target = resolveArtifactLink(reference, path(selected), Object.entries(documents).map(([key, d]) => ({ key, path: path(key), aliases: [key, ...(d.name ? [d.name] : []), path(key)] })));
+      if (target.kind !== 'target' || !attached(target.key) || !documentURL(target.key)) return undefined;
       const id = target.key, d = documents[id];
-      return { key: id, name: d.name || d.stored.key.name, url: inputActivityService.reviewDocumentURL(projectId, jobId, requestId, id) };
+      return { key: id, name: d.name || path(id), url: documentURL(id), onError: source?.onError };
     }} />;
   const details = selected ? <>{summary(selected)}{sources(selected)}{toolbar}</> : null;
   return <>

@@ -1,0 +1,22 @@
+.conversation-pair { margin: 10px 0; }
+.conversation-step .ant-card-body { padding: 10px 12px; }
+.conversation-step { margin: 6px 0; min-width: 0; }
+.conversation-line { display:flex; gap:12px; justify-content:space-between; align-items:center; height:24px; min-width:0; }
+.conversation-line > strong, .conversation-line > span { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; min-width:0; }
+.conversation-line > strong { flex:1; }
+.conversation-line > .ant-btn, .conversation-line > span:first-child { flex-shrink:0; }
+.conversation-step summary, .conversation-expand { font-size:12px; line-height:20px; cursor:pointer; }
+.conversation-step pre { white-space:pre-wrap; overflow-wrap:anywhere; }
+.conversation-response { margin-left:18px; border-left:3px solid #91caff; }
+.conversation-answer { white-space:pre-wrap; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:1; line-height:24px; }
+.conversation-answer.expanded { display:block; overflow-wrap:anywhere; }
+.conversation-expand { border:0; background:none; padding:0; color:#1677ff; }
+@media(max-width:600px) { .conversation-line { gap:6px; } .conversation-response { margin-left:10px; } .conversation-line > span { font-size:12px; } }
+
+.conversation-step .conversation-detail-summary { height:24px; min-height:24px; font-size:12px; }
+@media(max-width:767px) {
+ .conversation-step .conversation-line:first-child { height:44px; }
+ .conversation-step .conversation-detail-summary { height:44px; min-height:44px; }
+ .conversation-response .conversation-line { height:24px; }
+ .conversation-expand { min-height:44px; }
+}

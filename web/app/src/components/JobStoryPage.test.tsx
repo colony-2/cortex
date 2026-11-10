@@ -1277,7 +1277,7 @@ describe('Conversation tab layout', () => {
       }]});
       mount('');
       const prompt = await screen.findByRole('region', {name:'Job prompt'});
-      const answer = await screen.findByText('Winning answer');
+      const answer = (await screen.findAllByText('Winning answer'))[0];
       const completion = await screen.findByRole('region', {name:'Job completion'});
       expect(prompt).toHaveTextContent('Saved original prompt');
       expect(prompt.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

@@ -388,3 +388,29 @@ it.each(['fetch-error','not-raster'])('RGI-011 retains inline attachment %s hand
   expect(fetcher).toHaveBeenCalledTimes(2);
   expect(document.querySelector('.review-markdown img')).toBeNull();
 });
+
+describe('CC historical document source', () => {
+ const source = (identity='occurrence:snapshot') => ({identity,url:(id:string)=>`/history/artifact?entry_id=old&artifact_id=${id}&snapshot_token=${identity}`});
+ it('CC-011 CC-013 CC-014 uses original filenames, metadata and scoped links despite text/plain', async () => {
+  vi.stubGlobal('fetch',vi.fn(async (url:string) => new Response(url.includes('artifact_id=design') ? '# Original\n[next](data.json)' : '{"original":true}',{headers:{'Content-Type':'text/plain'}})));
+  render(<ReviewDocuments projectId="t" jobId="j" requestId="r" source={source()} documents={{...documents,data:{kind:'stored',name:'data.json',stored:{key:{jobId:'p',taskOrdinal:9,name:'data.json',sizeBytes:17}}}}} overviewDocumentId="design" documentMetadata={{design:{order:0,title:'Saved overview',role:'primary',description:'Original description',source_document_ids:['data']}}} />);
+  await screen.findByRole('heading',{name:'Original'});
+  const link=screen.getByRole('link',{name:'next'});
+  expect(link).toHaveAttribute('href',source().url('data'));
+  fireEvent.click(link,{ctrlKey:true});expect(screen.getByRole('heading',{name:'Original'})).toBeInTheDocument();
+  fireEvent.click(link);await screen.findByLabelText('Formatted JSON');
+  expect(screen.getByRole('link',{name:'Download',exact:true})).toHaveAttribute('href',source().url('data'));
+  expect(vi.mocked(fetch).mock.calls.every(([url])=>String(url).startsWith('/history/artifact?'))).toBe(true);
+ });
+ it('CC-018 aborts and clears previews on snapshot identity changes', async () => {
+  let release!: (v:Response)=>void;
+  const fetchMock=vi.fn().mockImplementationOnce(()=>new Promise(r=>{release=r;})).mockResolvedValueOnce(new Response('# New snapshot'));
+  vi.stubGlobal('fetch',fetchMock);
+  const view=render(<ReviewDocuments projectId="t" jobId="j" requestId="r" documents={documents} source={source('old')} />);
+  view.rerender(<ReviewDocuments projectId="t" jobId="j" requestId="r" documents={documents} source={source('new')} />);
+  await screen.findByRole('heading',{name:'New snapshot'});
+  expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true);
+  await act(async()=>release(new Response('# Obsolete snapshot')));
+  expect(screen.queryByRole('heading',{name:'Obsolete snapshot'})).toBeNull();
+ });
+});

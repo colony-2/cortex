@@ -2,7 +2,7 @@ import { StrictMode } from 'react';
 import { jobIdentity, registryCell } from '../test/cellFixtures';
 import { getCell, listCells, getJob } from '@colony2/shared/api';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom';
 import type { RecipeJob } from '@colony2/shared/types';
 import JobsListPage from './JobsListPage';
@@ -21,7 +21,12 @@ vi.mock('react-json-view', () => ({ default: ({ src }: { src: unknown }) => <pre
 
 beforeEach(() => { vi.mocked(listCells).mockResolvedValue({ cells: ['platform', 'app', 'alpha', 'zeta', 'middle'].map(name => registryCell(name)) });
  vi.mocked(getCell).mockImplementation(async (tenant, id) => registryCell(id.replace(/^cell-/, ''), tenant)); vi.mocked(getJob).mockReset().mockResolvedValue({ ...jobIdentity, goal_id: 'goal', job_id: 'job', status: 'READY', store: 'ACTIVE' } as RecipeJob); });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(async () => {
+  // These tests mount portals and start asynchronous list/detail loads. Unmount
+  // inside act so React drains queued commits before jsdom and fetch are removed.
+  await act(async () => { cleanup(); });
+  vi.unstubAllGlobals();
+});
 
 it.each([['cancel', ''], ['archive', ''], ['cancel', '?scope=roots'], ['archive', '?scope=roots']] as const)('confirms selected jobs and keeps failed %s operations available for retry in %s', async (action, query) => {
   const jobs = ['first', 'second', 'unselected'].map(job_id => ({ ...jobIdentity, job_id, status: 'READY', store: 'ACTIVE' }));

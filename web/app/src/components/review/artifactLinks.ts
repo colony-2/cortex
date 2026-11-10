@@ -6,6 +6,7 @@ export type LinkResolution =
   | { kind: 'target'; key: string; fragment?: string }
   | { kind: 'unavailable'; reason: 'missing' | 'ambiguous' | 'invalid' | 'outside-context' };
 export interface PreviewNavigation {
+  url?: (key: string) => string;
   resolve: (reference: string) => LinkResolution;
   open: (key: string, fragment?: string) => boolean;
 }

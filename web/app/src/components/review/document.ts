@@ -1,3 +1,4 @@
+import { APIError } from '@colony2/shared';
 // Review previews never modify the stored bytes or their download contract.
 export const TEXT_LIMIT = 2 * 1024 * 1024;
 export const STRUCTURED_LIMIT = 1024 * 1024;
@@ -43,7 +44,11 @@ export function structuredAllowed(data: DocumentData): boolean {
 }
 export async function loadDocument(url: string, name: string, signal: AbortSignal): Promise<DocumentData> {
   const response = await fetch(url, { signal });
-  if (!response.ok) throw new Error('Could not load this document. Retry or download the original.');
+  if (!response.ok) {
+    let body: {error?: string; code?: string} = {};
+    try { body = await response.json(); } catch { /* transport failure */ }
+    throw new APIError(`Could not load this document. ${body.error || 'Retry or download the original.'}${response.status === 413 ? ' History artifacts are limited to 32 MiB.' : ''}`, response.status, body.code);
+  }
   if (!response.body) throw new Error('Document streaming is unavailable. Download the original file.');
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
