@@ -155,13 +155,14 @@ export default function InputDetailPage({ projectId }: InputDetailPageProps) {
           <section aria-label="Review context" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{reviewPrompt}</section>
         </Card>)}
         </div>
-        {reviews && <ReviewDocuments key={details.form.request_id} projectId={projectId} jobId={jobId}
+        {reviews ? <ReviewDocuments key={details.form.request_id} projectId={projectId} jobId={jobId}
           documentMetadata={details.form.document_metadata} overviewDocumentId={details.form.overview_document_id}
-          requestId={details.form.request_id!} documents={details.form.documents || {}} />}
-        <Card title={reviews ? 'Your response' : form.title}>
-          {error && !reviews && <Alert type="error" showIcon message={error} closable onClose={() => setError(null)} style={{ marginBottom: 16 }} />}
-          <InputFormRenderer key={JSON.stringify([projectId, jobId, details.form.request_id])} submissionError={reviews ? error : undefined} form={form} reviewPromptShown={!!reviewPrompt} onSubmit={handleSubmit} onCancel={handleCancel} loading={submitting || cancelling} />
-        </Card>
+          requestId={details.form.request_id!} documents={details.form.documents || {}} response={
+            <Card title="Your response"><InputFormRenderer key={JSON.stringify([projectId, jobId, details.form.request_id])} submissionError={error} form={form} reviewPromptShown={!!reviewPrompt} onSubmit={handleSubmit} onCancel={handleCancel} loading={submitting || cancelling} /></Card>
+          } /> : <Card title={form.title}>
+          {error && <Alert type="error" showIcon message={error} closable onClose={() => setError(null)} style={{ marginBottom: 16 }} />}
+          <InputFormRenderer key={JSON.stringify([projectId, jobId, details.form.request_id])} form={form} reviewPromptShown={!!reviewPrompt} onSubmit={handleSubmit} onCancel={handleCancel} loading={submitting || cancelling} />
+        </Card>}
       </Space>
     </div>
   );

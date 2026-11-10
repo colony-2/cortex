@@ -359,6 +359,8 @@ describe('MAL review draft preservation', () => {
     try {
       render(<MemoryRouter initialEntries={['/project/tenant/reviews/review-job']}><Routes><Route path="/project/:projectId/reviews/:jobId" element={<InputDetailPage projectId="tenant"/>}/></Routes></MemoryRouter>);
       await userEvent.setup().type(await screen.findByRole('textbox',{name:'Notes'}),'Keep this draft');
+      expect(screen.queryByRole('navigation',{name:'Review documents'})).toBeNull();
+      fireEvent.click(screen.getByRole('button',{name:'Show documents'}));
       expect(screen.getByRole('button',{name:/Design overview/})).toHaveAttribute('aria-current','true');
       fireEvent.click(await screen.findByRole('link',{name:'Source notes · foo.md (b)'}));await screen.findByRole('heading',{name:'Foo'});
       fireEvent.click(screen.getByRole('button',{name:/Design overview/}));

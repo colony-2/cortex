@@ -1,20 +1,22 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, Button, Card, Empty, Select, Spin, Tag, Typography } from 'antd';
 import { useCompact } from '../hooks/useCompact';
 import { inputActivityService, type ReviewDocument, type ReviewDocumentMetadata } from '@colony2/shared';
+import DocumentOptions from './review/DocumentOptions';
 import DocumentPreview from './review/DocumentPreview';
 import { resolveArtifactLink, type NavigationIntent } from './review/artifactLinks';
 import { loadDocument, type DocumentData } from './review/document';
 
 export interface DocumentSource { identity: string; url: (id: string) => string; onError?: (error: unknown) => void }
 export type ReaderDocument = { name?: string; stored?: ReviewDocument['stored'] };
-interface Props { source?: DocumentSource; projectId: string; jobId: string; requestId: string; documents: Record<string, ReaderDocument>; documentMetadata?: Record<string, ReviewDocumentMetadata>; overviewDocumentId?: string }
+interface Props { source?: DocumentSource; projectId: string; jobId: string; requestId: string; documents: Record<string, ReaderDocument>; documentMetadata?: Record<string, ReviewDocumentMetadata>; overviewDocumentId?: string; response?: ReactNode }
 export default function ReviewDocuments(props: Props) {
   // A fresh review identity owns all preview state; response drafts live above this component.
   return <ReviewReader key={JSON.stringify([props.projectId, props.jobId, props.requestId, props.source?.identity])} {...props} />;
 }
-function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata = {}, overviewDocumentId, source }: Props) {
+function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata = {}, overviewDocumentId, source, response }: Props) {
   const compact = useCompact();
+  const [showNavigation, setShowNavigation] = useState(false);
   const ids = Object.keys(documents).sort((a, b) => displayOrder(documentMetadata[a]?.order) - displayOrder(documentMetadata[b]?.order) || (a < b ? -1 : a > b ? 1 : 0));
   const attached = (id?: string): id is string => id !== undefined && Object.prototype.hasOwnProperty.call(documents, id);
   const initial = attached(overviewDocumentId) ? overviewDocumentId : ids[0];
@@ -90,14 +92,9 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
       }}>{title(source)}{title(source) !== filename(source) ? ` · ${filename(source)}` : ''} ({source})</a>
       : <span key={source}>{source} (unavailable)</span>)}</div> : null;
   };
-  const toolbar = <div className="review-document-toolbar">
-    {compact && <Select aria-label="Review document" value={selected} onChange={id => openDocument(id)} style={{ minWidth: 220, maxWidth: '100%' }} options={ids.map(id => ({ value: id, label: `${id} · ${title(id)}` }))} />}
-    <Typography.Text type="secondary">{doc?.stored?.key.sizeBytes?.toLocaleString() ?? 'Unknown'} bytes</Typography.Text>
-    <Button disabled={!url} href={url || undefined} download={name}>Download</Button>
-  </div>;
   const preview = error ? <Alert type="error" showIcon message={error} action={<Button onClick={() => { cached.current = undefined; setContent(undefined); setRetry(v => v + 1); }}>Retry</Button>} />
     : !content || content.url !== url ? <Spin aria-label="Loading document" />
-    : <DocumentPreview key={url} data={content.data} name={name} markdownSource={markdownSource} setMarkdownSource={setMarkdownSource} dual={dual} setDual={setDual} navigationIntent={navigationIntent?.documentId === selected ? navigationIntent : undefined} navigation={{
+    : <DocumentPreview reviewOptions={{ storedBytes: doc?.stored?.key.sizeBytes }} key={url} data={content.data} name={name} markdownSource={markdownSource} setMarkdownSource={setMarkdownSource} dual={dual} setDual={setDual} navigationIntent={navigationIntent?.documentId === selected ? navigationIntent : undefined} navigation={{
       resolve: reference => resolveArtifactLink(reference, path(selected), Object.entries(documents).map(([key, d]) => ({key, path: path(key), aliases: [key, ...(d.name ? [d.name] : [])]}))),
       open: (key, fragment) => openDocument(key, true, fragment),
       url: source ? documentURL : undefined,
@@ -107,21 +104,32 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
       const id = target.key, d = documents[id];
       return { key: id, name: d.name || path(id), url: documentURL(id), onError: source?.onError };
     }} />;
-  const details = selected ? <>{summary(selected)}{sources(selected)}{toolbar}</> : null;
+  const details = selected ? <div className="review-selected-details">{summary(selected)}{sources(selected)}<Button disabled={!url} href={url || undefined} download={name}>Download</Button></div> : null;
   return <>
-    <Card ref={catalog} tabIndex={-1} className="review-document-catalog" title={`Documents (${ids.length})`} extra={<Typography.Text type="secondary">Read only</Typography.Text>}>
-      {!selected ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents attached" />
-        : <div className={compact ? 'review-document-cards' : 'review-document-layout'}>
-          <nav aria-label="Review documents" className="review-document-list">{ids.map(id => <div key={id} className="review-document-entry">
+    <Button aria-expanded={showNavigation} onClick={() => setShowNavigation(value => !value)}>{showNavigation ? 'Hide documents' : 'Show documents'}</Button>
+    <div className={`review-reading-layout ${showNavigation && !compact ? 'with-navigation' : ''}`}>
+      <div className="review-navigation-track" hidden={!showNavigation}>
+        <Card ref={catalog} tabIndex={-1} className="review-document-catalog" title={`Documents (${ids.length})`}>
+          {compact && selected && <Select aria-label="Review document" value={selected} onChange={id => openDocument(id)} style={{ width: '100%' }} options={ids.map(id => ({ value: id, label: `${id} · ${title(id)}` }))} />}
+          <nav aria-label="Review documents" className={`review-document-list ${compact ? "review-document-cards" : ""}`}>{ids.map(id => <div key={id} className="review-document-entry">
             {compact ? <>{summary(id)}{id === initial && <Tag>Starting document</Tag>}{sources(id)}<Button block onClick={() => openDocument(id)}>Read {title(id)}</Button></>
               : <button type="button" aria-current={id === selected ? 'true' : undefined} onClick={() => openDocument(id)}>{summary(id)}</button>}
           </div>)}</nav>
-          <section ref={previewRoot} className="review-document-content" aria-label="Selected document">{details}{preview}</section>
-        </div>}
-
-    </Card>
+        </Card>
+      </div>
+      <div className="review-reading-track">
+        <Card><section ref={previewRoot} className="review-document-content" aria-label="Selected document">
+          {!selected ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents attached" /> : <>
+            {(!content || content.url !== url || error) && <DocumentOptions key={url} storedBytes={doc?.stored?.key.sizeBytes} />}
+            {preview}{details}
+          </>}
+        </section></Card>
+        {response}
+      </div>
+    </div>
   </>;
 }
+
 
 function displayOrder(order: unknown): number {
   return typeof order === 'number' && Number.isInteger(order) && order >= 0 && order <= 1_000_000 ? order : Infinity;

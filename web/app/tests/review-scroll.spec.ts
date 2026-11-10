@@ -15,10 +15,11 @@ async function fixture(page: Page, count=2, required=false) {
   const raster=await page.evaluate(()=>{ const canvas=document.createElement('canvas');canvas.width=1200;canvas.height=1800;canvas.getContext('2d')!.fillRect(0,0,1200,1800);return canvas.toDataURL('image/png').split(',')[1]; });
   const names=['design.md','source.txt','changes.patch','image.png'];
   const documents=Object.fromEntries(Array.from({length:count},(_,i)=>[`d${i}`,{kind:'stored',name:names[i] || `file${i}.md`,stored:{key:{jobId:'one',taskOrdinal:1,name:names[i] || `file${i}.md`}}}]));
-  await page.route('**/user-inputs/one',r=>r.fulfill({json:{jobId:'one',status:'pending',startTime:'2026-10-30T10:00:00Z',form:{kind:'review',title:'Review',request_id:'request',documents,fields:[
+  await page.route('**/user-inputs/one',r=>r.fulfill({json:{jobId:'one',status:'pending',startTime:'2026-10-30T10:00:00Z',form:{kind:'review',title:'Review',request_id:'request',documents,document_metadata:{d0:{title:'Review design details',description:'Fixture metadata after document body',role:'primary',source_document_ids:['d1','missing']}},fields:[
     {id:'decision',type:'multiple_choice',question:'Proceed?',required:true,options:[{value:'approve',label:'Approve'},{value:'revise',label:'Revise'}]},
     {id:'feedback',type:'paragraph_text',question:'Reason',required},
     {id:'other',type:'short_answer',question:'Required context',required:true},
+    {id:'attachment',type:'file_upload',question:'Annotations'},
   ]}}}));
   await page.route('**/reviews/one/documents?*',r=>{
     const id=new URL(r.request().url()).searchParams.get('document_id');
@@ -41,6 +42,7 @@ async function geometry(page: Page) {
       && bounds.height <= (window.visualViewport?.height ?? innerHeight) * 0.75 + 1
       && parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--review-action-height')) >= bounds.height - 1;
   })).toBe(true);
+  await expect(async () => {
   const result=await page.evaluate(()=>{
     const bar=document.querySelector('.review-actions')!;
     const b=bar.getBoundingClientRect();
@@ -55,6 +57,7 @@ async function geometry(page: Page) {
   expect(result.reserved).toBeGreaterThanOrEqual(result.height-1);
   for(const p of result.panes) expect(p.delta,p.name).toBeLessThanOrEqual(1);
   await test.info().attach('geometry',{body:JSON.stringify(result,null,2),contentType:'application/json'});
+  }).toPass({timeout:15000});
 }
 async function aboveBar(page: Page, label: string) {
   const field=page.getByLabel(label,{exact:true});
@@ -63,8 +66,9 @@ async function aboveBar(page: Page, label: string) {
 }
 for(const count of [2,45]) test(`REV-001 taller ${count===2?'document':'catalog'} controls page height`,async({page})=>{
   await page.setViewportSize({width:1440,height:900}); await fixture(page,count);
-  const heights=await page.evaluate(()=>['.review-document-list','.review-document-content'].map(s=>document.querySelector(s)!.getBoundingClientRect().height));
-  // Both grid columns stretch to the natural height of the taller content.
+  await expect(page.getByRole('navigation',{name:'Review documents'})).toBeHidden();
+  await page.getByRole('button',{name:'Show documents'}).click();
+  const heights=await page.evaluate(()=>['.review-navigation-track','.review-reading-track'].map(s=>document.querySelector(s)!.getBoundingClientRect().height));
   expect(Math.abs(heights[0]-heights[1])).toBeLessThanOrEqual(1);
   await geometry(page);
   if(count>5){
@@ -78,6 +82,7 @@ for(const count of [2,45]) test(`REV-001 taller ${count===2?'document':'catalog'
 });
 for(const width of [320,390,1440]) test(`REV-002/004/005/008 inline previews and measured bar at ${width}`,async({page})=>{
   await page.setViewportSize({width,height:844});await fixture(page,4,true);
+  await page.getByRole('button',{name:'Show documents'}).click();
   await page.getByRole('button',{name:'Approve',exact:true}).click();
   await page.getByRole('button',{name:'OK',exact:true}).click();
   await expect(page.getByText('Reason is required')).toBeVisible();
@@ -87,7 +92,7 @@ for(const width of [320,390,1440]) test(`REV-002/004/005/008 inline previews and
   await expect(page.getByLabel('Reason',{exact:true})).toBeFocused();
   await geometry(page);
   for(const [index,region] of [[0,'Rendered document'],[1,'Document source'],[2,'Unified diff'],[3,'image.png']] as const){
-    if(width<768) await page.getByRole('button',{name:`Read ${['design.md','source.txt','changes.patch','image.png'][index]}`,exact:true}).click();
+    if(width<768) await page.getByRole('button',{name:`Read ${['Review design details','source.txt','changes.patch','image.png'][index]}`,exact:true}).click();
     else await page.getByRole('navigation',{name:'Review documents'}).getByRole('button').nth(index).click();
     if(index===3) {await expect(page.getByRole('img',{name:region,exact:true})).toBeVisible();await page.getByRole('button',{name:'Actual size',exact:true}).click();}
     else await expect(page.getByLabel(region,{exact:true})).toBeVisible();
@@ -99,7 +104,7 @@ for(const width of [320,390,1440]) test(`REV-002/004/005/008 inline previews and
       await page.locator('mark').scrollIntoViewIfNeeded();
       await expect(page.locator('mark')).toBeInViewport({ratio:1});
     }
-    if(index===0){await page.getByText('FINAL DOCUMENT CONTENT',{exact:true}).scrollIntoViewIfNeeded();await expect(page.getByText('FINAL DOCUMENT CONTENT',{exact:true})).toBeInViewport({ratio:1});await page.getByText('Markdown',{exact:true}).click();await expect(page.getByLabel('Markdown source')).toContainText('FINAL DOCUMENT CONTENT');await geometry(page);}
+    if(index===0){await page.getByText('FINAL DOCUMENT CONTENT',{exact:true}).scrollIntoViewIfNeeded();await expect(page.getByText('FINAL DOCUMENT CONTENT',{exact:true})).toBeInViewport({ratio:1});await page.getByRole('button',{name:'Document options'}).click();await page.getByText('Markdown',{exact:true}).click();await page.keyboard.press('Escape');await expect(page.getByLabel('Markdown source')).toContainText('FINAL DOCUMENT CONTENT');await geometry(page);}
   }
   await page.setViewportSize({width,height:400});
   await geometry(page);
@@ -116,7 +121,13 @@ test.describe('zoom',()=>{
     await page.getByLabel('Reason',{exact:true}).fill('Zoomed feedback');
     await geometry(page);
     await page.getByRole('button',{name:'OK'}).scrollIntoViewIfNeeded();
-  await expect(page.getByRole('button',{name:'OK'})).toBeInViewport({ratio:1});
+    const ok = page.getByRole('button',{name:'OK'});
+    await ok.click({trial:true});
+    expect(await ok.evaluate(e => { const b=e.getBoundingClientRect(); const a=document.querySelector('.review-actions')!.getBoundingClientRect(); return b.top >= Math.max(0,a.top)-1 && b.bottom <= Math.min(innerHeight,a.bottom)+1; })).toBe(true);
+    const download=page.locator('.review-selected-details').getByRole('link',{name:'Download'});
+    await download.scrollIntoViewIfNeeded();
+    expect(await download.evaluate(e=>e.getBoundingClientRect().bottom <= document.querySelector('.review-actions')!.getBoundingClientRect().top)).toBe(true);
+    await captureNativeZoom(page,test.info().outputPath('review-metadata-200.png'));
     await page.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight));
     await aboveBar(page,'Required context');
     await captureNativeZoom(page,test.info().outputPath('review-200.png'));
@@ -188,4 +199,48 @@ test('RC-001/017/018 confirmation captures and visual viewport clearance',async(
   await page.goto('/project/phone/reviews/one');
   await expect(page.getByRole('button',{name:'Approve',exact:true})).toBeVisible();
   await geometry(page);
+});
+
+for (const width of [320,390,1440]) test(`RM-001/004/006/007/009/012 metadata and options at ${width}`, async ({page}, testInfo) => {
+  await page.setViewportSize({width,height:844});
+  await fixture(page);
+  await expect(page.getByRole('navigation',{name:'Review documents'})).toBeHidden();
+  const trigger = page.getByRole('button',{name:'Document options'});
+  await trigger.focus();
+  await page.keyboard.press('ArrowDown');
+  const dialog = page.getByRole('dialog',{name:'Document options'});
+  await expect(dialog).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('button',{name:'View as text'})).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(trigger).toBeFocused();
+  await expect(dialog).toBeHidden();
+  await trigger.click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toBeFocused();
+  await page.screenshot({path:testInfo.outputPath(`review-options-${width}.png`)});
+  await page.getByRole('heading',{name:'Long document',exact:true}).click();
+  await expect(dialog).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await page.getByRole('heading',{name:'Long document',exact:true}).scrollIntoViewIfNeeded();
+  await page.screenshot({path:testInfo.outputPath(`review-initial-${width}.png`)});
+  await page.getByRole('button',{name:'Show documents'}).click();
+  await page.getByRole('button',{name:'Reject',exact:true}).click();
+  await page.getByLabel('Reason',{exact:true}).fill('Retained response draft');
+  await page.locator('input[type=file]').setInputFiles({name:'notes.md',mimeType:'text/markdown',buffer:Buffer.from('Review annotations')});
+  await expect(page.locator('.review-actions')).toContainText('notes.md');
+  await page.getByRole('button',{name:'Hide documents'}).click();
+  await page.getByRole('button',{name:'Show documents'}).click();
+  await expect(page.getByLabel('Reason',{exact:true})).toHaveValue('Retained response draft');
+  await expect(page.locator('.review-actions')).toContainText('notes.md');
+  await geometry(page);
+  await page.getByRole('heading',{name:'Long document',exact:true}).scrollIntoViewIfNeeded();
+  await page.screenshot({path:testInfo.outputPath(`review-navigation-response-${width}.png`)});
+  const details = page.locator('.review-selected-details');
+  const download = details.getByRole('link',{name:'Download'});
+  await download.scrollIntoViewIfNeeded();
+  expect(await download.evaluate(e=>e.getBoundingClientRect().bottom <= document.querySelector('.review-actions')!.getBoundingClientRect().top)).toBe(true);
+  expect(await page.evaluate(()=>document.querySelector('.review-document-preview')!.compareDocumentPosition(document.querySelector('.review-selected-details')!) & Node.DOCUMENT_POSITION_FOLLOWING)).toBeTruthy();
+  await expect(details).toContainText('Fixture metadata after document body');
+  await page.screenshot({path:testInfo.outputPath(`review-metadata-${width}.png`)});
 });

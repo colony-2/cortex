@@ -101,6 +101,24 @@ describe('InputDetailPage - Single Question Flow', () => {
     submit.mockRestore();
   });
 
+  it('RM-004/009/010 retains one mounted feedback and upload field through navigation toggles', async () => {
+    setupReview();
+    const {container} = renderComponent();
+    await userEvent.click(await screen.findByRole('button',{name:'Reject',exact:true}));
+    await userEvent.type(screen.getByLabelText('Reason'),'Draft survives navigation');
+    const file = new File(['notes'],'notes.md',{type:'text/markdown'});
+    await userEvent.upload(container.querySelector('input[type=file]')!,file);
+    const upload = container.querySelector('input[type=file]')!;
+    expect(upload.closest('.review-actions')).not.toBeNull();
+    expect(screen.queryByText('Why?')).toBeNull();
+    await userEvent.click(screen.getByRole('button',{name:'Show documents'}));
+    await userEvent.click(screen.getByRole('button',{name:'Hide documents'}));
+    expect(screen.getByLabelText('Reason')).toHaveValue('Draft survives navigation');
+    expect(container.querySelector('input[type=file]')).toBe(upload);
+    expect(screen.getByText('notes.md')).toBeVisible();
+    expect(screen.getByRole('button',{name:'OK'})).toBeVisible();
+  });
+
   it('REV-013 disables review submission during pending cancellation', async () => {
     setupReview();
     let finish!: () => void;

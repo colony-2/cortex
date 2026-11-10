@@ -182,7 +182,7 @@ export default function InputFormRenderer({
           <Form.Item
             key={field.id}
             name={field.id}
-            label={field === feedback ? <div><span>Why?</span><span style={{ display: 'block', fontWeight: 'normal' }}>{field.label}</span></div> : field.label}
+            label={field.label}
             rules={rules}
           >
             <TextArea aria-label={field.label}
@@ -364,12 +364,13 @@ export default function InputFormRenderer({
         </div>
       )}
       
-      {form.fields.filter(field => field !== actionField && field !== feedback).map((field: InputField) => renderField(field))}
+      {form.fields.filter(field => field !== actionField && field !== feedback && !(actionField && form.kind === 'review' && field.type === 'file_upload')).map((field: InputField) => renderField(field))}
       {actionField && <Form.Item name={actionField.id} hidden rules={[{ required: true }]}><Input /></Form.Item>}
       <div ref={actions} role={form.kind === 'review' ? 'region' : undefined} className={form.kind === 'review' ? 'review-actions' : undefined} aria-label={form.kind === 'review' ? 'Review decisions' : undefined}>
       {actionField && <div hidden={pending === undefined}>
         <p aria-live="polite">Selected response: {actionField.optionLabels?.[pending ?? ''] || pending}</p>
         {feedback && renderField(feedback)}
+        {form.kind === 'review' && form.fields.filter(field => field.type === 'file_upload').map(renderField)}
       </div>}
       {submissionError && <Alert type="error" showIcon message={submissionError} />}
       {validationError && <Alert type="error" showIcon message="Please complete the required fields and correct any errors before submitting." />}

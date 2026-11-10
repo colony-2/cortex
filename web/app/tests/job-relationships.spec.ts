@@ -187,7 +187,7 @@ for(const width of [1440,390,320]) test(`REL-034/D3,035,036,040,041,042 review o
   expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
   // D2 preserves context, documents, then response in both DOM and visual order.
   const context=page.locator('.review-goal-context');
-  const documents=page.getByText('Documents (1)',{exact:true}).locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " ant-card ")][1]');
+  const documents=page.getByRole('region',{name:'Selected document',exact:true});
   const response=page.getByText('Your response',{exact:true}).locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " ant-card ")][1]');
   await expect(documents).toBeVisible();
   await expect(response).toBeVisible();

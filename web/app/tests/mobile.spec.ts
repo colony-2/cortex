@@ -442,13 +442,16 @@ for (const width of [320, 390]) {
     await feedback.fill('Keep my draft while reading.');
     await page.locator('input[type=file]').setInputFiles({ name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('Notes') });
     await expect(page.getByLabel('Rendered document')).toContainText('Last paragraph.');
+    await page.getByRole('button', { name: 'Show documents', exact: true }).click();
     const read = page.getByRole('button', { name: 'Read design.md', exact: true });
     await read.click();
     const article = page.getByLabel('Rendered document');
     expect(await article.evaluate(element => element.scrollHeight <= element.clientHeight + 1)).toBe(true);
     expect(await page.evaluate(() => getComputedStyle(document.body).overflowY)).not.toBe('hidden');
     await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Document options' }).click();
     await page.getByText('Markdown', { exact: true }).click();
+    await page.keyboard.press('Escape');
     await expect(page.getByLabel('Markdown source')).toHaveText(source);
     expect(await page.getByLabel('Markdown source').evaluate(element => element.scrollHeight <= element.clientHeight + 1)).toBe(true);
     await expect(page.getByRole('link', { name: 'Download', exact: true })).toHaveAttribute('download', 'design.md');

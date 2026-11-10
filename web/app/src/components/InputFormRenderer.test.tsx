@@ -95,13 +95,13 @@ describe('InputFormRenderer', () => {
       {id:'owner',label:'Owner',type:'short_answer',required:true},
       {id:'file',label:'Attachment',type:'file_upload',required:false},
     ]}} onSubmit={mockOnSubmit} />);
-    expect(screen.queryByText('Why?')).not.toBeVisible();
+    expect(screen.queryByText('Why?')).toBeNull();
     await user.type(screen.getByLabelText('Owner'),'Sam');
     const file = new File(['evidence'],'evidence.txt',{type:'text/plain'});
-    await user.upload(container.querySelector('input[type=file]')!,file);
     await user.click(screen.getByRole('button',{name:'Accept',exact:true}));
     const editor = screen.getByLabelText('Explain the choice');
     expect(editor).toHaveFocus();
+    await user.upload(container.querySelector('input[type=file]')!,file);
     expect(container.querySelectorAll('textarea')).toHaveLength(1);
     expect(editor).toHaveAttribute('maxlength','1000');
     await user.type(editor,'Invalid{Enter}details');
@@ -521,4 +521,26 @@ describe('InputFormRenderer', () => {
     const cancelButton = container.querySelector('button[type="button"]');
     expect(cancelButton).toBeNull();
   });
+});
+
+it('RM-009/010/011 validates required uploads inside confirmation and retains their payload across Back', async () => {
+  const user = userEvent.setup();
+  const submit = vi.fn();
+  const {container} = render(<InputFormRenderer form={{id:'required-upload',title:'Review',kind:'review',responseField:'decision',fields:[
+    {id:'decision',label:'Choose',type:'multiple_choice',required:true,options:['approve','revise'],optionLabels:{approve:'Approve',revise:'Revise'}},
+    {id:'attachment',label:'Evidence',type:'file_upload',required:true},
+  ]}} onSubmit={submit} />);
+  await user.click(screen.getByRole('button',{name:'Approve',exact:true}));
+  expect(submit).not.toHaveBeenCalled();
+  expect(container.querySelector('textarea')).toBeNull();
+  await user.click(screen.getByRole('button',{name:'OK',exact:true}));
+  await screen.findByText('Evidence is required');
+  expect(submit).not.toHaveBeenCalled();
+  const file = new File(['evidence'],'evidence.md',{type:'text/markdown'});
+  await user.upload(container.querySelector('input[type=file]')!,file);
+  await user.click(screen.getByRole('button',{name:'Back',exact:true}));
+  await user.click(screen.getByRole('button',{name:'Approve',exact:true}));
+  expect(screen.getByText('evidence.md')).toBeVisible();
+  await user.click(screen.getByRole('button',{name:'OK',exact:true}));
+  await waitFor(()=>expect(submit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({response:'approve',fields:{decision:'approve'},attachments:{attachment:file}})));
 });

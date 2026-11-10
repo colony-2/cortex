@@ -420,3 +420,15 @@ html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-heig
 /* Reserve the desktop header's initial space so the trigger is visible before scrolling. */
 .desktop-navigation.ant-layout-sider { height: calc(100dvh - 65px); }
 .shell-navigation-target { display: block; width: 100%; }
+
+
+.review-reading-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+.review-reading-layout.with-navigation { grid-template-columns: minmax(12rem, 18rem) minmax(0, 1fr); }
+.review-reading-track { min-width: 0; display: flex; flex-direction: column; gap: 24px; }
+.review-navigation-track { min-width: 0; }
+.review-navigation-track[hidden] { display: none; }
+.review-navigation-track .review-document-catalog { height: 100%; }
+.review-selected-details { margin-top: 24px; }
+.review-document-options { display: flex; justify-content: flex-end; }
+.review-options-popover { max-width: calc(100vw - 24px); }
+.review-options-popover .ant-popover-inner-content { max-height: 60dvh; overflow: auto; overflow-wrap: anywhere; }

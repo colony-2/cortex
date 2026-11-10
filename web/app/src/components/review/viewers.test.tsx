@@ -105,6 +105,8 @@ describe('L01-L03,L12 loader integration', () => {
     const fetcher = vi.fn(async () => new Response(text)); vi.stubGlobal('fetch',fetcher);
     const documents = { notes: {...docs.log,name,stored:{key:{...docs.log.stored.key,name}}} };
     render(<ReviewDocuments projectId="tenant" jobId="job" requestId="r" documents={documents} />);
+    await screen.findByLabelText('Document preview');
+    fireEvent.click(screen.getByRole('button',{name:'Document options'}));
     const override = await screen.findByRole('button',{name:'View as text'});
     const download = screen.getByRole('link',{name:'Download'});
     const href = download.getAttribute('href');
@@ -119,6 +121,7 @@ describe('L01-L03,L12 loader integration', () => {
     const fetcher=vi.fn(async()=>new Response('# Current')); vi.stubGlobal('fetch',fetcher);
     render(<ReviewDocuments projectId="tenant" jobId="job" requestId="r" documents={docs} />);
     await screen.findByRole('heading',{name:'Current'});expect(fetcher).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button',{name:'Document options'}));
     fireEvent.click(screen.getByRole('radio',{name:'Markdown',exact:true}));expect(fetcher).toHaveBeenCalledTimes(1);
   });
   it('cancels on unmount and never exposes stale tenant/job content', async () => {
@@ -146,6 +149,7 @@ describe('L01 compact loading and L05-L07 limited states', () => {
   it('loads compact previews inline and reuses the selected document', async () => {
     vi.stubGlobal('innerWidth',320);const fetcher=vi.fn(async()=>new Response('# Phone'));vi.stubGlobal('fetch',fetcher);
     render(<ReviewDocuments projectId="tenant" jobId="job" requestId="phone" documents={docs} />);
+    fireEvent.click(screen.getByRole('button',{name:'Show documents'}));
     const read=await screen.findByRole('button',{name:'Read design.md',exact:true});
     fireEvent.click(read);await screen.findByRole('heading',{name:'Phone'});expect(fetcher).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -177,6 +181,7 @@ describe('L02 unambiguous identity boundaries', () => {
     vi.stubGlobal('fetch',vi.fn(async()=>new Response('# Identity')));
     const {rerender}=render(<ReviewDocuments projectId="a/b" jobId="c" requestId="r" documents={docs} />);
     await screen.findByRole('heading',{name:'Identity'});
+    fireEvent.click(screen.getByRole('button',{name:'Document options'}));
     fireEvent.click(screen.getByRole('radio',{name:'Markdown',exact:true}));expect(screen.getByLabelText('Markdown source')).toBeInTheDocument();
     rerender(<ReviewDocuments projectId="a" jobId="b/c" requestId="r" documents={docs} />);
     await screen.findByRole('heading',{name:'Identity'});expect(screen.queryByLabelText('Markdown source')).toBeNull();

@@ -483,16 +483,21 @@ for (const clarification of [false, true]) {
         document.querySelector('[aria-label="Review context"]')!
       ) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
       await expect(page.getByRole('heading', { name: 'Review the release' })).toBeVisible();
+      await page.getByRole('button', { name: 'Show documents', exact: true }).click();
       await page.getByRole('button', { name: 'Read design.md', exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
       await expect(page.getByLabel('Rendered document').getByRole('table')).toBeVisible();
       await expect(page.locator('[contenteditable=true]')).toHaveCount(0);
+      await page.getByRole('button', { name: 'Document options' }).click();
       await page.getByText('Markdown', { exact: true }).click();
+      await page.keyboard.press('Escape');
       await expect(page.getByLabel('Markdown source')).toContainText('**Immutable original**');
       await page.getByTitle('design · design.md', { exact: true }).click();
       await page.getByTitle('rollout · rollout.md', { exact: true }).click();
       await expect(page.getByLabel('Markdown source')).toContainText('# Rollout');
+      await page.getByRole('button', { name: 'Document options' }).click();
       await page.getByText('Rendered', { exact: true }).click();
+      await page.keyboard.press('Escape');
       await expect(page.getByRole('heading', { name: 'Rollout', exact: true })).toBeVisible();
       await expect(page.getByRole('checkbox')).toBeDisabled();
 
@@ -684,6 +689,7 @@ test.describe('review job metadata', () => {
     const region = page.getByRole('region', { name: 'Goal prompt' });
     await expect(region).toContainText(prompt);
     await expect(region.locator('script, strong')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Show documents', exact: true }).click();
     await page.getByRole('button', { name: 'Read design.md', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeVisible();
@@ -715,6 +721,7 @@ test.describe('multi-format review viewers', () => {
     const feedback=page.getByLabel('What should change?',{exact:true});
     await feedback.fill('Multi-format feedback');
     await page.locator('input[type=file]').setInputFiles({name:'feedback.md',mimeType:'text/markdown',buffer:Buffer.from('# Feedback')});
+    await page.getByRole('button',{name:'Show documents',exact:true}).click();
     const read=async(name:string)=>{
       await page.getByRole('button',{name:`Read ${name}`,exact:true}).click();
       await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -729,7 +736,9 @@ test.describe('multi-format review viewers', () => {
     await read('settings.json');await expect(page.getByLabel('Formatted JSON')).toContainText('approved');await back();
     await read('external.txt');await expect(page.getByLabel('Document source')).toHaveText('Cross-job original\n');await back();
     await read('changes.patch');await expect(page.getByLabel('Unified diff')).toContainText('-old');
-    await page.getByText('Side by side',{exact:true}).click();await expect(page.getByLabel('Side by side diff')).toContainText('+new');
+    await page.getByRole('button',{name:'Document options'}).click();
+    await page.getByText('Side by side',{exact:true}).click();
+    await page.keyboard.press('Escape');await expect(page.getByLabel('Side by side diff')).toContainText('+new');
     await page.screenshot({path:testInfo.outputPath('dual-pane.png')});await back();
     await page.route(/\/documents\?.*document_id=log(?:&|$)/,route=>route.fulfill({status:404,body:'missing document'}),{times:1});
     await read('checks.log');await expect(page.getByText(/Could not load this document/)).toBeVisible();await page.getByRole('button',{name:'Retry',exact:true}).click();await page.getByLabel('Search document').fill('needle');await expect(page.locator('mark')).toHaveText('needle');await back();
@@ -898,7 +907,7 @@ test.describe('nested review gallery', () => {
     await expect(images).toHaveCount(6);
     await capture('gallery-phone.png');
     await page.setViewportSize({width:1440,height:900});
-    await expect(page.locator('.review-document-layout')).toBeVisible();
+    await expect(page.locator('.review-reading-track')).toBeVisible();
     await page.locator('.review-markdown').evaluate(el=>el.scrollIntoView());
     await expect(page.getByText('Loading attached image…',{exact:true})).toHaveCount(0);
     await expect.poll(()=>images.evaluateAll(elements=>elements.length===6&&elements.every(el=>(el as HTMLImageElement).naturalWidth>0))).toBe(true);

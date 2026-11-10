@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render as baseRender, screen, waitFor } from '@testing-library/react';
 import ReviewDocuments from './ReviewDocuments';
 import type { ReviewDocument } from '@colony2/shared';
+
+// Existing navigation regressions exercise the explicitly revealed catalog.
+const render: typeof baseRender = ((...args: Parameters<typeof baseRender>) => {
+  const result = baseRender(...args);
+  fireEvent.click(screen.getByRole('button', { name: 'Show documents' }));
+  return result;
+}) as typeof baseRender;
 
 const documents: Record<string, ReviewDocument> = {
   design: { kind: 'stored', name: 'design.md', stored: { key: { jobId: 'child', taskOrdinal: 5, name: 'design.md', sizeBytes: 20 } } },
@@ -17,6 +24,7 @@ describe('review documents', () => {
     expect(container.querySelector('script')).toBeNull();
     expect(screen.getByText('bad')).not.toHaveAttribute('href', expect.stringMatching(/^javascript:/));
     expect(container.querySelector('[contenteditable]')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Document options' }));
     fireEvent.click(screen.getByRole('radio', { name: 'Markdown', exact: true }));
     expect(screen.getByLabelText('Markdown source').textContent).toBe(source);
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('request_id=request&document_id=design'), expect.anything());
@@ -413,4 +421,73 @@ describe('CC historical document source', () => {
   await act(async()=>release(new Response('# Obsolete snapshot')));
   expect(screen.queryByRole('heading',{name:'Obsolete snapshot'})).toBeNull();
  });
+});
+
+
+it('RM-001/004/006/007/015 prioritizes the body, hides navigation, and scopes options to the selection', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(url.includes('document_id=design') ? '# Authored heading' : '{"next":true}')));
+  const docs = {...documents, json: {kind:'stored' as const,name:'next.json',stored:{key:{jobId:'child',taskOrdinal:6,name:'next.json',sizeBytes:8}}}};
+  const {container, rerender} = baseRender(<ReviewDocuments projectId="t" jobId="j" requestId="r" documents={docs}
+    documentMetadata={{design:{title:'Selected details',description:'Description below body',role:'primary',source_document_ids:['missing']}}} />);
+  const heading = await screen.findByRole('heading', {name:'Authored heading'});
+  expect(screen.queryByRole('navigation')).toBeNull();
+  const details = container.querySelector('.review-selected-details')!;
+  expect(heading.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(details).toHaveTextContent('Selected detailsPrimarydesign · design.mdDescription below body');
+  expect(details).toHaveTextContent('missing (unavailable)');
+  expect(details.querySelector('a[download]')).toHaveAttribute('download','design.md');
+  expect(screen.queryByText(/loaded bytes/)).toBeNull();
+  const trigger = screen.getByRole('button',{name:'Document options'});
+  fireEvent.click(trigger);
+  const dialog = await screen.findByRole('dialog',{name:'Document options'});
+  expect(dialog).toHaveTextContent('Stored size: 20 bytes');
+  expect(dialog).toHaveTextContent('loaded bytes');
+  expect(screen.getByRole('radio',{name:'Rendered',exact:true})).toBeChecked();
+  fireEvent.keyDown(dialog,{key:'ArrowDown'});
+  expect(screen.getByRole('button',{name:'View as text'})).toHaveFocus();
+  fireEvent.keyDown(dialog,{key:'Escape'});
+  expect(trigger).toHaveFocus();
+  fireEvent.click(screen.getByRole('button',{name:'Show documents'}));
+  fireEvent.click(trigger);
+  fireEvent.click(screen.getByRole('button',{name:'next.json json'}));
+  await screen.findByLabelText('Formatted JSON');
+  expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Document options'}));
+  expect(screen.getByRole('dialog')).toHaveTextContent('Stored size: 8 bytes');
+  expect(screen.getByRole('radio',{name:'Formatted',exact:true})).toBeChecked();
+  expect(screen.queryByRole('radio',{name:'Markdown',exact:true})).toBeNull();
+  rerender(<ReviewDocuments projectId="t" jobId="j" requestId="new" documents={docs} />);
+  await screen.findByRole('heading',{name:'Authored heading'});
+  expect(screen.queryByRole('navigation')).toBeNull();
+});
+
+it('RM-002/006 retains metadata after the loading and error positions without stale loaded options', async () => {
+  let finish!: (response: Response) => void;
+  vi.stubGlobal('fetch',vi.fn(() => new Promise<Response>(resolve => { finish = resolve; })));
+  const {container} = baseRender(<ReviewDocuments projectId="t" jobId="j" requestId="r" documents={{design:{...documents.design,stored:{key:{...documents.design.stored.key,sizeBytes:undefined as never}}}}} />);
+  const details = container.querySelector('.review-selected-details')!;
+  expect(screen.getByLabelText('Loading document').compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'Document options'}));
+  expect(screen.getByRole('dialog')).toHaveTextContent('Stored size: Unknown bytes');
+  expect(screen.queryByRole('button',{name:'View as text'})).toBeNull();
+  await act(async () => { finish(new Response('failed',{status:503})); });
+  const retry = await screen.findByRole('button',{name:'Retry'});
+  expect(retry.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.getByRole('link',{name:'Download'})).toHaveAttribute('download','design.md');
+});
+
+
+it('CC/RM-002 preserves historical metadata without a stored mapping and reports load failures', async () => {
+  const onError = vi.fn();
+  vi.stubGlobal('fetch', vi.fn(async () => new Response('missing', {status:404})));
+  baseRender(<ReviewDocuments projectId="t" jobId="j" requestId="r"
+    source={{identity:'snapshot',url:()=>'/history/original',onError}}
+    documents={{original:{name:'original.md'}}}
+    documentMetadata={{original:{title:'Historical details'}}} />);
+  await screen.findByRole('button',{name:'Retry'});
+  expect(onError).toHaveBeenCalledOnce();
+  expect(screen.getByRole('region',{name:'Selected document'})).toHaveTextContent('Historical details');
+  expect(screen.getByRole('link',{name:'Download'})).toHaveAttribute('href','/history/original');
+  fireEvent.click(screen.getByRole('button',{name:'Document options'}));
+  expect(screen.getByRole('dialog')).toHaveTextContent('Stored size: Unknown bytes');
 });

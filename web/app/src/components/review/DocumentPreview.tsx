@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { useEffect } from 'react';
 import { decodeText, TEXT_LIMIT, hexDump, loadDocument, structuredAllowed, type DocumentData } from './document';
 import { formatJSON, jsonLineErrors } from './structured';
+import DocumentOptions from './DocumentOptions';
 import SourceView from './SourceView';
 import DiffView from './DiffView';
 import ImageView from './ImageView';
@@ -23,8 +24,8 @@ function AttachedImage({ id, name, url, onError }: { id: string; name: string; u
 }
 export type PreviewAttachment = { key: string; name: string; url: string; onError?: (error: unknown) => void };
 export type ResolvePreviewAttachment = (reference: string) => PreviewAttachment | undefined;
-interface Props { markdownSource?: boolean; setMarkdownSource?: (source: boolean) => void; data: DocumentData; name: string; dual: boolean; setDual: (value: boolean) => void; resolveAttachment?: ResolvePreviewAttachment; navigation?: PreviewNavigation; navigationIntent?: NavigationIntent }
-export default function DocumentPreview({ data, name, markdownSource = false, setMarkdownSource, dual, setDual, resolveAttachment, navigation, navigationIntent }: Props) {
+interface Props { reviewOptions?: { storedBytes?: number }; markdownSource?: boolean; setMarkdownSource?: (source: boolean) => void; data: DocumentData; name: string; dual: boolean; setDual: (value: boolean) => void; resolveAttachment?: ResolvePreviewAttachment; navigation?: PreviewNavigation; navigationIntent?: NavigationIntent }
+export default function DocumentPreview({ reviewOptions, data, name, markdownSource = false, setMarkdownSource, dual, setDual, resolveAttachment, navigation, navigationIntent }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const [linkNotice, setLinkNotice] = useState('');
   const scrollToFragment = (fragment: string) => {
@@ -52,14 +53,18 @@ export default function DocumentPreview({ data, name, markdownSource = false, se
   const overrideLimited = textOverride && data.bytes.length > TEXT_LIMIT;
   const overrideText = useMemo(() => textOverride ? decodeText(data.bytes.subarray(0, TEXT_LIMIT)) : data.text, [data, textOverride]);
   const source = <SourceView text={overrideText} label={format === 'markdown' ? 'Markdown source' : 'Document source'} />;
-  return <div ref={root} tabIndex={-1} aria-label="Document preview" className="review-document-preview">
-    {linkNotice && <div role="status">{linkNotice}</div>}
-    <Space wrap><span>{format} · {data.bytes.length.toLocaleString()} loaded bytes</span>
+  const controls = <>
+    <Space wrap>{reviewOptions && <span>Media type: {data.mime || 'Unknown'}</span>}<span>{format} · {data.bytes.length.toLocaleString()} loaded bytes</span>
       <Button onClick={() => setTextOverride(v => !v)}>{textOverride ? 'Detect format' : 'View as text'}</Button>
       {format === 'markdown' && <Radio.Group aria-label="Document display" value={markdownSource ? 'source' : 'rendered'} onChange={e => setMarkdownSource?.(e.target.value === 'source')} optionType="button" options={[{ label: 'Rendered', value: 'rendered' },{ label: 'Markdown', value: 'source' }]} />}
       {format === 'diff' && structured && <><Radio.Group aria-label="Diff layout" value={dual ? 'dual' : 'unified'} onChange={e => { setDual(e.target.value === 'dual'); setMode('rendered'); }} optionType="button" options={[{ label: 'Unified', value: 'unified' }, { label: 'Side by side', value: 'dual' }]} /><Button onClick={() => setMode(mode === 'source' ? 'rendered' : 'source')}>{mode === 'source' ? 'Show diff' : 'Source'}</Button></>}
       {format === 'json' && structured && <Radio.Group aria-label="JSON display" value={mode} onChange={e => setMode(e.target.value)} optionType="button" options={[{label:'Formatted',value:'rendered'},{label:'Source',value:'source'}]} />}
     </Space>
+  </>;
+  return <div ref={root} tabIndex={-1} aria-label="Document preview" className="review-document-preview">
+    {linkNotice && <div role="status">{linkNotice}</div>}
+    {reviewOptions ? <DocumentOptions storedBytes={reviewOptions.storedBytes}>{controls}</DocumentOptions> : controls}
+
     {format === 'source' && /\.(svg|html?)$/i.test(name) && <Alert type="info" message="Markup preview unavailable: unrecognized or conflicting document root; showing source." />}
     {(data.truncated || overrideLimited) && <Alert type="warning" message="Preview truncated. Search covers only loaded content. Download the complete original." />}
     {['json','diff','jsonl','markdown'].includes(format) && !structured && <Alert type="info" message="Structured preview limit exceeded or input incomplete; showing bounded source." />}

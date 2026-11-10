@@ -216,6 +216,8 @@ for (const width of [1280,390]) test(`CC-001 CC-009 CC-010 CC-013 CC-014 compact
  await dataLink.click();await expect(reader.getByLabel('Formatted JSON')).toContainText('"original": true');
  await expect(reader.getByRole('link',{name:'Download',exact:true})).toHaveAttribute('href',/artifact_id=Data&snapshot_token=frozen/);
  await page.screenshot({path:info.outputPath(`reader-${width}.png`),fullPage:true});
+ await expect(reader.getByRole('navigation',{name:'Review documents'})).toBeHidden();
+ await reader.getByRole('button',{name:'Show documents',exact:true}).click();
  if(width===1280) await reader.getByRole('button',{name:/page.html/}).click();
  else await reader.getByRole('button',{name:'Read page.html',exact:true}).click();
  await expect(reader.locator('iframe[title="Static HTML preview: page.html"]')).toHaveAttribute('sandbox','');
@@ -249,7 +251,7 @@ for(const status of [403,404,410,413]) test(`CC-016 document-specific ${status} 
  const reader=page.getByRole('region',{name:'Recorded request',exact:true});
  await expect(reader.getByText(/Could not load this document/)).toBeVisible();
  await expect(reader.getByLabel('Review context')).toHaveText('Retain these instructions');
- await expect(reader.getByText('missing.md',{exact:true}).first()).toBeVisible();
+ await expect(reader.getByRole('region',{name:'Selected document',exact:true}).getByText('missing.md',{exact:true})).toBeVisible();
  if(status===413)await expect(reader.getByText(/limited to 32 MiB/)).toBeVisible();
  fail=false;await reader.getByRole('button',{name:'Retry',exact:true}).click();await expect(reader.getByRole('heading',{name:'Recovered original'})).toBeVisible();
 });

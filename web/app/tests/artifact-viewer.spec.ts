@@ -117,6 +117,8 @@ for (const viewport of [{width:1280,height:800},{width:390,height:844}]) {
       let opener;
       if(viewer==='review') {
         await page.getByRole('textbox',{name:'Notes'}).fill('Keep this draft');
+        await expect(page.getByRole('navigation',{name:'Review documents'})).toBeHidden();
+        await page.getByRole('button',{name:'Show documents',exact:true}).click();
         if(viewport.width<600) {opener=page.getByRole('button',{name:'Read docs/bar.md',exact:true});await opener.click();}
       } else {
         await page.getByRole('tab',{name:'Artifacts (3)'}).click();
@@ -178,6 +180,8 @@ for (const width of [375, 767, 768, 1280]) {
     const notes=page.getByRole('textbox',{name:'Notes'});await notes.fill('Keep this draft');
     const nav=page.getByRole('navigation',{name:'Review documents'});
     const compact=width<768;
+    await expect(nav).toBeHidden();
+    await page.getByRole('button',{name:'Show documents',exact:true}).click();
     await expect(nav).toContainText('Overview');
     await expect(nav).toContainText(longName);
     await expect(nav).toContainText('Description');
