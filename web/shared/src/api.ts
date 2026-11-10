@@ -248,3 +248,13 @@ export async function getJobLeaseEvents(
   }
   return page;
 }
+
+/** A durable receiving attempt; no latest-attempt defaults or raw values. */
+export interface InboxValueSelector {
+  jobAttempt: number; invocationId: string; taskOrdinal: number; taskAttempt: number; binding: string;
+}
+export function inboxValueUrl(projectId: string, jobId: string, selector: InboxValueSelector): string {
+  const query = new URLSearchParams({job_attempt: String(selector.jobAttempt), invocation_id: selector.invocationId,
+    task_ordinal: String(selector.taskOrdinal), task_attempt: String(selector.taskAttempt), binding: selector.binding});
+  return `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/inbox/value?${query}`;
+}

@@ -35,7 +35,15 @@ interface TransitionEvaluation {
   to_state_id: string;
 }
 
+export interface InboxEntry {
+  binding: string; path?: string; source_kind: string; source_key?: ArtifactKey;
+  content: string; reason?: string;
+}
+export interface RecordedInbox { status: string; reason?: string; entries: InboxEntry[] | null }
+
 export interface StoryNode {
+  inbox?: RecordedInbox;
+
   id?: string;
   invocation_id?: string;
   restart_scope_id?: string;

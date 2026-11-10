@@ -113,6 +113,7 @@ func (s *Server) buildRouter(inputService ops.ManagementService) http.Handler {
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/conversation/entry", s.requireArchivedJob(s.handleConversationEntry)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/conversation/artifact", s.requireArchivedJob(s.handleConversationArtifact)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/events", s.handleJobLeaseEvents).Methods(http.MethodGet, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/inbox/value", s.requireArchivedJob(s.handleInboxValue)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/story", s.requireArchivedJob(s.handleJobStory)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/outcome", s.requireArchivedJob(s.handleJobOutcome)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/tasks/{taskOrdinal}/artifacts/{artifactName:.+}", s.requireArchivedJob(s.handleArtifactByOrdinal)).Methods(http.MethodGet, http.MethodOptions)

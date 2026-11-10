@@ -30,7 +30,7 @@ async function fixture(page:Page,files:Files,viewer:'review'|'story',width=1280)
     return route.fulfill({json:body});
   });
   await page.goto(viewer==='review'?'/project/tenant/reviews/job':'/project/tenant/jobs/job/story?nodeId=root');
-  if(viewer==='story')await page.getByRole('tab',{name:`Artifacts (${names.length})`}).click();
+  if(viewer==='story')await page.getByRole('tab',{name:`Outbox (${names.length})`}).click();
   const open=async(name:string)=>{
     if(viewer==='story') {
       const dialog=page.getByRole('dialog');if(await dialog.isVisible())await dialog.getByRole('button',{name:'Close',exact:true}).first().click();

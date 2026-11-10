@@ -1,0 +1,61 @@
+import { test, expect } from '@playwright/test';
+import { mkdirSync } from 'node:fs';
+import { jobIdentity } from './helpers/cells';
+const capture = process.env.CORTEX_INBOX_SCREENSHOTS;
+const stored = {binding:'docs/guide.md',path:'docs/guide.md',source_kind:'stored',content:'stored',source_key:{jobId:'source-job',taskOrdinal:8,name:'original-guide.md',sizeBytes:98}};
+const value = {binding:'docs/settings.json',path:'docs/settings.json',source_kind:'value',content:'value'};
+const external = {binding:'external-archive/',source_kind:'external',content:'unsupported',reason:'external_content_unavailable'};
+const node = {id:'step',invocation_id:'durable-step-attempt-2',kind:'opStep',title:'Inspect selected inputs',status:'succeeded',path:['build','read'],attempt:2,task_ordinal:41,inbox:{status:'available',entries:[stored,value,external]},input:{structured:'input'},output:{structured:'output'},artifact_keys:[{jobId:'job',taskOrdinal:41,name:'report.md'}]};
+test.beforeEach(async({page,context,baseURL})=>{
+ await context.addCookies([{name:'colony2:user:email',value:'inbox@example.test',url:baseURL!}]);
+ await page.addInitScript(()=>{(window as any).EventSource=class extends EventTarget {readyState=1;close(){}};});
+ await page.route('**/api/**',route=>{
+  const u=new URL(route.request().url());
+  if(u.pathname==='/api/projects')return route.fulfill({json:[{tenant_id:'demo'}]});
+  if(u.pathname.endsWith('/user-inputs/pending'))return route.fulfill({json:[]});
+  if(u.pathname.endsWith('/input-artifacts'))return route.fulfill({json:{artifacts:[]}});
+  if(u.pathname.endsWith('/children'))return route.fulfill({json:{jobs:[]}});
+  if(u.pathname.endsWith('/conversation'))return route.fulfill({json:{entries:[],completeness:'complete'}});
+  if(u.pathname.endsWith('/story'))return route.fulfill({json:{job_id:'job',status:'completed',root:{id:'root',kind:'recipe',title:'Inbox fixture',status:'succeeded',path:[],attempt:1,job_attempt:3,children:[node]}}});
+  if(u.pathname.endsWith('/jobs/job'))return route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',title:'Recorded inputs fixture',status:'COMPLETED',store:'ARCHIVED',completion_status:'success'}});
+  if(u.pathname.endsWith('/artifacts/original-guide.md'))return route.fulfill({contentType:'text/markdown',body:'# Recorded source guide\n\nThis input came from source-job, task 8.\n\n[Open settings](settings.json)\n'});
+  if(u.pathname.endsWith('/artifacts/report.md'))return route.fulfill({contentType:'text/markdown',body:'# Output report\n'});
+  if(u.pathname.endsWith('/inbox/value'))return route.fulfill({contentType:'application/json',body:'{"large":9007199254740993123456789,"mode":"recorded"}\n'});
+  return route.fulfill({json:{}});
+ });
+});
+test('CX-IN-01,02,05,07,12,13,15 actual tabs, stored/value previews and keyboard restoration',async({page})=>{
+ await page.goto('/project/demo/jobs/job/story?tab=execution');
+ await page.getByText('Inspect selected inputs',{exact:false}).first().click();
+ await expect(page.getByRole('tab',{name:'Overview',exact:true})).toHaveAttribute('aria-selected','true');
+ const tabs=page.getByRole('tablist').last();
+ const labels=await tabs.getByRole('tab').allTextContents();
+ expect(labels.indexOf('Inbox (3)')+1).toBe(labels.indexOf('Outbox (1)'));
+ await page.getByRole('tab',{name:'Inbox (3)'}).click();
+ await expect(page.getByText('Recorded inputs; delivery not verified.')).toBeVisible();
+ await expect(page.getByText(/Source: stored · job source-job · task 8/)).toBeVisible();
+ if(capture){mkdirSync(capture,{recursive:true});await page.screenshot({path:capture+'/inbox-desktop.png',fullPage:true,animations:'disabled'});}
+ const open=page.getByRole('button',{name:'docs/guide.md',exact:true});
+ await open.focus();await page.keyboard.press('Enter');
+ await expect(page.getByRole('heading',{name:'Recorded source guide'})).toBeVisible();
+ if(capture)await page.screenshot({path:capture+'/stored-preview.png',fullPage:true,animations:'disabled'});
+ const request=page.waitForRequest(r=>r.url().includes('/inbox/value'));
+ await page.getByRole('button',{name:'Open settings'}).click();
+ const u=new URL((await request).url());expect(u.searchParams.get('job_attempt')).toBe('3');expect(u.searchParams.get('task_attempt')).toBe('2');expect(u.searchParams.get('binding')).toBe(value.binding);
+ await expect(page.getByRole('dialog')).toContainText('9007199254740993123456789');
+ if(capture)await page.screenshot({path:capture+'/value-preview.png',fullPage:true,animations:'disabled'});
+ await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(open).toBeFocused();
+ await page.getByRole('tab',{name:'Outbox (1)'}).click();
+ await page.getByRole('link',{name:'report.md',exact:true}).click();await expect(page.getByRole('heading',{name:'Output report'})).toBeVisible();
+ await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).last().focus();
+ await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('link',{name:'report.md',exact:true})).toBeFocused();
+});
+test('phone Inbox remains readable and selectable',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ await page.goto('/project/demo/jobs/job/story?tab=execution');
+ await page.getByText('Inspect selected inputs',{exact:false}).first().click();
+ await page.getByRole('tab',{name:'Inbox (3)'}).click();
+ await expect(page.getByRole('tab',{name:'Inbox (3)'})).toHaveAttribute('aria-selected','true');
+ await expect(page.getByText('Recorded inputs; delivery not verified.')).toBeVisible();
+ if(capture)await page.screenshot({path:capture+'/inbox-phone.png',fullPage:true,animations:'disabled'});
+});

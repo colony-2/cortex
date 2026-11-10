@@ -788,7 +788,7 @@ describe('SAV story artifact contents', () => {
   async function open(body: string | Uint8Array, name = 'design.md') {
     const fetchMock = mount('?nodeId=root', artifactStory);
     fetchMock.mockImplementation(async (url: string) => url.includes('/artifacts/') ? new Response(body) : { ok: true, json: async () => artifactStory });
-    fireEvent.click(await screen.findByRole('tab', { name: 'Artifacts (2)' }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'Outbox (2)' }));
     fireEvent.click(screen.getByRole('link', { name, exact: true }));
     return fetchMock;
   }
@@ -852,7 +852,7 @@ describe('SAV rich story formats and attachment boundaries', () => {
     const current = {...story,root:{...node,artifact_keys:[{name,taskOrdinal:1},...keys.slice(1)]}};
     const mock = mount('?nodeId=root',current);
     mock.mockImplementation(async (url:string) => url.includes('/artifacts/') ? new Response(content) : {ok:true,json:async()=>current});
-    fireEvent.click(await screen.findByRole('tab',{name:'Artifacts (4)'}));
+    fireEvent.click(await screen.findByRole('tab',{name:'Outbox (4)'}));
     fireEvent.click(screen.getByRole('link',{name,exact:true}));
     return mock;
   }
@@ -894,7 +894,7 @@ describe('SAV rich story formats and attachment boundaries', () => {
     await screen.findByText(/Blocked external or ambiguous image/);
     mock.mockImplementation(async()=>({ok:true,json:async()=>({...story,root:{...node,artifact_keys:[...keys,{name:'new.png',taskOrdinal:9}]}})}));
     fireEvent.click(screen.getByRole('button',{name:/Refresh$/,exact:true}));
-    await screen.findByRole('tab', {name:'Artifacts (5)'});
+    await screen.findByRole('tab', {name:'Outbox (5)'});
     expect(screen.getByText(/Blocked external or ambiguous image/)).toBeInTheDocument();
     expect(mock.mock.calls.filter(c=>String(c[0]).includes('/artifacts/'))).toHaveLength(1);
   });
@@ -912,7 +912,7 @@ describe('SAV-021 route identity cancellation', () => {
     }));
     function Host(){navigate=useNavigate();const project=useLocation().pathname.split('/')[2];return <JobStoryPage projectId={project}/>;}
     render(<MemoryRouter initialEntries={['/project/tenant/jobs/job/story?nodeId=root']}><Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<Host/>}/></Routes></MemoryRouter>);
-    fireEvent.click(await screen.findByRole('tab',{name:'Artifacts (1)'}));
+    fireEvent.click(await screen.findByRole('tab',{name:'Outbox (1)'}));
     fireEvent.click(screen.getByRole('link',{name:'notes.md'}));
     await screen.findByLabelText('Loading artifact');
     await act(async()=>navigate(destination));
@@ -933,7 +933,7 @@ describe('MAL node-local navigation', () => {
       if(url.includes('/artifacts/')) return new Response(url.includes('bar.md')?'# Bar\n[next](foo.md#target) [ambiguous](../dup.md)':url.includes('foo.md')?'# Target\n[self](foo.md#target) [outside](new.md) [json](data.json)':'{"n":42}');
       return {ok:true,json:async()=>refreshed?{...current,root:{...current.root,artifact_keys:[...keys,{name:'docs/new.md',taskOrdinal:9}]}}:current};
     });
-    fireEvent.click(await screen.findByRole('tab',{name:'Artifacts (5)'}));
+    fireEvent.click(await screen.findByRole('tab',{name:'Outbox (5)'}));
     fireEvent.click(screen.getByRole('link',{name:'docs/bar.md'}));
     await screen.findByRole('heading',{name:'Bar'});
     return {mock,refresh:()=>{refreshed=true;}};
@@ -941,8 +941,8 @@ describe('MAL node-local navigation', () => {
   it('MAL-017,018,019,021,022,023,028,031 keeps the original snapshot through refresh and chained navigation', async()=>{
     const {mock,refresh}=await start();
     fireEvent.click(screen.getByRole('button',{name:'ambiguous'}));expect(within(screen.getByRole('dialog')).getByRole('status')).toHaveTextContent('ambiguous');
-    refresh();fireEvent.click(screen.getByRole('button',{name:/Refresh$/,exact:true}));await screen.findByRole('tab',{name:'Artifacts (6)'});
-    fireEvent.click(screen.getByText('Other node', {selector:'strong'}));await screen.findByRole('tab',{name:'Artifacts (2)'});
+    refresh();fireEvent.click(screen.getByRole('button',{name:/Refresh$/,exact:true}));await screen.findByRole('tab',{name:'Outbox (6)'});
+    fireEvent.click(screen.getByText('Other node', {selector:'strong'}));await screen.findByRole('tab',{name:'Outbox (2)'});
     fireEvent.click(screen.getByRole('button',{name:'next'}));await screen.findByRole('heading',{name:'Target'});
     expect(within(screen.getByRole('dialog')).getByText('docs/foo.md')).toBeInTheDocument();
     const count=mock.mock.calls.filter(c=>String(c[0]).includes('/artifacts/')).length;
@@ -1218,7 +1218,7 @@ it('IA-012 keeps same-name inputs and outputs in separate navigation and image c
   expect(requests.some(url => url.includes('/tasks/8/') || url.includes('/tasks/9/'))).toBe(false);
   fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[0]);
   fireEvent.click(screen.getByRole('tab', { name: 'Steps', exact: true }));
-  fireEvent.click(await screen.findByRole('tab', { name: 'Artifacts (2)' }));
+  fireEvent.click(await screen.findByRole('tab', { name: 'Outbox (2)' }));
   fireEvent.click(screen.getByRole('link', { name: 'docs/brief.md', exact: true }));
   expect(await screen.findByRole('heading', { name: 'Output', exact: true })).toBeVisible();
   expect(fetch.mock.calls.at(-1)?.[0]).toContain('/tasks/8/artifacts/docs%2Fbrief.md');
@@ -1505,4 +1505,49 @@ it('STP-013 does not retrieve hidden Steps when cancellation started there compl
   await act(async () => completion.resolve({ ok: true, status: 204 } as Response));
   expect(requests.mock.calls.filter(([url]) => String(url).endsWith('/story'))).toHaveLength(1);
   expect(document.querySelector('#execution-story-tree')).toBeNull();
+});
+
+
+it('CX-IN-01,08,10 refreshes Inbox snapshots without changing Outbox or structured data', async () => {
+  const entry = {binding:'guide.md',path:'guide.md',source_kind:'stored',content:'stored',source_key:{jobId:'source',taskOrdinal:7,name:'original.md'}};
+  const fixture = (binding = entry.binding) => ({job_id:'job',status:'failed',root:{id:'inbox-step',invocation_id:'recorded-task',kind:'opStep',title:'Recorded step',status:'failed',path:[],attempt:2,job_attempt:3,task_ordinal:19,input:{kept:'input'},output:{kept:'output'},artifact_keys:[{jobId:'job',taskOrdinal:19,name:'output.md'}],inbox:{status:'available',entries:[{...entry,binding,path:binding}]}}});
+  let next = fixture();
+  let resolveContent!: (value:Response)=>void;
+  const fetch = vi.fn().mockImplementation((url:string) => url.includes('/artifacts/') ? new Promise<Response>(resolve => {resolveContent=resolve;}) : Promise.resolve({ok:true,json:async()=>next}));
+  vi.stubGlobal('fetch',fetch);
+  render(<MemoryRouter initialEntries={['/project/tenant/jobs/job/story?tab=execution']}><Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId="tenant"/>}/></Routes></MemoryRouter>);
+  const inbox = await screen.findByRole('tab',{name:'Inbox (1)'});
+  expect(screen.getByRole('tab',{name:'Overview',exact:true})).toHaveAttribute('aria-selected','true');
+  const labels = screen.getAllByRole('tab').map(el=>el.textContent);
+  expect(labels.indexOf('Inbox (1)')+1).toBe(labels.indexOf('Outbox (1)'));
+  fireEvent.click(inbox);fireEvent.click(await screen.findByRole('button',{name:'guide.md',exact:true}));
+  await waitFor(()=>expect(resolveContent).toBeTypeOf('function'));
+  next=fixture('replacement.md');
+  fireEvent.click(screen.getByRole('button',{name:'reload Refresh',exact:true,hidden:true}));
+  expect(await screen.findByRole('button',{name:'replacement.md',exact:true})).toBeVisible();
+  resolveContent(new Response('OLD CONTENT'));
+  await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
+  expect(screen.queryByText('OLD CONTENT')).toBeNull();
+  expect(screen.queryByRole('button',{name:'guide.md',exact:true})).toBeNull();
+  fireEvent.click(screen.getByRole('tab',{name:'Input',exact:true}));expect(within(screen.getByRole('region',{name:'Input payload'})).getByText('input',{exact:true})).toBeVisible();
+  fireEvent.click(screen.getByRole('tab',{name:'Output',exact:true}));expect(within(screen.getByRole('region',{name:'Output payload'})).getByText('output',{exact:true})).toBeVisible();
+  fireEvent.click(screen.getByRole('tab',{name:'Outbox (1)'}));expect(screen.getByRole('link',{name:'output.md',exact:true})).toBeVisible();
+});
+
+it.each(['other/job', 'tenant/other'])('CX-IN-08 aborts Inbox values when switching receiving identity to %s', async destination => {
+  let finish!: (response:Response)=>void; let signal: AbortSignal | undefined;
+  const receiving = {job_id:'job',status:'failed',root:{id:'same-id',invocation_id:'recorded-task',kind:'opStep',title:'Value reader',status:'failed',path:[],attempt:2,job_attempt:3,task_ordinal:19,inbox:{status:'available',entries:[{binding:'value.txt',path:'value.txt',source_kind:'value',content:'value'}]}}};
+  vi.stubGlobal('fetch',vi.fn((url:string,options?:RequestInit) => {
+    if(url.includes('/inbox/value')){signal=options?.signal as AbortSignal;return new Promise<Response>(resolve=>{finish=resolve;});}
+    return Promise.resolve({ok:true,json:async()=>receiving});
+  }));
+  function Host(){const {projectId}=useParams();const navigate=useNavigate();return <><button onClick={()=>navigate(`/project/${destination.split('/')[0]}/jobs/${destination.split('/')[1]}/story?tab=execution`)}>Switch receiver</button><JobStoryPage projectId={projectId!}/></>;}
+  render(<MemoryRouter initialEntries={['/project/tenant/jobs/job/story?tab=execution']}><Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<Host/>}/></Routes></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('tab',{name:'Inbox (1)'}));fireEvent.click(await screen.findByRole('button',{name:'value.txt',exact:true}));
+  await waitFor(()=>expect(signal).toBeDefined());
+  fireEvent.click(screen.getByRole('button',{name:'Switch receiver',hidden:true}));
+  await waitFor(()=>expect(signal?.aborted).toBe(true));
+  await act(async()=>finish(new Response('OLD VALUE BYTES')));
+  expect(screen.queryByRole('dialog')).toBeNull();expect(screen.queryByText('OLD VALUE BYTES')).toBeNull();
+  fireEvent.click(await screen.findByRole('tab',{name:'Inbox (1)'}));expect(screen.getByRole('button',{name:'value.txt',exact:true})).toBeVisible();
 });

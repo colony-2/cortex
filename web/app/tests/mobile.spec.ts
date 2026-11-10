@@ -356,7 +356,7 @@ for (const width of [320, 390]) {
     await overview.click({ position: { x: 2, y: 2 } });
     await expect(page).toHaveURL(/\/goals\/g$/);
     await page.goBack();
-    await page.getByRole('tab', { name: 'Artifacts (1)', exact: true }).click();
+    await page.getByRole('tab', { name: 'Outbox (1)', exact: true }).click();
     const artifact = page.getByRole('link', { name: 'a', exact: true });
     await assertTouchArea(artifact);
     await noOverflow(page);

@@ -1,3 +1,4 @@
+import InboxPanel, { inboxCount } from './InboxPanel';
 import JobLeaseTimeline from './JobLeaseTimeline';
 import JobConversation from './JobConversation';
 import JobDetailTabs, { jobDetailTab, type JobDetailTab } from './JobDetailTabs';
@@ -1305,8 +1306,14 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                       identity={JSON.stringify([projectId, jobId, selectedKey, selectedRef?.jobAttempt, selectedNode.attempt, 'output'])} />,
                   },
                   {
+                    key: 'inbox',
+                    label: `Inbox${loading ? '' : inboxCount(selectedNode)}`,
+                    children: <InboxPanel key={JSON.stringify([projectId, jobId, selectedKey, selectedRef?.jobAttempt, selectedNode.attempt, storyGeneration.current])}
+                      loading={loading} node={selectedNode} projectId={projectId} jobId={jobId} jobAttempt={selectedRef?.jobAttempt || 1} retry={() => load({preserveSelection:true})} />,
+                  },
+                  {
                     key: 'artifacts',
-                    label: `Artifacts (${selectedNode.artifact_keys?.length ?? 0})`,
+                    label: `Outbox (${selectedNode.artifact_keys?.length ?? 0})`,
                     children: (
                       <>
                         {selectedNode.artifact_keys && selectedNode.artifact_keys.length > 0 ? (

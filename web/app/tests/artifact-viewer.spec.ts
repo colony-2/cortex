@@ -20,7 +20,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
       await route.fulfill({json:body});
     });
     await page.goto('/project/tenant/jobs/job/story?nodeId=root');
-    await page.getByRole('tab', { name: 'Artifacts (4)' }).click();
+    await page.getByRole('tab', { name: 'Outbox (4)' }).click();
     const opener = page.getByRole('link', { name: 'large.md', exact: true });
     await opener.click();
     const modal = page.getByRole('dialog');
@@ -121,12 +121,12 @@ for (const viewport of [{width:1280,height:800},{width:390,height:844}]) {
         await page.getByRole('button',{name:'Show documents',exact:true}).click();
         if(viewport.width<600) {opener=page.getByRole('button',{name:'Read docs/bar.md',exact:true});await opener.click();}
       } else {
-        await page.getByRole('tab',{name:'Artifacts (3)'}).click();
+        await page.getByRole('tab',{name:'Outbox (3)'}).click();
         opener=page.getByRole('link',{name:'docs/bar.md',exact:true});await opener.click();
         backgroundChanged=true;
         // Refresh behind the modal without changing its attachment scope.
         await page.getByRole('button',{name:'reload Refresh',exact:true}).evaluate((el:HTMLElement)=>el.click());
-        await expect(page.getByRole('tab',{name:'Artifacts (4)',includeHidden:true})).toBeAttached();
+        await expect(page.getByRole('tab',{name:'Outbox (4)',includeHidden:true})).toBeAttached();
       }
       const scope=viewer==='story'?page.getByRole('dialog'):page.locator('.review-document-preview');
       const originalURL=page.url();
