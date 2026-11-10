@@ -401,3 +401,22 @@ html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-heig
 .build-identity dl > div { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 12px; margin: 8px 0; }
 .build-identity dt { color: #595959; }
 .build-identity dd { margin: 0; overflow-wrap: anywhere; user-select: text; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.desktop-navigation.ant-layout-sider { position: sticky; top: 0; align-self: flex-start; height: 100dvh; }
+.desktop-navigation .ant-layout-sider-children { overflow-y: auto; padding-bottom: 48px; }
+.desktop-navigation .ant-layout-sider-trigger { position: absolute; bottom: 0; }
+.navigation-toggle { width: 100%; height: 48px; border: 0; background: transparent; color: inherit; font-size: 18px; cursor: pointer; }
+.navigation-toggle:focus-visible { outline: 2px solid #1677ff; outline-offset: -3px; }
+.shell-navigation .ant-menu-item, .shell-navigation.ant-menu-inline-collapsed > .ant-menu-item { padding: 0 !important; }
+.shell-navigation .ant-menu-title-content { display: block; width: 100%; opacity: 1 !important; overflow: visible; }
+.shell-navigation-link { display: flex !important; align-items: center; gap: 12px; min-height: 40px; padding: 0 24px; }
+.shell-navigation-icon { flex: 0 0 16px; font-size: 16px; line-height: 1; }
+.shell-navigation-label { display: flex; align-items: center; gap: 12px; }
+.shell-navigation.ant-menu-inline-collapsed .shell-navigation-link { justify-content: center; padding: 0; }
+.shell-navigation.ant-menu-inline-collapsed .shell-navigation-label { display: none; }
+.shell-navigation .ant-menu-item { overflow: visible; }
+@media (max-width: 767px) { .shell-navigation-link { min-height: 44px; } }
+/* Reserve the desktop header's initial space so the trigger is visible before scrolling. */
+.desktop-navigation.ant-layout-sider { height: calc(100dvh - 65px); }
+.shell-navigation-target { display: block; width: 100%; }

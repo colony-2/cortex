@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { FileSearchOutlined, MenuOutlined, OrderedListOutlined, PlayCircleOutlined, SettingOutlined } from '@ant-design/icons';
-import { Alert, Badge, Button, Drawer, Empty, Input, Layout, Menu, Spin, Typography } from 'antd';
+import { FileSearchOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MenuOutlined, OrderedListOutlined, PlayCircleOutlined, SettingOutlined } from '@ant-design/icons';
+import { Alert, Badge, Button, Drawer, Empty, Input, Layout, Menu, Spin, Tooltip, Typography } from 'antd';
 import {
   InputActivityProvider,
   clearUserEmail,
@@ -57,8 +57,20 @@ function initialTenantId(search: string, pathname: string, defaultTenantId: stri
   return defaultTenantId;
 }
 
-function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
+const navigationPreference = 'cortex:desktop-navigation-collapsed';
+export function readNavigationPreference(): boolean {
+  try { return localStorage.getItem(navigationPreference) === 'true'; } catch { return false; }
+}
+
+export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
   const compact = useCompact();
+  const [collapsed, setCollapsed] = useState(readNavigationPreference);
+  const toggleNavigation = () => setCollapsed(previous => {
+    const next = !previous;
+    try { localStorage.setItem(navigationPreference, String(next)); } catch { /* Memory state remains usable. */ }
+    return next;
+  });
+  const [focusedNavigation, setFocusedNavigation] = useState<string>();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   useEffect(() => { if (!compact) setMenuOpen(false); }, [compact]);
@@ -119,38 +131,42 @@ function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
     setAuthenticated(false);
   };
 
+  const rail = !compact && collapsed;
   const navigation = (
-          <Menu
-            onClick={closeMenu}
-            mode="inline"
-            selectedKeys={[navKey]}
-            items={[
-              {
-                key: 'jobs',
-                label: <Link className="compact-touch-link" to={`/project/${tenantId}/goals`}>Goals</Link>,
-                icon: <PlayCircleOutlined />,
-              },
-              {
-                key: 'reviews',
-                label: <Badge count={pendingCount} offset={[10, 0]} size="small"><Link className="compact-touch-link" to={`/project/${tenantId}/reviews`}>Reviews</Link></Badge>,
-                icon: <FileSearchOutlined />,
-              },
-              {
-                key: 'cells',
-                label: <Link className="compact-touch-link" to={`/project/${tenantId}/cells`}>Cells</Link>,
-                icon: <OrderedListOutlined />,
-              },
-              {
-                key: 'admin',
-                label: <Link className="compact-touch-link" to={`/project/${encodeURIComponent(tenantId)}/admin`}>Admin</Link>,
-                icon: <SettingOutlined />,
-              },
-            ]}
-            style={{ height: '100%', borderRight: 0 }}
-          />
+    <Menu className="shell-navigation" onClick={closeMenu} mode="inline"
+      inlineCollapsed={rail} selectedKeys={[navKey]}
+      items={[
+        ['jobs', 'Goals', 'goals', <PlayCircleOutlined />],
+        ['reviews', 'Reviews', 'reviews', <FileSearchOutlined />],
+        ['cells', 'Cells', 'cells', <OrderedListOutlined />],
+        ['admin', 'Admin', 'admin', <SettingOutlined />],
+      ].map(([key, name, route, icon]) => ({
+        key: String(key), title: '',
+        onFocus: () => setFocusedNavigation(String(key)),
+        onBlur: () => setFocusedNavigation(undefined),
+        'aria-describedby': key === 'reviews' ? 'navigation-review-count' : undefined,
+        'aria-label': String(name),
+        onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
+          if (event.key === 'Enter' && event.target === event.currentTarget) {
+            event.preventDefault();
+            event.currentTarget.querySelector<HTMLAnchorElement>('a')?.click();
+          }
+        },
+        label: <Tooltip title={rail ? String(name) : null} placement="right" trigger={['hover', 'focus']}
+          open={rail && focusedNavigation === key ? true : undefined}>
+          <span className="shell-navigation-target"><Link className="shell-navigation-link" tabIndex={-1}
+          aria-label={String(name)} aria-describedby={key === 'reviews' ? 'navigation-review-count' : undefined}
+          to={`/project/${encodeURIComponent(tenantId)}/${route}`}>
+          <span className="shell-navigation-icon">{key === 'reviews' && rail
+            ? <Badge count={pendingCount} size="small">{icon}</Badge> : icon}</span>
+          <span className="shell-navigation-label">{name}{key === 'reviews' && !rail && <Badge count={pendingCount} size="small" />}</span>
+        </Link></span></Tooltip>,
+      }))}
+      style={{ borderRight: 0 }} />
   );
   return (
     <Layout className="app-shell">
+      <span id="navigation-review-count" className="sr-only">{pendingCount} pending reviews</span>
       <Header className="app-header">
         <div className="app-brand">
           {compact && <Button ref={menuButton} aria-label="Open navigation" aria-expanded={menuOpen} icon={<MenuOutlined />} onClick={() => setMenuOpen(true)} />}
@@ -168,7 +184,10 @@ function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
           // our explicit opener afterwards, including interrupted animations.
           if (!open) queueMicrotask(() => menuButton.current?.focus({ preventScroll: true }));
         }}>{navigation}</Drawer>
-          : <Sider width={220} theme="light">{navigation}</Sider>}
+          : <Sider className="desktop-navigation" width={220} collapsedWidth={80} collapsed={collapsed} collapsible
+            theme="light" trigger={<button className="navigation-toggle" aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+              aria-expanded={!collapsed}>{collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}</button>}
+            onCollapse={toggleNavigation}>{navigation}</Sider>}
         <Content className="app-content">
           <Routes>
             <Route path="/" element={<Navigate to={`/project/${tenantId}/jobs`} replace />} />
