@@ -3,7 +3,7 @@ module github.com/colony-2/colony2/server
 go 1.26
 
 require (
-	github.com/colony-2/c2j v0.0.125-0.20261110191814-319fe6a0d350
+	github.com/colony-2/c2j v0.0.125-0.20261111031024-7d9df9de04ff
 	github.com/colony-2/jobdb v0.0.81-0.20261110034917-7f6133791ec9
 	github.com/gorilla/mux v1.8.1
 	github.com/spf13/cobra v1.10.2
@@ -34,6 +34,7 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect

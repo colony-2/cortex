@@ -26,7 +26,7 @@ test('CC-022 CT-014,015,028–031 real SQLite reviews survive restart, archive a
   expect(initial.entries).toHaveLength(1);
   const firstID = initial.entries[0].entry_id;
   await page.goto('/project/history-browser/jobs/reviews/story');
-  await expect(page.locator(`[data-occurrence="${firstID}"]`)).toBeVisible();
+  await expect(page.locator(`[data-occurrence="${firstID}"]`).first()).toBeVisible();
   await expect(page.getByText(/State: pending/)).toBeVisible();
   await expect(page.getByRole('region', { name: 'Job completion' })).toHaveCount(0);
   await accept('first-review', 'Approved first original');
@@ -45,7 +45,7 @@ test('CC-022 CT-014,015,028–031 real SQLite reviews survive restart, archive a
   await expect(original.getByLabel('Recorded answers')).toContainText('Approved first original');
   await expect(original.getByLabel('Rendered document')).toContainText('Original first review document, retained in SQLite.');
   await expect(original.getByRole('button', { name: /Submit/ })).toHaveCount(0);
-  await expect(reopened.locator(`[data-occurrence="${second.entries[1].entry_id}"]`)).toBeVisible();
+  await expect(reopened.locator(`[data-occurrence="${second.entries[1].entry_id}"]`).first()).toBeVisible();
   const downloadLink = original.getByRole('link', { name: 'Download',exact:true });
   await expect(downloadLink).toHaveAttribute('href', /snapshot_token=/);
   await expect(reopened.getByRole('button',{name:'Cancel job',exact:true})).toHaveCount(0);
@@ -66,6 +66,19 @@ test('CC-022 CT-014,015,028–031 real SQLite reviews survive restart, archive a
   await expect(reopened.getByRole('region', { name: 'Job completion' })).not.toContainText('Merge status');
   await expect(original.getByLabel('Recorded answers')).toContainText('Approved first original');
   expect(new URL(reopened.url()).searchParams.get('occurrenceId')).toBe(firstID);
+  // CV-025: real SQLite records, Cortex adapters and authorized byte reads.
+  await expect(reopened.getByLabel('Verified publication')).toContainText('Commit message not recorded');
+  await reopened.screenshot({path:info.outputPath('native-subjectless-publication.png'),animations:'disabled',fullPage:true});
+  const finalList = reopened.getByLabel('Returned documents',{exact:true});
+  await expect(finalList.getByRole('link',{name:'report.md',exact:true})).toBeVisible();
+  await finalList.getByRole('link',{name:'report.md',exact:true}).click();
+  const viewer = reopened.getByRole('dialog',{name:'Returned document viewer'});
+  await expect(viewer.getByRole('heading',{name:'Final retained report',exact:true})).toBeVisible();
+  await reopened.screenshot({path:info.outputPath('native-final-document-viewer.png'),animations:'disabled',fullPage:false});
+  await viewer.getByRole('link',{name:'Original notes',exact:true}).click();
+  await expect(viewer.getByLabel('Rendered document')).toContainText('Original first review document, retained in SQLite.');
+  await viewer.getByRole('button',{name:'Close',exact:true}).click();
+  await expect(finalList.getByRole('link',{name:'report.md',exact:true})).toBeFocused();
   await control('hide');
   const visible = await request.get('/api/projects/history-browser/jobs?status=all');
   expect((await visible.json()).jobs.some((entry: { job_id: string }) => entry.job_id === 'reviews')).toBe(false);

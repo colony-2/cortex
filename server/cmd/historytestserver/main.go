@@ -88,6 +88,16 @@ func (f *fixture) seed(ctx context.Context) error {
 	}
 	return f.advance(ctx)
 }
+
+// This fixture worker records explicit publication output without executing Git.
+// It validates Cortex retained-record consumption, not native publication.
+type publicationWorker struct{}
+
+func (publicationWorker) Name() string { return "merge:merge" }
+func (publicationWorker) Run(_ workflow.TaskContext, _ jobdb.TaskData) (jobdb.TaskData, error) {
+	return jobdb.NewTaskDataOrPanic(map[string]any{"v": 1, "kind": "activity_output", "payload": map[string]any{"output": map[string]any{"candidate_sha": "0123456789abcdef", "candidate_subject": nil, "publication_branch": "refs/heads/main", "publication_disposition": "published"}}}), nil
+}
+
 func (f *fixture) advance(ctx context.Context) error {
 	// Controlled execution creates native collection waits and consumes committed
 	// answers. History endpoints never call this worker.
@@ -107,10 +117,16 @@ func (f *fixture) advance(ctx context.Context) error {
 			if err != nil {
 				return nil, err
 			}
+			if i == 0 {
+				_, err = c.DoTask(workflow.TaskCall{Site: "publication", TaskType: "merge:merge", ContractVersion: 1, Command: json.RawMessage(`{}`)}, func(context.Context) (jobdb.TaskData, error) { return jobdb.NewTaskDataOrPanic(map[string]any{}), nil })
+				if err != nil {
+					return nil, err
+				}
+			}
 		}
-		return jobdb.NewTaskDataOrPanic(map[string]any{"completed": true}), nil
+		return jobdb.NewTaskDataOrPanic(map[string]any{"completed": true, "artifact_refs": map[string]artifacts.Ref{"report.md": {Kind: artifacts.RefKindAttached, Name: "final-storage.md"}, "notes.md": f.forms[0].Documents["original"]}}, jobdb.NewArtifactFromBytes("final-storage.md", []byte("# Final retained report\n\n[Original notes](notes.md)\n\nReturned through the real Cortex adapter.\n"))), nil
 	}}
-	run, err := workflow.GetJobForRun(ctx, f.runtime, workflow.GetJobForRunRequest{JobKey: jobKey, JobWorker: worker, WorkerID: "history-fixture", LeaseDuration: time.Minute})
+	run, err := workflow.GetJobForRun(ctx, f.runtime, workflow.GetJobForRunRequest{JobKey: jobKey, JobWorker: worker, TaskWorkers: []workflow.TaskWorker{publicationWorker{}}, WorkerID: "history-fixture", LeaseDuration: time.Minute})
 	if err != nil {
 		return err
 	}

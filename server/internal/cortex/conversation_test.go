@@ -2,6 +2,7 @@ package cortex
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -17,14 +18,23 @@ import (
 )
 
 type historyStub struct {
-	list   input.ListJobInputStoryRequest
-	detail input.GetJobInputStoryEntryRequest
-	member input.OpenJobInputStoryArtifactRequest
-	err    error
-	reader io.ReadCloser
-	ref    *artifacts.Ref
+	snapshot        *input.JobHistorySnapshot
+	snapshotRequest input.GetJobHistorySnapshotRequest
+	list            input.ListJobInputStoryRequest
+	detail          input.GetJobInputStoryEntryRequest
+	member          input.OpenJobInputStoryArtifactRequest
+	err             error
+	reader          io.ReadCloser
+	ref             *artifacts.Ref
 }
 
+func (h *historyStub) GetJobHistorySnapshot(_ context.Context, req input.GetJobHistorySnapshotRequest) (*input.JobHistorySnapshot, error) {
+	h.snapshotRequest = req
+	if h.snapshot != nil {
+		return h.snapshot, nil
+	}
+	return &input.JobHistorySnapshot{Events: []input.HistoryEvent{}, Merges: []input.HistoryMergeEntry{}}, h.err
+}
 func (h *historyStub) ListJobInputStory(_ context.Context, r input.ListJobInputStoryRequest) (*input.JobInputStoryPage, error) {
 	h.list = r
 	return &input.JobInputStoryPage{TenantID: r.TenantID, JobID: r.JobID, SnapshotToken: "opaque+/=", Completeness: "partial", Entries: []input.JobInputStoryEntry{}}, h.err
@@ -177,5 +187,34 @@ func TestConversationExternalAndForgedMembers(t *testing.T) {
 				t.Fatalf("%d %s %+v", w.Code, w.Body, h.member)
 			}
 		})
+	}
+}
+
+func TestConversationPublicationSelection(t *testing.T) {
+	h := &historyStub{snapshot: &input.JobHistorySnapshot{Merges: []input.HistoryMergeEntry{
+		{EntryID: "published", EvidenceAvailability: "recorded", PublicationDisposition: "published", CandidateSubject: nil},
+		{EntryID: "present", EvidenceAvailability: "recorded", PublicationDisposition: "already_present"},
+		{EntryID: "nochange", EvidenceAvailability: "recorded", PublicationDisposition: "no_changes"},
+		{EntryID: "incomplete", EvidenceAvailability: "unavailable", PublicationDisposition: "published"},
+		{EntryID: "unknown", EvidenceAvailability: "recorded", PublicationDisposition: "future"},
+	}, Events: []input.HistoryEvent{{Ordinal: 2, Kind: "merge_completion", EntryID: "published"}}}}
+	w := httptest.NewRecorder()
+	historyRouter(h).ServeHTTP(w, httptest.NewRequest("GET", "/tenant/job", nil))
+	if w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	var result struct {
+		Merges   []input.HistoryMergeEntry `json:"merges"`
+		Events   []input.HistoryEvent      `json:"events"`
+		Coverage string                    `json:"publication_coverage"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Merges) != 2 || result.Merges[0].EntryID != "published" || result.Merges[0].CandidateSubject != nil || result.Coverage != "partial" || len(result.Events) != 1 {
+		t.Fatalf("unexpected projection %+v", result)
+	}
+	if h.snapshotRequest.SnapshotToken != "opaque+/=" || h.snapshotRequest.TenantID != "tenant" || h.snapshotRequest.JobID != "job" {
+		t.Fatalf("wrong observation %+v", h.snapshotRequest)
 	}
 }

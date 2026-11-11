@@ -8,7 +8,7 @@ import { resolveArtifactLink, type NavigationIntent } from './review/artifactLin
 import { loadDocument, type DocumentData } from './review/document';
 
 export interface DocumentSource { identity: string; url: (id: string) => string; onError?: (error: unknown) => void }
-export type ReaderDocument = { name?: string; stored?: ReviewDocument['stored'] };
+export type ReaderDocument = { name?: string; stored?: ReviewDocument['stored']; sizeBytes?: number };
 interface Props { source?: DocumentSource; projectId: string; jobId: string; requestId: string; documents: Record<string, ReaderDocument>; documentMetadata?: Record<string, ReviewDocumentMetadata>; overviewDocumentId?: string; response?: ReactNode }
 export default function ReviewDocuments(props: Props) {
   // A fresh review identity owns all preview state; response drafts live above this component.
@@ -94,7 +94,7 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
   };
   const preview = error ? <Alert type="error" showIcon message={error} action={<Button onClick={() => { cached.current = undefined; setContent(undefined); setRetry(v => v + 1); }}>Retry</Button>} />
     : !content || content.url !== url ? <Spin aria-label="Loading document" />
-    : <DocumentPreview htmlContext={{canonicalPath: path(selected), attachments: Object.keys(documents).filter(id => !!documentURL(id)).map(id => ({key:id, path:path(id), url:documentURL(id)}))}} reviewOptions={{ storedBytes: doc?.stored?.key.sizeBytes }} key={url} data={content.data} name={name} markdownSource={markdownSource} setMarkdownSource={setMarkdownSource} dual={dual} setDual={setDual} navigationIntent={navigationIntent?.documentId === selected ? navigationIntent : undefined} navigation={{
+    : <DocumentPreview htmlContext={{canonicalPath: path(selected), attachments: Object.keys(documents).filter(id => !!documentURL(id)).map(id => ({key:id, path:path(id), url:documentURL(id)}))}} reviewOptions={{ storedBytes: doc?.sizeBytes ?? doc?.stored?.key.sizeBytes }} key={url} data={content.data} name={name} markdownSource={markdownSource} setMarkdownSource={setMarkdownSource} dual={dual} setDual={setDual} navigationIntent={navigationIntent?.documentId === selected ? navigationIntent : undefined} navigation={{
       resolve: reference => resolveArtifactLink(reference, path(selected), Object.entries(documents).map(([key, d]) => ({key, path: path(key), aliases: [key, ...(d.name ? [d.name] : [])]}))),
       open: (key, fragment) => openDocument(key, true, fragment),
       url: source ? documentURL : undefined,
@@ -120,7 +120,7 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
       <div className="review-reading-track">
         <Card><section ref={previewRoot} className="review-document-content" aria-label="Selected document">
           {!selected ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents attached" /> : <>
-            {(!content || content.url !== url || error) && <DocumentOptions key={url} storedBytes={doc?.stored?.key.sizeBytes} />}
+            {(!content || content.url !== url || error) && <DocumentOptions key={url} storedBytes={doc?.sizeBytes ?? doc?.stored?.key.sizeBytes} />}
             {preview}{details}
           </>}
         </section></Card>

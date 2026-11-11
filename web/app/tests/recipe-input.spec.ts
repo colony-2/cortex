@@ -339,8 +339,8 @@ for (const multiField of [false, true]) {
         await expect(beforeView).toBeVisible();
         const beforeText = await beforeView.innerText();
         await restartDialog.getByRole('button', { name: 'Add line', exact: true }).first().click();
-        await restartDialog.getByPlaceholder('e.g. git.author').fill('browser_note');
-        await restartDialog.getByPlaceholder('e.g. "james@example.com"').fill('patched');
+        await restartDialog.getByPlaceholder('e.g. git.author').fill('git.author');
+        await restartDialog.getByPlaceholder('e.g. "james@example.com"').fill('Patched Author <patched@example.com>');
         expect(await beforeView.innerText()).toBe(beforeText);
         // Invalid selectors and cross-tenant reads must never become snapshots.
         expect((await request.get(`/api/projects/other-${tenant}/jobs/${jobID}/restart-context?chapter_ordinal=${expectedChapter}`)).status()).toBe(404);
@@ -363,7 +363,7 @@ for (const multiField of [false, true]) {
         await restartDialog.getByRole('button', { name: 'Restart', exact: true }).click();
         const restartResponse = await restarted;
         expect(restartResponse.status(), await restartResponse.text()).toBe(201);
-        expect(restartResponse.request().postDataJSON()).toEqual({ scope_id: expectedScope, request_id: expect.any(String), goal: { mode: 'new' }, patch: { job: { browser_note: 'patched' } } });
+        expect(restartResponse.request().postDataJSON()).toEqual({ scope_id: expectedScope, request_id: expect.any(String), goal: { mode: 'new' }, patch: [{op:'add',path:'/context/git/author',value:'Patched Author <patched@example.com>'}] });
         const newJobID = (await restartResponse.json()).job_id;
         expect(newJobID).not.toBe(jobID);
         await expect(page).toHaveURL(new RegExp(`/jobs/${newJobID}/story(?:\\?executionState=cells-v1)?$`));

@@ -55,7 +55,32 @@ func (s *Server) handleConversation(w http.ResponseWriter, r *http.Request) {
 		historyError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, page)
+	// Use the exact input page observation for publication and ordering data.
+	// Older HistoryService implementations remain usable with explicit coverage.
+	type conversationPage struct {
+		*input.JobInputStoryPage
+		Merges              []input.HistoryMergeEntry `json:"merges"`
+		Events              []input.HistoryEvent      `json:"events"`
+		PublicationCoverage string                    `json:"publication_coverage"`
+	}
+	result := conversationPage{JobInputStoryPage: page, Merges: []input.HistoryMergeEntry{}, Events: []input.HistoryEvent{}, PublicationCoverage: "recorded"}
+	snapshot, err := input.GetJobHistorySnapshot(r.Context(), s.history, input.GetJobHistorySnapshotRequest{TenantID: s.tenantID(r), JobID: mux.Vars(r)["jobId"], SnapshotToken: page.SnapshotToken})
+	if errors.Is(err, input.ErrHistoryUnsupported) {
+		result.PublicationCoverage = "unavailable"
+	} else if err != nil {
+		historyError(w, err)
+		return
+	} else {
+		result.Events = snapshot.Events
+		for _, merge := range snapshot.Merges {
+			if merge.EvidenceAvailability == "recorded" && (merge.PublicationDisposition == "published" || merge.PublicationDisposition == "already_present") {
+				result.Merges = append(result.Merges, merge)
+			} else if merge.EvidenceAvailability != "recorded" {
+				result.PublicationCoverage = "partial"
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) handleConversationEntry(w http.ResponseWriter, r *http.Request) {

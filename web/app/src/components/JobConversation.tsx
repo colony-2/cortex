@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Card, Space, Typography } from 'antd';
-import { APIError, conversationArtifactURL, getConversation, getConversationEntry, getConversationRequest, stringifyJobJSON, type HistoryDetail, type HistoryEntry, type HistoryPage, type HistoryValue } from '@colony2/shared';
+import { APIError, conversationArtifactURL, getConversation, getConversationEntry, getConversationRequest, stringifyJobJSON, type HistoryDetail, type HistoryEntry, type HistoryPage, type HistoryValue, type HistoryMerge } from '@colony2/shared';
 
+import type { RecipeJob } from '@colony2/shared/types';
+import { isFinishedJob, jobStatusPresentation, jobStatusValue } from '../utils/jobStatus';
 import ReviewDocuments from './ReviewDocuments';
+import ReturnedDocuments from './ReturnedDocuments';
 import { historicalDocuments } from './historicalDocuments';
 import { object, valueText, recordedTime, savedAnswers, reviewer } from './conversationPresentation';
 import './conversation.css';
@@ -13,12 +16,12 @@ function Time({value, reported = false}: {value: HistoryValue; reported?: boolea
   const time = recordedTime(value);
   return <span title={time.title}>{reported ? 'Reported time: ' : ''}{time.text}</span>;
 }
-export function HistoryPair({ entry, onOpen }: { entry: HistoryEntry; onOpen?: () => void }) {
+export function HistoryPair({ entry, onOpen, part }: { entry: HistoryEntry; onOpen?: () => void; part?: 'request' | 'response' }) {
   const [expanded, setExpanded] = useState(false);
   const answer = savedAnswers(entry.form_fields, entry.accepted_response.raw, true);
   const receipt = object(entry.actor.receipt);
   return <div className="conversation-pair" data-occurrence={entry.entry_id}>
-    <Card size="small" className="conversation-step" aria-label="Recorded request step">
+    {part !== 'response' && <Card size="small" className="conversation-step" aria-label="Recorded request step">
       <div className="conversation-line"><strong>{entry.title.present ? valueText(entry.title.raw) : `${entry.kind} request`}</strong>{onOpen && <Button size="small" onClick={onOpen}>{entry.kind === 'review' ? 'Open review' : 'Open recorded request'}</Button>}</div>
       <details><summary className="conversation-line conversation-detail-summary"><Time value={entry.requested_at} /><span>State: {entry.state || 'unknown'} · Details</span></summary>
         <p>Occurrence: {entry.entry_id}</p><p>Attempt: {entry.locator.job_attempt ?? 'not recorded'}</p>
@@ -31,13 +34,53 @@ export function HistoryPair({ entry, onOpen }: { entry: HistoryEntry; onOpen?: (
         <RecordedValue value={entry.accepted_response} />
         {entry.diagnostics?.map((d,i) => <p key={i}>{d.message}</p>)}
       </details>
-    </Card>
-    {entry.accepted_response.present && <Card size="small" className="conversation-step conversation-response" aria-label="Accepted response">
+    </Card>}
+    {part !== 'request' && entry.accepted_response.present && <Card size="small" className="conversation-step conversation-response" aria-label="Accepted response">
       <div className={expanded ? 'conversation-answer expanded' : 'conversation-answer'}>{answer}</div>
       <div className="conversation-line"><Time value={{present:Object.prototype.hasOwnProperty.call(receipt,'submitted_at'),raw:receipt.submitted_at}} reported={entry.actor.provenance === 'reported_receipt'} /><span title={reviewer(entry)}>{reviewer(entry)}</span></div>
       <button className="conversation-expand" onClick={() => setExpanded(v => !v)}>{expanded ? 'Collapse feedback' : 'Expand feedback'}</button>
     </Card>}
   </div>;
+}
+export function MergeCard({ merge }: { merge: HistoryMerge }) {
+  const subject = merge.candidate_subject;
+  const snippet = subject == null ? 'Commit message not recorded' : subject === '' ? 'Commit message is empty' : subject.length > 160 ? `${subject.slice(0,160)}…` : subject;
+  return <Card size="small" className="conversation-step" aria-label="Verified publication" data-event={merge.entry_id}>
+    <strong>{merge.publication_disposition === 'already_present' ? 'Publication confirmed — already present' : 'Published'}</strong>
+    <p style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{snippet}</p>
+    <details><summary>Publication details</summary>
+      <p>Commit: {merge.candidate_sha}</p><p>Branch: {merge.publication_branch}</p>
+      <p>Commit message: {subject == null ? 'Commit message not recorded' : subject === '' ? '(empty)' : subject}</p>
+      <p>Job: {merge.job_id} · Attempt: {merge.job_attempt} · Task attempt: {merge.task_attempt}</p>
+      <p style={{overflowWrap:'anywhere'}}>Source: {merge.invocation_id}</p><p>Result ordinal: {String(merge.result_ordinal)}</p>
+      <Time value={{present:!!merge.completed_at,raw:merge.completed_at}} />
+    </details>
+  </Card>;
+}
+export function ConversationTimeline({page, entries, onOpen}: {page?: HistoryPage; entries: HistoryEntry[]; onOpen:(id:string)=>void}) {
+  if (!page?.events?.length) return <>{entries.map(entry => <HistoryPair key={entry.entry_id} entry={entry} onOpen={() => onOpen(entry.entry_id)} />)}</>;
+  const byID = new Map(entries.map(entry => [entry.entry_id, entry]));
+  const merges = new Map((page.merges || []).map(merge => [merge.entry_id, merge]));
+  const seen = new Set<string>();
+  const positionedRequests = new Set(page.events.filter(e=>e.kind === 'request_generation').map(e=>e.entry_id));
+  const positionedResponses = new Set(page.events.filter(e=>e.kind === 'response_acceptance').map(e=>e.entry_id));
+  const missingPositions = entries.filter(e=>!positionedRequests.has(e.entry_id) || (e.accepted_response.present && !positionedResponses.has(e.entry_id)));
+  return <>
+    {missingPositions.length > 0 && <section aria-label="Events without retained positions"><p>Some event positions were not recorded. These occurrences remain available separately from the ordered events.</p>{missingPositions.map(entry => <div key={entry.entry_id}>
+      {!positionedRequests.has(entry.entry_id) && <HistoryPair entry={entry} part="request" onOpen={()=>onOpen(entry.entry_id)} />}
+      {entry.accepted_response.present && !positionedResponses.has(entry.entry_id) && <HistoryPair entry={entry} part="response" />}
+    </div>)}</section>}
+    {page.events.map(event => {
+    const key = JSON.stringify([event.kind,event.entry_id,event.invocation_id,String(event.ordinal)]);
+    if (seen.has(key)) return null;
+    seen.add(key);
+    if (event.kind === 'merge_completion') {
+      const merge = merges.get(event.entry_id);
+      return merge ? <MergeCard key={key} merge={merge} /> : null;
+    }
+    const entry = byID.get(event.entry_id);
+    return entry && ['request_generation','response_acceptance'].includes(event.kind) ? <HistoryPair key={key} entry={entry} part={event.kind === 'request_generation' ? 'request' : 'response'} onOpen={() => onOpen(entry.entry_id)} /> : null;
+  })}</>;
 }
 function HistoricalRequest({ tenant, job, entry, legacy, onBack }: { tenant: string; job: string; entry: string; legacy?: boolean; onBack?: () => void }) {
   const [detail, setDetail] = useState<HistoryDetail>();
@@ -95,8 +138,20 @@ function HistoricalRequest({ tenant, job, entry, legacy, onBack }: { tenant: str
     </details>)}
   </section>;
 }
-export default function JobConversation({ tenant, job, occurrence, requestId, onOpen, onBack, refreshKey, running }: {
-  tenant: string; job: string; occurrence?: string; requestId?: string; onOpen: (entry: string) => void; onBack?: () => void; refreshKey?: unknown; running: boolean;
+export function CurrentActivity({ metadata, freshness }: { metadata?: RecipeJob; freshness?: 'loading' | 'loaded' | 'failed' }) {
+  if (metadata && isFinishedJob(metadata)) return null;
+  const status = metadata ? jobStatusValue(metadata) : undefined;
+  const label = status === 'ACTIVE' ? 'Running' : status === 'READY' || status === 'PENDING_JOBS' || status === 'AWAITING_FUTURE' ? 'Pending'
+    : status && ['CANCEL_REQUESTED', 'CRASH_CONCERN', 'EXPIRED'].includes(status) ? jobStatusPresentation(status).label : 'Status unavailable';
+  const reason = status === 'PENDING_JOBS' ? 'Waiting for jobs' : status === 'AWAITING_FUTURE' ? 'Scheduled' : undefined;
+  return <Card size="small" className="conversation-step" aria-label="Current job activity">
+    <strong>{label}</strong>{reason && <p>{reason}</p>}
+    {metadata && freshness === 'failed' && <p role="status">Status stale — job details could not be refreshed.</p>}
+    {metadata && freshness === 'loading' && <p>Refreshing status…</p>}
+  </Card>;
+}
+export default function JobConversation({ tenant, job, occurrence, requestId, onOpen, onBack, refreshKey, running, metadata, metadataFreshness }: {
+  tenant: string; job: string; occurrence?: string; requestId?: string; onOpen: (entry: string) => void; onBack?: () => void; refreshKey?: unknown; running: boolean; metadata?: RecipeJob; metadataFreshness?: 'loading' | 'loaded' | 'failed';
 }) {
   const [page, setPage] = useState<HistoryPage>();
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
@@ -104,6 +159,7 @@ export default function JobConversation({ tenant, job, occurrence, requestId, on
   const [busy, setBusy] = useState(false);
   const [activity, setActivity] = useState(false);
   const generation = useRef(0);
+  const pageRef = useRef<HistoryPage>();
   const entriesRef = useRef<HistoryEntry[]>([]);
   const controller = useRef<AbortController>();
   const identity = `${tenant}\0${job}`;
@@ -116,6 +172,7 @@ export default function JobConversation({ tenant, job, occurrence, requestId, on
     setBusy(true);
     try {
       let next = await getConversation(tenant, job, { pageToken: token, signal: abort.signal });
+      if (token && pageRef.current && next.snapshot_token !== pageRef.current.snapshot_token) throw new Error('History snapshot changed during pagination. Refresh history.');
       const snapshot = next.snapshot_token;
       let refreshed = next.entries;
       // Refresh the whole visible range in the new immutable snapshot before
@@ -130,7 +187,8 @@ export default function JobConversation({ tenant, job, occurrence, requestId, on
         }
       }
       if (abort.signal.aborted || current !== generation.current) return;
-      setPage(next); setError('');
+      if (background && pageRef.current && stringifyJobJSON(pageRef.current.merges) !== stringifyJobJSON(next.merges)) setActivity(true);
+      pageRef.current = next; setPage(next); setError('');
       setEntries(previous => {
         if (!token) {
           if (background && previous.length && stringifyJobJSON(previous) !== stringifyJobJSON(refreshed)) setActivity(true);
@@ -148,7 +206,7 @@ export default function JobConversation({ tenant, job, occurrence, requestId, on
     } finally { if (current === generation.current) setBusy(false); }
   }, [tenant, job]);
   useEffect(() => {
-    loadedIdentity.current = identity; entriesRef.current = []; setPage(undefined); setEntries([]); setError(''); setActivity(false);
+    loadedIdentity.current = identity; entriesRef.current = []; pageRef.current = undefined; setPage(undefined); setEntries([]); setError(''); setActivity(false);
     void load();
     return () => { ++generation.current; controller.current?.abort(); };
   }, [identity, load]);
@@ -156,6 +214,17 @@ export default function JobConversation({ tenant, job, occurrence, requestId, on
     const changed = previousRefreshKey.current !== refreshKey; previousRefreshKey.current = refreshKey;
     if (loadedIdentity.current === identity && changed) void load(undefined, true);
   }, [refreshKey, identity, load]);
+  const finished = !!metadata && isFinishedJob(metadata);
+  const previousCompletion = useRef({ identity, finished });
+  useEffect(() => {
+    const previous = previousCompletion.current;
+    previousCompletion.current = { identity, finished };
+    if (previous.identity === identity && !previous.finished && finished) {
+      // Completion is observed independently of history polling. Start a fresh
+      // snapshot and invalidate any read that began before this observation.
+      void load(undefined, true);
+    }
+  }, [identity, finished, load]);
   useEffect(() => {
     if (!running) return;
     const timer = window.setInterval(() => { void load(undefined, true); }, 5000);
@@ -164,12 +233,15 @@ export default function JobConversation({ tenant, job, occurrence, requestId, on
   return <section aria-label="Input history">
     <Space wrap><Button onClick={() => { setActivity(false); void load(); }} loading={busy}>Refresh history</Button>{activity && <span role="status">New conversation activity available</span>}</Space>
     {error && <Alert type="warning" message="History unavailable" description={error} />}
-    {page && <p>History coverage: {page.completeness}. {page.next_page_token ? 'More retained requests are available.' : 'End of this retained snapshot; coverage may be partial.'}</p>}
+    {page && <p>History coverage: {page.completeness}. {page.next_page_token ? 'More retained events are available.' : 'End of this retained snapshot; coverage may be partial.'}</p>}
+    {page?.publication_coverage && page.publication_coverage !== 'recorded' && <Alert type="info" message={`Publication coverage: ${page.publication_coverage}. Only verified retained publications are shown.`} />}
     {page?.diagnostics?.map((d, i) => <Alert key={i} type="info" message={d.message} />)}
     {(occurrence !== undefined || requestId !== undefined) && <HistoricalRequest key={`${identity}\0${occurrence ?? requestId}`} tenant={tenant} job={job} entry={occurrence ?? requestId!} legacy={occurrence === undefined} onBack={onBack} />}
-    {page && !entries.length && <p>No retained requests in this history.</p>}
-    {(loadedIdentity.current === identity ? entries : []).map(entry => <HistoryPair key={entry.entry_id} entry={entry} onOpen={() => onOpen(entry.entry_id)} />)}
-    {page?.next_page_token && <Button disabled={busy || !!error} onClick={() => void load(page.next_page_token)}>Load more requests</Button>}
+    {page && !entries.length && !page.merges?.length && <p>No retained events in this history.</p>}
+    <ConversationTimeline page={loadedIdentity.current === identity ? page : undefined} entries={loadedIdentity.current === identity ? entries : []} onOpen={onOpen} />
+    {page?.next_page_token && <Button disabled={busy || !!error} onClick={() => void load(page.next_page_token)}>Load more events</Button>}
     {!page && !error && <p role="status">Loading history…</p>}
+    {metadata && isFinishedJob(metadata) && <ReturnedDocuments key={identity} tenant={tenant} job={job} refreshKey={refreshKey} />}
+    <CurrentActivity metadata={metadata} freshness={metadataFreshness} />
   </section>;
 }

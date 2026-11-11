@@ -6,6 +6,8 @@ import config from './playwright.config';
 export default defineConfig({
   ...config,
   testMatch: 'job-conversation-runtime.spec.ts',
+  reporter: 'list',
+  outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR || './test-results',
   projects: config.projects?.filter(project => project.name === 'chromium').map(project => ({ ...project, testIgnore: [] })),
   workers: 1,
   webServer: [

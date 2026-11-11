@@ -39,3 +39,21 @@ describe('CC-020 legacy request identity',()=>{
   expect(fetch.mock.calls[1][0]).toContain('entry_id=only&snapshot_token=s');
  });
 });
+
+describe('final document transport',()=>{
+ it('CV-015 keeps HTTP 202 pending',async()=>{
+  const {getFinalDocuments}=await import('./conversation');
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('{"status":"pending"}',{status:202})));
+  expect(await getFinalDocuments('t','j')).toEqual({status:'pending'});
+ });
+ it('CV-017 preserves aliases, producer coordinates and encoded manifest membership',async()=>{
+  const {getFinalDocuments,finalDocumentURL}=await import('./conversation');
+  const document={alias:'public/report.md',resolution:'stored',producer:{jobId:'grandchild',taskOrdinal:7,name:'private.md'},ref:{},raw:{}};
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(JSON.stringify({job_id:'j',manifest_id:'a+/=',state:'present',documents:[document]}))));
+  const manifest=await getFinalDocuments('t','j');
+  expect('documents' in manifest && manifest.documents[0]).toEqual(document);
+  const url=new URL(finalDocumentURL('t','j','a+/=','public/report.md'),'http://test');
+  expect(url.searchParams.get('alias')).toBe('public/report.md');
+  expect(url.searchParams.get('manifest_id')).toBe('a+/=');
+ });
+});

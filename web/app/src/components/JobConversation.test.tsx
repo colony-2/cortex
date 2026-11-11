@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import JobConversation, { HistoryPair } from './JobConversation';
+import JobConversation, { HistoryPair, CurrentActivity } from './JobConversation';
 import { APIError, getConversation, getConversationEntry, type HistoryEntry } from '@colony2/shared';
 vi.mock('@colony2/shared', async () => ({ ...await vi.importActual('@colony2/shared'), getConversation: vi.fn(), getConversationEntry: vi.fn() }));
 const entry = (id = 'one'): HistoryEntry => ({entry_id:id,kind:'review',title:{present:true,raw:'Original review'},summary:{present:false},state:'answered',requested_at:{present:false},locator:{invocation_id:'invoke'},form_fields:{question:'Proceed?'},accepted_response:{present:true,raw:{decision:'approve',feedback:'Keep original'}},response_source:'autofill',actor:{provenance:'reported_receipt',receipt:{actor:{kind:'human',id:'caller'}},legacy_user_id:{present:false}}});
@@ -25,7 +25,7 @@ describe('conversation retained evidence', () => {
  it('CT-013 deduplicates overlapping continuation pages by durable identity', async () => {
   vi.mocked(getConversation).mockResolvedValueOnce(page([entry()], 'next')).mockResolvedValueOnce(page([entry(),entry('two')]));
   render(<JobConversation tenant="tenant" job="job" running={false} onOpen={vi.fn()} />);
-  fireEvent.click(await screen.findByText('Load more requests'));
+  fireEvent.click(await screen.findByText('Load more events'));
   await screen.findByText('Occurrence: two');
   expect(screen.getAllByText('Occurrence: one')).toHaveLength(1);
  });
@@ -38,7 +38,7 @@ describe('conversation retained evidence', () => {
  it('CT-013 CT-033 retains entries on expiry and refreshes from a fresh snapshot', async () => {
   vi.mocked(getConversation).mockResolvedValueOnce(page([entry()], 'opaque')).mockRejectedValueOnce(new APIError('expired',410,'history_snapshot_expired')).mockResolvedValueOnce(page([entry(),entry('two')]));
   render(<JobConversation tenant="tenant" job="job" running={false} onOpen={vi.fn()} />);
-  fireEvent.click(await screen.findByText('Load more requests'));
+  fireEvent.click(await screen.findByText('Load more events'));
   await screen.findByText(/History snapshot expired/);
   expect(screen.getByText('Occurrence: one')).toBeInTheDocument();
   fireEvent.click(screen.getByText('Refresh history'));
@@ -149,12 +149,76 @@ describe('CC compact occurrence and time provenance',()=>{
  it('CC-019 refreshes the whole visible range in one snapshot and retains entries on inconsistent refresh',async()=>{
   vi.mocked(getConversation).mockResolvedValueOnce(page([entry('one')],'next')).mockResolvedValueOnce(page([entry('two')])).mockResolvedValueOnce({...page([entry('new')],'fresh-next'),snapshot_token:'fresh'}).mockResolvedValueOnce({...page([entry('invalid')]),snapshot_token:'wrong'});
   render(<JobConversation tenant="tenant" job="job" running={false} onOpen={vi.fn()}/>);
-  fireEvent.click(await screen.findByText('Load more requests'));await screen.findByText('Occurrence: two');
+  fireEvent.click(await screen.findByText('Load more events'));await screen.findByText('Occurrence: two');
   fireEvent.click(screen.getByText('Refresh history'));await screen.findByText(/snapshot changed during refresh/);
   expect(screen.getByText('Occurrence: one')).toBeInTheDocument();expect(screen.getByText('Occurrence: two')).toBeInTheDocument();expect(screen.queryByText('Occurrence: invalid')).toBeNull();
  });
  it('CC-023 explicitly shows an empty retained history',async()=>{
   vi.mocked(getConversation).mockResolvedValue(page([]));render(<JobConversation tenant="tenant" job="job" running={false} onOpen={vi.fn()}/>);
-  await screen.findByText('No retained requests in this history.');
+  await screen.findByText('No retained events in this history.');
  });
+});
+
+describe('current conversation activity', () => {
+ const metadata = (status: string, extra = {}) => ({status,store:'ACTIVE',...extra}) as import('@colony2/shared/types').RecipeJob;
+ it.each([['ACTIVE','Running'], ['READY','Pending'], ['PENDING_JOBS','Pending'], ['AWAITING_FUTURE','Pending'], ['CRASH_CONCERN','Worker unresponsive'], ['EXPIRED','Expired']])('CV-009 CV-010 renders %s from metadata', (status,label) => {
+  render(<CurrentActivity metadata={metadata(status)} freshness="loaded" />);
+  expect(screen.getByText(label)).toBeInTheDocument();
+  expect(screen.getAllByLabelText('Current job activity')).toHaveLength(1);
+  if (status === 'PENDING_JOBS') expect(screen.getByText('Waiting for jobs')).toBeInTheDocument();
+  if (status === 'AWAITING_FUTURE') expect(screen.getByText('Scheduled')).toBeInTheDocument();
+ });
+ it('CV-010 gives cancellation request precedence', () => {
+  render(<CurrentActivity metadata={metadata('ACTIVE',{cancel_requested:true})} />);
+  expect(screen.getByText('Cancellation requested')).toBeInTheDocument();
+ });
+ it.each([{status:'COMPLETED'}, {status:'CANCELLED'}, {status:'READY',store:'ARCHIVED'}, {status:'COMPLETED',completion_status:'custom'}, {status:'READY',store:'ARCHIVED',completion_status:'success'}])('CV-010 omits terminal activity %j', extra => {
+  render(<CurrentActivity metadata={metadata('ACTIVE',extra)} />);
+  expect(screen.queryByLabelText('Current job activity')).not.toBeInTheDocument();
+ });
+ it('CV-013 replaces one tail and marks failed observations stale', () => {
+  const view = render(<CurrentActivity metadata={metadata('ACTIVE')} freshness="loaded" />);
+  view.rerender(<CurrentActivity metadata={metadata('READY')} freshness="failed" />);
+  expect(screen.getByText('Pending')).toBeInTheDocument();
+  expect(screen.queryByText('Running')).not.toBeInTheDocument();
+  expect(screen.getByText(/Status stale/)).toBeInTheDocument();
+  expect(screen.getAllByLabelText('Current job activity')).toHaveLength(1);
+  view.rerender(<CurrentActivity freshness="failed" />);
+  expect(screen.getByText('Status unavailable')).toBeInTheDocument();
+ });
+});
+
+describe('publication event ordering',()=>{
+ it('CV-002 CV-003 CV-005 CV-006 keeps interleaved events, identical SHAs, bounded text and nullable messages',async()=>{
+  const merge={entry_id:'merge',tenant_id:'tenant',job_id:'job',job_attempt:2,task_attempt:3,invocation_id:'merge/attempt:3',result_ordinal:2,operation:'merge:merge',evidence_availability:'recorded',candidate_sha:'same-sha',candidate_subject:'<script>unsafe</script>'+ 'x'.repeat(200),publication_branch:'refs/heads/main',publication_disposition:'published'};
+  vi.mocked(getConversation).mockResolvedValue({...page([entry()]),merges:[merge,{...merge,entry_id:'second',candidate_subject:null,publication_disposition:'already_present'}],events:[{ordinal:1,invocation_id:'invoke',kind:'request_generation',entry_id:'one'},{ordinal:2,invocation_id:'merge',kind:'merge_completion',entry_id:'merge'},{ordinal:3,invocation_id:'invoke',kind:'response_acceptance',entry_id:'one'},{ordinal:4,invocation_id:'second',kind:'merge_completion',entry_id:'second'},{ordinal:4,invocation_id:'second',kind:'merge_completion',entry_id:'second'}]});
+  const {container}=render(<JobConversation tenant="tenant" job="job" running={false} onOpen={vi.fn()}/>);
+  await screen.findAllByLabelText('Verified publication');
+  expect([...container.querySelectorAll('.conversation-step')].slice(0,4).map(n=>n.getAttribute('aria-label'))).toEqual(['Recorded request step','Verified publication','Accepted response','Verified publication']);
+  expect(screen.getAllByLabelText('Verified publication')).toHaveLength(2);
+  expect(container.querySelector('script')).toBeNull();
+  expect(screen.getByText(merge.candidate_subject.slice(0,160)+'…')).toBeInTheDocument();
+  expect(screen.getAllByText('Commit message not recorded').length).toBeGreaterThan(0);
+  expect(screen.getByText('Publication confirmed — already present')).toBeInTheDocument();
+ });
+});
+
+it('CX-001 completion invalidates an older history read and preserves the final snapshot', async () => {
+ const meta = (status: string) => ({status,store:'ACTIVE'}) as import('@colony2/shared/types').RecipeJob;
+ let resolveOld!: (value: ReturnType<typeof page>) => void;
+ const old = new Promise<ReturnType<typeof page>>(resolve => { resolveOld = resolve; });
+ vi.mocked(getConversation).mockResolvedValueOnce(page([entry('initial')])).mockReturnValueOnce(old).mockResolvedValue({...page([{...entry('final'),title:{present:true,raw:'Final snapshot request'}}]),snapshot_token:'final'});
+ const view=render(<JobConversation tenant="tenant" job="job" running metadata={meta('ACTIVE')} refreshKey={0} onOpen={vi.fn()}/>);
+ await waitFor(()=>expect(getConversation).toHaveBeenCalledTimes(1));
+ await screen.findByText('Original review');
+ view.rerender(<JobConversation tenant="tenant" job="job" running metadata={meta('ACTIVE')} refreshKey={1} onOpen={vi.fn()}/>);
+ await waitFor(()=>expect(getConversation).toHaveBeenCalledTimes(2));
+ const oldSignal=vi.mocked(getConversation).mock.calls[1][2]?.signal;
+ view.rerender(<JobConversation tenant="tenant" job="job" running={false} metadata={meta('COMPLETED')} refreshKey={1} onOpen={vi.fn()}/>);
+ await waitFor(()=>expect(getConversation).toHaveBeenCalledTimes(3));
+ expect(oldSignal?.aborted).toBe(true);
+ await act(async()=>{resolveOld({...page([entry('obsolete')]),snapshot_token:'obsolete'});await old;});
+ expect(screen.queryByLabelText('Current job activity')).not.toBeInTheDocument();
+ await screen.findByText('Final snapshot request');
+ expect(screen.queryByText('Original review')).not.toBeInTheDocument();
 });

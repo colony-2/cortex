@@ -13,6 +13,7 @@ test.beforeEach(async ({ page, context, baseURL }) => {
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith('/conversation')) return route.fulfill({ json: { tenant_id: 'demo', job_id: 'job', entries: [], snapshot_token: 'snapshot', completeness: 'partial' } });
+    if (url.pathname.endsWith('/final-documents')) return route.fulfill({json:{job_id:'job',manifest_id:'none',state:'absent',documents:[]}});
     if (url.pathname.endsWith('/conversation/entry')) return route.fulfill({ status: 404, json: { error: 'Not retained', code: 'history_not_found' } });
     if (url.pathname === '/api/projects') return route.fulfill({ json: [{ tenant_id: 'demo' }] });
     if (url.pathname.endsWith('/user-inputs/pending')) return route.fulfill({ json: [] });
@@ -41,7 +42,7 @@ test('CT-001–007 default, panel visibility, keyboard navigation and URL restor
   await expect(page.getByRole('region', { name: 'Job prompt' })).toHaveText('PromptThe original request');
   await expect(page.getByRole('region', { name: 'Job completion' })).not.toContainText('Merge status');
   await expect(page.getByRole('tree')).toHaveCount(0);
-  await page.screenshot({ path: info.outputPath('conversation.png'), fullPage: true });
+  await page.screenshot({ path: info.outputPath('conversation.png'), animations:'disabled',fullPage: true });
   for (const label of ['Steps', 'Relationships', 'Input artifacts', 'Summary', 'Conversation']) {
     await tabs.getByRole('tab', { name: label, exact: true }).click();
     await expect(page.locator('.job-detail-panel:visible')).toHaveCount(1);
@@ -82,7 +83,7 @@ test('CT-007 narrow tabs wrap without horizontal page overflow', async ({ page }
   await tabs.getByRole('tab', { name: 'Summary', exact: true }).focus();
   await page.keyboard.press('Home');
   await expect(tabs.getByRole('tab', { name: 'Conversation', exact: true })).toBeFocused();
-  await page.screenshot({ path: info.outputPath('conversation-narrow.png'), fullPage: true });
+  await page.screenshot({ path: info.outputPath('conversation-narrow.png'), animations:'disabled',fullPage: true });
 });
 
 test('CT-014,021,031 retained answers and exact earlier review stay selected through completion', async ({ page }) => {
@@ -96,6 +97,7 @@ test('CT-014,021,031 retained answers and exact earlier review stay selected thr
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith('/conversation')) return route.fulfill({ json: { tenant_id: 'demo', job_id: 'job', entries: [entry('first', stage > 0), ...(stage ? [entry('second', stage > 1)] : [])], snapshot_token: 'snapshot', completeness: 'partial' } });
+    if (url.pathname.endsWith('/final-documents')) return route.fulfill({json:{job_id:'job',manifest_id:'none',state:'absent',documents:[]}});
     if (url.pathname.endsWith('/conversation/entry')) return route.fulfill({ json: { ...entry('first', true), snapshot_token: 'snapshot', completeness: 'partial', request_manifest: [{ artifact_id: 'original', availability: 'retained', ref: {}, associations: [] }], response_manifest: [], actionability: { actionable: false, observation: 'live' } } });
     if (url.pathname.endsWith('/jobs/job')) return route.fulfill({ json: { ...jobIdentity, tenant_id: 'demo', job_id: 'job', title: 'Conversation fixture', prompt: 'The original request', status: stage > 1 ? 'COMPLETED' : 'READY', store: stage > 1 ? 'ARCHIVED' : 'ACTIVE', completion_status: stage > 1 ? 'success' : '', completion_detail: stage > 1 ? 'Persisted completion' : '' } });
     return route.fallback();
@@ -136,6 +138,7 @@ test('CT-021 automatic polling and input activity preserve historical selection,
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith('/conversation')) return route.fulfill({ json: { tenant_id: 'demo', job_id: 'job', entries: [entry('first'), ...(revision ? [entry(`arrival-${revision}`)] : [])], snapshot_token: `snapshot-${revision}`, completeness: 'partial' } });
+    if (url.pathname.endsWith('/final-documents')) return route.fulfill({json:{job_id:'job',manifest_id:'none',state:'absent',documents:[]}});
     if (url.pathname.endsWith('/conversation/entry')) return route.fulfill({ json: { ...entry('first'), snapshot_token: 'original-detail', completeness: 'partial', request_manifest: [{ artifact_id: 'original', availability: 'retained' }], response_manifest: [], actionability: { actionable: false } } });
     if (url.pathname.endsWith('/jobs/job')) return route.fulfill({ json: { ...jobIdentity, tenant_id: 'demo', job_id: 'job', title: 'Reading history', status: 'READY', store: 'ACTIVE' } });
     return route.fallback();
@@ -188,8 +191,9 @@ for (const width of [1280,390]) test(`CC-001 CC-009 CC-010 CC-013 CC-014 compact
   return route.fallback();
  });
  await page.goto('/project/demo/jobs/job/story?filter=mine');
- await expect(page.locator('.conversation-step')).toHaveCount(3);
- for(const card of await page.locator('.conversation-step').all()){
+ const retainedCards=page.locator('[aria-label="Recorded request step"], [aria-label="Accepted response"]');
+ await expect(retainedCards).toHaveCount(3);
+ for(const card of await retainedCards.all()){
   const height=await card.evaluate(el=>el.getBoundingClientRect().height);
   expect(height).toBeLessThanOrEqual(width < 768 ? 120 : 100);expect(height).toBeGreaterThan(60);
   const rows=await card.locator('.conversation-line, .conversation-answer, .conversation-expand').evaluateAll(elements=>elements.map(el=>({top:el.getBoundingClientRect().top,bottom:el.getBoundingClientRect().bottom})));
@@ -199,7 +203,7 @@ for (const width of [1280,390]) test(`CC-001 CC-009 CC-010 CC-013 CC-014 compact
  await expect(page.locator('.conversation-answer')).toContainText('Changes Requested');
  await expect(page.locator('.conversation-step').first()).toContainText('2025');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
- await page.screenshot({path:info.outputPath(`compact-${width}.png`),fullPage:true});
+ await page.screenshot({path:info.outputPath(`compact-${width}.png`),animations:'disabled',fullPage:true});
  await page.getByRole('button',{name:'Open review',exact:true}).first().click();
  const reader=page.getByRole('region',{name:'Recorded request',exact:true});
  await expect(reader.getByRole('heading',{name:'Original proposal'})).toBeVisible();
@@ -215,7 +219,7 @@ for (const width of [1280,390]) test(`CC-001 CC-009 CC-010 CC-013 CC-014 compact
  await reader.screenshot({path:info.outputPath(`overview-${width}.png`)});
  await dataLink.click();await expect(reader.getByLabel('Formatted JSON')).toContainText('"original": true');
  await expect(reader.getByRole('link',{name:'Download',exact:true})).toHaveAttribute('href',/artifact_id=Data&snapshot_token=frozen/);
- await page.screenshot({path:info.outputPath(`reader-${width}.png`),fullPage:true});
+ await page.screenshot({path:info.outputPath(`reader-${width}.png`),animations:'disabled',fullPage:true});
  await expect(reader.getByRole('navigation',{name:'Review documents'})).toBeHidden();
  await reader.getByRole('button',{name:'Show documents',exact:true}).click();
  if(width===1280) await reader.getByRole('button',{name:/page.html/}).click();
@@ -255,4 +259,115 @@ for(const status of [403,404,410,413]) test(`CC-016 document-specific ${status} 
  await expect(reader.getByRole('region',{name:'Selected document',exact:true}).getByText('missing.md',{exact:true})).toBeVisible();
  if(status===413)await expect(reader.getByText(/limited to 32 MiB/)).toBeVisible();
  fail=false;await reader.getByRole('button',{name:'Retry',exact:true}).click();await expect(reader.getByRole('heading',{name:'Recovered original'})).toBeVisible();
+});
+
+
+test('CV-009 CV-010 CV-013 current activity tail uses metadata and retains stale observation', async ({ page }, info) => {
+  page.on('pageerror', error => { console.error('Activity browser error:', error); });
+  page.on('crash', () => { console.error('Activity browser crashed'); });
+  let status = 'ACTIVE';
+  let failed = false;
+  await page.route('**/api/projects/demo/jobs/job', route => failed ? route.fulfill({status:503,json:{error:'Fixture metadata unavailable'}}) : route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',title:'Conversation fixture',status,store:'ACTIVE'}}));
+  await Promise.all([page.waitForResponse(response => new URL(response.url()).pathname === '/api/projects/demo/jobs/job'),page.goto('/project/demo/jobs/job/story')]);
+  await expect(page.getByRole('heading', {name:'Job Story: Conversation fixture'})).toBeVisible();
+  const tail = page.getByLabel('Current job activity');
+  await expect(tail).toHaveCount(1);
+  await expect(tail).toContainText('Running');
+  await page.screenshot({path:info.outputPath('activity-running-desktop.png'),animations:'disabled',fullPage:true});
+  status = 'PENDING_JOBS';
+  await page.getByRole('button',{name:/Refresh$/}).click();
+  await expect(tail).toContainText('Pending');
+  await expect(tail).toContainText('Waiting for jobs');
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:info.outputPath('activity-pending-phone.png'),animations:'disabled',fullPage:true});
+  failed = true;
+  await page.getByRole('button',{name:/Refresh$/}).click();
+  await expect(tail).toContainText('Status stale');
+  await expect(tail).toContainText('Pending');
+  await expect(tail).toHaveCount(1);
+  failed = false; status = 'COMPLETED';
+  await page.getByRole('button',{name:/Refresh$/}).click();
+  await expect(tail).toHaveCount(0);
+});
+
+test('CV-002 CV-003 CV-005 CV-020 merge ordering and final document viewer',async({page},info)=>{
+  const entry={entry_id:'review',kind:'review',title:{present:true,raw:'Approve publication'},summary:{present:false},state:'answered',requested_at:{present:false},locator:{invocation_id:'review',generation_ordinal:1,accepted_ordinal:3},form_fields:{},accepted_response:{present:true,raw:{feedback:'Approved after publication'}},response_source:'external_submission',actor:{provenance:'submission_receipt',legacy_user_id:{present:false}}};
+  const merge={entry_id:'merge',tenant_id:'demo',job_id:'job',job_attempt:1,task_attempt:1,invocation_id:'merge/attempt:1',result_ordinal:2,operation:'merge:merge',evidence_availability:'recorded',candidate_sha:'abcdef0123456789',candidate_subject:'Finish conversation events and document previews',publication_branch:'refs/heads/main',publication_disposition:'published'};
+  const fallback={...merge,entry_id:'fallback',invocation_id:'merge/attempt:2',result_ordinal:4,candidate_subject:null,publication_disposition:'already_present'};
+  await page.route('**/conversation?*',route=>route.fulfill({json:{tenant_id:'demo',job_id:'job',entries:[entry],snapshot_token:'shared',snapshot_revision:4,completeness:'complete',publication_coverage:'recorded',merges:[merge,fallback],events:[{ordinal:1,invocation_id:'review',kind:'request_generation',entry_id:'review'},{ordinal:2,invocation_id:merge.invocation_id,kind:'merge_completion',entry_id:'merge'},{ordinal:3,invocation_id:'review',kind:'response_acceptance',entry_id:'review'},{ordinal:4,invocation_id:fallback.invocation_id,kind:'merge_completion',entry_id:'fallback'}]}}));
+  await page.route('**/final-documents',route=>route.fulfill({json:{job_id:'job',attempt_ordinal:1,manifest_id:'final-one',state:'present',documents:[{alias:'report.md',resolution:'stored',ref:{},raw:{},producer:{jobId:'grandchild',taskOrdinal:8,name:'private-storage.md'}},{alias:'notes.md',resolution:'stored',ref:{},raw:{},producer:{jobId:'child',taskOrdinal:4,name:'original.md'}},{alias:'external',resolution:'external',ref:{},raw:{}}]}}));
+  const reads:string[]=[];
+  await page.route('**/final-documents/document?*',route=>{
+    const url=new URL(route.request().url());reads.push(url.searchParams.get('alias')!);
+    expect(url.searchParams.get('manifest_id')).toBe('final-one');
+    return route.fulfill({contentType:'text/plain',body:url.searchParams.get('alias')==='report.md'?'# Final report\n\n[Read notes](notes.md)\n\nOnly declared terminal documents.':'# Supporting notes\n\nOriginal child document.'});
+  });
+  await page.goto('/project/demo/jobs/job/story');
+  await expect(page.getByLabel('Verified publication')).toHaveCount(2);
+  const cards=page.locator('[aria-label="Recorded request step"],[aria-label="Verified publication"],[aria-label="Accepted response"]');
+  await expect(cards).toHaveCount(4);
+  expect(await cards.evaluateAll(nodes=>nodes.map(n=>n.getAttribute('aria-label')))).toEqual(['Recorded request step','Verified publication','Accepted response','Verified publication']);
+  await expect(page.getByText('Commit message not recorded',{exact:true}).first()).toBeVisible();
+  await expect(page.getByText('Publication confirmed — already present',{exact:true})).toBeVisible();
+  await page.screenshot({path:info.outputPath('merge-events-desktop.png'),animations:'disabled',fullPage:true});
+  const activate=page.getByRole('link',{name:'report.md',exact:true});await activate.click();
+  const viewer=page.getByRole('dialog',{name:'Returned document viewer'});
+  await expect(viewer.getByRole('heading',{name:'Final report',exact:true})).toBeVisible();
+  await expect(viewer.getByRole('link',{name:'Download',exact:true})).toHaveAttribute('href',/manifest_id=final-one/);
+  await page.screenshot({path:info.outputPath('returned-document-viewer-desktop.png'),animations:'disabled',fullPage:false});
+  await viewer.getByRole('link',{name:'Read notes',exact:true}).click();
+  await expect(viewer.getByRole('heading',{name:'Supporting notes',exact:true})).toBeVisible();
+  await viewer.getByRole('button',{name:'Close',exact:true}).click();
+  await expect(activate).toBeFocused();
+  expect([...new Set(reads)]).toEqual(['report.md','notes.md']);
+  await expect(page.getByLabel('Current job activity')).toHaveCount(0);
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:info.outputPath('conversation-final-phone.png'),animations:'disabled',fullPage:true});
+});
+
+for(const status of [403,404]) test(`CV-021 final document ${status} leaves other members usable`,async({page})=>{
+  await page.route('**/final-documents',route=>route.fulfill({json:{job_id:'job',manifest_id:'errors',state:'present',documents:['missing.md','good.md'].map(alias=>({alias,resolution:'stored',producer:{jobId:'producer',taskOrdinal:1,name:alias},ref:{},raw:{}}))}}));
+  await page.route('**/final-documents/document?*',route=>new URL(route.request().url()).searchParams.get('alias')==='missing.md'?route.fulfill({status,json:{error:status===403?'Producer access denied':'Bytes not retained'}}):route.fulfill({body:'# Available final document',contentType:'text/plain'}));
+  await page.goto('/project/demo/jobs/job/story');
+  const list=page.getByLabel('Returned documents',{exact:true});
+  await list.getByRole('link',{name:'missing.md',exact:true}).click();
+  const viewer=page.getByRole('dialog',{name:'Returned document viewer'});
+  await expect(viewer.getByRole('alert')).toContainText(status===403?'Producer access denied':'Bytes not retained');
+  await expect(viewer).not.toContainText(/expired/i);
+  await viewer.getByRole('button',{name:'Close',exact:true}).click();
+  await list.getByRole('link',{name:'good.md',exact:true}).click();
+  await expect(viewer.getByRole('heading',{name:'Available final document'})).toBeVisible();
+});
+
+
+test('CX-001 automatic completion supersedes an in-flight pre-publication snapshot', async ({page}, info) => {
+  let terminal = false;
+  let holdNext = false;
+  let held = false;
+  let releaseOld!: () => void;
+  const oldRead = new Promise<void>(resolve => { releaseOld = resolve; });
+  const merge = {entry_id:'final-merge',tenant_id:'demo',job_id:'job',job_attempt:1,task_attempt:1,invocation_id:'merge/final',result_ordinal:2,operation:'merge:merge',evidence_availability:'recorded',candidate_sha:'abcdef0123456789',candidate_subject:'Final automatically observed publication',publication_branch:'refs/heads/main',publication_disposition:'published'};
+  await page.route('**/api/projects/demo/jobs/job', route => route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',title:'Conversation fixture',status:terminal?'COMPLETED':'ACTIVE',store:terminal?'ARCHIVED':'ACTIVE'}}));
+  await page.route('**/conversation?*', async route => {
+    const final = terminal;
+    if (holdNext && !held) { held = true; await oldRead; }
+    await route.fulfill({json:{tenant_id:'demo',job_id:'job',entries:[],snapshot_token:final?'final':'before',completeness:'complete',publication_coverage:'recorded',merges:final?[merge]:[],events:final?[{ordinal:2,invocation_id:merge.invocation_id,kind:'merge_completion',entry_id:merge.entry_id}]:[]}}).catch(() => {});
+  });
+  await page.route('**/final-documents', route => route.fulfill({json:{job_id:'job',manifest_id:'terminal',state:'present',documents:[{alias:'report.md',resolution:'stored',ref:{},raw:{},producer:{jobId:'job',taskOrdinal:8,name:'report.md'}}]}}));
+  await page.route('**/final-documents/document?*', route => route.fulfill({contentType:'text/plain',body:'# Automatically returned report'}));
+  await page.goto('/project/demo/jobs/job/story');
+  await expect(page.getByLabel('Current job activity')).toContainText('Running');
+  holdNext = true;
+  // History and metadata have independent five-second polls. Hold the next
+  // history response at the pre-completion snapshot while metadata completes.
+  await expect.poll(() => held, {timeout:15000}).toBe(true);
+  terminal = true;
+  await expect(page.getByLabel('Verified publication')).toHaveCount(1);
+  await expect(page.getByLabel('Verified publication')).toContainText(merge.candidate_subject);
+  await expect(page.getByLabel('Current job activity')).toHaveCount(0);
+  releaseOld();
+  await expect(page.getByLabel('Verified publication')).toHaveCount(1);
+  await page.getByRole('link',{name:'report.md',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Automatically returned report'})).toBeVisible();
+  await page.screenshot({path:info.outputPath('automatic-completion-viewer.png'),animations:'disabled'});
 });

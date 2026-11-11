@@ -213,7 +213,7 @@ func testTenantCellsAndRecipeJobs(t *testing.T, srv *Server) {
 	if artifactResponse.StatusCode != http.StatusOK || string(content) != "test result" {
 		t.Fatalf("artifact status=%d body=%s", artifactResponse.StatusCode, content)
 	}
-	newJob := postJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs/job-alpha-1/restart", map[string]interface{}{"request_id": "restart-test", "goal": map[string]interface{}{"mode": "new"}, "scope_id": "scope-test", "patch": map[string]interface{}{"job": map[string]interface{}{"answer": "patched"}}})
+	newJob := postJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs/job-alpha-1/restart", map[string]interface{}{"request_id": "restart-test", "goal": map[string]interface{}{"mode": "new"}, "scope_id": "scope-test", "patch": []map[string]interface{}{{"op": "add", "path": "/context/git/author", "value": "patched"}}})
 	newID, ok := newJob["job_id"].(string)
 	if !ok || newID == "" || newID == "job-alpha-1" {
 		t.Fatalf("restart = %#v", newJob)
@@ -224,7 +224,7 @@ func testTenantCellsAndRecipeJobs(t *testing.T, srv *Server) {
 		t.Fatal(err)
 	}
 	for _, entry := range run.Execution {
-		if entry.Record.Kind == "restart" && entry.Record.ID == "scope-test" && string(entry.Record.Payload) == `{"job":{"answer":"patched"}}` {
+		if entry.Record.Kind == "restart" && entry.Record.ID == "scope-test" && string(entry.Record.Payload) == `[{"op":"add","path":"/context/git/author","value":"patched"}]` {
 			return
 		}
 	}

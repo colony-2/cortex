@@ -13,6 +13,7 @@ export interface HistoryEntry {
   diagnostics?: HistoryDiagnostic[];
 }
 export interface HistoryPage {
+  merges?: HistoryMerge[]; events?: HistoryEvent[]; publication_coverage?: string;
   snapshot_revision: number; tenant_id: string; job_id: string; entries: HistoryEntry[];
   next_page_token?: string; snapshot_token: string; observed_at: string; completeness: string; diagnostics?: HistoryDiagnostic[];
 }
@@ -72,4 +73,31 @@ export async function getConversationRequest(tenant: string, job: string, reques
   }
   if (matches.length !== 1) throw new Error(matches.length ? 'Request identity is ambiguous; open its occurrence link.' : 'The selected request is not retained.');
   return getConversationEntry(tenant, job, matches[0].entry_id, { snapshotToken: snapshot, signal });
+}
+
+export interface HistoryMerge {
+  entry_id: string; tenant_id: string; job_id: string; job_attempt: number; task_attempt: number;
+  invocation_id: string; result_ordinal: number; operation: string; completed_at?: string;
+  evidence_availability: string; candidate_sha?: string; candidate_subject?: string | null;
+  publication_branch?: string; publication_disposition?: string;
+}
+export interface HistoryEvent { ordinal: number; invocation_id: string; kind: string; entry_id: string }
+export interface FinalDocument {
+  alias: string; resolution: string; diagnostic?: string; ref: unknown; raw: unknown;
+  producer?: { jobId: string; taskOrdinal: number; name: string; sizeBytes?: number };
+}
+export interface FinalDocuments {
+  job_id: string; attempt_ordinal?: number; manifest_id: string; state: string;
+  documents: FinalDocument[]; diagnostic?: string;
+}
+export async function getFinalDocuments(tenant: string, job: string, signal?: AbortSignal): Promise<FinalDocuments | {status: 'pending'}> {
+  const result = await read<FinalDocuments | {status:'pending'}>(`${base(tenant,job).replace(/\/conversation$/, '')}/final-documents`, signal);
+  if ('status' in result && result.status === 'pending') return result;
+  const manifest = result as FinalDocuments;
+  if (manifest.job_id !== job || !Array.isArray(manifest.documents) || !manifest.manifest_id) throw new Error('Returned documents do not match the selected job');
+  return manifest;
+}
+export function finalDocumentURL(tenant: string, job: string, manifest: string, alias: string) {
+  const query = new URLSearchParams({manifest_id:manifest, alias});
+  return `${base(tenant,job).replace(/\/conversation$/, '')}/final-documents/document?${query}`;
 }

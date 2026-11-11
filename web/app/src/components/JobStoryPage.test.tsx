@@ -7,11 +7,12 @@ import { jobIdentity } from '../test/cellFixtures';
 import { getJob, getJobInputArtifacts, listJobChildren } from '@colony2/shared/api';
 import type { RecipeJob } from '@colony2/shared/types';
 import DownloadChaptersButton from './DownloadChaptersButton';
-import { inputActivityService, getConversation } from '@colony2/shared';
+import { inputActivityService, getConversation, getFinalDocuments } from '@colony2/shared';
 
 const emptyPendingInputs = vi.hoisted(() => []);
 vi.mock('@colony2/shared', async (importOriginal) => ({
   ...await importOriginal<typeof import('@colony2/shared')>(),
+  getFinalDocuments: vi.fn(),
   getConversation: vi.fn().mockRejectedValue(new Error('History unavailable')),
   getConversationRequest: vi.fn().mockRejectedValue(new Error('Request unavailable')),
   getConversationEntry: vi.fn().mockRejectedValue(new Error('Request unavailable')),
@@ -61,6 +62,7 @@ function mount(search = '?tab=execution', response: unknown = story) {
   return fetchMock;
 }
 beforeEach(() => {
+  vi.mocked(getFinalDocuments).mockReset().mockResolvedValue({job_id:'job',manifest_id:'empty',state:'empty',documents:[]});
   vi.mocked(getConversation).mockReset().mockRejectedValue(new Error('History unavailable'));
   vi.mocked(getJobInputArtifacts).mockReset().mockResolvedValue({ artifacts: [] });
   vi.mocked(getJob).mockReset().mockResolvedValue({ ...jobIdentity, goal_id: 'goal' } as RecipeJob);
@@ -226,7 +228,7 @@ describe('job story history', () => {
     expect(before).toHaveTextContent('unchanged');
     expect(before).toHaveTextContent('/job/secret');
     fireEvent.click(within(dialog).getAllByRole('button', { name: 'Add line' })[0]);
-    fireEvent.change(within(dialog).getByPlaceholderText('e.g. git.author'), { target: { value: 'answer' } });
+    fireEvent.change(within(dialog).getByPlaceholderText('e.g. git.author'), { target: { value: 'git.author' } });
     fireEvent.change(within(dialog).getByPlaceholderText('e.g. "james@example.com"'), { target: { value: 'patched' } });
     expect(before).toHaveTextContent('unchanged');
     expect(before).not.toHaveTextContent('patched');
@@ -254,7 +256,7 @@ describe('job story history', () => {
       expect.objectContaining({ method: 'POST', body: expect.stringContaining('"scope_id":"root"') }),
     ));
     const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/jobs/job/restart'))!;
-    expect(JSON.parse(call[1]!.body as string)).toEqual({ scope_id: 'root', goal: { mode: 'continue' }, request_id: expect.any(String), patch: { job: { answer: 'patched' } } });
+    expect(JSON.parse(call[1]!.body as string)).toEqual({ scope_id: 'root', goal: { mode: 'continue' }, request_id: expect.any(String), patch: [{op:'add',path:'/context/git/author',value:'patched'}] });
     expect(screen.queryByRole('tab', { name: /^Attempt / })).not.toBeInTheDocument();
   });
 
@@ -275,7 +277,7 @@ describe('job story history', () => {
     fireEvent.click(within(dialog).getByRole('switch'));
     await within(dialog).findByRole('region', { name: 'Context before patching' });
     fireEvent.click(within(dialog).getAllByRole('button', { name: 'Add line' })[0]);
-    fireEvent.change(within(dialog).getByPlaceholderText('e.g. git.author'), { target: { value: 'answer' } });
+    fireEvent.change(within(dialog).getByPlaceholderText('e.g. git.author'), { target: { value: 'git.author' } });
     fireEvent.change(within(dialog).getByPlaceholderText('e.g. "james@example.com"'), { target: { value: 'patched' } });
     fireEvent.mouseDown(within(dialog).getByRole('combobox', { name: 'Restart point' }));
     fireEvent.click(await screen.findByText(text => text.startsWith('Job submission · Chapter 0 ·')));

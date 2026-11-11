@@ -179,50 +179,16 @@ function parseUserValue(raw: string): unknown {
   }
 }
 
-function setMergePatchValue(target: Record<string, any>, path: string, value: unknown) {
-  const parts = path
-    .split('.')
-    .map((p) => p.trim())
-    .filter(Boolean);
-  if (parts.length === 0) return;
-
-  let cursor: Record<string, any> = target;
-  for (let i = 0; i < parts.length - 1; i++) {
-    const p = parts[i];
-    const next = cursor[p];
-    if (!next || typeof next !== 'object' || Array.isArray(next)) {
-      cursor[p] = {};
-    }
-    cursor = cursor[p];
-  }
-  cursor[parts[parts.length - 1]] = value;
-}
-
 type PatchLine = { id: string; path: string; value: string };
 type ScopePatchLine = { id: string; container: 'sequence' | 'states'; scopeId: string; path: string; value: string };
 
 function buildContextPatch(jobLines: PatchLine[], scopeLines: ScopePatchLine[]) {
-  const job: Record<string, any> = {};
-  for (const line of jobLines) {
-    if (!line.path.trim()) continue;
-    setMergePatchValue(job, line.path, parseUserValue(line.value));
-  }
-
-  const grouped = new Map<string, { container: 'sequence' | 'states'; id: string; outputs: Record<string, any> }>();
-  for (const line of scopeLines) {
-    if (!line.scopeId.trim() || !line.path.trim()) continue;
-    const k = `${line.container}::${line.scopeId}`;
-    const existing = grouped.get(k) ?? { container: line.container, id: line.scopeId, outputs: {} };
-    setMergePatchValue(existing.outputs, line.path, parseUserValue(line.value));
-    grouped.set(k, existing);
-  }
-
-  const scopes = Array.from(grouped.values()).filter((s) => Object.keys(s.outputs).length > 0);
-
-  const patch: any = {};
-  if (Object.keys(job).length > 0) patch.job = job;
-  if (scopes.length > 0) patch.scopes = scopes;
-  return Object.keys(patch).length > 0 ? patch : null;
+  const escape = (token: string) => token.replace(/~/g,'~0').replace(/\//g,'~1');
+  const tokens = (path:string) => path.split('.').map(p=>p.trim()).filter(Boolean).map(escape).join('/');
+  const operations: {op:string;path:string;value:unknown}[] = [];
+  for (const line of jobLines) if (line.path.trim()) operations.push({op:'add',path:`/context/${tokens(line.path)}`,value:parseUserValue(line.value)});
+  for (const line of scopeLines) if (line.scopeId.trim() && line.path.trim()) operations.push({op:'add',path:`/${line.container}/${escape(line.scopeId)}/outputs/${tokens(line.path)}`,value:parseUserValue(line.value)});
+  return operations.length ? operations : null;
 }
 
 async function fetchStory(projectId: string, jobId: string): Promise<JobStoryResponse> {
@@ -391,12 +357,14 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const returnTo = typeof suppliedReturn === 'string' && [goalsHome, `/project/${encodeURIComponent(projectId)}/jobs`].includes(suppliedReturn.split('?')[0])
     ? suppliedReturn : `${goalsHome}${filterSearch}`;
   const [loadedJob, setLoadedJob] = useState<{
-    jobId: string; projectId: string; job?: RecipeJob;
+    jobId: string; projectId: string; job?: RecipeJob; observedJob?: RecipeJob;
     status: 'loading' | 'loaded' | 'failed'; error?: string;
   }>();
   const metadataGeneration = useRef(0);
   const metadata = loadedJob?.jobId === jobId && loadedJob.projectId === projectId ? loadedJob : undefined;
   const job = metadata?.job;
+  const activityJob = job ?? metadata?.observedJob;
+  const activityStatus = activityJob ? jobStatusValue(activityJob) : undefined;
   const jobTitle = typeof job?.title === 'string' && job.title.trim() ? job.title : undefined;
   const prompt = job?.prompt?.trim() ? job.prompt : undefined;
   const terminalStatus = job ? jobStatusValue(job) : undefined;
@@ -405,13 +373,15 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const loadMetadata = () => {
     const generation = ++metadataGeneration.current;
     setLoadedJob(previous => ({ projectId, jobId, status: 'loading',
-      job: previous?.projectId === projectId && previous.jobId === jobId ? previous.job : undefined }));
+      job: previous?.projectId === projectId && previous.jobId === jobId ? previous.job : undefined,
+      observedJob: previous?.projectId === projectId && previous.jobId === jobId ? previous.observedJob : undefined }));
     void getJob(projectId, jobId).then(job => {
-      if (generation === metadataGeneration.current) setLoadedJob({ projectId, jobId, job, status: 'loaded' });
+      if (generation === metadataGeneration.current) setLoadedJob({ projectId, jobId, job, observedJob: job, status: 'loaded' });
     }).catch(error => {
       // Metadata failure must not prevent story inspection.
-      if (generation === metadataGeneration.current) setLoadedJob({ projectId, jobId, status: 'failed',
-        error: error instanceof Error ? error.message : 'Could not load job details' });
+      if (generation === metadataGeneration.current) setLoadedJob(previous => ({ projectId, jobId, status: 'failed',
+        observedJob: previous?.projectId === projectId && previous.jobId === jobId ? previous.job ?? previous.observedJob : undefined,
+        error: error instanceof Error ? error.message : 'Could not load job details' }));
     });
   };
   const navigationGoal = typeof location.state?.goalId === 'string' ? location.state.goalId : undefined;
@@ -501,6 +471,14 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     return () => { ++metadataGeneration.current; ++storyGeneration.current; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, jobId]);
+
+  const previousPendingInput = useRef(isPendingInput);
+  useEffect(() => {
+    if (previousPendingInput.current !== isPendingInput) loadMetadata();
+    previousPendingInput.current = isPendingInput;
+    // Input activity can change scheduler state without changing retained history.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPendingInput]);
 
   const load = async (opts?: { preserveSelection?: boolean }) => {
     setHistoryRevision(value => value + 1);
@@ -609,11 +587,11 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   // Conversation completion must keep refreshing even if execution inspection
   // is unavailable or hidden. Metadata polling is independent of story polling.
   useEffect(() => {
-    if (!autoRefresh || !job || !terminalStatus || isFinishedJob(job)) return;
+    if (!autoRefresh || !activityJob || !activityStatus || isFinishedJob(activityJob)) return;
     const timer = window.setInterval(loadMetadata, refreshIntervalMs);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRefresh, refreshIntervalMs, projectId, jobId, terminalStatus, story?.status]);
+  }, [autoRefresh, refreshIntervalMs, projectId, jobId, activityStatus, story?.status]);
 
   const openArtifact = (artifact: ArtifactKey, attachments = selectedNode?.artifact_keys || []) => {
     artifactOpener.current = document.activeElement as HTMLElement;
@@ -863,7 +841,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
           <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginBottom: 0 }}>{prompt || 'No prompt recorded for this job.'}</Typography.Paragraph>
         </section>}
         <JobConversation onBack={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('occurrenceId'); next.delete('requestId'); return next; })} tenant={projectId} job={jobId} occurrence={searchParams.get('occurrenceId') ?? undefined}
-          requestId={searchParams.get('requestId') ?? undefined} running={!!job && !!terminalStatus && !isFinishedJob(job)}
+          metadata={activityJob} metadataFreshness={metadata?.status} requestId={searchParams.get('requestId') ?? undefined} running={!!activityJob && !!activityStatus && !isFinishedJob(activityJob)}
           refreshKey={historyRefreshKey} onOpen={entry => setSearchParams(previous => {
             const next = new URLSearchParams(previous); next.set('occurrenceId', entry); next.set('tab', 'conversation');
             next.delete('requestId'); next.delete('input'); return next;
