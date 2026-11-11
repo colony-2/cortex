@@ -1,3 +1,4 @@
+import type { RecipeJob } from './types';
 import { API_BASE } from './apiBase';
 import { APIError } from './api';
 import { parseJobJSON } from './jobJSON';
@@ -12,7 +13,9 @@ export interface HistoryEntry {
   actor: { receipt?: unknown; legacy_user_id: HistoryValue; provenance: string };
   diagnostics?: HistoryDiagnostic[];
 }
+export interface ConversationSection<T> { availability: 'available' | 'unavailable'; value?: T; diagnostic?: string; observed_at?: string; attempt_ordinal?: number }
 export interface HistoryPage {
+  activity?: ConversationSection<RecipeJob>; final_documents?: ConversationSection<FinalDocuments>;
   merges?: HistoryMerge[]; events?: HistoryEvent[]; publication_coverage?: string;
   snapshot_revision: number; tenant_id: string; job_id: string; entries: HistoryEntry[];
   next_page_token?: string; snapshot_token: string; observed_at: string; completeness: string; diagnostics?: HistoryDiagnostic[];
@@ -45,6 +48,8 @@ export async function getConversation(tenant: string, job: string, options: { pa
   if (options.pageToken) query.set('page_token', options.pageToken);
   const page = await read<HistoryPage>(`${base(tenant, job)}?${query}`, options.signal);
   if (page.tenant_id !== tenant || page.job_id !== job || !Array.isArray(page.entries)) throw new Error('History response does not match the selected job');
+  if (page.activity?.value && (page.activity.value.tenant_id !== tenant || page.activity.value.job_id !== job)) throw new Error('Activity does not match the selected job');
+  if (page.final_documents?.value && page.final_documents.value.job_id !== job) throw new Error('Returned documents do not match the selected job');
   return page;
 }
 export function getConversationEntry(tenant: string, job: string, entry: string, options: { snapshotToken?: string; signal?: AbortSignal } = {}): Promise<HistoryDetail> {
@@ -83,12 +88,12 @@ export interface HistoryMerge {
 }
 export interface HistoryEvent { ordinal: number; invocation_id: string; kind: string; entry_id: string }
 export interface FinalDocument {
-  alias: string; resolution: string; diagnostic?: string; ref: unknown; raw: unknown;
+  alias: string; resolution: string; diagnostic?: string; ref: unknown; raw?: unknown;
   producer?: { jobId: string; taskOrdinal: number; name: string; sizeBytes?: number };
 }
 export interface FinalDocuments {
-  job_id: string; attempt_ordinal?: number; manifest_id: string; state: string;
-  documents: FinalDocument[]; diagnostic?: string;
+  job_id: string; attempt_ordinal?: number; manifest_id?: string; state: string;
+  documents?: FinalDocument[]; diagnostic?: string;
 }
 export async function getFinalDocuments(tenant: string, job: string, signal?: AbortSignal): Promise<FinalDocuments | {status: 'pending'}> {
   const result = await read<FinalDocuments | {status:'pending'}>(`${base(tenant,job).replace(/\/conversation$/, '')}/final-documents`, signal);

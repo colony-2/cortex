@@ -577,7 +577,6 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   useEffect(() => {
     if (!autoRefresh || !activityJob || !activityStatus || isFinishedJob(activityJob)) return;
     const timer = window.setInterval(() => {
-      setHistoryRevision(value => value + 1);
       loadMetadata();
     }, refreshIntervalMs);
     return () => window.clearInterval(timer);
@@ -852,7 +851,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
           <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginBottom: 0 }}>{prompt || 'No prompt recorded for this job.'}</Typography.Paragraph>
         </section>}
         <JobConversation onBack={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('occurrenceId'); next.delete('requestId'); return next; })} tenant={projectId} job={jobId} occurrence={searchParams.get('occurrenceId') ?? undefined}
-          metadata={activityJob} metadataFreshness={metadata?.status} requestId={searchParams.get('requestId') ?? undefined}
+          autoRefresh={autoRefresh} refreshIntervalMs={refreshIntervalMs} requestId={searchParams.get('requestId') ?? undefined}
           refreshKey={historyRefreshKey} onOpen={entry => setSearchParams(previous => {
             const next = new URLSearchParams(previous); next.set('occurrenceId', entry); next.set('tab', 'conversation');
             next.delete('requestId'); next.delete('input'); return next;

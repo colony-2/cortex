@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getConversation, getConversationEntry, conversationArtifactURL } from './conversation';
+import { getConversation, getConversationEntry, conversationArtifactURL, getFinalDocuments, finalDocumentURL } from './conversation';
 import { stringifyJobJSON } from './jobJSON';
 afterEach(() => vi.unstubAllGlobals());
 describe('CT-032 conversation transport', () => {
@@ -51,9 +51,22 @@ describe('final document transport',()=>{
   const document={alias:'public/report.md',resolution:'stored',producer:{jobId:'grandchild',taskOrdinal:7,name:'private.md'},ref:{},raw:{}};
   vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(JSON.stringify({job_id:'j',manifest_id:'a+/=',state:'present',documents:[document]}))));
   const manifest=await getFinalDocuments('t','j');
-  expect('documents' in manifest && manifest.documents[0]).toEqual(document);
+  expect('documents' in manifest && manifest.documents?.[0]).toEqual(document);
   const url=new URL(finalDocumentURL('t','j','a+/=','public/report.md'),'http://test');
   expect(url.searchParams.get('alias')).toBe('public/report.md');
   expect(url.searchParams.get('manifest_id')).toBe('a+/=');
+ });
+});
+
+describe('CV-027 conversation sections',()=>{
+ it('preserves section failures independently of readable history',async()=>{
+  const response={tenant_id:'t',job_id:'j',entries:[],activity:{availability:'unavailable',diagnostic:'Unavailable'},final_documents:{availability:'available',value:{job_id:'j',state:'null'}}};
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(JSON.stringify(response))));
+  expect(await getConversation('t','j')).toEqual(response);
+ });
+ it.each(['activity','final_documents'])('rejects another job in %s',async(section)=>{
+  const value=section==='activity'?{tenant_id:'t',job_id:'other',status:'ACTIVE'}:{job_id:'other',state:'empty'};
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(JSON.stringify({tenant_id:'t',job_id:'j',entries:[],[section]:{availability:'available',value}}))));
+  await expect(getConversation('t','j')).rejects.toThrow('selected job');
  });
 });

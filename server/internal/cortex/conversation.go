@@ -3,13 +3,17 @@ package cortex
 import (
 	"errors"
 	"fmt"
+	"github.com/colony-2/c2j/pkg/recipejob"
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strconv"
+	"time"
 
 	"github.com/colony-2/c2j/pkg/artifacts"
 	"github.com/colony-2/c2j/pkg/input"
+	"github.com/colony-2/c2j/pkg/story"
 	"github.com/colony-2/jobdb/pkg/jobdb"
 	"github.com/gorilla/mux"
 )
@@ -58,12 +62,15 @@ func (s *Server) handleConversation(w http.ResponseWriter, r *http.Request) {
 	// Use the exact input page observation for publication and ordering data.
 	// Older HistoryService implementations remain usable with explicit coverage.
 	type conversationPage struct {
+		Activity       conversationSection `json:"activity"`
+		FinalDocuments conversationSection `json:"final_documents"`
 		*input.JobInputStoryPage
 		Merges              []input.HistoryMergeEntry `json:"merges"`
 		Events              []input.HistoryEvent      `json:"events"`
 		PublicationCoverage string                    `json:"publication_coverage"`
 	}
-	result := conversationPage{JobInputStoryPage: page, Merges: []input.HistoryMergeEntry{}, Events: []input.HistoryEvent{}, PublicationCoverage: "recorded"}
+	activity, documents := s.conversationSections(r)
+	result := conversationPage{Activity: activity, FinalDocuments: documents, JobInputStoryPage: page, Merges: []input.HistoryMergeEntry{}, Events: []input.HistoryEvent{}, PublicationCoverage: "recorded"}
 	snapshot, err := input.GetJobHistorySnapshot(r.Context(), s.history, input.GetJobHistorySnapshotRequest{TenantID: s.tenantID(r), JobID: mux.Vars(r)["jobId"], SnapshotToken: page.SnapshotToken})
 	if errors.Is(err, input.ErrHistoryUnsupported) {
 		result.PublicationCoverage = "unavailable"
@@ -73,6 +80,9 @@ func (s *Server) handleConversation(w http.ResponseWriter, r *http.Request) {
 	} else {
 		result.Events = snapshot.Events
 		for _, merge := range snapshot.Merges {
+			if merge.JobID != page.JobID || merge.TenantID != page.TenantID {
+				continue
+			}
 			if merge.EvidenceAvailability == "recorded" && (merge.PublicationDisposition == "published" || merge.PublicationDisposition == "already_present") {
 				result.Merges = append(result.Merges, merge)
 			} else if merge.EvidenceAvailability != "recorded" {
@@ -161,4 +171,75 @@ func (s *Server) handleConversationArtifact(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+url.PathEscape(artifact.Name))
 	w.Write(data)
+}
+
+// Mutable sections are observations separate from the immutable history snapshot.
+type conversationSection struct {
+	AttemptOrdinal *int64    `json:"attempt_ordinal,omitempty"`
+	Availability   string    `json:"availability"`
+	Value          any       `json:"value,omitempty"`
+	Diagnostic     string    `json:"diagnostic,omitempty"`
+	ObservedAt     time.Time `json:"observed_at"`
+}
+
+func (s *Server) conversationSections(r *http.Request) (conversationSection, conversationSection) {
+	unavailable := conversationSection{Availability: "unavailable", Diagnostic: "Current observation unavailable", ObservedAt: time.Now().UTC()}
+	if s.engine == nil {
+		return unavailable, unavailable
+	}
+	ctx := r.Context()
+	key := jobdb.JobKey{TenantId: s.tenantID(r), JobId: mux.Vars(r)["jobId"]}
+	readJob := func() (recipejob.RecipeJob, error) {
+		return recipejob.GetRecipeJob(ctx, archivedJobReader{s.engine}, recipejob.GetRecipeJobRequest{TenantID: key.TenantId, JobID: key.JobId})
+	}
+	before, err := readJob()
+	if err != nil {
+		return unavailable, unavailable
+	}
+	activity := conversationSection{Availability: "available", Value: before, ObservedAt: time.Now().UTC()}
+	if before.Status != jobdb.JobStatusCompleted && before.Store != jobdb.JobStoreArchived {
+		return activity, conversationSection{Availability: "available", Value: map[string]string{"job_id": key.JobId, "state": "pending"}, ObservedAt: time.Now().UTC()}
+	}
+	run, err := s.engine.GetJobRun(ctx, jobdb.GetJobRunRequest{JobKey: key})
+	if err != nil {
+		return activity, unavailable
+	}
+	if len(run.Attempts) > 0 {
+		ordinal := run.Attempts[len(run.Attempts)-1].Ordinal
+		activity.AttemptOrdinal = &ordinal
+	}
+	manifest, err := story.GetFinalDocuments(ctx, s.story, story.GetWorkflowOutcomeRequest{ProjectID: key.TenantId, JobID: key.JobId})
+	if errors.Is(err, story.ErrOutcomePending) || errors.Is(err, jobdb.ErrJobNotComplete) {
+		return activity, conversationSection{Availability: "available", Value: map[string]string{"job_id": key.JobId, "state": "pending"}, ObservedAt: time.Now().UTC()}
+	}
+	if err != nil || manifest == nil {
+		return activity, unavailable
+	}
+	after, err := readJob()
+	if err != nil {
+		return unavailable, unavailable
+	}
+	activity.Value = after
+	activity.AttemptOrdinal = nil
+	later, err := s.engine.GetJobRun(ctx, jobdb.GetJobRunRequest{JobKey: key})
+	if err == nil && len(later.Attempts) > 0 {
+		ordinal := later.Attempts[len(later.Attempts)-1].Ordinal
+		activity.AttemptOrdinal = &ordinal
+	}
+	if err != nil || !reflect.DeepEqual(before, after) || !reflect.DeepEqual(run.Attempts, later.Attempts) || manifest.JobID != key.JobId {
+		return activity, unavailable
+	}
+	if len(later.Attempts) > 0 {
+		latest := later.Attempts[len(later.Attempts)-1].Ordinal
+		if manifest.AttemptOrdinal == nil || *manifest.AttemptOrdinal != latest {
+			return activity, unavailable
+		}
+	} else if manifest.AttemptOrdinal != nil {
+		return activity, unavailable
+	}
+	identity := finalManifestID(manifest)
+	return activity, conversationSection{Availability: "available", Value: struct {
+		*story.FinalDocuments
+		ManifestID string `json:"manifest_id"`
+	}{manifest, identity}, ObservedAt: time.Now().UTC()}
 }

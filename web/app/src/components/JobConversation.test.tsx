@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import JobConversation, { HistoryPair, CurrentActivity } from './JobConversation';
+import JobConversation, { HistoryPair, CurrentActivity, MergeCard } from './JobConversation';
 import { APIError, getConversation, getConversationEntry, type HistoryEntry } from '@colony2/shared';
 vi.mock('@colony2/shared', async () => ({ ...await vi.importActual('@colony2/shared'), getConversation: vi.fn(), getConversationEntry: vi.fn() }));
 const entry = (id = 'one'): HistoryEntry => ({entry_id:id,kind:'review',title:{present:true,raw:'Original review'},summary:{present:false},state:'answered',requested_at:{present:false},locator:{invocation_id:'invoke'},form_fields:{question:'Proceed?'},accepted_response:{present:true,raw:{decision:'approve',feedback:'Keep original'}},response_source:'autofill',actor:{provenance:'reported_receipt',receipt:{actor:{kind:'human',id:'caller'}},legacy_user_id:{present:false}}});
@@ -203,18 +203,18 @@ describe('publication event ordering',()=>{
  });
 });
 
-it('CX-001 completion invalidates an older history read and preserves the final snapshot', async () => {
+it('CX-001 a fresh completion observation invalidates an older history read and preserves the final snapshot', async () => {
  const meta = (status: string) => ({status,store:'ACTIVE'}) as import('@colony2/shared/types').RecipeJob;
  let resolveOld!: (value: ReturnType<typeof page>) => void;
  const old = new Promise<ReturnType<typeof page>>(resolve => { resolveOld = resolve; });
- vi.mocked(getConversation).mockResolvedValueOnce(page([entry('initial')])).mockReturnValueOnce(old).mockResolvedValue({...page([{...entry('final'),title:{present:true,raw:'Final snapshot request'}}]),snapshot_token:'final'});
+ vi.mocked(getConversation).mockResolvedValueOnce(page([entry('initial')])).mockReturnValueOnce(old).mockResolvedValue({...page([{...entry('final'),title:{present:true,raw:'Final snapshot request'}}]),snapshot_token:'final',activity:{availability:'available',value:meta('COMPLETED')}});
  const view=render(<JobConversation tenant="tenant" job="job" metadata={meta('ACTIVE')} refreshKey={0} onOpen={vi.fn()}/>);
  await waitFor(()=>expect(getConversation).toHaveBeenCalledTimes(1));
  await screen.findByText('Original review');
  view.rerender(<JobConversation tenant="tenant" job="job" metadata={meta('ACTIVE')} refreshKey={1} onOpen={vi.fn()}/>);
  await waitFor(()=>expect(getConversation).toHaveBeenCalledTimes(2));
  const oldSignal=vi.mocked(getConversation).mock.calls[1][2]?.signal;
- view.rerender(<JobConversation tenant="tenant" job="job" metadata={meta('COMPLETED')} refreshKey={1} onOpen={vi.fn()}/>);
+ view.rerender(<JobConversation tenant="tenant" job="job" metadata={meta('COMPLETED')} refreshKey={2} onOpen={vi.fn()}/>);
  await waitFor(()=>expect(getConversation).toHaveBeenCalledTimes(3));
  expect(oldSignal?.aborted).toBe(true);
  await act(async()=>{resolveOld({...page([entry('obsolete')]),snapshot_token:'obsolete'});await old;});
@@ -258,4 +258,87 @@ it('CR-009 rebuilds all visible pages in a fresh snapshot',async()=>{
  expect(screen.getAllByText('Occurrence: fresh-one')).toHaveLength(1);
  expect(screen.queryByText('Occurrence: one')).toBeNull();
  expect(vi.mocked(getConversation).mock.calls[3][2]?.pageToken).toBe('fresh-next');
+});
+
+it('CV-028 CV-030 CV-031 uses response sections and ignores continuation status', async()=>{
+ const metadata=(status:string,extra={})=>({tenant_id:'tenant',job_id:'job',status,store:'ACTIVE',...extra} as any);
+ const live={availability:'available' as const,value:metadata('ACTIVE')};
+ const terminal={availability:'available' as const,value:metadata('COMPLETED',{store:'ARCHIVED',completion_status:'success'})};
+ vi.mocked(getConversation).mockResolvedValueOnce({...page([entry()],'next'),activity:terminal,final_documents:{availability:'available',value:{job_id:'job',state:'empty'}}})
+ .mockResolvedValueOnce({...page([entry('two')]),activity:live})
+ .mockRejectedValueOnce(new Error('offline'))
+ .mockResolvedValueOnce({...page(),activity:live});
+ let refresh=0; const view=render(<JobConversation tenant="tenant" job="job" onOpen={vi.fn()}/>);
+ expect(await screen.findByText('No returned documents')).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:/Load more/}));
+ await screen.findAllByText('Original review');
+ expect(screen.queryByText('Running')).not.toBeInTheDocument();
+ view.rerender(<JobConversation tenant="tenant" job="job" refreshKey={++refresh} onOpen={vi.fn()}/>);
+ expect(await screen.findByText(/Returned documents stale/)).toBeInTheDocument();
+ view.rerender(<JobConversation tenant="tenant" job="job" refreshKey={++refresh} onOpen={vi.fn()}/>);
+ expect(await screen.findByText('Running')).toBeInTheDocument();
+ expect(screen.queryByText(/Returned documents stale/)).not.toBeInTheDocument();
+});
+
+it('CV-007 rejects a continuation from another immutable snapshot',async()=>{
+ vi.mocked(getConversation).mockResolvedValueOnce(page([entry()],'next')).mockResolvedValueOnce({...page([entry('wrong')]),snapshot_token:'different'});
+ let refresh=0; const view=render(<JobConversation tenant="tenant" job="job" onOpen={vi.fn()}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'Load more events'}));
+ expect(await screen.findByText(/History snapshot changed during pagination/)).toBeInTheDocument();
+ expect(screen.queryByText('wrong')).not.toBeInTheDocument();
+ expect(screen.getByLabelText('Recorded request step')).toBeInTheDocument();
+});
+it('CV-030 ignores a late refresh that would restore an obsolete live tail',async()=>{
+ const observation=(status:string)=>({availability:'available' as const,value:{tenant_id:'tenant',job_id:'job',status,store:status==='COMPLETED'?'ARCHIVED':'ACTIVE',completion_status:status==='COMPLETED'?'success':undefined} as any});
+ let resolve!:(value:any)=>void;
+ vi.mocked(getConversation).mockResolvedValueOnce({...page(),activity:observation('ACTIVE')})
+ .mockImplementationOnce(()=>new Promise(r=>{resolve=r;}))
+ .mockResolvedValueOnce({...page(),activity:observation('COMPLETED'),final_documents:{availability:'available',value:{job_id:'job',state:'empty'}}});
+ const view=render(<JobConversation tenant="tenant" job="job" onOpen={vi.fn()}/>);
+ await screen.findByText('Running');
+ view.rerender(<JobConversation tenant="tenant" job="job" refreshKey={1} onOpen={vi.fn()}/>);
+ view.rerender(<JobConversation tenant="tenant" job="job" refreshKey={2} onOpen={vi.fn()}/>);
+ await screen.findByText('No returned documents');
+ await act(async()=>resolve({...page(),activity:observation('ACTIVE')}));
+ expect(screen.queryByLabelText('Current job activity')).not.toBeInTheDocument();
+});
+
+it('CV-008 keeps coverage and paging before activity and final endings',async()=>{
+ vi.mocked(getConversation).mockResolvedValue({...page([],'next'),publication_coverage:'partial',activity:{availability:'available',value:{tenant_id:'tenant',job_id:'job',status:'ACTIVE',store:'ACTIVE'} as any}});
+ let refresh=0; const view=render(<JobConversation tenant="tenant" job="job" onOpen={vi.fn()}/>);
+ const more=await screen.findByRole('button',{name:'Load more events'});
+ const tail=screen.getByLabelText('Current job activity');
+ expect(more.compareDocumentPosition(tail)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(screen.getByText(/Publication coverage/).compareDocumentPosition(tail)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+it('CV-029 unavailable sections preserve readable history without inferred status',async()=>{
+ vi.mocked(getConversation).mockResolvedValue({...page(),activity:{availability:'unavailable'},final_documents:{availability:'unavailable'}});
+ let refresh=0; const view=render(<JobConversation tenant="tenant" job="job" onOpen={vi.fn()}/>);
+ expect(await screen.findByText('Returned documents unavailable')).toBeInTheDocument();
+ expect(screen.getByText('Status unavailable')).toBeInTheDocument();
+ expect(screen.getByLabelText('Accepted response')).toHaveTextContent('Keep original');
+});
+it('CV-030 late old-job sections never appear in the newly selected job',async()=>{
+ let resolve!:(value:any)=>void;
+ vi.mocked(getConversation).mockImplementationOnce(()=>new Promise(r=>{resolve=r;})).mockResolvedValueOnce({...page([]),job_id:'other',final_documents:{availability:'available',value:{job_id:'other',state:'empty'}}});
+ const view=render(<JobConversation tenant="tenant" job="job" onOpen={vi.fn()}/>);
+ view.rerender(<JobConversation tenant="tenant" job="other" onOpen={vi.fn()}/>);
+ await screen.findByText('No returned documents');
+ await act(async()=>resolve({...page(),final_documents:{availability:'available',value:{job_id:'job',state:'present',manifest_id:'old',documents:[{alias:'obsolete',resolution:'stored',producer:{jobId:'old',taskOrdinal:1,name:'obsolete'}}]}}}));
+ expect(screen.queryByRole('link',{name:'obsolete'})).not.toBeInTheDocument();
+ expect(screen.getByText('No returned documents')).toBeInTheDocument();
+});
+it('CV-012 announces new merge-only activity during background refresh',async()=>{
+ const merge={entry_id:'m',tenant_id:'tenant',job_id:'job',invocation_id:'i',job_attempt:1,task_attempt:1,result_ordinal:1,candidate_sha:'sha',candidate_subject:'New publication',publication_branch:'main',publication_disposition:'published',evidence_availability:'recorded'} as const;
+ vi.mocked(getConversation).mockResolvedValueOnce({...page([]),merges:[]}).mockResolvedValueOnce({...page([]),merges:[merge],events:[{ordinal:1,invocation_id:'i',kind:'merge_completion',entry_id:'m'}]});
+ const view=render(<JobConversation tenant="tenant" job="job" onOpen={vi.fn()}/>);
+ await screen.findByText('No retained events in this history.');
+ view.rerender(<JobConversation tenant="tenant" job="job" refreshKey={1} onOpen={vi.fn()}/>);
+ expect(await screen.findByText('New conversation activity available')).toBeInTheDocument();
+ expect(screen.getByLabelText('Verified publication')).toHaveTextContent('New publication');
+});
+
+it.each([undefined,null,''])('CV-003 CV-032 missing subject %s uses the explicit fallback',candidate_subject=>{
+ render(<MergeCard merge={{entry_id:'m',tenant_id:'tenant',job_id:'job',invocation_id:'i',job_attempt:1,task_attempt:1,result_ordinal:2,operation:'merge:merge',candidate_sha:'sha',candidate_subject,publication_branch:'main',publication_disposition:'published',evidence_availability:'recorded'}}/>);
+ expect(screen.getAllByText(/Commit message not recorded/)).toHaveLength(2);
 });

@@ -192,10 +192,10 @@ func TestConversationExternalAndForgedMembers(t *testing.T) {
 
 func TestConversationPublicationSelection(t *testing.T) {
 	h := &historyStub{snapshot: &input.JobHistorySnapshot{Merges: []input.HistoryMergeEntry{
-		{EntryID: "published", EvidenceAvailability: "recorded", PublicationDisposition: "published", CandidateSubject: nil},
-		{EntryID: "present", EvidenceAvailability: "recorded", PublicationDisposition: "already_present"},
+		{TenantID: "tenant", JobID: "job", EntryID: "published", EvidenceAvailability: "recorded", PublicationDisposition: "published", CandidateSubject: nil},
+		{TenantID: "tenant", JobID: "job", EntryID: "present", EvidenceAvailability: "recorded", PublicationDisposition: "already_present"},
 		{EntryID: "nochange", EvidenceAvailability: "recorded", PublicationDisposition: "no_changes"},
-		{EntryID: "incomplete", EvidenceAvailability: "unavailable", PublicationDisposition: "published"},
+		{TenantID: "tenant", JobID: "job", EntryID: "incomplete", EvidenceAvailability: "unavailable", PublicationDisposition: "published"},
 		{EntryID: "unknown", EvidenceAvailability: "recorded", PublicationDisposition: "future"},
 	}, Events: []input.HistoryEvent{{Ordinal: 2, Kind: "merge_completion", EntryID: "published"}}}}
 	w := httptest.NewRecorder()
@@ -223,7 +223,7 @@ func TestConversationPublicationSelection(t *testing.T) {
 func TestConversationExactPublicationSubjects(t *testing.T) {
 	for _, disposition := range []string{"published", "already_present"} {
 		for _, subject := range []*string{nil, pointerSubject(""), pointerSubject("  exact subject \t")} {
-			h := &historyStub{snapshot: &input.JobHistorySnapshot{Merges: []input.HistoryMergeEntry{{EntryID: "merge", EvidenceAvailability: "recorded", PublicationDisposition: disposition, CandidateSubject: subject}}}}
+			h := &historyStub{snapshot: &input.JobHistorySnapshot{Merges: []input.HistoryMergeEntry{{TenantID: "tenant", JobID: "job", EntryID: "merge", EvidenceAvailability: "recorded", PublicationDisposition: disposition, CandidateSubject: subject}}}}
 			w := httptest.NewRecorder()
 			historyRouter(h).ServeHTTP(w, httptest.NewRequest("GET", "/tenant/job", nil))
 			if w.Code != 200 {

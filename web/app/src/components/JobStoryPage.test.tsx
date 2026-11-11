@@ -1567,7 +1567,7 @@ describe('page controls refresh the real conversation', () => {
   const tick = async (ms: number) => { await act(async () => {await vi.advanceTimersByTimeAsync(ms);}); };
   async function start(status = 'ACTIVE', search = '') {
     vi.useFakeTimers({toFake:['setInterval','clearInterval']});
-    vi.mocked(getConversation).mockResolvedValue(history);
+    vi.mocked(getConversation).mockResolvedValue({...history,activity:{availability:'available',value:metadata({status,store:status === 'ACTIVE' ? 'ACTIVE' : 'ARCHIVED'} as Partial<RecipeJob>)}});
     vi.mocked(getJob).mockResolvedValue(metadata({status,store:status === 'ACTIVE' ? 'ACTIVE' : 'ARCHIVED'} as Partial<RecipeJob>));
     const fetchMock = mount(search, {...story,status:'running'});
     await screen.findByRole('button',{name:/Refresh$/});
@@ -1630,9 +1630,10 @@ describe('page controls refresh the real conversation', () => {
     await tick(5000);
     const oldSignal=vi.mocked(getConversation).mock.calls.at(-1)![2]?.signal;
     vi.mocked(getJob).mockResolvedValue(metadata({status:'COMPLETED',store:'ARCHIVED'}));
+    vi.mocked(getConversation).mockResolvedValue({...history,activity:{availability:'available',value:metadata({status:'COMPLETED',store:'ARCHIVED'})}});
     const before=vi.mocked(getConversation).mock.calls.length;
     await tick(5000);
-    expect(getConversation).toHaveBeenCalledTimes(before+2); // cycle, then final observation
+    expect(getConversation).toHaveBeenCalledTimes(before+1); // the conversation response itself is the final observation
     expect(oldSignal?.aborted).toBe(true);
     await act(async()=>{resolveOld({...history,snapshot_token:'obsolete'});});
     const final=vi.mocked(getConversation).mock.calls.length;

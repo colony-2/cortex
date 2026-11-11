@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
+// CV-025 uses controlled retained publication output and native artifact bytes.
 const job = '/api/projects/history-browser/jobs/reviews';
 
 test('CC-022 CT-014,015,028–031 real SQLite reviews survive restart, archive and hiding in the browser', async ({ page, context, request, baseURL }, info) => {
@@ -74,7 +75,7 @@ test('CC-022 CT-014,015,028–031 real SQLite reviews survive restart, archive a
   await finalList.getByRole('link',{name:'report.md',exact:true}).click();
   const viewer = reopened.getByRole('dialog',{name:'Returned document viewer'});
   await expect(viewer.getByRole('heading',{name:'Final retained report',exact:true})).toBeVisible();
-  await reopened.screenshot({path:info.outputPath('native-final-document-viewer.png'),animations:'disabled',fullPage:false});
+  await viewer.screenshot({path:info.outputPath('native-final-document-viewer.png'),animations:'disabled'});
   await viewer.getByRole('link',{name:'Original notes',exact:true}).click();
   await expect(viewer.getByLabel('Rendered document')).toContainText('Original first review document, retained in SQLite.');
   await viewer.getByRole('button',{name:'Close',exact:true}).click();

@@ -106,7 +106,27 @@ func TestConversationSQLiteReopening(t *testing.T) {
 	}
 	run()
 	var first input.JobInputStoryPage
-	require.NoError(t, json.Unmarshal([]byte(read("tenant", "", 200)), &first))
+	body := read("tenant", "", 200)
+	require.NoError(t, json.Unmarshal([]byte(body), &first))
+	// CV-027: actual retained-history HTTP response also composes current sections.
+	var aggregate struct {
+		Activity struct {
+			Availability string
+			Value        struct {
+				JobID string `json:"job_id"`
+			}
+		}
+		Documents struct {
+			Availability string
+			Value        struct{ State string }
+		} `json:"final_documents"`
+		Merges []input.HistoryMergeEntry
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &aggregate))
+	require.Equal(t, "available", aggregate.Activity.Availability)
+	require.Equal(t, "job", aggregate.Activity.Value.JobID)
+	require.Equal(t, "available", aggregate.Documents.Availability)
+	require.Equal(t, "pending", aggregate.Documents.Value.State)
 	require.Len(t, first.Entries, 1)
 	firstID := first.Entries[0].EntryID
 	_, err = runtime.SubmitFormResponse(ctx, "tenant", "job", input.FormSubmission{RequestID: forms[0].RequestID, SubmissionID: "accept-one", Fields: map[string]any{"decision": "approve", "attachment": jobdb.NewArtifactFromBytes("answer.md", []byte("accepted response attachment"))}}, input.Actor{ID: "reviewer", Kind: "human"})

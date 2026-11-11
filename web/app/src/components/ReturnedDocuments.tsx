@@ -35,15 +35,15 @@ export default function ReturnedDocuments({tenant,job,refreshKey}: {tenant:strin
       : <>
         <p>{manifest.state === 'empty' ? 'No documents returned (explicit empty manifest).' : manifest.state === 'absent' ? 'Final document declaration not recorded.' : manifest.state === 'null' ? 'Final document declaration is null.' : manifest.state === 'present' ? 'Declared final documents' : `Final document declaration: ${manifest.state}`}</p>
         {manifest.diagnostic && <p>{manifest.diagnostic}</p>}
-        <ul>{manifest.documents.map(document => <li key={document.alias}>
-          {documents[document.alias] ? <a href={finalDocumentURL(tenant,job,manifest.manifest_id,document.alias)} onClick={event => {
+        <ul>{manifest.documents?.map(document => <li key={document.alias}>
+          {documents[document.alias] ? <a href={finalDocumentURL(tenant,job,manifest.manifest_id!,document.alias)} onClick={event => {
             if(event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
             event.preventDefault(); opener.current=event.currentTarget; setSelected(document.alias);
           }}>{document.alias}</a> : <span>{document.alias} — {document.resolution}{document.diagnostic ? `: ${document.diagnostic}` : ''}</span>}
         </li>)}</ul>
       </>}
     <Modal title="Returned document viewer" open={selected !== undefined} footer={null} width="90vw" destroyOnHidden onCancel={() => setSelected(undefined)} afterClose={() => opener.current?.focus({preventScroll:true})}>
-      {manifest && selected && <ReviewDocuments projectId={tenant} jobId={job} requestId={`final:${manifest.manifest_id}`} documents={documents} overviewDocumentId={selected} source={{identity:JSON.stringify([tenant,job,manifest.manifest_id,selected]),url:alias => documents[alias] ? finalDocumentURL(tenant,job,manifest.manifest_id,alias) : ''}} />}
+      {manifest && selected && <ReviewDocuments projectId={tenant} jobId={job} requestId={`final:${manifest.manifest_id}`} documents={documents} overviewDocumentId={selected} source={{identity:JSON.stringify([tenant,job,manifest.manifest_id!,selected]),url:alias => documents[alias] ? finalDocumentURL(tenant,job,manifest.manifest_id!,alias) : ''}} />}
     </Modal>
   </Card>;
 }

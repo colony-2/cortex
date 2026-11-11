@@ -5,7 +5,7 @@ import { APIError, conversationArtifactURL, getConversation, getConversationEntr
 import type { RecipeJob } from '@colony2/shared/types';
 import { isFinishedJob, jobStatusPresentation, jobStatusValue } from '../utils/jobStatus';
 import ReviewDocuments from './ReviewDocuments';
-import ReturnedDocuments from './ReturnedDocuments';
+import FinalDocuments from './FinalDocuments';
 import { historicalDocuments } from './historicalDocuments';
 import { object, valueText, recordedTime, savedAnswers, reviewer } from './conversationPresentation';
 import './conversation.css';
@@ -44,13 +44,13 @@ export function HistoryPair({ entry, onOpen, part }: { entry: HistoryEntry; onOp
 }
 export function MergeCard({ merge }: { merge: HistoryMerge }) {
   const subject = merge.candidate_subject;
-  const snippet = subject == null ? 'Commit message not recorded' : subject === '' ? 'Commit message is empty' : subject.length > 160 ? `${subject.slice(0,160)}…` : subject;
+  const snippet = subject == null || subject === '' ? 'Commit message not recorded' : subject.length > 160 ? `${subject.slice(0,160)}…` : subject;
   return <Card size="small" className="conversation-step" aria-label="Verified publication" data-event={merge.entry_id}>
     <strong>{merge.publication_disposition === 'already_present' ? 'Publication confirmed — already present' : 'Published'}</strong>
     <p style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{snippet}</p>
     <details><summary>Publication details</summary>
       <p>Commit: {merge.candidate_sha}</p><p>Branch: {merge.publication_branch}</p>
-      <p>Commit message: {subject == null ? 'Commit message not recorded' : subject === '' ? '(empty)' : subject}</p>
+      <p>Commit message: {subject == null || subject === '' ? 'Commit message not recorded' : subject}</p>
       <p>Job: {merge.job_id} · Attempt: {merge.job_attempt} · Task attempt: {merge.task_attempt}</p>
       <p style={{overflowWrap:'anywhere'}}>Source: {merge.invocation_id}</p><p>Result ordinal: {String(merge.result_ordinal)}</p>
       <Time value={{present:!!merge.completed_at,raw:merge.completed_at}} />
@@ -150,9 +150,14 @@ export function CurrentActivity({ metadata, freshness }: { metadata?: RecipeJob;
     {metadata && freshness === 'loading' && <p>Refreshing status…</p>}
   </Card>;
 }
-export default function JobConversation({ tenant, job, occurrence, requestId, onOpen, onBack, refreshKey, metadata, metadataFreshness }: {
-  tenant: string; job: string; occurrence?: string; requestId?: string; onOpen: (entry: string) => void; onBack?: () => void; refreshKey?: unknown; metadata?: RecipeJob; metadataFreshness?: 'loading' | 'loaded' | 'failed';
-}) {
+type ConversationProps = {
+  tenant: string; job: string; occurrence?: string; requestId?: string; onOpen: (entry: string) => void; onBack?: () => void; refreshKey?: unknown;
+  metadata?: RecipeJob; metadataFreshness?: 'loading' | 'loaded' | 'failed'; autoRefresh?: boolean; refreshIntervalMs?: number;
+};
+export default function JobConversation(props: ConversationProps) {
+  return <Conversation key={JSON.stringify([props.tenant,props.job])} {...props}/>;
+}
+function Conversation({ tenant, job, occurrence, requestId, onOpen, onBack, refreshKey, autoRefresh = false, refreshIntervalMs = 5000 }: ConversationProps) {
   const [page, setPage] = useState<HistoryPage>();
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [error, setError] = useState('');
@@ -173,6 +178,7 @@ export default function JobConversation({ tenant, job, occurrence, requestId, on
     try {
       let next = await getConversation(tenant, job, { pageToken: token, signal: abort.signal });
       if (token && pageRef.current && next.snapshot_token !== pageRef.current.snapshot_token) throw new Error('History snapshot changed during pagination. Use the page Refresh button.');
+      const first = next;
       const snapshot = next.snapshot_token;
       let refreshed = next.entries;
       // Refresh the whole visible range in the new immutable snapshot before
@@ -188,7 +194,8 @@ export default function JobConversation({ tenant, job, occurrence, requestId, on
       }
       if (abort.signal.aborted || current !== generation.current) return;
       if (background && pageRef.current && stringifyJobJSON(pageRef.current.merges) !== stringifyJobJSON(next.merges)) setActivity(true);
-      pageRef.current = next; setPage(next); setError('');
+      const merged = {...next, activity: token ? pageRef.current?.activity : first.activity, final_documents: token ? pageRef.current?.final_documents : first.final_documents};
+      pageRef.current = merged; setPage(merged); setError('');
       setEntries(previous => {
         if (!token) {
           if (background && previous.length && stringifyJobJSON(previous) !== stringifyJobJSON(refreshed)) setActivity(true);
@@ -214,17 +221,11 @@ export default function JobConversation({ tenant, job, occurrence, requestId, on
     const changed = previousRefreshKey.current !== refreshKey; previousRefreshKey.current = refreshKey;
     if (loadedIdentity.current === identity && changed) void load(undefined, true);
   }, [refreshKey, identity, load]);
-  const finished = !!metadata && isFinishedJob(metadata);
-  const previousCompletion = useRef({ identity, finished });
   useEffect(() => {
-    const previous = previousCompletion.current;
-    previousCompletion.current = { identity, finished };
-    if (previous.identity === identity && !previous.finished && finished) {
-      // Completion is observed independently of history polling. Start a fresh
-      // snapshot and invalidate any read that began before this observation.
-      void load(undefined, true);
-    }
-  }, [identity, finished, load]);
+    if (!autoRefresh || (page?.activity?.value && isFinishedJob(page.activity.value))) return;
+    const timer = window.setInterval(() => { void load(undefined, true); }, refreshIntervalMs);
+    return () => window.clearInterval(timer);
+  }, [autoRefresh, refreshIntervalMs, page?.activity, load]);
   return <section aria-label="Input history">
     {error && <Alert type="warning" message="History unavailable" description={error} />}
     {page && <p>History coverage: {page.completeness}. {page.next_page_token ? 'More retained events are available.' : 'End of this retained snapshot; coverage may be partial.'}</p>}
@@ -237,7 +238,8 @@ export default function JobConversation({ tenant, job, occurrence, requestId, on
     <ConversationTimeline page={loadedIdentity.current === identity ? page : undefined} entries={loadedIdentity.current === identity ? entries : []} onOpen={onOpen} />
     {page?.next_page_token && <Button disabled={busy || !!error} onClick={() => void load(page.next_page_token)}>Load more events</Button>}
     {!page && !error && <p role="status">Loading history…</p>}
-    {metadata && isFinishedJob(metadata) && <ReturnedDocuments key={identity} tenant={tenant} job={job} refreshKey={refreshKey} />}
-    <CurrentActivity metadata={metadata} freshness={metadataFreshness} />
+    <CurrentActivity metadata={page?.activity?.availability === 'available' ? page.activity.value : undefined} freshness={error ? 'failed' : 'loaded'} />
+    <FinalDocuments tenant={tenant} job={job} terminal={!page?.activity?.value || isFinishedJob(page.activity.value)} manifest={page?.final_documents?.availability === 'available' ? page.final_documents.value : undefined} error={page && page.final_documents?.availability !== 'available' ? 'Returned documents could not be read.' : undefined} stale={!!error} onRetry={()=>void load()}/>
+
   </section>;
 }

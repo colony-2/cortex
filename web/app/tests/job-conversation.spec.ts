@@ -12,7 +12,7 @@ test.beforeEach(async ({ page, context, baseURL }) => {
   });
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url());
-    if (url.pathname.endsWith('/conversation')) return route.fulfill({ json: { tenant_id: 'demo', job_id: 'job', entries: [], snapshot_token: 'snapshot', completeness: 'partial' } });
+    if (url.pathname.endsWith('/conversation')) return route.fulfill({ json: { activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status:'COMPLETED',store:'ARCHIVED'}},final_documents:{availability:'available',value:{job_id:'job',state:'empty'}}, tenant_id: 'demo', job_id: 'job', entries: [], snapshot_token: 'snapshot', completeness: 'partial' } });
     if (url.pathname.endsWith('/final-documents')) return route.fulfill({json:{job_id:'job',manifest_id:'none',state:'absent',documents:[]}});
     if (url.pathname.endsWith('/conversation/entry')) return route.fulfill({ status: 404, json: { error: 'Not retained', code: 'history_not_found' } });
     if (url.pathname === '/api/projects') return route.fulfill({ json: [{ tenant_id: 'demo' }] });
@@ -96,7 +96,7 @@ test('CT-014,021,031 retained answers and exact earlier review stay selected thr
   });
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url());
-    if (url.pathname.endsWith('/conversation')) return route.fulfill({ json: { tenant_id: 'demo', job_id: 'job', entries: [entry('first', stage > 0), ...(stage ? [entry('second', stage > 1)] : [])], snapshot_token: 'snapshot', completeness: 'partial' } });
+    if (url.pathname.endsWith('/conversation')) return route.fulfill({ json: { activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status:'COMPLETED',store:'ARCHIVED'}},final_documents:{availability:'available',value:{job_id:'job',state:'empty'}}, tenant_id: 'demo', job_id: 'job', entries: [entry('first', stage > 0), ...(stage ? [entry('second', stage > 1)] : [])], snapshot_token: 'snapshot', completeness: 'partial' } });
     if (url.pathname.endsWith('/final-documents')) return route.fulfill({json:{job_id:'job',manifest_id:'none',state:'absent',documents:[]}});
     if (url.pathname.endsWith('/conversation/entry')) return route.fulfill({ json: { ...entry('first', true), snapshot_token: 'snapshot', completeness: 'partial', request_manifest: [{ artifact_id: 'original', availability: 'retained', ref: {}, associations: [] }], response_manifest: [], actionability: { actionable: false, observation: 'live' } } });
     if (url.pathname.endsWith('/jobs/job')) return route.fulfill({ json: { ...jobIdentity, tenant_id: 'demo', job_id: 'job', title: 'Conversation fixture', prompt: 'The original request', status: stage > 1 ? 'COMPLETED' : 'READY', store: stage > 1 ? 'ARCHIVED' : 'ACTIVE', completion_status: stage > 1 ? 'success' : '', completion_detail: stage > 1 ? 'Persisted completion' : '' } });
@@ -137,7 +137,7 @@ test('CT-021 automatic polling and input activity preserve historical selection,
   });
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url());
-    if (url.pathname.endsWith('/conversation')) return route.fulfill({ json: { tenant_id: 'demo', job_id: 'job', entries: [entry('first'), ...(revision ? [entry(`arrival-${revision}`)] : [])], snapshot_token: `snapshot-${revision}`, completeness: 'partial' } });
+    if (url.pathname.endsWith('/conversation')) return route.fulfill({ json: { activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status:'READY',store:'ACTIVE'}},final_documents:{availability:'available',value:{job_id:'job',state:'empty'}}, tenant_id: 'demo', job_id: 'job', entries: [entry('first'), ...(revision ? [entry(`arrival-${revision}`)] : [])], snapshot_token: `snapshot-${revision}`, completeness: 'partial' } });
     if (url.pathname.endsWith('/final-documents')) return route.fulfill({json:{job_id:'job',manifest_id:'none',state:'absent',documents:[]}});
     if (url.pathname.endsWith('/conversation/entry')) return route.fulfill({ json: { ...entry('first'), snapshot_token: 'original-detail', completeness: 'partial', request_manifest: [{ artifact_id: 'original', availability: 'retained' }], response_manifest: [], actionability: { actionable: false } } });
     if (url.pathname.endsWith('/jobs/job')) return route.fulfill({ json: { ...jobIdentity, tenant_id: 'demo', job_id: 'job', title: 'Reading history', status: 'READY', store: 'ACTIVE' } });
@@ -187,7 +187,7 @@ for (const width of [1280,390]) test(`CC-001 CC-009 CC-010 CC-013 CC-014 compact
   const request=route.request(),url=new URL(request.url());
   if(request.method()!=='GET'){mutations.push(request.url());return route.fulfill({status:500});}
   if(url.pathname.includes('/reviews/') && /\/documents(?:\/|$)/.test(url.pathname)){pendingURLs.push(request.url());return route.fulfill({status:500});}
-  if(url.pathname.endsWith('/conversation'))return route.fulfill({json:{tenant_id:'demo',job_id:'job',snapshot_token:'frozen',completeness:'complete',entries:[entry('first'),entry('second',true)]}});
+  if(url.pathname.endsWith('/conversation'))return route.fulfill({json:{ activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status:'COMPLETED',store:'ARCHIVED'}},final_documents:{availability:'available',value:{job_id:'job',state:'empty'}},tenant_id:'demo',job_id:'job',snapshot_token:'frozen',completeness:'complete',entries:[entry('first'),entry('second',true)]}});
   if(url.pathname.endsWith('/conversation/entry'))return route.fulfill({json:{...entry(url.searchParams.get('entry_id')!,url.searchParams.get('entry_id')==='second'),raw_form:form,snapshot_token:'frozen',completeness:'complete',request_manifest:Object.entries(documents).reverse().map(([id,ref])=>({artifact_id:id,ref,availability:'retained',associations:[{kind:'document',source:`/documents/${id}`}]})),response_manifest:[]}});
   if(url.pathname.endsWith('/conversation/artifact')){
    artifactURLs.push(request.url());const id=url.searchParams.get('artifact_id');
@@ -268,12 +268,13 @@ for(const status of [403,404,410,413]) test(`CC-016 document-specific ${status} 
 });
 
 
-test('CV-009 CV-010 CV-013 current activity tail uses metadata and retains stale observation', async ({ page }, info) => {
+test('CV-009 CV-010 CV-013 page refresh retains the conversation observation and retains stale observation', async ({ page }, info) => {
   page.on('pageerror', error => { console.error('Activity browser error:', error); });
   page.on('crash', () => { console.error('Activity browser crashed'); });
   let status = 'ACTIVE';
   let failed = false;
   await page.route('**/api/projects/demo/jobs/job', route => failed ? route.fulfill({status:503,json:{error:'Fixture metadata unavailable'}}) : route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',title:'Conversation fixture',status,store:'ACTIVE'}}));
+  await page.route('**/conversation?*',route=>failed?route.fulfill({status:503,json:{error:'Unavailable conversation'}}):route.fulfill({json:{...terminalConversation({job_id:'job',state:'empty'}),activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status,store:status==='COMPLETED'?'ARCHIVED':'ACTIVE'}}}}));
   await Promise.all([page.waitForResponse(response => new URL(response.url()).pathname === '/api/projects/demo/jobs/job'),page.goto('/project/demo/jobs/job/story')]);
   await expect(page.getByRole('heading', {name:'Job Story: Conversation fixture'})).toBeVisible();
   const tail = page.getByLabel('Current job activity');
@@ -301,7 +302,7 @@ test('CV-002 CV-003 CV-005 CV-020 merge ordering and final document viewer',asyn
   const merge={entry_id:'merge',tenant_id:'demo',job_id:'job',job_attempt:1,task_attempt:1,invocation_id:'merge/attempt:1',result_ordinal:2,operation:'merge:merge',evidence_availability:'recorded',candidate_sha:'abcdef0123456789',candidate_subject:'Finish conversation events and document previews',publication_branch:'refs/heads/main',publication_disposition:'published'};
   const fallback={...merge,entry_id:'fallback',invocation_id:'merge/attempt:2',result_ordinal:4,candidate_subject:null,publication_disposition:'already_present'};
   await page.route('**/conversation?*',route=>route.fulfill({json:{tenant_id:'demo',job_id:'job',entries:[entry],snapshot_token:'shared',snapshot_revision:4,completeness:'complete',publication_coverage:'recorded',merges:[merge,fallback],events:[{ordinal:1,invocation_id:'review',kind:'request_generation',entry_id:'review'},{ordinal:2,invocation_id:merge.invocation_id,kind:'merge_completion',entry_id:'merge'},{ordinal:3,invocation_id:'review',kind:'response_acceptance',entry_id:'review'},{ordinal:4,invocation_id:fallback.invocation_id,kind:'merge_completion',entry_id:'fallback'}]}}));
-  await page.route('**/final-documents',route=>route.fulfill({json:{job_id:'job',attempt_ordinal:1,manifest_id:'final-one',state:'present',documents:[{alias:'report.md',resolution:'stored',ref:{},raw:{},producer:{jobId:'grandchild',taskOrdinal:8,name:'private-storage.md'}},{alias:'notes.md',resolution:'stored',ref:{},raw:{},producer:{jobId:'child',taskOrdinal:4,name:'original.md'}},{alias:'external',resolution:'external',ref:{},raw:{}}]}}));
+  await page.route('**/conversation?*',route=>route.fulfill({json:{...terminalConversation({job_id:'job',attempt_ordinal:1,manifest_id:'final-one',state:'present',documents:[{alias:'report.md',resolution:'stored',ref:{},raw:{},producer:{jobId:'grandchild',taskOrdinal:8,name:'private-storage.md'}},{alias:'notes.md',resolution:'stored',ref:{},raw:{},producer:{jobId:'child',taskOrdinal:4,name:'original.md'}},{alias:'external',resolution:'external',ref:{},raw:{}}]}),entries:[entry],merges:[merge,fallback],events:[{ordinal:1,kind:'request_generation',entry_id:'review'},{ordinal:2,kind:'merge_completion',entry_id:'merge'},{ordinal:3,kind:'response_acceptance',entry_id:'review'},{ordinal:4,kind:'merge_completion',entry_id:'fallback'}]}}));
   const reads:string[]=[];
   await page.route('**/final-documents/document?*',route=>{
     const url=new URL(route.request().url());reads.push(url.searchParams.get('alias')!);
@@ -332,7 +333,7 @@ test('CV-002 CV-003 CV-005 CV-020 merge ordering and final document viewer',asyn
 });
 
 for(const status of [403,404]) test(`CV-021 final document ${status} leaves other members usable`,async({page})=>{
-  await page.route('**/final-documents',route=>route.fulfill({json:{job_id:'job',manifest_id:'errors',state:'present',documents:['missing.md','good.md'].map(alias=>({alias,resolution:'stored',producer:{jobId:'producer',taskOrdinal:1,name:alias},ref:{},raw:{}}))}}));
+  await page.route('**/conversation?*',route=>route.fulfill({json:terminalConversation({job_id:'job',manifest_id:'errors',state:'present',documents:['missing.md','good.md'].map(alias=>({alias,resolution:'stored',producer:{jobId:'producer',taskOrdinal:1,name:alias},ref:{},raw:{}}))})}));
   await page.route('**/final-documents/document?*',route=>new URL(route.request().url()).searchParams.get('alias')==='missing.md'?route.fulfill({status,json:{error:status===403?'Producer access denied':'Bytes not retained'}}):route.fulfill({body:'# Available final document',contentType:'text/plain'}));
   await page.goto('/project/demo/jobs/job/story');
   const list=page.getByLabel('Returned documents',{exact:true});
@@ -357,7 +358,7 @@ test('CX-001 automatic completion supersedes an in-flight pre-publication snapsh
   await page.route('**/conversation?*', async route => {
     const final = terminal;
     if (holdNext && !held) { held = true; await oldRead; }
-    await route.fulfill({json:{tenant_id:'demo',job_id:'job',entries:[],snapshot_token:final?'final':'before',completeness:'complete',publication_coverage:'recorded',merges:final?[merge]:[],events:final?[{ordinal:2,invocation_id:merge.invocation_id,kind:'merge_completion',entry_id:merge.entry_id}]:[]}}).catch(() => {});
+    await route.fulfill({json:{...terminalConversation({job_id:'job',manifest_id:'terminal',state:final?'present':'pending',documents:final?[{alias:'report.md',resolution:'stored',producer:{jobId:'job',taskOrdinal:8,name:'report.md'}}]:[]}),activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status:final?'COMPLETED':'ACTIVE',store:final?'ARCHIVED':'ACTIVE'}},entries:[],snapshot_token:final?'final':'before',completeness:'complete',publication_coverage:'recorded',merges:final?[merge]:[],events:final?[{ordinal:2,invocation_id:merge.invocation_id,kind:'merge_completion',entry_id:merge.entry_id}]:[]}}).catch(() => {});
   });
   await page.route('**/final-documents', route => route.fulfill({json:{job_id:'job',manifest_id:'terminal',state:'present',documents:[{alias:'report.md',resolution:'stored',ref:{},raw:{},producer:{jobId:'job',taskOrdinal:8,name:'report.md'}}]}}));
   await page.route('**/final-documents/document?*', route => route.fulfill({contentType:'text/plain',body:'# Automatically returned report'}));
@@ -376,4 +377,165 @@ test('CX-001 automatic completion supersedes an in-flight pre-publication snapsh
   await page.getByRole('link',{name:'report.md',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Automatically returned report'})).toBeVisible();
   await page.screenshot({path:info.outputPath('automatic-completion-viewer.png'),animations:'disabled'});
+});
+
+test('CV-009 CV-010 CV-013 current activity tail uses conversation and retains stale observation', async ({ page }, info) => {
+  page.on('pageerror', error => { console.error('Activity browser error:', error); });
+  page.on('crash', () => { console.error('Activity browser crashed'); });
+  let status = 'ACTIVE';
+  let failed = false;
+  await page.route('**/api/projects/demo/jobs/job',route=>route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',title:'Conversation fixture',status,store:status==='COMPLETED'?'ARCHIVED':'ACTIVE',completion_status:status==='COMPLETED'?'success':undefined}}));
+  await page.route('**/conversation?*',route=>failed ? route.fulfill({status:503,json:{error:'Fixture conversation unavailable'}}) : route.fulfill({json:{tenant_id:'demo',job_id:'job',entries:[],snapshot_token:'snapshot',completeness:'complete',activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status,store:status==='COMPLETED'?'ARCHIVED':'ACTIVE',completion_status:status==='COMPLETED'?'success':undefined}},final_documents:{availability:'available',value:{job_id:'job',state:status==='COMPLETED'?'empty':'pending'}}}}));
+  await page.goto('/project/demo/jobs/job/story');
+  await expect(page.getByRole('heading', {name:'Job Story: Conversation fixture'})).toBeVisible();
+  const tail = page.getByLabel('Current job activity');
+  await expect(tail).toHaveCount(1);
+  await expect(tail).toContainText('Running');
+  await page.screenshot({path:info.outputPath('activity-running-desktop.png'),fullPage:true});
+  status = 'PENDING_JOBS';
+  await page.getByRole('button',{name:/Refresh$/}).click();
+  await expect(tail).toContainText('Pending');
+  await expect(tail).toContainText('Waiting for jobs');
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:info.outputPath('activity-pending-phone.png'),fullPage:true});
+  failed = true;
+  await page.getByRole('button',{name:/Refresh$/}).click();
+  await expect(tail).toContainText('Status stale');
+  await expect(tail).toContainText('Pending');
+  await expect(tail).toHaveCount(1);
+  failed = false; status = 'COMPLETED';
+  await page.getByRole('button',{name:/Refresh$/}).click();
+  await expect(tail).toHaveCount(0);
+});
+
+for(const width of [1280,390]) test(`CV-002 CV-020 CV-022 terminal publications and returned documents use scoped previews at ${width}px`, async ({page},info)=>{
+ await page.setViewportSize({width,height:900});
+ const entry={entry_id:'one',kind:'review',state:'answered',title:{present:true,raw:'Review changes'},summary:{present:false},requested_at:{present:false},locator:{invocation_id:'input'},form_fields:{},accepted_response:{present:true,raw:'Approved'},actor:{provenance:'automation_receipt',legacy_user_id:{present:false}}};
+ const merges=[{entry_id:'merge',tenant_id:'demo',job_id:'job',invocation_id:'merge-invocation',job_attempt:1,task_attempt:1,result_ordinal:2,candidate_sha:'abc123',candidate_subject:'Add conversation publication cards',publication_branch:'refs/heads/main',publication_disposition:'published',evidence_availability:'recorded'}];
+ const files=[{alias:'report.md',resolution:'stored',producer:{jobId:'grandchild',taskOrdinal:4,name:'original.md'}},{alias:'data.json',resolution:'stored',producer:{jobId:'child',taskOrdinal:8,name:'original.json'}},{alias:'outside',resolution:'external'}];
+ await page.route('**/conversation?*',r=>r.fulfill({json:{tenant_id:'demo',job_id:'job',entries:[entry],merges,events:[{entry_id:'one',kind:'request_generation',ordinal:1},{entry_id:'merge',kind:'merge_completion',ordinal:2},{entry_id:'one',kind:'response_acceptance',ordinal:3}],snapshot_token:'frozen',completeness:'complete',publication_coverage:'recorded',activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status:'COMPLETED',store:'ARCHIVED',completion_status:'success'}},final_documents:{availability:'available',value:{job_id:'job',attempt_ordinal:9,state:'present',manifest_id:'manifest-one',documents:files}}}}));
+ const forbidden:string[]=[];
+ page.on('request',request=>{if(request.url().includes('/conversation/final-documents'))forbidden.push(request.url());});
+ const reads:string[]=[];
+ await page.route('**/final-documents/document?*',r=>{const url=new URL(r.request().url());reads.push(url.search);expect(url.searchParams.get('manifest_id')).toBe('manifest-one');return r.fulfill({contentType:'application/octet-stream',body:url.searchParams.get('alias')==='report.md'?'# Returned report\n\n[Data](data.json)':'{"retained":true}'});});
+ await page.goto('/project/demo/jobs/job/story');
+ await expect(page.getByLabel('Verified publication')).toContainText('Add conversation publication cards');
+ const link=page.getByRole('link',{name:'report.md',exact:true});await link.click();
+ const dialog=page.getByRole('dialog');await expect(dialog.getByRole('heading',{name:'Returned report'})).toBeVisible();
+ await dialog.getByRole('link',{name:'Data',exact:true}).click();
+ await expect(dialog.getByLabel('Formatted JSON')).toContainText('"retained": true');
+ await expect(dialog.getByRole('link',{name:'Download',exact:true})).toHaveAttribute('href',/manifest_id=manifest-one&alias=data.json/);
+ await page.screenshot({path:info.outputPath(`returned-document-preview-${width}.png`),fullPage:true});
+ await dialog.getByRole('button',{name:'Close',exact:true}).click();await expect(link).toBeFocused();
+ expect(reads.length).toBeGreaterThanOrEqual(2);
+ expect(forbidden).toEqual([]);
+ await page.screenshot({path:info.outputPath(`publications-and-returned-documents-${width}.png`),fullPage:true});
+});
+
+function terminalConversation(manifest:any) {
+ return {tenant_id:'demo',job_id:'job',entries:[],snapshot_token:'s',completeness:'complete',
+ activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status:'COMPLETED',store:'ARCHIVED',completion_status:'success'}},
+ final_documents:{availability:'available',value:manifest}};
+}
+for(const status of [403,404,410,413]) test(`CV-021 CV-023 returned member ${status} leaves siblings usable`,async({page})=>{
+ const files=['bad.md','good.md'].map(alias=>({alias,resolution:'stored',producer:{jobId:'producer',taskOrdinal:4,name:alias}}));
+ await page.route('**/conversation?*',r=>r.fulfill({json:terminalConversation({job_id:'job',state:'present',manifest_id:'m',documents:files})}));
+ await page.route('**/final-documents/document?*',r=>new URL(r.request().url()).searchParams.get('alias')==='bad.md'?r.fulfill({status,json:{error:'Original bytes unavailable'}}):r.fulfill({body:'# Usable sibling'}));
+ await page.goto('/project/demo/jobs/job/story');
+ await page.getByRole('link',{name:'bad.md',exact:true}).click();
+ const dialog=page.getByRole('dialog');
+ await expect(dialog.getByText(/Could not load this document/)).toBeVisible();
+ if(status===413)await expect(dialog.getByText(/32 MiB/)).toBeVisible();
+ if(status!==410)await expect(dialog.getByText(/expired/i)).toHaveCount(0);
+ await dialog.getByRole('button',{name:'Close',exact:true}).click();
+ await expect(dialog).toHaveCount(0);
+ await page.getByRole('link',{name:'good.md',exact:true}).click();
+ await expect(dialog.getByRole('heading',{name:'Usable sibling'})).toBeVisible();
+});
+
+test('CV-022 CV-030 changed attempt aborts old preview and ignores late bytes',async({page})=>{
+ let attempt=1;
+ let release!:()=>void;
+ let started!:()=>void;
+ const requested=new Promise<void>(r=>{started=r;});
+ const held=new Promise<void>(r=>{release=r;});
+ const failures:string[]=[];
+ page.on('requestfailed',r=>{if(r.url().includes('manifest_id=m1'))failures.push(r.url());});
+ await page.route('**/conversation?*',r=>r.fulfill({json:terminalConversation({job_id:'job',attempt_ordinal:attempt,state:'present',manifest_id:`m${attempt}`,documents:[{alias:'report.md',resolution:'stored',producer:{jobId:'producer',taskOrdinal:attempt,name:'report.md'}}]})}));
+ await page.route('**/final-documents/document?*',async r=>{
+  if(new URL(r.request().url()).searchParams.get('manifest_id')==='m1'){started();await held;await r.fulfill({body:'# Obsolete bytes'}).catch(()=>{});}
+  else await r.fulfill({body:'# Current bytes'});
+ });
+ await page.goto('/project/demo/jobs/job/story');
+ await page.getByRole('link',{name:'report.md',exact:true}).click();await requested;
+ attempt=2;
+ await page.getByRole('button',{name:/Refresh$/}).evaluate(el=>(el as HTMLButtonElement).click());
+ await expect(page.getByRole('dialog')).toHaveCount(0);
+ release();
+ await page.getByRole('link',{name:'report.md',exact:true}).click();
+ await expect(page.getByRole('dialog').getByRole('heading',{name:'Current bytes'})).toBeVisible();
+ await expect(page.getByText('Obsolete bytes')).toHaveCount(0);
+ await expect.poll(()=>failures.length).toBeGreaterThan(0);
+});
+
+test('CV-028 conversation refresh and Retry use no status or listing enrichment',async({page})=>{
+ let available=false;
+ let conversations=0;
+ const statusReads:string[]=[],listReads:string[]=[];
+ page.on('request',r=>{const path=new URL(r.url()).pathname;if(path.endsWith('/jobs/job'))statusReads.push(path);if(path.endsWith('/final-documents'))listReads.push(path);});
+ await page.route('**/conversation?*',r=>{
+  conversations++;
+  const body=terminalConversation({job_id:'job',state:'empty'});
+  if(!available)body.final_documents={availability:'unavailable'} as any;
+  return r.fulfill({json:body});
+ });
+ await page.goto('/project/demo/jobs/job/story');
+ await expect(page.getByText('Returned documents unavailable')).toBeVisible();
+ await page.waitForLoadState('networkidle');
+ const initial=statusReads.length;
+ const initialConversations=conversations;
+ await page.getByRole('button',{name:/Refresh$/}).click();
+ await expect.poll(()=>conversations).toBe(initialConversations+1);
+ available=true;
+ await page.getByLabel('Returned documents',{exact:true}).getByRole('button',{name:'Retry',exact:true}).click();
+ await expect(page.getByText('No returned documents')).toBeVisible();
+ expect(conversations).toBe(initialConversations+2);
+ expect(statusReads.length).toBe(initial+1);
+ expect(listReads).toEqual([]);
+});
+
+test('CV-023 returned HTML stays sandboxed and unsupported formats retain downloads',async({page})=>{
+ const aliases=['attack.html','archive.zip'];
+ const docs=aliases.map(alias=>({alias,resolution:'stored',producer:{jobId:'p',taskOrdinal:4,name:alias}}));
+ const probes:string[]=[];
+ page.on('request',r=>{if(r.url().includes('/probe-'))probes.push(r.url());});
+ await page.route('**/conversation?*',r=>r.fulfill({json:terminalConversation({job_id:'job',state:'present',manifest_id:'safe',documents:docs})}));
+ await page.route('**/final-documents/document?*',r=>r.fulfill({body:new URL(r.request().url()).searchParams.get('alias')==='attack.html'?'<h1 id="safe">Safe retained HTML</h1><script>fetch("/probe-script")</script><img src="/probe-image">':Buffer.from([80,75,3,4])}));
+ await page.goto('/project/demo/jobs/job/story');
+ await page.getByRole('link',{name:'attack.html',exact:true}).click();
+ const dialog=page.getByRole('dialog');
+ await expect(dialog.locator('iframe')).toHaveAttribute('sandbox','allow-scripts');
+ await expect(page.frameLocator('iframe').locator('#safe')).toBeVisible();
+ expect(probes).toEqual([]);
+ await expect(dialog.getByRole('link',{name:'Download',exact:true})).toHaveAttribute('href',/manifest_id=safe&alias=attack.html/);
+ await dialog.getByRole('button',{name:'Close',exact:true}).click();
+ await expect(dialog).toHaveCount(0);
+ await page.getByRole('link',{name:'archive.zip',exact:true}).click();
+ await expect(dialog.getByRole('link',{name:'Download',exact:true})).toHaveAttribute('href',/manifest_id=safe&alias=archive.zip/);
+ await expect(dialog.locator('iframe')).toHaveCount(0);
+});
+
+test('CV-028 polling uses conversation activity despite terminal page chrome',async({page})=>{
+ let conversations=0;
+ const statusReads:string[]=[];
+ page.on('request',r=>{if(new URL(r.url()).pathname.endsWith('/jobs/job'))statusReads.push(r.url());});
+ await page.route('**/conversation?*',r=>{conversations++;return r.fulfill({json:{...terminalConversation({job_id:'job',state:'pending'}),activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status:'ACTIVE',store:'ACTIVE'}}}});});
+ await page.goto('/project/demo/jobs/job/story');
+ await expect(page.getByLabel('Current job activity')).toContainText('Running');
+ await page.waitForLoadState('networkidle');
+ const initialStatus=statusReads.length;
+ const initialConversation=conversations;
+ await expect.poll(()=>conversations,{timeout:10000}).toBeGreaterThan(initialConversation);
+ expect(statusReads.length).toBe(initialStatus);
+ await expect(page.getByLabel('Current job activity')).toContainText('Running');
 });
