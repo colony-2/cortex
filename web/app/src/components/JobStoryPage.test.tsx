@@ -1170,15 +1170,15 @@ describe('input artifact inventory', () => {
   });
 });
 
-it.each(['other/job', 'tenant/other'])('IA-014 aborts inventory and preview when switching to %s', async destination => {
+it.each(['other/job', 'tenant/other'])('DOC-14 IA-014 aborts inventory and preview when switching to %s', async destination => {
   let finish!: (value: { artifacts: [] }) => void;
   let inventorySignal: AbortSignal | undefined;
   let previewSignal: AbortSignal | undefined;
   let finishPreview!: (value: Response) => void;
-  vi.mocked(getJobInputArtifacts).mockResolvedValueOnce({ artifacts: [{ jobId: 'job', taskOrdinal: 0, name: 'input.md', sizeBytes: 10 }] })
+  vi.mocked(getJobInputArtifacts).mockResolvedValueOnce({ artifacts: [{id:'document:inline',kind:'value',binding:'inline',contentBinding:'inline',name:'input.md',sizeBytes:10}] })
     .mockImplementationOnce((_tenant, _job, signal) => { inventorySignal = signal; return new Promise(r => { finish = r; }); });
   const fetch = vi.fn(async (url: string, options?: RequestInit) => {
-    if (url.includes('/artifacts/')) { previewSignal = options?.signal as AbortSignal; return new Promise<Response>(r => { finishPreview = r; }); }
+    if (url.includes('/input-document?')) { previewSignal = options?.signal as AbortSignal; return new Promise<Response>(r => { finishPreview = r; }); }
     return { ok: true, json: async () => story };
   });
   vi.stubGlobal('fetch', fetch);
@@ -1621,4 +1621,30 @@ describe('page controls refresh the real conversation', () => {
     await tick(20000);expect(getConversation).toHaveBeenCalledTimes(final);
     expect(screen.queryByLabelText('Current job activity')).toBeNull();
   });
+});
+
+it('DOC-05,08,09,12 documents retain distinct bindings, source labels and blocked states', async () => {
+  vi.mocked(getJobInputArtifacts).mockResolvedValue({ artifacts: [
+    { id:'document:a', kind:'value', binding:'a', name:'same.md', contentBinding:'a', sizeBytes:5, sources:['Document'] },
+    { id:'document:b', kind:'value', binding:'b', name:'same.md', contentBinding:'b', sizeBytes:5, sources:['Document'] },
+    { id:'document:external', kind:'external', binding:'external', name:'remote.md', sizeBytes:-1, sources:['Document'], reason:'External reference — content not loaded' },
+    { id:'document:bad', kind:'invalid', binding:'bad', name:'invalid.md', sizeBytes:-1, sources:['Document'], reason:'Invalid document: missing payload' },
+  ] });
+  const fetch = mount('?tab=input-artifacts');
+  expect(await screen.findByRole('heading', {name:'Input artifacts (4)'})).toBeVisible();
+  expect(screen.getByText('Binding: a')).toBeVisible();
+  expect(screen.getByText('Binding: b')).toBeVisible();
+  expect(screen.getByText('External reference — content not loaded')).toBeVisible();
+  expect(screen.queryByRole('button', {name:'Download remote.md'})).toBeNull();
+  expect(screen.getByText('Invalid document: missing payload')).toBeVisible();
+  const buttons=screen.getAllByRole('button',{name:'same.md',exact:true});
+  fetch.mockResolvedValue(new Response('# First binding'));
+  fireEvent.click(buttons[0]);
+  expect(await screen.findByRole('heading',{name:'First binding'})).toBeVisible();
+  expect(fetch).toHaveBeenLastCalledWith(expect.stringContaining('/input-document?binding=a'),expect.anything());
+  fireEvent.click(screen.getAllByRole('button',{name:'Close',exact:true}).at(-1)!);
+  fetch.mockResolvedValue(new Response('# Second binding'));
+  fireEvent.click(buttons[1]);
+  expect(await screen.findByRole('heading',{name:'Second binding'})).toBeVisible();
+  expect(fetch).toHaveBeenLastCalledWith(expect.stringContaining('/input-document?binding=b'),expect.anything());
 });

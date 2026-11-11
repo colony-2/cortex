@@ -108,6 +108,7 @@ func (s *Server) buildRouter(inputService ops.ManagementService) http.Handler {
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/restart", s.requireJob(s.handleRestartJob)).Methods(http.MethodPost, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/restart-context", s.requireJob(s.handleRestartContext)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/chapters/download", s.requireJob(s.handleChapterDownload)).Methods(http.MethodGet, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/input-document", s.requireArchivedJob(s.handleInputDocument)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/input-artifacts", s.requireArchivedJob(s.handleInputArtifacts)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/conversation", s.requireArchivedJob(s.handleConversation)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/conversation/entry", s.requireArchivedJob(s.handleConversationEntry)).Methods(http.MethodGet, http.MethodOptions)

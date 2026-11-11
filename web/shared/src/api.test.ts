@@ -189,10 +189,10 @@ it('sends optional cancellation/archive reasons as JSON and keeps bodyless calle
   expect(fetch.mock.calls[3][1]).toEqual({method:'DELETE'});
 });
 
-it('IA-007 lists typed input metadata with encoded identity, cancellation and errors', async () => {
+it('DOC-16 IA-007 lists typed input metadata with encoded identity, cancellation and errors', async () => {
   const { getJobInputArtifacts } = await import('./api');
   const { API_BASE } = await import('./apiBase');
-  const result = { artifacts: [{ jobId: 'job/a&雪', taskOrdinal: 0, name: 'docs/brief.md', sizeBytes: 0 }] };
+  const result = { artifacts: [{ jobId: 'job/a&雪', taskOrdinal: 0, name: 'docs/brief.md', sizeBytes: 0 }, {id:'document:inline', kind:'value', name:'inline.md', binding:'inline', contentBinding:'inline', sources:['Document'], sizeBytes:5}, {id:'document:external', kind:'external', name:'external.md', reason:'External reference — content not loaded', sizeBytes:-1}] };
   const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(result)));
   vi.stubGlobal('fetch', fetch);
   const controller = new AbortController();

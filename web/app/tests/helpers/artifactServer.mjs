@@ -22,6 +22,16 @@ header.writeUInt32BE(4096); header.writeUInt32BE(512, 4); header[8] = 8; header[
 const wideImage = Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), chunk('IHDR', header), chunk('IDAT', deflateSync(Buffer.alloc((4096 * 3 + 1) * 512))), chunk('IEND', Buffer.alloc(0))]);
 const patch = Buffer.from('--- a/file\n+++ b/file\n@@ -1 +1 @@\n-' + 'old'.repeat(400) + '\n+' + 'new'.repeat(400) + '\n');
 createServer((req, res) => {
+  const url = new URL(req.url, 'http://127.0.0.1');
+  if (url.pathname.endsWith('/input-document')) {
+    const binding = url.searchParams.get('binding');
+    const body = binding === 'inline' ? '# Inline bytes' : '# Stored alias\n\n[next](inline.md)';
+    res.writeHead(binding === 'missing' ? 404 : 200, {
+      'Content-Type':'text/plain', 'Content-Disposition':`attachment; filename="${binding === 'inline' ? 'inline.md' : 'alias.md'}"`,
+    });
+    res.end(binding === 'missing' ? 'document missing unavailable' : body);
+    return;
+  }
   const isImage = req.url.endsWith('/huge.png');
   const body = req.url.endsWith('/empty') ? Buffer.alloc(0) : req.url.endsWith('/input.bin') ? Buffer.from([0, 255, 1]) : isImage ? image : req.url.endsWith('/wide.png') ? wideImage : req.url.endsWith('/wide.patch') ? patch : markdown;
   res.writeHead(200, {

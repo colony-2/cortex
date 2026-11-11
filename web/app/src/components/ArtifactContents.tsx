@@ -5,8 +5,8 @@ import { type PreviewNavigation, type NavigationIntent } from './review/artifact
 import type { HTMLContext } from './review/htmlPreparation';
 import { loadDocument, type DocumentData } from './review/document';
 
-export default function ArtifactContents({ url, name, resolveAttachment, navigation, navigationIntent, htmlContext }: {
-  htmlContext?: HTMLContext; url: string; name: string; resolveAttachment?: ResolvePreviewAttachment; navigation?: PreviewNavigation; navigationIntent?: NavigationIntent;
+export default function ArtifactContents({ url, name, resolveAttachment, navigation, navigationIntent, htmlContext, unavailableMessage }: {
+  unavailableMessage?: string; htmlContext?: HTMLContext; url: string; name: string; resolveAttachment?: ResolvePreviewAttachment; navigation?: PreviewNavigation; navigationIntent?: NavigationIntent;
 }) {
   const [data, setData] = useState<DocumentData>();
   const [error, setError] = useState('');
@@ -21,7 +21,7 @@ export default function ArtifactContents({ url, name, resolveAttachment, navigat
     }).catch(e => { if (!controller.signal.aborted) setError(e.message); });
     return () => controller.abort();
   }, [url, name, retry]);
-  if (error) return <Alert type="error" message={error} action={<Button onClick={() => setRetry(v => v + 1)}>Retry</Button>} />;
+  if (error) return <Alert type="error" message={unavailableMessage ? `${unavailableMessage}: ${error}` : error} action={<Button onClick={() => setRetry(v => v + 1)}>Retry</Button>} />;
   if (!data) return <Spin aria-label="Loading artifact" />;
   return <DocumentPreview htmlContext={htmlContext} data={data} name={name} markdownSource={markdownSource} setMarkdownSource={setMarkdownSource} dual={dual} setDual={setDual} resolveAttachment={resolveAttachment} navigation={navigation} navigationIntent={navigationIntent} />;
 }

@@ -95,3 +95,4 @@
 .job-detail-panel:not([hidden]) { display: flex; flex-direction: column; gap: 16px; }
 
 .job-detail-panel > .execution-tree { padding: 0; }
+.input-artifact-description { min-width: 0; overflow-wrap: anywhere; }

@@ -56,7 +56,7 @@ func TestInputArtifactsNonzeroStartNativeHTTP(t *testing.T) {
 	}
 	ctx := testjobdb.Context(context.Background())
 	key := jobdb.JobKey{TenantId: "retained", JobId: "nonzero"}
-	_, err = s.engine.SubmitJob(ctx, jobdb.SubmitJob{TenantId: key.TenantId, JobID: key.JobId, JobType: "recipe", Cell: "self", CellRepo: "github.com/acme/self", Data: jobdb.NewTaskDataOrPanic(map[string]any{"tenantId": "retained", "cell": "self", "recipe": "test", "context": map[string]any{}}, artifacts...)})
+	_, err = s.engine.SubmitJob(ctx, jobdb.SubmitJob{TenantId: key.TenantId, JobID: key.JobId, JobType: "recipe", Cell: "self", CellRepo: "github.com/acme/self", Data: jobdb.NewTaskDataOrPanic(map[string]any{"tenantId": "retained", "cell": "self", "recipe": "test", "context": map[string]any{}, "inputs": map[string]any{"documents": map[string]any{"empty": map[string]any{"kind": "stored", "stored": map[string]any{"key": map[string]any{"jobId": "nonzero", "taskOrdinal": 1, "name": "empty"}}}}, "unrelated": "excluded"}}, artifacts...)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,6 +117,18 @@ func TestInputArtifactsNonzeroStartNativeHTTP(t *testing.T) {
 	}](t, base+"/jobs/"+key.JobId+"/input-artifacts")
 	if len(inventory.Artifacts) != len(contents) {
 		t.Fatalf("inventory: %#v", inventory)
+	}
+	projected := getJSON[struct {
+		Artifacts []inputDocument `json:"artifacts"`
+	}](t, base+"/jobs/"+key.JobId+"/input-artifacts")
+	merged := false
+	for _, row := range projected.Artifacts {
+		if row.Binding == "empty" && len(row.Sources) == 2 {
+			merged = true
+		}
+	}
+	if !merged {
+		t.Fatalf("nonzero submitted binding not merged: %#v", projected)
 	}
 	seen := map[string]bool{}
 	for _, artifact := range inventory.Artifacts {

@@ -49,7 +49,7 @@ import type { RecipeJob } from '@colony2/shared/types';
 import { isFinishedJob, jobStatusPresentation, jobStatusValue } from '../utils/jobStatus';
 import { goalPath } from './JobWaitLinks';
 import { jobFilterSearch } from '../utils/jobFilters';
-import { buildStoryTree, storyAttempts, storyNodeName, type ArtifactKey, type StoryNode, type StoryKind, type StoryNodeRef } from '../utils/storyTree';
+import { buildStoryTree, storyAttempts, storyNodeName, type ArtifactKey as StoredArtifactKey, type StoryNode, type StoryKind, type StoryNodeRef } from '../utils/storyTree';
 import { adaptInputFormConfig } from '../utils/formAdapter';
 import type { RestartScope } from '@colony2/shared';
 import RestartContextPreview from './RestartContextPreview';
@@ -130,7 +130,15 @@ function statusTagColor(status: string): string {
   return colors[status] ?? 'default';
 }
 
+type ArtifactKey = StoredArtifactKey & { id?: string; contentBinding?: string; inputJobId?: string };
+function inputViewerArtifact(a: InputArtifact, jobId: string): ArtifactKey {
+  return { name: a.name, taskOrdinal: a.taskOrdinal ?? 0, jobId: a.jobId || jobId, id: a.id, contentBinding: a.contentBinding, inputJobId: jobId };
+}
+function artifactRowKey(a: ArtifactKey, jobId: string): string {
+  return a.id || JSON.stringify([a.jobId || jobId, a.taskOrdinal, a.name]);
+}
 function artifactUrl(projectId: string, jobId: string, artifact: ArtifactKey): string {
+  if (artifact.contentBinding !== undefined) return `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(artifact.inputJobId || jobId)}/input-document?binding=${encodeURIComponent(artifact.contentBinding)}`;
   return `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(artifact.jobId || jobId)}/tasks/${artifact.taskOrdinal}/artifacts/${encodeURIComponent(artifact.name)}`;
 }
 
@@ -306,7 +314,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     const controller = new AbortController();
     setInputInventory({ owner: artifactIdentity });
     getJobInputArtifacts(projectId, jobId, controller.signal).then(result => {
-      if (!controller.signal.aborted) setInputInventory({ owner: artifactIdentity, artifacts: [...result.artifacts].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : a.taskOrdinal - b.taskOrdinal) });
+      if (!controller.signal.aborted) setInputInventory({ owner: artifactIdentity, artifacts: [...result.artifacts].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : (a.taskOrdinal ?? 0) - (b.taskOrdinal ?? 0)) });
     }).catch(error => {
       if (!controller.signal.aborted) setInputInventory({ owner: artifactIdentity, error: error instanceof Error ? error.message : String(error) });
     });
@@ -982,10 +990,15 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
               : !inputs?.artifacts ? <Text>Loading input artifacts</Text>
               : inputs.artifacts.length === 0 ? <Text>No input artifacts</Text>
               : <List dataSource={inputs.artifacts} renderItem={artifact => (
-                <List.Item key={JSON.stringify([projectId, artifact.jobId, artifact.taskOrdinal, artifact.name])}>
-                  <Button type="link" className="input-artifact-name" onClick={() => openArtifact(artifact, inputs.artifacts)}>{artifact.name}</Button>
-                  <Space><Text type="secondary">{artifactSize(artifact.sizeBytes)}</Text>
-                    <Button aria-label={`Download ${artifact.name}`} icon={<DownloadOutlined />} onClick={() => downloadArtifact(artifact)}>Download</Button></Space>
+                <List.Item key={artifact.id || JSON.stringify([projectId, artifact.jobId, artifact.taskOrdinal, artifact.name])}>
+                  <div className="input-artifact-description">
+                    {artifact.reason ? <Text>{artifact.name}</Text> : <Button type="link" className="input-artifact-name" onClick={() => openArtifact(inputViewerArtifact(artifact, jobId), inputs.artifacts!.filter(a => !a.reason).map(a => inputViewerArtifact(a, jobId)))}>{artifact.name}</Button>}
+                    {artifact.binding !== undefined && <div><Text>Binding: {artifact.binding}</Text></div>}
+                    {artifact.sources && <div><Text type="secondary">{artifact.sources.join(' · ')}</Text></div>}
+                    {artifact.reason && <div><Text>{artifact.reason}</Text></div>}
+                  </div>
+                  {!artifact.reason && <Space><Text type="secondary">{artifact.sizeBytes >= 0 ? artifactSize(artifact.sizeBytes) : 'Size unknown'}</Text>
+                    <Button aria-label={`Download ${artifact.name}`} icon={<DownloadOutlined />} onClick={() => downloadArtifact(inputViewerArtifact(artifact, jobId))}>Download</Button></Space>}
                 </List.Item>
               )} />}
           </Card>
@@ -1374,15 +1387,16 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         ]}
       >
         {activeArtifact && <ArtifactContents
-          htmlContext={{canonicalPath: activeArtifact.name, attachments: artifactAttachments.map(a => ({key:JSON.stringify([a.jobId || jobId,a.taskOrdinal,a.name]), path:a.name, url:artifactUrl(projectId,jobId,a)}))}}
-          key={JSON.stringify([projectId, activeArtifact.jobId || jobId, activeArtifact.taskOrdinal, activeArtifact.name])}
+          htmlContext={{canonicalPath: activeArtifact.name, attachments: artifactAttachments.map(a => ({key:artifactRowKey(a, jobId), path:a.name, url:artifactUrl(projectId,jobId,a)}))}}
+          key={JSON.stringify([projectId, artifactRowKey(activeArtifact, jobId)])}
           url={artifactUrl(projectId, jobId, activeArtifact)} name={activeArtifact.name}
+          unavailableMessage={activeArtifact.contentBinding !== undefined ? `Document “${activeArtifact.name}” unavailable` : undefined}
           navigationIntent={artifactNavigation}
           navigation={{
-            resolve: reference => resolveArtifactLink(reference, activeArtifact.name, artifactAttachments.map(a => ({key: JSON.stringify([a.jobId || jobId, a.taskOrdinal, a.name]), path: a.name}))),
+            resolve: reference => resolveArtifactLink(reference, activeArtifact.name, artifactAttachments.map(a => ({key: artifactRowKey(a, jobId), path: a.name}))),
             open: (key, fragment) => {
               if (artifactOwner !== artifactIdentity) return false;
-              const target = artifactAttachments.find(a => JSON.stringify([a.jobId || jobId, a.taskOrdinal, a.name]) === key);
+              const target = artifactAttachments.find(a => artifactRowKey(a, jobId) === key);
               if (!target) return false;
               setSelectedArtifact(target);
               setArtifactNavigation(previous => ({token: (previous?.token || 0) + 1, fragment}));
@@ -1391,10 +1405,10 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
           }}
           resolveAttachment={reference => {
             const resolution = resolveArtifactLink(reference, activeArtifact.name, artifactAttachments.map(a => ({
-              key: JSON.stringify([a.jobId, a.taskOrdinal, a.name]), path: a.name, aliases: [a.name],
+              key: artifactRowKey(a, jobId), path: a.name, aliases: [a.name],
             })));
             if (resolution.kind !== 'target') return undefined;
-            const a = artifactAttachments.find(a => JSON.stringify([a.jobId, a.taskOrdinal, a.name]) === resolution.key);
+            const a = artifactAttachments.find(a => artifactRowKey(a, jobId) === resolution.key);
             if (!a) return undefined;
             const key = resolution.key;
             return { key, name: a.name, url: artifactUrl(projectId, jobId, a) };

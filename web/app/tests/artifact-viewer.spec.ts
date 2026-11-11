@@ -356,3 +356,63 @@ for (const width of [1280, 390]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 }
+
+for (const width of [1280,390]) {
+  test(`DOC-08,10,12,13,15 mixed input documents ${width}`,async({page,context,baseURL},testInfo)=>{
+    await context.addCookies([{name:'colony2:user:email',value:'browser@example.com',url:baseURL!}]);
+    await page.setViewportSize({width,height:844});
+    const externalRequests:string[]=[];
+    page.on('request',request=>{if(request.url().includes('invalid.example'))externalRequests.push(request.url());});
+    const rows=[
+      {id:'attachment:0:direct.md',kind:'stored',name:'direct.md',jobId:'job',taskOrdinal:0,sizeBytes:8,sources:['Attachment','Document'],binding:'direct.md'},
+      {id:'document:alias',kind:'stored',name:'docs/alias.md',binding:'source alias ?雪',contentBinding:'source alias ?雪',sizeBytes:18,sources:['Document']},
+      {id:'document:inline',kind:'value',name:'docs/inline.md',binding:'inline',contentBinding:'inline',sizeBytes:18,sources:['Document']},
+      {id:'document:missing',kind:'stored',name:'missing.md',binding:'missing',contentBinding:'missing',sizeBytes:18,sources:['Document']},
+      {id:'document:external',kind:'external',name:'external.md',binding:'external',sizeBytes:-1,sources:['Document'],reason:'External reference — content not loaded'},
+      {id:'document:bad',kind:'invalid',name:'bad.md',binding:'bad',sizeBytes:-1,sources:['Document'],reason:'Invalid document: stored ref missing payload'},
+    ];
+    await page.route('**/api/**',async route=>{
+      const url=new URL(route.request().url());let body:unknown=[];
+      if(url.pathname.endsWith('/input-document')) {
+        const binding=url.searchParams.get('binding');
+        return route.fulfill({status:binding==='missing'?404:200,contentType:'text/plain',headers:{'Content-Disposition':`attachment; filename="${binding==='inline'?'inline.md':'alias.md'}"`},body:binding==='missing'?'document missing unavailable':binding==='inline'?'# Inline bytes':'# Stored alias\n\n[next](inline.md)'});
+      }
+      if(url.pathname.includes('/artifacts/'))return route.fulfill({contentType:'text/plain',body:'# Direct bytes'});
+      if(url.pathname==='/api/projects')body=[{tenant_id:'tenant',name:'Test tenant'}];
+      else if(url.pathname.endsWith('/input-artifacts'))body={artifacts:rows};
+      else if(url.pathname.endsWith('/story'))body={job_id:'job',status:'success',root:null};
+      else if(url.pathname.endsWith('/jobs/job'))body={...jobIdentity,job_id:'job',title:'Mixed document fixture',status:'SUCCEEDED'};
+      else if(url.pathname.includes('/events'))return route.fulfill({contentType:'text/event-stream',body:': fixture\n\n'});
+      await route.fulfill({json:body});
+    });
+    await page.goto('/project/tenant/jobs/job/story?tab=input-artifacts');
+    await expect(page.getByRole('heading',{name:'Input artifacts (6)'})).toBeVisible();
+    await expect(page.getByText('External reference — content not loaded')).toBeVisible();
+    await expect(page.getByText('Attachment · Document')).toBeVisible();
+    expect(await page.getByRole('button',{name:'Download external.md'}).count()).toBe(0);
+    await page.screenshot({animations:'disabled',path:testInfo.outputPath(`documents-${width}.png`),fullPage:true});
+    await page.getByRole('button',{name:'docs/alias.md',exact:true}).click();
+    const modal=page.getByRole('dialog');
+    await expect(modal.getByRole('heading',{name:'Stored alias'})).toBeVisible();
+    const storedDownload=page.waitForEvent('download');await modal.getByRole('button',{name:'Download'}).click();
+    expect(await readFile((await (await storedDownload).path())!,'utf8')).toBe('# Stored alias\n\n[next](inline.md)');
+    await modal.getByRole('button',{name:'next',exact:true}).click();
+    await expect(modal.getByRole('heading',{name:'Inline bytes'})).toBeVisible();
+    await expect(modal.getByRole('button',{name:'Download'})).toBeInViewport();
+    await page.screenshot({animations:'disabled',path:testInfo.outputPath(`inline-viewer-${width}.png`)});
+    const pending=page.waitForEvent('download');await modal.getByRole('button',{name:'Download'}).click();
+    expect(await readFile((await (await pending).path())!,'utf8')).toBe('# Inline bytes');
+    await modal.getByRole('button',{name:'Close',exact:true}).last().click();
+    await expect(modal).not.toBeVisible();
+    await page.getByRole('button',{name:'missing.md',exact:true}).click();
+    await expect(modal.getByText(/Could not load this document/)).toBeInViewport();
+    await expect(modal.getByRole('button',{name:'Close',exact:true}).last()).toBeInViewport();
+    await page.evaluate(async () => { await Promise.all(document.getAnimations().filter(a => a.effect?.getComputedTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))); });
+    await page.screenshot({animations:'disabled',path:testInfo.outputPath(`unavailable-${width}.png`)});
+    await modal.getByRole('button',{name:'Close',exact:true}).last().click();
+    await expect(modal).not.toBeVisible();
+    await page.getByRole('button',{name:'direct.md',exact:true}).click();
+    await expect(modal.getByRole('heading',{name:'Direct bytes'})).toBeVisible();
+    expect(externalRequests).toEqual([]);
+  });
+}

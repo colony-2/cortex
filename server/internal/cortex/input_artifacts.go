@@ -50,7 +50,7 @@ func (s *Server) handleInputArtifacts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	artifacts, err := inputArtifacts(job, chapters)
+	artifacts, err := documentInventory(job, chapters)
 	if err != nil {
 		writeError(w, err)
 		return

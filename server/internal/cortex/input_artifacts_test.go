@@ -2,6 +2,7 @@ package cortex
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -109,7 +110,10 @@ func TestInputArtifactsHTTPMetadata(t *testing.T) {
 		r.HandleFunc("/projects/{projectId}/jobs/{jobId}/input-artifacts", s.handleInputArtifacts)
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, httptest.NewRequest("GET", "/projects/tenant/jobs/job/input-artifacts", nil))
-		if w.Code != 200 || w.Body.String() != "{\"artifacts\":[{\"jobId\":\"job\",\"taskOrdinal\":17,\"name\":\"nested/雪 ?#.txt\",\"sizeBytes\":42}]}\n" {
+		var result struct {
+			Artifacts []inputArtifact `json:"artifacts"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || w.Code != 200 || !reflect.DeepEqual(result.Artifacts, []inputArtifact{{"job", 17, "nested/雪 ?#.txt", 42}}) {
 			t.Fatalf("%d %s", w.Code, w.Body.String())
 		}
 	}

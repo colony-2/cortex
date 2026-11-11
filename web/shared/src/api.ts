@@ -195,12 +195,16 @@ export async function getJobChaptersDownload(projectId: string, jobId: string, s
   return response.blob();
 }
 
-export interface InputArtifact {
-  jobId: string;
-  taskOrdinal: number;
+export type InputArtifact = {
+  id?: string;
   name: string;
   sizeBytes: number;
-}
+  binding?: string;
+  sources?: string[];
+} & ({ kind?: 'stored'; jobId: string; taskOrdinal: number; storedKey?: { jobId: string; taskOrdinal: number; name: string }; contentBinding?: never; reason?: never }
+ | { kind: 'stored'; contentBinding: string; storedKey?: { jobId: string; taskOrdinal: number; name: string }; jobId?: never; taskOrdinal?: never; reason?: never }
+ | { kind: 'value'; contentBinding: string; jobId?: never; taskOrdinal?: never; reason?: never }
+ | { kind: 'external' | 'attached' | 'invalid'; reason: string; jobId?: never; taskOrdinal?: never; contentBinding?: never });
 
 export async function getJobInputArtifacts(projectId: string, jobId: string, signal?: AbortSignal): Promise<{ artifacts: InputArtifact[] }> {
   const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/input-artifacts`, { signal });
