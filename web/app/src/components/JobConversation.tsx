@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, Space, Typography } from 'antd';
+import { Alert, Button, Card, Typography } from 'antd';
 import { APIError, conversationArtifactURL, getConversation, getConversationEntry, getConversationRequest, stringifyJobJSON, type HistoryDetail, type HistoryEntry, type HistoryPage, type HistoryValue, type HistoryMerge } from '@colony2/shared';
 
 import type { RecipeJob } from '@colony2/shared/types';
@@ -150,8 +150,8 @@ export function CurrentActivity({ metadata, freshness }: { metadata?: RecipeJob;
     {metadata && freshness === 'loading' && <p>Refreshing status…</p>}
   </Card>;
 }
-export default function JobConversation({ tenant, job, occurrence, requestId, onOpen, onBack, refreshKey, running, metadata, metadataFreshness }: {
-  tenant: string; job: string; occurrence?: string; requestId?: string; onOpen: (entry: string) => void; onBack?: () => void; refreshKey?: unknown; running: boolean; metadata?: RecipeJob; metadataFreshness?: 'loading' | 'loaded' | 'failed';
+export default function JobConversation({ tenant, job, occurrence, requestId, onOpen, onBack, refreshKey, metadata, metadataFreshness }: {
+  tenant: string; job: string; occurrence?: string; requestId?: string; onOpen: (entry: string) => void; onBack?: () => void; refreshKey?: unknown; metadata?: RecipeJob; metadataFreshness?: 'loading' | 'loaded' | 'failed';
 }) {
   const [page, setPage] = useState<HistoryPage>();
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
@@ -172,7 +172,7 @@ export default function JobConversation({ tenant, job, occurrence, requestId, on
     setBusy(true);
     try {
       let next = await getConversation(tenant, job, { pageToken: token, signal: abort.signal });
-      if (token && pageRef.current && next.snapshot_token !== pageRef.current.snapshot_token) throw new Error('History snapshot changed during pagination. Refresh history.');
+      if (token && pageRef.current && next.snapshot_token !== pageRef.current.snapshot_token) throw new Error('History snapshot changed during pagination. Use the page Refresh button.');
       const snapshot = next.snapshot_token;
       let refreshed = next.entries;
       // Refresh the whole visible range in the new immutable snapshot before
@@ -181,7 +181,7 @@ export default function JobConversation({ tenant, job, occurrence, requestId, on
         const visibleCount = entriesRef.current.length;
         while (next.next_page_token && refreshed.length < visibleCount) {
           next = await getConversation(tenant, job, { pageToken: next.next_page_token, signal: abort.signal });
-          if (next.snapshot_token !== snapshot) throw new Error('History snapshot changed during refresh. Retry history.');
+          if (next.snapshot_token !== snapshot) throw new Error('History snapshot changed during refresh. Use the page Refresh button.');
           const seen = new Set(refreshed.map(e => e.entry_id));
           refreshed = [...refreshed, ...next.entries.filter(e => !seen.has(e.entry_id))];
         }
@@ -202,7 +202,7 @@ export default function JobConversation({ tenant, job, occurrence, requestId, on
       });
     } catch (e) {
       if (abort.signal.aborted || current !== generation.current) return;
-      setError(e instanceof APIError && e.code === 'history_snapshot_expired' ? 'History snapshot expired. Refresh history to restart pagination; the visible entries are retained until refresh succeeds.' : String(e));
+      setError(e instanceof APIError && e.code === 'history_snapshot_expired' ? 'History snapshot expired. Use the page Refresh button to restart pagination; the visible entries are retained until refresh succeeds.' : `${String(e)} Use the page Refresh button to try again.`);
     } finally { if (current === generation.current) setBusy(false); }
   }, [tenant, job]);
   useEffect(() => {
@@ -225,18 +225,14 @@ export default function JobConversation({ tenant, job, occurrence, requestId, on
       void load(undefined, true);
     }
   }, [identity, finished, load]);
-  useEffect(() => {
-    if (!running) return;
-    const timer = window.setInterval(() => { void load(undefined, true); }, 5000);
-    return () => window.clearInterval(timer);
-  }, [running, load]);
   return <section aria-label="Input history">
-    <Space wrap><Button onClick={() => { setActivity(false); void load(); }} loading={busy}>Refresh history</Button>{activity && <span role="status">New conversation activity available</span>}</Space>
     {error && <Alert type="warning" message="History unavailable" description={error} />}
     {page && <p>History coverage: {page.completeness}. {page.next_page_token ? 'More retained events are available.' : 'End of this retained snapshot; coverage may be partial.'}</p>}
     {page?.publication_coverage && page.publication_coverage !== 'recorded' && <Alert type="info" message={`Publication coverage: ${page.publication_coverage}. Only verified retained publications are shown.`} />}
     {page?.diagnostics?.map((d, i) => <Alert key={i} type="info" message={d.message} />)}
     {(occurrence !== undefined || requestId !== undefined) && <HistoricalRequest key={`${identity}\0${occurrence ?? requestId}`} tenant={tenant} job={job} entry={occurrence ?? requestId!} legacy={occurrence === undefined} onBack={onBack} />}
+    {/* Keep arriving activity below the historical reader so it does not move the reading position. */}
+    {activity && <span role="status">New conversation activity available</span>}
     {page && !entries.length && !page.merges?.length && <p>No retained events in this history.</p>}
     <ConversationTimeline page={loadedIdentity.current === identity ? page : undefined} entries={loadedIdentity.current === identity ? entries : []} onOpen={onOpen} />
     {page?.next_page_token && <Button disabled={busy || !!error} onClick={() => void load(page.next_page_token)}>Load more events</Button>}

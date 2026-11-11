@@ -9,14 +9,14 @@ import type { RecipeJob } from '@colony2/shared/types';
 import DownloadChaptersButton from './DownloadChaptersButton';
 import { inputActivityService, getConversation, getFinalDocuments } from '@colony2/shared';
 
-const emptyPendingInputs = vi.hoisted(() => []);
+const inputState = vi.hoisted(() => ({ pendingInputs: [] as any[] }));
 vi.mock('@colony2/shared', async (importOriginal) => ({
   ...await importOriginal<typeof import('@colony2/shared')>(),
   getFinalDocuments: vi.fn(),
   getConversation: vi.fn().mockRejectedValue(new Error('History unavailable')),
   getConversationRequest: vi.fn().mockRejectedValue(new Error('Request unavailable')),
   getConversationEntry: vi.fn().mockRejectedValue(new Error('Request unavailable')),
-  useInputActivity: () => ({ pendingInputs: emptyPendingInputs, refresh: vi.fn() }),
+  useInputActivity: () => ({ pendingInputs: inputState.pendingInputs, refresh: vi.fn() }),
 }));
 vi.mock('@colony2/shared/api', async (importOriginal) => ({
   ...await importOriginal<typeof import('@colony2/shared/api')>(),
@@ -62,6 +62,7 @@ function mount(search = '?tab=execution', response: unknown = story) {
   return fetchMock;
 }
 beforeEach(() => {
+  inputState.pendingInputs = [];
   vi.mocked(getFinalDocuments).mockReset().mockResolvedValue({job_id:'job',manifest_id:'empty',state:'empty',documents:[]});
   vi.mocked(getConversation).mockReset().mockRejectedValue(new Error('History unavailable'));
   vi.mocked(getJobInputArtifacts).mockReset().mockResolvedValue({ artifacts: [] });
@@ -1541,4 +1542,83 @@ it.each(['other/job', 'tenant/other'])('CX-IN-08 aborts Inbox values when switch
   await act(async()=>finish(new Response('OLD VALUE BYTES')));
   expect(screen.queryByRole('dialog')).toBeNull();expect(screen.queryByText('OLD VALUE BYTES')).toBeNull();
   fireEvent.click(await screen.findByRole('tab',{name:'Inbox (1)'}));expect(screen.getByRole('button',{name:'value.txt',exact:true})).toBeVisible();
+});
+
+describe('page controls refresh the real conversation', () => {
+  const history = {tenant_id:'tenant',job_id:'job',entries:[],snapshot_token:'s',completeness:'complete'};
+  const tick = async (ms: number) => { await act(async () => {await vi.advanceTimersByTimeAsync(ms);}); };
+  async function start(status = 'ACTIVE', search = '') {
+    vi.useFakeTimers({toFake:['setInterval','clearInterval']});
+    vi.mocked(getConversation).mockResolvedValue(history);
+    vi.mocked(getJob).mockResolvedValue(metadata({status,store:status === 'ACTIVE' ? 'ACTIVE' : 'ARCHIVED'} as Partial<RecipeJob>));
+    const fetchMock = mount(search, {...story,status:'running'});
+    await screen.findByRole('button',{name:/Refresh$/});
+    await act(async()=>{});
+    return fetchMock;
+  }
+  it.each(['ACTIVE','COMPLETED'])('CR-001 CR-002 manual refresh works for %s despite execution failure',async status=>{
+    const fetchMock=await start(status);
+    if(status === 'ACTIVE') fireEvent.click(screen.getByRole('switch',{name:'Auto-refresh'}));
+    const initial=vi.mocked(getConversation).mock.calls.length;
+    await tick(20000);
+    expect(getConversation).toHaveBeenCalledTimes(initial);
+    fetchMock.mockRejectedValue(new Error('Execution unavailable'));
+    await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Refresh$/}));});
+    expect(getConversation).toHaveBeenCalledTimes(initial+1);
+  });
+  it('CR-003 CR-004 follows only the selected schedule and restarts after enabling',async()=>{
+    await start();
+    const initial=vi.mocked(getConversation).mock.calls.length;
+    await tick(4999);expect(getConversation).toHaveBeenCalledTimes(initial);
+    await tick(1);expect(getConversation).toHaveBeenCalledTimes(initial+1);
+    async function select(label:string) {
+      fireEvent.mouseDown(screen.getByRole('combobox'));
+      fireEvent.click(screen.getAllByText(label).find(el=>el.classList.contains('ant-select-item-option-content'))!);
+      await act(async()=>{});
+    }
+    await select('3s');
+    await tick(2999);expect(getConversation).toHaveBeenCalledTimes(initial+1);
+    await tick(1);expect(getConversation).toHaveBeenCalledTimes(initial+2);
+    await select('10s');
+    await tick(9999);expect(getConversation).toHaveBeenCalledTimes(initial+2);
+    await tick(1);expect(getConversation).toHaveBeenCalledTimes(initial+3);
+    fireEvent.click(screen.getByRole('switch',{name:'Auto-refresh'}));
+    await tick(20000);expect(getConversation).toHaveBeenCalledTimes(initial+3);
+    fireEvent.click(screen.getByRole('switch',{name:'Auto-refresh'}));
+    await tick(10000);expect(getConversation).toHaveBeenCalledTimes(initial+4);
+  });
+  it.each(['hidden','pending','failing'])('CR-005 polls independently of %s execution and failed metadata',async mode=>{
+    const fetchMock=await start('ACTIVE',mode === 'hidden' ? '' : '?tab=execution');
+    if(mode === 'pending') fetchMock.mockImplementation(()=>new Promise(()=>{}));
+    if(mode === 'failing') fetchMock.mockRejectedValue(new Error('Execution failed'));
+    vi.mocked(getJob).mockRejectedValue(new Error('Metadata failed'));
+    const initial=vi.mocked(getConversation).mock.calls.length;
+    await tick(5000);expect(getConversation).toHaveBeenCalledTimes(initial+1);
+    await tick(5000);expect(getConversation).toHaveBeenCalledTimes(initial+2);
+  });
+  it('CR-011 input activity refreshes history while auto-refresh is disabled',async()=>{
+    await start();
+    fireEvent.click(screen.getByRole('switch',{name:'Auto-refresh'}));
+    const initial=vi.mocked(getConversation).mock.calls.length;
+    inputState.pendingInputs = [{job_id:'another-job',request_id:'new-input'}];
+    await act(async()=>{fireEvent.click(screen.getByRole('tab',{name:'Summary',exact:true}));});
+    expect(getConversation).toHaveBeenCalledTimes(initial+1);
+    await tick(10000);expect(getConversation).toHaveBeenCalledTimes(initial+1);
+  });
+  it('CR-006 completion supersedes an older read and stops periodic history',async()=>{
+    await start();
+    let resolveOld!: (value: typeof history)=>void;
+    vi.mocked(getConversation).mockImplementationOnce(()=>new Promise(resolve=>{resolveOld=resolve;}));
+    await tick(5000);
+    const oldSignal=vi.mocked(getConversation).mock.calls.at(-1)![2]?.signal;
+    vi.mocked(getJob).mockResolvedValue(metadata({status:'COMPLETED',store:'ARCHIVED'}));
+    const before=vi.mocked(getConversation).mock.calls.length;
+    await tick(5000);
+    expect(getConversation).toHaveBeenCalledTimes(before+2); // cycle, then final observation
+    expect(oldSignal?.aborted).toBe(true);
+    await act(async()=>{resolveOld({...history,snapshot_token:'obsolete'});});
+    const final=vi.mocked(getConversation).mock.calls.length;
+    await tick(20000);expect(getConversation).toHaveBeenCalledTimes(final);
+    expect(screen.queryByLabelText('Current job activity')).toBeNull();
+  });
 });

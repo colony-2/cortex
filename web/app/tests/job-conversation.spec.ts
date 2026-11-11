@@ -106,7 +106,7 @@ test('CT-014,021,031 retained answers and exact earlier review stay selected thr
   await expect(page.getByText('State: pending', { exact: false })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Job completion' })).toHaveCount(0);
   stage = 1;
-  await page.getByRole('button', { name: 'Refresh history', exact: true }).click();
+  await page.getByRole('button', { name: /Refresh$/ }).click();
   await expect(page.locator('[data-occurrence="second"]')).toBeVisible();
   await expect(page.locator('.conversation-answer').first()).toBeVisible();
   await page.getByRole('button', { name: 'Open review' }).first().click();
@@ -126,7 +126,7 @@ test('CT-014,021,031 retained answers and exact earlier review stay selected thr
 });
 
 
-test('CT-021 automatic polling and input activity preserve historical selection, scroll and focus', async ({ page }) => {
+test('CT-021 automatic polling and input activity preserve historical selection, scroll and focus', async ({ page }, info) => {
   await page.clock.install();
   let revision = 0;
   const entry = (id: string) => ({
@@ -168,6 +168,12 @@ test('CT-021 automatic polling and input activity preserve historical selection,
   await expect(link).toBeFocused();
   expect(Math.abs(await page.evaluate(() => window.scrollY) - scrollBefore)).toBeLessThanOrEqual(1);
   expect(new URL(page.url()).searchParams.get('occurrenceId')).toBe('first');
+  const activity = page.getByText('New conversation activity available');
+  await activity.scrollIntoViewIfNeeded();
+  await page.screenshot({path:info.outputPath('historical-activity-desktop.png'),animations:'disabled'});
+  await page.setViewportSize({width:390,height:844});
+  await activity.scrollIntoViewIfNeeded();
+  await page.screenshot({path:info.outputPath('historical-activity-phone.png'),animations:'disabled'});
 });
 
 for (const width of [1280,390]) test(`CC-001 CC-009 CC-010 CC-013 CC-014 compact review and historical reader at ${width}px`, async ({page},info)=>{
@@ -358,7 +364,7 @@ test('CX-001 automatic completion supersedes an in-flight pre-publication snapsh
   await page.goto('/project/demo/jobs/job/story');
   await expect(page.getByLabel('Current job activity')).toContainText('Running');
   holdNext = true;
-  // History and metadata have independent five-second polls. Hold the next
+  // The page drives history and metadata every five seconds. Hold the next
   // history response at the pre-completion snapshot while metadata completes.
   await expect.poll(() => held, {timeout:15000}).toBe(true);
   terminal = true;
