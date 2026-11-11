@@ -220,9 +220,9 @@ describe('job story history', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Restart job' }));
     expect(within(dialog).getByText(text => text.startsWith('Run codex · Chapter 12 ·'))).toBeVisible();
     expect(within(dialog).getByText('This restarts the containing scope, including its work before this task.')).toBeVisible();
-    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({
+    fetchMock.mockResolvedValueOnce({ ok: true, text: async () => JSON.stringify({
       project_id: 'tenant', job_id: 'job', chapter_ordinal: 12, scope_id: scopeID,
-      job: { existing: 'unchanged', secret: '[REDACTED]' }, visible: { vars: { example: 'available' } }, redacted_paths: ['/job/secret'],
+      job: { git: { author: 'old' }, existing: 'unchanged', secret: '[REDACTED]' }, visible: { vars: { example: 'available' } }, redacted_paths: ['/job/secret'],
     }) });
     fireEvent.click(within(dialog).getByRole('switch'));
     const before = await within(dialog).findByRole('region', { name: 'Context before patching' });
@@ -234,21 +234,23 @@ describe('job story history', () => {
     expect(before).toHaveTextContent('unchanged');
     expect(before).not.toHaveTextContent('patched');
     expect(within(dialog).queryByText('Full context is unavailable for this restart point.')).not.toBeInTheDocument();
-    // Changing targets preserves edits, even if inspection fails. The old
-    // snapshot must disappear and retry must inspect the newly selected chapter.
+    // Boundary drafts are isolated, including while inspection fails.
     fetchMock.mockResolvedValueOnce({ ok: false, status: 422, statusText: 'Unprocessable Entity', text: async () => 'History unavailable' });
     fireEvent.mouseDown(within(dialog).getByRole('combobox', { name: 'Restart point' }));
     fireEvent.click(await screen.findByText(text => text.startsWith('Recipe body · Chapter 4 ·')));
     expect(await within(dialog).findByText(/History unavailable/)).toBeVisible();
     expect(within(dialog).queryByRole('region', { name: 'Context before patching' })).not.toBeInTheDocument();
-    expect(within(dialog).getByPlaceholderText('e.g. "james@example.com"')).toHaveValue('patched');
-    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({
+    expect(within(dialog).queryByPlaceholderText('e.g. "james@example.com"')).not.toBeInTheDocument();
+    fetchMock.mockResolvedValueOnce({ ok: true, text: async () => JSON.stringify({
       project_id: 'tenant', job_id: 'job', chapter_ordinal: 4, scope_id: 'root',
-      job: { existing: 'earlier value' }, visible: {}, redacted_paths: [],
+      job: { git: { author: 'old' }, existing: 'earlier value' }, visible: {}, redacted_paths: [],
     }) });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Retry context' }));
     expect(await within(dialog).findByRole('region', { name: 'Context before patching' })).toHaveTextContent('earlier value');
-    expect(within(dialog).getByPlaceholderText('e.g. "james@example.com"')).toHaveValue('patched');
+    expect(within(dialog).queryByPlaceholderText('e.g. "james@example.com"')).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getAllByRole('button', { name: 'Add line' })[0]);
+    fireEvent.change(within(dialog).getByPlaceholderText('e.g. git.author'), { target: { value: 'git.author' } });
+    fireEvent.change(within(dialog).getByPlaceholderText('e.g. "james@example.com"'), { target: { value: 'patched' } });
     expect(within(dialog).queryByText('Patch Preview')).not.toBeInTheDocument();
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ job_id: 'restarted' }) });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Restart', exact: true }));
@@ -257,7 +259,7 @@ describe('job story history', () => {
       expect.objectContaining({ method: 'POST', body: expect.stringContaining('"scope_id":"root"') }),
     ));
     const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/jobs/job/restart'))!;
-    expect(JSON.parse(call[1]!.body as string)).toEqual({ scope_id: 'root', goal: { mode: 'continue' }, request_id: expect.any(String), patch: [{op:'add',path:'/context/git/author',value:'patched'}] });
+    expect(JSON.parse(call[1]!.body as string)).toEqual({ scope_id: 'root', goal: { mode: 'continue' }, request_id: expect.any(String), patch: [{op:'replace',path:'/context/git/author',value:'patched'}] });
     expect(screen.queryByRole('tab', { name: /^Attempt / })).not.toBeInTheDocument();
   });
 
@@ -272,7 +274,7 @@ describe('job story history', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Steps', exact: true }));
     fireEvent.click(await screen.findByRole('button', { name: 'Restart job' }));
     const dialog = screen.getByRole('dialog');
-    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({
+    fetchMock.mockResolvedValueOnce({ ok: true, text: async () => JSON.stringify({
       project_id: 'tenant', job_id: 'job', chapter_ordinal: 4, scope_id: 'root', job: {}, visible: {}, redacted_paths: [],
     }) });
     fireEvent.click(within(dialog).getByRole('switch'));
@@ -349,21 +351,37 @@ describe('job story history', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Restart job' }));
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText(/Selected scope · Chapter 4/)).toBeVisible();
-    fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ project_id: 'tenant', job_id: 'job', scope_id: 'target/scope', chapter_ordinal: 4, job: {}, visible: {}, redacted_paths: [] }) });
+    fetch.mockResolvedValueOnce({ ok: true, text: async () => JSON.stringify({ project_id: 'tenant', job_id: 'job', scope_id: 'target/scope', chapter_ordinal: 4, job: { git: { author: 'old' } }, visible: {}, redacted_paths: [] }) });
     fireEvent.click(within(dialog).getByRole('switch'));
     await within(dialog).findByRole('region', { name: 'Context before patching' });
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('restart-context?scope_id=target%2Fscope'), expect.anything());
+    sessionStorage.setItem('cells-v1:cortex:restart:tenant:job', 'legacy merge retry');
+    sessionStorage.setItem('unrelated', 'keep');
+    fireEvent.click(within(dialog).getAllByRole('button', { name: 'Add line' })[0]);
+    fireEvent.change(within(dialog).getByPlaceholderText('e.g. git.author'), { target: { value: 'git.author' } });
+    fireEvent.change(within(dialog).getByPlaceholderText('e.g. "james@example.com"'), { target: { value: 'first edit' } });
     fetch.mockRejectedValueOnce(new TypeError('Connection lost'));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Restart', exact: true }));
     await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Restart', exact: true })).toBeEnabled());
     const first = fetch.mock.calls.find(([url]) => String(url).endsWith('/restart'))!;
     expect(JSON.parse(first[1]!.body as string)).toMatchObject({ scope_id: 'target/scope', request_id: expect.any(String) });
     expect(JSON.parse(first[1]!.body as string)).not.toHaveProperty('chapter_ordinal');
-    fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ job_id: 'resumed' }) });
+    fetch.mockResolvedValueOnce({ ok: false, status: 400, statusText: 'Bad Request', text: async () => 'Request rejected' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Restart', exact: true }));
     await waitFor(() => expect(fetch.mock.calls.filter(([url]) => String(url).endsWith('/restart'))).toHaveLength(2));
     const requests = fetch.mock.calls.filter(([url]) => String(url).endsWith('/restart'));
     expect(requests[1][1]!.body).toBe(requests[0][1]!.body);
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Restart', exact: true })).toBeEnabled());
+    expect(within(dialog).getByPlaceholderText('e.g. "james@example.com"')).toHaveValue('first edit');
+    fireEvent.change(within(dialog).getByPlaceholderText('e.g. "james@example.com"'), { target: { value: 'changed edit' } });
+    fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ job_id: 'resumed' }) });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Restart', exact: true }));
+    await waitFor(() => expect(fetch.mock.calls.filter(([url]) => String(url).endsWith('/restart'))).toHaveLength(3));
+    const last = fetch.mock.calls.filter(([url]) => String(url).endsWith('/restart'))[2];
+    expect(JSON.parse(last[1]!.body as string).request_id).not.toBe(JSON.parse(requests[0][1]!.body as string).request_id);
+    expect(sessionStorage.getItem('cells-v1:cortex:restart:tenant:job')).toBe('legacy merge retry');
+    expect(sessionStorage.getItem('unrelated')).toBe('keep');
+
   });
 
 });

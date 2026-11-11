@@ -64,7 +64,7 @@ The `RestartContext` response contains:
 | Field | Contents |
 | --- | --- |
 | `ProjectID`, `JobID`, `ChapterOrdinal`, `ScopeID` | The exact source and boundary inspected. |
-| `Job` | The base job context in the JSON shape used by `ContextPatch.Job`. |
+| `Job` | The base job context, projected under `/context` when generating a patch. |
 | `Visible` | Template-visible `inputs`, `sequence`, `states`, `vars`, `outputs`, `transition`, `failure`, `scope`, `context`, `item`, and `index`. |
 | `RedactedPaths` | JSON pointers to redacted values in the response, for example `/visible/sequence/write/outputs/api_key`. |
 
@@ -93,13 +93,10 @@ unreconstructable context is an error, not an empty successful snapshot.
 Submit the selected ordinal and only the changes the user requested:
 
 ```go
-patch := &task.ContextPatch{
-    Scopes: []task.ScopePatch{{
-        Container: "sequence",
-        ID:        "write",
-        Outputs:   map[string]any{"document_path": "design.md"},
-    }},
-}
+patch, err := jobrestart.ParsePatch([]byte(`[
+  {"op":"replace","path":"/sequence/write/outputs/document_path","value":"design.md"}
+]`))
+if err != nil { return err }
 result, err := svc.RestartRecipeJob(ctx, story.RestartRecipeJobRequest{
     ProjectID:      tenantID,
     JobID:          sourceJobID,
@@ -110,13 +107,22 @@ result, err := svc.RestartRecipeJob(ctx, story.RestartRecipeJobRequest{
 ```
 
 The examples use `github.com/colony-2/c2j/pkg/story` and
-`github.com/colony-2/c2j/pkg/task`. Construct the service with the same engine and
+`github.com/colony-2/c2j/pkg/jobrestart`. Construct the service with the same engine and
 schema registry configuration used for existing story/restart calls.
 
 The existing `ScopeID` request field remains supported. Supply either
 `ChapterOrdinal` or `ScopeID`, never both. `GetRestartContext` uses the ordinal.
-An absent patch means an unpatched restart. Map nulls and arrays retain the
-existing patch semantics: map nulls delete keys and arrays replace values.
+An absent patch means an unpatched restart; a supplied empty array is retained.
+The HTTP API accepts RFC 6902 arrays only. Legacy merge objects, supplied null,
+malformed operations and unauthorized paths return 400 before job submission.
+Use `add`, `remove`, `replace`, `move`, `copy`, or `test`, in execution order.
+Escape pointer tokens with `~0` for tilde and `~1` for slash. Dots are literal
+characters in API pointers. `add` or `replace` with a null value assigns null;
+`remove` deletes a member. Object replacement discards its prior siblings.
+Parents and scoped steps must already exist. A structurally valid request can
+return 201 and subsequently fail in the worker, for example on a missing target,
+source, parent, invisible step or failed test. No synchronous context preflight
+is performed. Context application is atomic, but the accepted job remains.
 
 Restart creates a new job and retains the recorded prefix before the selected
 scope. It does not rewind or cancel the source job. Previously patched work in
@@ -158,3 +164,29 @@ choosing a boundary in that new job.
 6. Submit only the patch, never the complete snapshot.
 
 After-state preview is not part of this API.
+
+## Editing in the browser
+
+The dialog retains global/scoped rows, dot paths and JSON-or-text values. Rows
+express recursive merge intent: object members preserve untouched siblings,
+null removes a member, and arrays replace as a unit. These browser semantics
+are separate from the array-only public API. A row containing null generates
+`remove`, not literal null assignment. No operation controls are needed.
+
+Cortex constructs the desired result from the inspected baseline, applies rows
+in order, then traverses keys in stable order to generate add/remove/replace
+operations. Unchanged values are omitted. The payload preview and request use
+the same lossless serialization, including numbers outside JavaScript's safe
+integer range. Drafts belong to one tenant, job and selected boundary. Switching
+boundaries restores that boundary's draft rather than carrying edits across.
+
+Inspection errors or required redacted/unavailable context block edited
+submission and keep drafts available for retry. Unrelated redaction does not
+block a known edit. Disable patching to restart without edits. HTTP errors keep
+the dialog and its draft; a 201 opens the returned job story. Later worker
+failures appear there without automatic resubmission or reopening the dialog.
+
+Frontend and backend must release together. External object-patch callers must
+migrate to arrays; historical persisted merge records remain replayable through
+c2j. Retry storage uses a new JSON Patch version, preserving identical-payload
+request IDs and leaving unrelated session storage unchanged.

@@ -263,3 +263,10 @@ it('GS-009 serializes root scope independently and preserves continuation and fa
   await expect(listJobs('tenant', { rootOnly: true })).rejects.toThrow('root filtering unsupported');
   expect(fetch).toHaveBeenCalledTimes(4);
 });
+
+it('reads raw restart inspection values without rounding before comparison', async () => {
+  const { getRestartContext } = await import('./api');
+  const raw = '{"project_id":"tenant","job_id":"job","scope_id":"scope","chapter_ordinal":4,"job":{},"visible":{"sequence":{"seed":{"outputs":{"n":9007199254740993,"array":[9007199254740995]}}}},"redacted_paths":[]}';
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(raw)));
+  expect(stringifyJobJSON(await getRestartContext('tenant', 'job', 'scope'))).toBe(raw);
+});

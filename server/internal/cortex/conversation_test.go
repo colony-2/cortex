@@ -218,3 +218,31 @@ func TestConversationPublicationSelection(t *testing.T) {
 		t.Fatalf("wrong observation %+v", h.snapshotRequest)
 	}
 }
+
+// Both dependency merge producers feed this optional-subject history projection.
+func TestConversationExactPublicationSubjects(t *testing.T) {
+	for _, disposition := range []string{"published", "already_present"} {
+		for _, subject := range []*string{nil, pointerSubject(""), pointerSubject("  exact subject \t")} {
+			h := &historyStub{snapshot: &input.JobHistorySnapshot{Merges: []input.HistoryMergeEntry{{EntryID: "merge", EvidenceAvailability: "recorded", PublicationDisposition: disposition, CandidateSubject: subject}}}}
+			w := httptest.NewRecorder()
+			historyRouter(h).ServeHTTP(w, httptest.NewRequest("GET", "/tenant/job", nil))
+			if w.Code != 200 {
+				t.Fatal(w.Body.String())
+			}
+			var result struct {
+				Merges []input.HistoryMergeEntry `json:"merges"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if len(result.Merges) != 1 {
+				t.Fatal(w.Body.String())
+			}
+			got := result.Merges[0].CandidateSubject
+			if (got == nil) != (subject == nil) || (got != nil && *got != *subject) {
+				t.Fatalf("subject changed: %s", w.Body.String())
+			}
+		}
+	}
+}
+func pointerSubject(s string) *string { return &s }

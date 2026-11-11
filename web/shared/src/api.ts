@@ -132,7 +132,7 @@ export async function getRestartContext(projectId: string, jobId: string, bounda
     { signal },
   );
   await handleResponse(response, 'Inspect restart context');
-  const context: RestartContext = await response.json();
+  const context = parseJobJSON(await response.text()) as RestartContext;
   if (context.project_id !== projectId || context.job_id !== jobId || (typeof boundary === 'string' ? context.scope_id !== boundary : context.chapter_ordinal !== boundary)) {
     throw new Error('Restart context does not match the selected job and restart point.');
   }

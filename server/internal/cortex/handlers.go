@@ -15,6 +15,7 @@ import (
 
 	"github.com/colony-2/c2j/pkg/cellref"
 	"github.com/colony-2/c2j/pkg/jobref"
+	"github.com/colony-2/c2j/pkg/jobrestart"
 	"github.com/colony-2/c2j/pkg/recipejob"
 	"github.com/colony-2/c2j/pkg/story"
 	coretask "github.com/colony-2/c2j/pkg/task"
@@ -57,9 +58,9 @@ type restartJobRequest struct {
 	Goal      struct {
 		Mode string `json:"mode"`
 	} `json:"goal"`
-	ScopeID        string                 `json:"scope_id,omitempty"`
-	ChapterOrdinal *int64                 `json:"chapter_ordinal,omitempty"`
-	Patch          *coretask.ContextPatch `json:"patch,omitempty"`
+	ScopeID        string          `json:"scope_id,omitempty"`
+	ChapterOrdinal *int64          `json:"chapter_ordinal,omitempty"`
+	Patch          json.RawMessage `json:"patch,omitempty"`
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -253,9 +254,23 @@ func (s *Server) requireJobVisibility(next http.HandlerFunc, includeHidden bool)
 
 func (s *Server) handleRestartJob(w http.ResponseWriter, r *http.Request) {
 	var req restartJobRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&req); err != nil {
 		writeHTTPError(w, http.StatusBadRequest, err)
 		return
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("restart requires exactly one JSON document"))
+		return
+	}
+	var patch *coretask.ContextPatch
+	if req.Patch != nil {
+		var err error
+		patch, err = jobrestart.ParsePatch(req.Patch)
+		if err != nil {
+			writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("patch: %w", err))
+			return
+		}
 	}
 	if (strings.TrimSpace(req.ScopeID) == "") == (req.ChapterOrdinal == nil) {
 		writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("provide exactly one of chapter_ordinal or scope_id"))
@@ -272,7 +287,7 @@ func (s *Server) handleRestartJob(w http.ResponseWriter, r *http.Request) {
 		JobID:          mux.Vars(r)["jobId"],
 		ScopeID:        req.ScopeID,
 		ChapterOrdinal: req.ChapterOrdinal,
-		Patch:          req.Patch,
+		Patch:          patch,
 	})
 	if err != nil {
 		writeError(w, err)

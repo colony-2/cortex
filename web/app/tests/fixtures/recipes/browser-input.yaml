@@ -2,11 +2,28 @@ id: browser-input
 version: "1.0"
 input_schema: {}
 sequence:
+  - id: seed
+    sequence: []
+    outputs:
+      nested: {keep: untouched, value: old, remove: gone}
+      array: [a, b, c]
+      object: {old: discard, sibling: discard}
+      "a/b~c": escaped
+      "literal.key": dotted
   - id: approval
     op: input
     inputs:
       form:
         question: What should the recipe publish?
         type: short_answer
+  - id: capture
+    inputs:
+      seed: "${{ sequence.seed.outputs }}"
+    sequence: []
+    outputs:
+      seed: "${{ inputs.seed }}"
+  - id: verified
+    sequence: []
 outputs:
+  seed: "${{ sequence.capture.outputs.seed }}"
   answer: "${{ sequence.approval.outputs.response }}"

@@ -166,7 +166,7 @@ Example request to `POST /api/projects/team/jobs/A/restart`:
   "request_id":"repair-attempt-1",
   "scope_id":"recorded-scope-id",
   "goal":{"mode":"continue"},
-  "patch":{"job":{"repair_note":"Use the revised implementation"}}
+  "patch":[{"op":"add","path":"/context/git/author","value":"Revised Author <author@example.com>"}]
 }
 ```
 

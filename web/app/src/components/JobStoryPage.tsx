@@ -10,7 +10,7 @@ import { cellLabel } from '../utils/cellPresentation';
 import { resolveArtifactLink, type NavigationIntent } from './review/artifactLinks';
 import ArtifactContents from './ArtifactContents';
 import './JobStoryPage.css';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import {
   Alert,
@@ -53,6 +53,8 @@ import { buildStoryTree, storyAttempts, storyNodeName, type ArtifactKey as Store
 import { adaptInputFormConfig } from '../utils/formAdapter';
 import type { RestartScope } from '@colony2/shared';
 import RestartContextPreview from './RestartContextPreview';
+import { buildContextPatch, type PatchLine, type ScopePatchLine } from '../utils/restartPatch';
+import { stringifyJobJSON, parseJobJSON, type RestartContext } from '@colony2/shared';
 
 const { Title, Text } = Typography;
 
@@ -177,28 +179,6 @@ function extractRecipeLabel(recipe: any): string {
   return recipe.name || recipe.recipe_name || recipe.path || recipe.id || '-';
 }
 
-function parseUserValue(raw: string): unknown {
-  const trimmed = raw.trim();
-  if (!trimmed) return '';
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return trimmed;
-  }
-}
-
-type PatchLine = { id: string; path: string; value: string };
-type ScopePatchLine = { id: string; container: 'sequence' | 'states'; scopeId: string; path: string; value: string };
-
-function buildContextPatch(jobLines: PatchLine[], scopeLines: ScopePatchLine[]) {
-  const escape = (token: string) => token.replace(/~/g,'~0').replace(/\//g,'~1');
-  const tokens = (path:string) => path.split('.').map(p=>p.trim()).filter(Boolean).map(escape).join('/');
-  const operations: {op:string;path:string;value:unknown}[] = [];
-  for (const line of jobLines) if (line.path.trim()) operations.push({op:'add',path:`/context/${tokens(line.path)}`,value:parseUserValue(line.value)});
-  for (const line of scopeLines) if (line.scopeId.trim() && line.path.trim()) operations.push({op:'add',path:`/${line.container}/${escape(line.scopeId)}/outputs/${tokens(line.path)}`,value:parseUserValue(line.value)});
-  return operations.length ? operations : null;
-}
-
 async function fetchStory(projectId: string, jobId: string): Promise<JobStoryResponse> {
   const response = await fetch(
     `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/story`
@@ -294,8 +274,8 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const [restartOpen, setRestartOpen] = useState(false);
   const [restartSelection, setRestartSelection] = useState<string>();
   const [restartSubmitting, setRestartSubmitting] = useState(false);
-  const [jobPatchLines, setJobPatchLines] = useState<PatchLine[]>([]);
-  const [scopePatchLines, setScopePatchLines] = useState<ScopePatchLine[]>([]);
+  const [drafts, setDrafts] = useState<Record<string, { job: PatchLine[]; scope: ScopePatchLine[] }>>({});
+  const [inspection, setInspection] = useState<{ key: string; snapshot?: RestartContext }>();
   const [applyPatch, setApplyPatch] = useState(false);
 
   const [pendingInputDetails, setPendingInputDetails] = useState<UserInputDetails | null>(null);
@@ -647,12 +627,31 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const submissionRestart = restartChapterOrdinal === 0;
   const restartScopeID = restartScope && restartScopes.filter(scope => scope.scope_id === restartScope.scope_id).length === 1 ? restartScope.scope_id : undefined;
   const restartable = !!restartScope;
+  const draftKey = JSON.stringify([projectId, jobId, restartSelection]);
+  const jobPatchLines = drafts[draftKey]?.job || [];
+  const scopePatchLines = drafts[draftKey]?.scope || [];
+  const setJobPatchLines = (update: PatchLine[] | ((lines: PatchLine[]) => PatchLine[])) => setDrafts(prev => {
+    const draft = prev[draftKey] || { job: [], scope: [] };
+    return { ...prev, [draftKey]: { ...draft, job: typeof update === 'function' ? update(draft.job) : update } };
+  });
+  const setScopePatchLines = (update: ScopePatchLine[] | ((lines: ScopePatchLine[]) => ScopePatchLine[])) => setDrafts(prev => {
+    const draft = prev[draftKey] || { job: [], scope: [] };
+    return { ...prev, [draftKey]: { ...draft, scope: typeof update === 'function' ? update(draft.scope) : update } };
+  });
+  const onSnapshot = useCallback((snapshot?: RestartContext) => setInspection({ key: draftKey, snapshot }), [draftKey]);
+  let generatedPatch: ReturnType<typeof buildContextPatch> | undefined;
+  let patchError: string | undefined;
+  if (applyPatch && !submissionRestart) {
+    try { generatedPatch = buildContextPatch(inspection?.key === draftKey ? inspection.snapshot : undefined, jobPatchLines, scopePatchLines); }
+    catch (error) { patchError = error instanceof Error ? error.message : 'Cannot generate patch'; }
+  }
+
 
   const resetRestartState = () => {
     setRestartSelection(undefined);
     setApplyPatch(false);
-    setJobPatchLines([]);
-    setScopePatchLines([]);
+    setDrafts({});
+    setInspection(undefined);
   };
 
   const openRestart = () => {
@@ -669,23 +668,24 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const submitRestart = async () => {
     if (!jobId || !restartable) return;
 
-    const contextPatch = applyPatch && !submissionRestart ? buildContextPatch(jobPatchLines, scopePatchLines) : null;
+    if (patchError) return;
+    const contextPatch = generatedPatch;
 
     setRestartSubmitting(true);
     try {
       const payload = { ...(restartScopeID ? { scope_id: restartScopeID } : { chapter_ordinal: restartChapterOrdinal }), goal: { mode: restartGoalMode }, ...(contextPatch ? { patch: contextPatch } : {}) };
-      const storageKey = 'cells-v1:' + `cortex:restart:${projectId}:${jobId}`;
-      const serialized = JSON.stringify(payload);
+      const storageKey = 'json-patch-v2:' + `cortex:restart:${projectId}:${jobId}`;
+      const serialized = stringifyJobJSON(payload)!;
       const stored = sessionStorage.getItem(storageKey);
-      const previous = stored ? JSON.parse(stored) : null;
+      const previous = stored ? parseJobJSON(stored) as { payload: string; request: unknown } : null;
       const request = previous?.payload === serialized ? previous.request : { ...payload, request_id: newId() };
-      sessionStorage.setItem(storageKey, JSON.stringify({ payload: serialized, request }));
+      sessionStorage.setItem(storageKey, stringifyJobJSON({ payload: serialized, request })!);
       const response = await fetch(
         `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/restart`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(request),
+          body: stringifyJobJSON(request),
         }
       );
 
@@ -1425,7 +1425,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         }}
         width={900}
         okText="Restart"
-        okButtonProps={{ loading: restartSubmitting, disabled: !restartable }}
+        okButtonProps={{ loading: restartSubmitting, disabled: !restartable || !!patchError }}
         onOk={submitRestart}
       >
         {selectedNode ? (
@@ -1484,7 +1484,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                   <Text type="secondary">No context patch will be applied.</Text>
                 ) : (
                   <Space direction="vertical" style={{ width: '100%' }} size="large">
-                    <RestartContextPreview projectId={projectId} jobId={jobId} scopeId={restartScopeID} chapterOrdinal={restartable && !restartScopeID ? restartChapterOrdinal : undefined} />
+                    <RestartContextPreview onSnapshot={onSnapshot} projectId={projectId} jobId={jobId} scopeId={restartScopeID} chapterOrdinal={restartable && !restartScopeID ? restartChapterOrdinal : undefined} />
                     <Card
                       size="small"
                       title="Job Patch (global)"
@@ -1503,7 +1503,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                       }
                     >
                       <Text type="secondary">
-                        Each line sets a merge-patch value under <Text code>context</Text>. Use dot
+                        Each line edits a value under <Text code>context</Text>. Use dot
                         paths like <Text code>git.author</Text>. Values accept JSON (e.g.{' '}
                         <Text code>"james@example.com"</Text>, <Text code>true</Text>,{' '}
                         <Text code>123</Text>, <Text code>null</Text>) or raw text.
@@ -1588,7 +1588,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                       }
                     >
                       <Text type="secondary">
-                        Each line applies a merge-patch value under a scope container’s outputs.
+                        Each line edits a value under a scope container’s outputs.
                         Container is <Text code>sequence</Text> or <Text code>states</Text>; id is the
                         step/state id; path is under outputs (dot path).
                       </Text>
@@ -1678,13 +1678,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                     </Card>
 
                     <Card size="small" title="Patch payload">
-                      <div role="region" aria-label="JSON data" className="technical-region" tabIndex={0}><ReactJson
-                        src={buildContextPatch(jobPatchLines, scopePatchLines) ?? {}}
-                        collapsed={2}
-                        displayDataTypes={false}
-                        enableClipboard
-                        theme="rjv-default"
-                      /></div>
+                      {patchError ? <Alert type="error" message={patchError} /> : <pre aria-label="Patch payload">{stringifyJobJSON(generatedPatch, 2)}</pre>}
                     </Card>
                   </Space>
                 )}

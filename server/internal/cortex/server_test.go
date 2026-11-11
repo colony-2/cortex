@@ -213,6 +213,72 @@ func testTenantCellsAndRecipeJobs(t *testing.T, srv *Server) {
 	if artifactResponse.StatusCode != http.StatusOK || string(content) != "test result" {
 		t.Fatalf("artifact status=%d body=%s", artifactResponse.StatusCode, content)
 	}
+
+	// Public ingress rejects malformed or unauthorized patches before submission.
+	beforeInvalid := getJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs?status=all")
+	for _, raw := range []string{
+		`null`, `{}`, `{"job":{}}`, `true`, `1`, `"patch"`, `[{}]`,
+		`[{"op":"unknown","path":"/context/git/author"}]`,
+		`[{"op":"add","path":"/context/git/author"}]`,
+		`[{"op":"remove","path":"/context/workspace"}]`,
+		`[{"op":"remove","path":"/context/git/no_such_field"}]`,
+		`[{"op":"copy","from":"/job_id","path":"/context/git/author"}]`,
+		`[{"op":"copy","from":"/sequence/a/inputs/x","path":"/context/git/author"}]`,
+		`[{"op":"add","path":"/sequence/a/outputs/b~2","value":1}]`,
+		`[{"op":"add","path":"/context/git/author","value":123}]`,
+	} {
+		body := `{"request_id":"invalid","scope_id":"scope-test","goal":{"mode":"new"},"patch":` + raw + `}`
+		req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/projects/42/jobs/job-alpha-1/restart", bytes.NewBufferString(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := doJSON[errorResponse](t, req, http.StatusBadRequest)
+		if response.Error == "" {
+			t.Fatalf("no actionable error for %s", raw)
+		}
+	}
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/projects/42/jobs/job-alpha-1/restart", bytes.NewBufferString(`{"request_id":"trailing","scope_id":"scope-test","goal":{"mode":"new"}} {}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doJSON[errorResponse](t, req, http.StatusBadRequest)
+	afterInvalid := getJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs?status=all")
+	if len(beforeInvalid["jobs"].([]interface{})) != len(afterInvalid["jobs"].([]interface{})) {
+		t.Fatal("invalid patch submitted a job")
+	}
+	for index, raw := range []string{"", `[]`, `[{"op":"add","path":"/sequence/a~1b/outputs/n","value":9007199254740993},{"op":"test","path":"/sequence/a~1b/outputs/n","value":9007199254740993},{"op":"copy","path":"/sequence/a~1b/outputs/c","from":"/sequence/a~1b/outputs/n"},{"op":"move","path":"/sequence/a~1b/outputs/m","from":"/sequence/a~1b/outputs/c"},{"op":"replace","path":"/sequence/a~1b/outputs/m","value":null},{"op":"remove","path":"/sequence/a~1b/outputs/m"}]`} {
+		body := fmt.Sprintf(`{"request_id":"ordered-%d","scope_id":"scope-test","goal":{"mode":"new"}`, index)
+		if raw != "" {
+			body += `,"patch":` + raw
+		}
+		body += `}`
+		req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/projects/42/jobs/job-alpha-1/restart", bytes.NewBufferString(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		result := doJSON[map[string]interface{}](t, req, http.StatusCreated)
+		for _, field := range []string{"job_id", "tenant_id", "goal_id"} {
+			if result[field] == nil || result[field] == "" {
+				t.Fatalf("missing %s: %#v", field, result)
+			}
+		}
+		run, err := srv.engine.GetJobRun(ctx, jobdb.GetJobRunRequest{JobKey: jobdb.JobKey{TenantId: "42", JobId: result["job_id"].(string)}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, entry := range run.Execution {
+			if entry.Record.Kind == "restart" && entry.Record.ID == "scope-test" {
+				found = true
+				if string(entry.Record.Payload) != raw {
+					t.Fatalf("patch altered: got %s want %s", entry.Record.Payload, raw)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("restart record missing")
+		}
+	}
 	newJob := postJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs/job-alpha-1/restart", map[string]interface{}{"request_id": "restart-test", "goal": map[string]interface{}{"mode": "new"}, "scope_id": "scope-test", "patch": []map[string]interface{}{{"op": "add", "path": "/context/git/author", "value": "patched"}}})
 	newID, ok := newJob["job_id"].(string)
 	if !ok || newID == "" || newID == "job-alpha-1" {

@@ -54,7 +54,7 @@ every displayed location; the existing manual selector remains the fallback.
 - `pkg/worker/compiler/execution_scope.go`: maintains the resolver state on entry
   to a durable scope and applies restart patches to a cloned state. That state is
   the appropriate source for this feature.
-- `pkg/template/context_patch.go`: applies job patches to applicable ancestor
+- `pkg/template/context_patch.go`: applies JSON Patch to applicable ancestor
   contexts and scoped patches to locally visible `sequence` or `states` outputs.
   This behavior cannot safely be reproduced by merging displayed node inputs and
   outputs in Cortex.
@@ -103,7 +103,7 @@ It should return:
 - The complete context that will form the base for a restart at that boundary,
   before the user's proposed patch is applied.
 - The job-level context and locally visible sequence/state output containers in
-  shapes that can be related directly to `ContextPatch.Job` and `ContextPatch.Scopes`.
+  shapes that can be related directly to the JSON Patch `/context` and `/sequence|states/<id>/outputs` namespaces.
 - Other template-visible values needed to understand the restart, clearly
   distinguished from editable fields. Unchanged values must remain visible.
 - Explicit availability/redaction information. Missing data must not be represented

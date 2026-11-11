@@ -1,3 +1,4 @@
+import { parseJobJSON, stringifyJobJSON } from '../../shared/src/jobJSON';
 import { registerCell } from './helpers/cells';
 import { fixtureGitTransport } from './helpers/gitTransport';
 import { abbreviatePrompt } from '../src/utils/goalPresentation';
@@ -234,8 +235,9 @@ test.describe('cancel review job', () => {
 for (const multiField of [false, true]) {
   test.describe(multiField ? 'multi-field' : 'single-question', () => {
     test.use({ recipeFixture: multiField ? 'browser-input-fields' : 'browser-input' });
-    test('answers recipe input and resumes the worker to completion', async ({ page, request, recipeRun }) => {
+    test('answers recipe input and resumes the worker to completion', async ({ page, request, recipeRun }, testInfo) => {
       const { tenant, jobID, observer, startWorker, stopWorker } = recipeRun;
+      test.setTimeout(180_000);
       const answer = `approved-${randomUUID()}`;
       // Kill the worker while the request is pending: the answer must survive
       // in JobDB and be picked up by a fresh worker, not an in-process promise.
@@ -342,6 +344,17 @@ for (const multiField of [false, true]) {
         await restartDialog.getByPlaceholder('e.g. git.author').fill('git.author');
         await restartDialog.getByPlaceholder('e.g. "james@example.com"').fill('Patched Author <patched@example.com>');
         expect(await beforeView.innerText()).toBe(beforeText);
+        await restartDialog.getByRole('button', { name: 'Add line', exact: true }).last().click();
+        await restartDialog.getByPlaceholder('e.g. build').fill('seed');
+        await restartDialog.getByPlaceholder('e.g. image_tag').fill('nested');
+        await restartDialog.getByPlaceholder('e.g. "v2"').fill('{"value":"edited","remove":null}');
+        const preview = JSON.parse((await restartDialog.getByLabel('Patch payload', { exact: true }).textContent())!);
+        expect(preview).toEqual([
+          { op: Object.hasOwn(before.job.git, 'author') ? 'replace' : 'add', path: '/context/git/author', value: 'Patched Author <patched@example.com>' },
+          { op: 'remove', path: '/sequence/seed/outputs/nested/remove' },
+          { op: 'replace', path: '/sequence/seed/outputs/nested/value', value: 'edited' },
+        ]);
+
         // Invalid selectors and cross-tenant reads must never become snapshots.
         expect((await request.get(`/api/projects/other-${tenant}/jobs/${jobID}/restart-context?chapter_ordinal=${expectedChapter}`)).status()).toBe(404);
         expect((await request.get(`/api/projects/${tenant}/jobs/${jobID}/restart-context?chapter_ordinal=-1`)).status()).toBe(400);
@@ -357,18 +370,143 @@ for (const multiField of [false, true]) {
           await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
           await restartDialog.getByRole('button', { name: 'Restart', exact: true }).scrollIntoViewIfNeeded();
           await expect(restartDialog.getByRole('button', { name: 'Restart', exact: true })).toBeInViewport();
+          if (width === 1440) await page.screenshot({ path: testInfo.outputPath('restart-desktop.png'), fullPage: true });
         }
         await page.setViewportSize({ width: 390, height: 844 });
+        await page.screenshot({ path: testInfo.outputPath('restart-phone.png'), fullPage: true });
         const restarted = page.waitForResponse(r => r.url().endsWith(`/jobs/${jobID}/restart`) && r.request().method() === 'POST');
         await restartDialog.getByRole('button', { name: 'Restart', exact: true }).click();
         const restartResponse = await restarted;
         expect(restartResponse.status(), await restartResponse.text()).toBe(201);
-        expect(restartResponse.request().postDataJSON()).toEqual({ scope_id: expectedScope, request_id: expect.any(String), goal: { mode: 'new' }, patch: [{op:'add',path:'/context/git/author',value:'Patched Author <patched@example.com>'}] });
+        expect(restartResponse.request().postDataJSON()).toEqual({ scope_id: expectedScope, request_id: expect.any(String), goal: { mode: 'new' }, patch: preview });
         const newJobID = (await restartResponse.json()).job_id;
         expect(newJobID).not.toBe(jobID);
         await expect(page).toHaveURL(new RegExp(`/jobs/${newJobID}/story(?:\\?executionState=cells-v1)?$`));
         startWorker(newJobID);
         await expect(observer.getByText(`Job ID: ${newJobID}`, { exact: true })).toBeVisible();
+        const accepted = await request.post(`/api/projects/${tenant}/user-inputs/${newJobID}/respond`, { data: { fields: { response: 'restarted answer' }, response: 'restarted answer' } });
+        expect(accepted.status(), await accepted.text()).toBe(200);
+        await expect.poll(async () => {
+          const outcome = await request.get(`/api/projects/${tenant}/jobs/${newJobID}/outcome`);
+          return outcome.status() === 200 ? outcome.json() : {};
+        }, { timeout: 30000 }).toMatchObject({ status: 'completed', output: { answer: 'restarted answer', seed: { nested: { keep: 'untouched', value: 'edited' } } } });
+        const completedRestart = await (await request.get(`/api/projects/${tenant}/jobs/${newJobID}/outcome`)).json();
+        expect(completedRestart.output.seed.nested).not.toHaveProperty('remove');
+        expect(completedRestart.output.seed.array).toEqual(['a', 'b', 'c']);
+        await stopWorker();
+        const restartAPI = async (patch: unknown[]) => {
+          const response = await request.post(`/api/projects/${tenant}/jobs/${jobID}/restart`, { data: { scope_id: expectedScope, request_id: randomUUID(), goal: { mode: 'new' }, patch } });
+          expect(response.status(), await response.text()).toBe(201);
+          return (await response.json()).job_id as string;
+        };
+        const apiJob = await restartAPI([
+          { op: 'test', path: '/sequence/seed/outputs/a~1b~0c', value: 'escaped' },
+          { op: 'replace', path: '/sequence/seed/outputs/literal.key', value: 'changed dotted' },
+          { op: 'add', path: '/sequence/seed/outputs/array/1', value: 'inserted' },
+          { op: 'copy', from: '/sequence/seed/outputs/array/0', path: '/sequence/seed/outputs/copied' },
+          { op: 'move', from: '/sequence/seed/outputs/array/0', path: '/sequence/seed/outputs/array/2' },
+          { op: 'remove', path: '/sequence/seed/outputs/nested/remove' },
+          { op: 'add', path: '/sequence/seed/outputs/nullValue', value: null },
+          { op: 'replace', path: '/sequence/seed/outputs/object', value: { only: true } },
+          { op: 'add', path: '/sequence/seed/outputs/n', value: 123 },
+          { op: 'test', path: '/sequence/seed/outputs/n', value: 123 },
+        ]);
+        startWorker(apiJob);
+        await expect.poll(async () => (await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).some((input: { id: string }) => input.id === apiJob)).toBe(true);
+        expect((await request.post(`/api/projects/${tenant}/user-inputs/${apiJob}/respond`, { data: { fields: { response: 'api answer' }, response: 'api answer' } })).status()).toBe(200);
+        let apiOutput: any;
+        await expect.poll(async () => {
+          const response = await request.get(`/api/projects/${tenant}/jobs/${apiJob}/outcome`);
+          if (response.status() !== 200) return false;
+          const outcome = await response.json(); apiOutput = outcome.output; return outcome.status === 'completed';
+        }).toBe(true);
+        expect(apiOutput.seed).toEqual({ nested: { keep: 'untouched', value: 'old' }, array: ['inserted', 'b', 'a', 'c'], object: { only: true }, 'a/b~c': 'escaped', 'literal.key': 'changed dotted', copied: 'a', nullValue: null, n: 123 });
+        await stopWorker();
+
+        // Exact persisted values must reach inspection before the browser diffs
+        // them. Never obtain these tokens through APIResponse.json().
+        const exactValues = parseJobJSON('{"n":9007199254740993,"untouched":184467440737095516170,"decimal":1.23000000000000000001,"array":[9007199254740993,9007199254740995]}');
+        const exactResponse = await request.post(`/api/projects/${tenant}/jobs/${jobID}/restart`, {
+          headers: { 'Content-Type': 'application/json' },
+          data: stringifyJobJSON({ scope_id: expectedScope, request_id: randomUUID(), goal: { mode: 'new' }, patch: [{ op: 'add', path: '/sequence/seed/outputs/exact', value: exactValues }] }),
+        });
+        expect(exactResponse.status(), await exactResponse.text()).toBe(201);
+        const exactJob = (await exactResponse.json()).job_id;
+        startWorker(exactJob);
+        await expect.poll(async () => (await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).some((input: { id: string }) => input.id === exactJob)).toBe(true);
+        expect((await request.post(`/api/projects/${tenant}/user-inputs/${exactJob}/respond`, { data: { fields: { response: 'exact answer' }, response: 'exact answer' } })).status()).toBe(200);
+        await expect.poll(async () => (await (await request.get(`/api/projects/${tenant}/jobs/${exactJob}`)).json()).completion_status).toBe('success');
+        await stopWorker();
+        const exactStory = await (await request.get(`/api/projects/${tenant}/jobs/${exactJob}/story`)).json();
+        const capture = taskNodes(exactStory.root).find(node => node.kind === 'sequence' && node.title === 'capture');
+        expect(capture?.restart_scope_id).toBeTruthy();
+        const exactInspection = await request.get(`/api/projects/${tenant}/jobs/${exactJob}/restart-context?scope_id=${encodeURIComponent(capture.restart_scope_id)}`);
+        expect(exactInspection.status(), await exactInspection.text()).toBe(200);
+        const exactSnapshot = parseJobJSON(await exactInspection.text()) as any;
+        expect(stringifyJobJSON(exactSnapshot.visible.sequence.seed.outputs.exact)).toBe('{"array":[9007199254740993,9007199254740995],"decimal":1.23000000000000000001,"n":9007199254740993,"untouched":184467440737095516170}');
+        await page.goto(`/project/${tenant}/jobs/${exactJob}/story?nodeId=${encodeURIComponent(capture.id)}`);
+        await page.getByRole('button', { name: 'Restart job', exact: true }).click();
+        await restartDialog.getByRole('switch').click();
+        await expect(restartDialog.getByRole('region', { name: 'Context before patching' })).toContainText('184467440737095516170');
+        const exactRows = [
+          ['exact.n', '9007199254740999'],
+          ['exact.array', '[9007199254740993,9007199254740995]'],
+          ['nested.value', 'exact edit'],
+        ];
+        for (const [path, value] of exactRows) {
+          await restartDialog.getByRole('button', { name: 'Add line', exact: true }).last().click();
+          await restartDialog.getByPlaceholder('e.g. build').last().fill('seed');
+          await restartDialog.getByPlaceholder('e.g. image_tag').last().fill(path);
+          await restartDialog.getByPlaceholder('e.g. "v2"').last().fill(value);
+        }
+        await page.screenshot({ path: testInfo.outputPath('restart-exact.png'), fullPage: true });
+        const exactPreview = parseJobJSON((await restartDialog.getByLabel('Patch payload', { exact: true }).textContent())!);
+        expect(stringifyJobJSON(exactPreview)).toBe('[{"op":"replace","path":"/sequence/seed/outputs/exact/n","value":9007199254740999},{"op":"replace","path":"/sequence/seed/outputs/nested/value","value":"exact edit"}]');
+        const exactRestart = page.waitForResponse(response => response.url().endsWith(`/jobs/${exactJob}/restart`) && response.request().method() === 'POST');
+        await restartDialog.getByRole('button', { name: 'Restart', exact: true }).click();
+        const exactAccepted = await exactRestart;
+        expect(exactAccepted.status(), await exactAccepted.text()).toBe(201);
+        const exactRequest = parseJobJSON(exactAccepted.request().postData()!) as any;
+        expect(stringifyJobJSON(exactRequest.patch)).toBe(stringifyJobJSON(exactPreview));
+        expect(exactRequest.scope_id).toBe(capture.restart_scope_id);
+        const editedExactJob = (await exactAccepted.json()).job_id;
+        startWorker(editedExactJob);
+        await expect.poll(async () => (await (await request.get(`/api/projects/${tenant}/jobs/${editedExactJob}`)).json()).completion_status).toBe('success');
+        // Inspect the worker's captured output at the following boundary. The
+        // general outcome projection currently decodes generic numbers as float64.
+        const editedExactStory = await (await request.get(`/api/projects/${tenant}/jobs/${editedExactJob}/story`)).json();
+        const verified = taskNodes(editedExactStory.root).find(node => node.kind === 'sequence' && node.title === 'verified');
+        expect(verified?.restart_scope_id).toBeTruthy();
+        const verifiedContext = await request.get(`/api/projects/${tenant}/jobs/${editedExactJob}/restart-context?scope_id=${encodeURIComponent(verified.restart_scope_id)}`);
+        expect(verifiedContext.status(), await verifiedContext.text()).toBe(200);
+        const exactOutput = (parseJobJSON(await verifiedContext.text()) as any).visible.sequence.capture.outputs;
+        expect(stringifyJobJSON(exactOutput.seed.exact)).toBe('{"array":[9007199254740993,9007199254740995],"decimal":1.23000000000000000001,"n":9007199254740999,"untouched":184467440737095516170}');
+        expect(exactOutput.seed.nested).toEqual({ keep: 'untouched', value: 'exact edit', remove: 'gone' });
+        await stopWorker();
+        for (const failure of [
+          { op: 'replace', path: '/sequence/seed/outputs/missing', value: 1 },
+          { op: 'add', path: '/sequence/seed/outputs/missing/child', value: 1 },
+          { op: 'copy', from: '/sequence/seed/outputs/missing', path: '/sequence/seed/outputs/copy' },
+          { op: 'add', path: '/sequence/invisible/outputs/value', value: 1 },
+          { op: 'add', path: '/states/invisible/outputs/value', value: 1 },
+          { op: 'test', path: '/sequence/seed/outputs/nested/value', value: 'wrong' },
+        ]) {
+          const failedJob = await restartAPI([{ op: 'replace', path: '/sequence/seed/outputs/nested/value', value: 'must not leak' }, failure]);
+          startWorker(failedJob);
+          await expect.poll(async () => (await (await request.get(`/api/projects/${tenant}/jobs/${failedJob}`)).json()).completion_status).toBe('failed_app');
+          const failedStory = await (await request.get(`/api/projects/${tenant}/jobs/${failedJob}/story`)).json();
+          expect(JSON.stringify(failedStory)).not.toContain('"value":"must not leak"');
+          await stopWorker();
+          if (failure.op === 'test') {
+            await page.goto(`/project/${tenant}/jobs/${failedJob}/story?tab=execution`);
+            await expect(page.getByRole('dialog')).toHaveCount(0);
+            await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+            await expect(page.getByRole('region', { name: 'Job completion', exact: true })).toContainText('test failed');
+            await page.screenshot({ path: testInfo.outputPath('restart-worker-failure.png'), fullPage: true });
+          }
+        }
+
+
       }
     });
   });
@@ -757,7 +895,10 @@ test.describe('multi-format review viewers', () => {
           await expect(frame.getByRole('heading')).toHaveCSS('color','rgb(20, 100, 160)');
           await expect(frame.locator('output')).toHaveText('first second');
           await expect.poll(()=>frame.getByAltText('Authorized screenshot').evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBe(1280);
-          await frame.getByRole('button',{name:'Activate'}).click();
+          // Native zoom plus narrow viewport can misplace Chromium's iframe
+          // pointer coordinates. Exercise normal keyboard activation instead.
+          await frame.getByRole('button',{name:'Activate'}).focus();
+          await page.keyboard.press('Enter');
           await expect(frame.locator('output')).toHaveText('clicked');
         } else await expect(frame.locator('output')).toHaveText('connection blocked');
         await page.getByRole('region',{name:'Selected document',exact:true}).screenshot({path:testInfo.outputPath(`${name}-interactive.png`)});
