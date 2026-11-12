@@ -4,7 +4,8 @@ import { jobIdentity } from './helpers/cells';
 
 const job = { ...jobIdentity, tenant_id: 'tenant', job_id: 'job', goal_id: 'goal', title: 'Inspect lease history', prompt: 'Keep ordinary job details usable', status: 'READY', store: 'ACTIVE', job_type: 'recipe', recipe:'build', created_at: '2026-11-07T00:00:00.000000001Z' };
 const pane = (page:Page) => page.getByRole('region',{name:'Lease timeline',exact:true});
-const timeline = (page:Page) => pane(page).getByRole('button',{name:'Timeline',exact:true});
+const timeline = (page:Page) => page.getByRole('tab',{name:'Lease timeline',exact:true}).or(pane(page).getByRole('button',{name:'Timeline',exact:true}));
+const leaveTimeline = async (page:Page) => { const tab=page.getByRole('tab',{name:'Conversation',exact:true}); if(await tab.count()) await tab.click(); else await timeline(page).click(); };
 async function fixtures(page: Page) {
   if (process.env.CORTEX_DEBUG_BROWSER) {
     page.on('console', message => console.log('CONSOLE',message.type(),message.text()));
@@ -43,7 +44,7 @@ async function surface(page:Page, which:'story'|'detail') {
 for(const which of ['story','detail'] as const) {
   test(`${which}: zero ordinary reads, one keyboard opening, explicit paging, tied renewal details and fresh reopening`,async({page})=>{
     const fixture=await fixtures(page); await surface(page,which);
-    await expect(timeline(page)).toHaveAttribute('aria-expanded','false');
+    await expect(timeline(page)).toHaveAttribute(which==='story'?'aria-selected':'aria-expanded','false');
     expect(fixture.requests).toHaveLength(0);
     await timeline(page).focus(); await page.keyboard.press('Enter');
     await expect(pane(page).getByRole('listitem')).toHaveCount(2);
@@ -67,7 +68,7 @@ for(const which of ['story','detail'] as const) {
     await pane(page).locator('summary').last().focus(); await page.keyboard.press('Enter');
     await expect(pane(page).getByText('replaced-lease',{exact:true})).toBeVisible();
     if(process.env.CORTEX_REVIEW_ARTIFACTS) await page.screenshot({path:`${process.env.CORTEX_REVIEW_ARTIFACTS}/${which}-timeline-details.png`,fullPage:false});
-    await timeline(page).click(); await expect(pane(page).getByText('Job created',{exact:true})).toHaveCount(0);
+    await leaveTimeline(page); await expect(pane(page).getByText('Job created',{exact:true})).toHaveCount(0);
     await timeline(page).click(); await expect.poll(()=>fixture.requests.length).toBe(3);
     expect(fixture.requests[2].searchParams.has('pageToken')).toBe(false);
   });
@@ -115,7 +116,7 @@ test('overlapping older actions are disabled, closing cancels and ignores late h
   await expect(pane(page).getByRole('button',{name:'Load older lease events'})).toBeDisabled();
   expect(fixture.requests).toHaveLength(2);
   const canceled=page.waitForEvent('requestfailed',req=>req.url().includes('/events'));
-  await timeline(page).click(); await canceled;
+  await leaveTimeline(page); await canceled;
   release();
   await expect(pane(page).getByRole('listitem')).toHaveCount(0);
   fixture.setResponder(async route=>{await route.fulfill({json:{events:[]}});});
@@ -128,10 +129,11 @@ test('UI identity signal clears the pane and cancels work without establishing a
   fixture.setResponder(async route=>{await wait; await route.fulfill({json:{events:[leaseEvent('late')]}}).catch(()=>{});});
   await timeline(page).click(); await expect(pane(page).getByRole('status')).toBeVisible();
   const canceled=page.waitForEvent('requestfailed',req=>req.url().includes('/events'));
-  await page.evaluate(()=>{document.cookie='colony2:user:email=changed@example.com; path=/';window.dispatchEvent(new Event('cortex-ui-identity'));});
-  await canceled; await expect(timeline(page)).toHaveAttribute('aria-expanded','false'); release();
   fixture.setResponder(async route=>{await route.fulfill({json:{events:[]}});});
-  await timeline(page).click(); await expect(pane(page).getByText('No retained lease events are available.')).toBeVisible();
+  await page.evaluate(()=>{document.cookie='colony2:user:email=changed@example.com; path=/';window.dispatchEvent(new Event('cortex-ui-identity'));});
+  await canceled; await expect(timeline(page)).toHaveAttribute('aria-selected','true'); release();
+  fixture.setResponder(async route=>{await route.fulfill({json:{events:[]}});});
+  await expect(pane(page).getByText('No retained lease events are available.')).toBeVisible();
   expect(fixture.requests).toHaveLength(2);
 });
 test('navigation cancels the pending read and the destination starts closed',async({page})=>{
@@ -140,7 +142,7 @@ test('navigation cancels the pending read and the destination starts closed',asy
   fixture.setResponder(async route=>{await wait; await route.fulfill({json:{events:[leaseEvent('late')]}}).catch(()=>{});});
   await timeline(page).click(); await expect(pane(page).getByRole('status')).toBeVisible();
   const canceled=page.waitForEvent('requestfailed',req=>req.url().includes('/events'));
-  await page.getByRole('button',{name:'Back to Goals'}).click(); await canceled; release();
-  await page.goto('/project/tenant/jobs/job/story'); await expect(timeline(page)).toHaveAttribute('aria-expanded','false');
+  await page.getByRole('link',{name:'Goal overview',exact:true}).click(); await canceled; release();
+  await page.goto('/project/tenant/jobs/job/story'); await expect(timeline(page)).toHaveAttribute('aria-selected','false');
   expect(fixture.requests).toHaveLength(1);
 });

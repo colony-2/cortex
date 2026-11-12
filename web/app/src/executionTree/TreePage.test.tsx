@@ -143,3 +143,41 @@ it.each([
   else delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
  }
 });
+
+it('MRV-002 starts one entry read under StrictMode, aborts on departure and automatically resumes only once', async () => {
+ vi.mocked(getTreeNode).mockReset();
+ vi.mocked(getTreeChildren).mockReset();
+ let releaseOld!: (value: any) => void;
+ vi.mocked(getTreeNode).mockImplementationOnce(() => new Promise(resolve => { releaseOld = resolve; }))
+  .mockResolvedValue({node:{tenant_id:'t',job_id:'one',job_type:'recipe',status:'READY'},observed_at:'current'});
+ vi.mocked(getTreeChildren).mockResolvedValue({nodes:[],observed_at:'current'});
+ const view = (active: boolean) => <StrictMode><MemoryRouter><TreeWorkspace tenant="t" entry="one" active={active} embedded /></MemoryRouter></StrictMode>;
+ const {rerender} = render(view(true));
+ await waitFor(() => expect(getTreeNode).toHaveBeenCalledTimes(1));
+ const signal = vi.mocked(getTreeNode).mock.calls[0][2]!;
+ rerender(view(false));
+ expect(signal.aborted).toBe(true);
+ expect(getTreeNode).toHaveBeenCalledTimes(1);
+ rerender(view(true));
+ await screen.findByText('Discovery finished:',{exact:false});
+ expect(getTreeNode).toHaveBeenCalledTimes(2);
+ expect(getTreeChildren).toHaveBeenCalledTimes(1);
+ await act(async () => { releaseOld({node:{tenant_id:'t',job_id:'obsolete',job_type:'recipe',status:'READY'},observed_at:'old'}); });
+ await waitFor(() => expect(screen.getByRole('complementary')).toHaveTextContent('one'));
+ expect(screen.queryByText('obsolete',{exact:true})).toBeNull();
+ expect(getTreeNode).toHaveBeenCalledTimes(2);
+});
+
+it('MRV-002 does not start a queued discovery after leaving the tab', async () => {
+ vi.mocked(getTreeNode).mockReset();
+ vi.mocked(getTreeChildren).mockResolvedValue({nodes:[],observed_at:'now'});
+ vi.mocked(getTreeNode).mockResolvedValue({node:{tenant_id:'t',job_id:'one',job_type:'recipe',status:'READY'},observed_at:'now'});
+ const view = (active: boolean) => <StrictMode><MemoryRouter><TreeWorkspace tenant="t" entry="one" active={active} embedded /></MemoryRouter></StrictMode>;
+ const {rerender} = render(view(true));
+ rerender(view(false));
+ await act(async () => {});
+ expect(getTreeNode).not.toHaveBeenCalled();
+ rerender(view(true));
+ await screen.findByText('Discovery finished:',{exact:false});
+ expect(getTreeNode).toHaveBeenCalledTimes(1);
+});

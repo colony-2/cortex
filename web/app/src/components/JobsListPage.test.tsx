@@ -19,6 +19,7 @@ vi.mock('@colony2/shared/api', async (importOriginal) => ({
 }));
 vi.mock('react-json-view', () => ({ default: ({ src }: { src: unknown }) => <pre>{JSON.stringify(src)}</pre> }));
 
+function BrowserBack() { const navigate = useNavigate(); return <button onClick={() => navigate(-1)}>Browser back</button>; }
 beforeEach(() => { vi.mocked(listCells).mockResolvedValue({ cells: ['platform', 'app', 'alpha', 'zeta', 'middle'].map(name => registryCell(name)) });
  vi.mocked(getCell).mockImplementation(async (tenant, id) => registryCell(id.replace(/^cell-/, ''), tenant)); vi.mocked(getJob).mockReset().mockResolvedValue({ ...jobIdentity, goal_id: 'goal', job_id: 'job', status: 'READY', store: 'ACTIVE' } as RecipeJob); });
 afterEach(async () => {
@@ -174,13 +175,14 @@ it.each(['', '?view=all', '?status=ACTIVE&status=READY&cellId=cell-platform', '?
     if (url.pathname.endsWith('/story')) {
       data = { ...jobIdentity, job_id: 'job', status: 'completed', root: { id: 'root', kind: 'recipe', title: 'recipe build', status: 'succeeded', path: [] } };
     } else if (url.pathname.endsWith('/jobs')) {
+      if (url.searchParams.has('goal')) return new Response(JSON.stringify({ jobs: [] }));
       listReads.push(url);
       data = { jobs: [{ ...jobIdentity, job_id: 'job', prompt: 'Search term in the full prompt', cell_name: 'platform', status: 'READY', recipe: 'build', store: 'ACTIVE' }] };
     } else data = [];
     return new Response(JSON.stringify(data));
   }));
   render(<MemoryRouter initialEntries={[`/project/tenant/jobs${query}`]}>
-    <Location />
+    <Location /><BrowserBack />
     <Routes>
       <Route path="/project/:projectId/jobs" element={<JobsListPage projectId="tenant" />} />
       <Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId="tenant" />} />
@@ -189,8 +191,8 @@ it.each(['', '?view=all', '?status=ACTIVE&status=READY&cellId=cell-platform', '?
   const link = await screen.findByRole('link', { name: 'Job job: Ready', exact: true });
   expect(link).toHaveAttribute('href', `/project/tenant/jobs/job/story?executionState=cells-v1${query ? '&' + query.slice(1) : ''}`);
   fireEvent.click(link);
-  await screen.findByText('Run Summary');
-  fireEvent.click(screen.getByRole('button', { name: /Back to Goals/ }));
+  await screen.findByRole('tab', { name: 'Conversation' });
+  fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
   await screen.findByRole('link', { name: 'Job job: Ready', exact: true });
   expect(screen.getByTestId('location')).toHaveTextContent(`/project/tenant/jobs${query}`);
   await waitFor(() => expect(listReads).toHaveLength(2));
@@ -817,10 +819,10 @@ it.each(['ACTIVE', 'ARCHIVED'])('CID-010 opens an existing UUID job from the %s 
  const link = await screen.findByRole('link', { name: `Job ${id}: Ready`, exact: true });
  expect(link.getAttribute('href')).toContain(`/project/tenant/jobs/${id}/story`);
  fireEvent.click(link);
- await screen.findByText('Run Summary');
+ await screen.findByRole('tab', {name:'Conversation',exact:true});
  expect(getJob).toHaveBeenCalledWith('tenant', id);
  expect(fetchMock.mock.calls.some(([url]) => url.includes(`/projects/tenant/jobs/${id}/story`))).toBe(false);
- fireEvent.click(screen.getByRole('tab', { name: 'Steps', exact: true }));
+ fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
  await screen.findByRole('tree');
  expect(fetchMock.mock.calls.some(([url]) => url.includes(`/projects/tenant/jobs/${id}/story`))).toBe(true);
 });

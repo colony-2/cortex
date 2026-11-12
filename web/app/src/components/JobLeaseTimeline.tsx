@@ -21,7 +21,7 @@ function readable(value?: string) {
   if (!value || value.startsWith('0001-') || !Number.isFinite(Date.parse(value))) return 'Recorded time unavailable';
   return new Date(value).toLocaleString();
 }
-type Props = { projectId: string; jobId: string; createdAt?: string; pageSize?: number };
+type Props = { projectId: string; jobId: string; createdAt?: string; pageSize?: number; expanded?: boolean };
 type State = { open: boolean; loading: boolean; rows: JobLeaseEvent[]; token?: string; error?: Error; retryToken?: string; loaded: boolean };
 const empty = (): State => ({ open: false, loading: false, rows: [], loaded: false });
 
@@ -32,12 +32,17 @@ export default function JobLeaseTimeline(props: Props) {
   return <Timeline key={JSON.stringify([API_BASE, identity, location.key, props.projectId, props.jobId, pageSize])} {...props} pageSize={pageSize} />;
 }
 
-function Timeline({ projectId, jobId, createdAt, pageSize }: Props) {
-  const [state, setState] = useState<State>(empty);
+function Timeline({ projectId, jobId, createdAt, pageSize, expanded = false }: Props) {
+  const [state, setState] = useState<State>(() => ({ ...empty(), open: expanded }));
   const generation = useRef(0);
   const pending = useRef<AbortController>();
   const invalidate = () => { ++generation.current; pending.current?.abort(); pending.current = undefined; };
-  useEffect(() => () => invalidate(), []);
+  useEffect(() => {
+    // Let StrictMode's setup/cleanup replay finish before starting a read.
+    let active = true;
+    if (expanded) queueMicrotask(() => { if (active) load(undefined, true); });
+    return () => { active = false; invalidate(); };
+  }, [expanded]);
 
   function load(token?: string, reset = false) {
     if (pending.current && !reset) return;
@@ -63,10 +68,10 @@ function Timeline({ projectId, jobId, createdAt, pageSize }: Props) {
   }
   const invalidCursor = state.error instanceof APIError && state.error.code === 'invalid_lease_event_page_token';
   return <section aria-label="Lease timeline" className="job-lease-timeline">
-    <button type="button" aria-expanded={state.open} onClick={() => {
+    {!expanded && <button type="button" aria-expanded={state.open} onClick={() => {
       if (state.open) { invalidate(); setState(empty()); }
       else load(undefined, true);
-    }}><span aria-hidden="true" style={{ marginInlineEnd: 8 }}>{state.open ? '▾' : '▸'}</span>Timeline</button>
+    }}>Timeline</button>}
     {state.open && <div>
       <p><strong>Job created</strong>: {readable(createdAt)}{createdAt && readable(createdAt) !== 'Recorded time unavailable' && <> · <time dateTime={createdAt}>{createdAt}</time></>}</p>
       <p>Recorded historical acquisitions and renewals. Collection and retention may omit earlier activity.</p>

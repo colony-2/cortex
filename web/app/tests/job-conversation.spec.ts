@@ -43,7 +43,7 @@ test('CT-001–007 default, panel visibility, keyboard navigation and URL restor
   await expect(page.getByRole('region', { name: 'Job completion' })).not.toContainText('Merge status');
   await expect(page.getByRole('tree')).toHaveCount(0);
   await page.screenshot({ path: info.outputPath('conversation.png'), animations:'disabled',fullPage: true });
-  for (const label of ['Steps', 'Relationships', 'Input artifacts', 'Summary', 'Conversation']) {
+  for (const label of ['Trace', 'Relationships', 'Input artifacts', 'Lease timeline', 'Conversation']) {
     await tabs.getByRole('tab', { name: label, exact: true }).click();
     await expect(page.locator('.job-detail-panel:visible')).toHaveCount(1);
     await expect(page.getByRole('tabpanel', { name: label, exact: true })).toBeVisible();
@@ -54,17 +54,17 @@ test('CT-001–007 default, panel visibility, keyboard navigation and URL restor
   await expect(tabs.getByRole('tab', { name: 'Relationships', exact: true })).toBeFocused();
   expect(await tabs.getByRole('tab', { name: 'Relationships', exact: true }).evaluate(element => getComputedStyle(element).outlineStyle)).toBe('solid');
   await page.keyboard.press('End');
-  await expect(tabs.getByRole('tab', { name: 'DAG', exact: true })).toBeFocused();
+  await expect(tabs.getByRole('tab', { name: 'Trace', exact: true })).toBeFocused();
   await page.reload();
-  await expect(tabs.getByRole('tab', { name: 'DAG', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(tabs.getByRole('tab', { name: 'Trace', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.goBack();
   await expect(tabs.getByRole('tab', { name: 'Relationships', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.goForward();
-  await expect(tabs.getByRole('tab', { name: 'DAG', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(tabs.getByRole('tab', { name: 'Trace', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.goto('/project/demo/jobs/job/story?tab=invalid&nodeId=root');
   await expect(conversation).toHaveAttribute('aria-selected', 'true');
   await page.goto('/project/demo/jobs/job/story?nodeId=root');
-  await expect(tabs.getByRole('tab', { name: 'Steps', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(tabs.getByRole('tab', { name: 'Trace', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.goto('/project/demo/jobs/job/story?requestId=opaque%2Funknown&tab=execution');
   await expect(conversation).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByText('Request unavailable', { exact: true })).toBeVisible();
@@ -80,7 +80,7 @@ test('CT-007 narrow tabs wrap without horizontal page overflow', async ({ page }
   expect(new Set(boxes.map(box => box.top)).size).toBeGreaterThan(1);
   expect(Math.max(...boxes.map(box => box.right))).toBeLessThanOrEqual(320);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
-  await tabs.getByRole('tab', { name: 'Summary', exact: true }).focus();
+  await tabs.getByRole('tab', { name: 'Trace', exact: true }).focus();
   await page.keyboard.press('Home');
   await expect(tabs.getByRole('tab', { name: 'Conversation', exact: true })).toBeFocused();
   await page.screenshot({ path: info.outputPath('conversation-narrow.png'), animations:'disabled',fullPage: true });
@@ -112,16 +112,16 @@ test('CT-014,021,031 retained answers and exact earlier review stay selected thr
   await page.getByRole('button', { name: 'Open review' }).first().click();
   await expect(page).toHaveURL(/occurrenceId=first/);
   const recorded = page.getByRole('region', { name: 'Recorded request', exact: true });
-  await expect(recorded.getByText('Occurrence: first')).toBeAttached();
+  await expect(recorded).toHaveAttribute('data-occurrence', 'first');
   await expect(recorded.getByRole('link', { name: 'Download original' })).toHaveAttribute('href', /entry_id=first&artifact_id=original/);
   await expect(recorded.getByRole('button', { name: /Submit/ })).toHaveCount(0);
   await page.reload();
-  await expect(recorded.getByText('Occurrence: first')).toBeAttached();
+  await expect(recorded).toHaveAttribute('data-occurrence', 'first');
   stage = 2;
   await page.getByRole('button', { name: /Refresh$/ }).click();
   await expect(page.getByRole('region', { name: 'Job completion' })).toContainText('Persisted completion');
   await expect(page.getByRole('region', { name: 'Job completion' })).not.toContainText('Merge status');
-  await expect(recorded.getByText('Occurrence: first')).toBeAttached();
+  await expect(recorded).toHaveAttribute('data-occurrence', 'first');
   await expect(page).toHaveURL(/occurrenceId=first/);
 });
 
@@ -538,4 +538,92 @@ test('CV-028 polling uses conversation activity despite terminal page chrome',as
  await expect.poll(()=>conversations,{timeout:10000}).toBeGreaterThan(initialConversation);
  expect(statusReads.length).toBe(initialStatus);
  await expect(page.getByLabel('Current job activity')).toContainText('Running');
+});
+
+for (const width of [1440, 390]) test(`JS-001,002,026–028 safe full prompt and one action line at ${width}px`, async ({page}, info) => {
+  await page.setViewportSize({width,height:900});
+  const prompt='# Release plan\n\n'+('A complete paragraph explaining the requested work. '.repeat(20))+'\n\n- Preserve history\n- Keep retries\n\n```text\n'+('long-token-'.repeat(80))+'\n```\n\n<img src="https://bad.example/raw.png">\n\n![remote](https://bad.example/remote.png) [unsafe](javascript:alert(1))\n\n## Ending content';
+  const remote:string[]=[]; page.on('request',request=>{if(request.url().includes('bad.example'))remote.push(request.url());});
+  await page.route('**/api/projects/demo/jobs/job',route=>route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',goal_id:'goal',title:'Review a complete saved prompt '+ 'long-title-'.repeat(12),prompt,status:'RUNNING',store:'ACTIVE'}}));
+  await page.goto('/project/demo/jobs/job/story');
+  await expect(page.getByRole('heading',{name:'Ending content'})).toBeVisible();
+  const actions=page.getByRole('group',{name:'Job actions'});
+  const boxes=await actions.locator(':scope > *').evaluateAll(nodes=>nodes.map(node=>{const r=node.getBoundingClientRect();return {top:r.top,height:r.height};}));
+  expect(Math.max(...boxes.map(b=>b.top))-Math.min(...boxes.map(b=>b.top))).toBeLessThan(15);
+  for(const label of ['Restart','Archive','Cancel job']){
+    const button=actions.getByRole('button',{name:label,exact:true}); await button.focus(); await expect(button).toBeFocused();
+    const box=await button.boundingBox(); expect(box!.height).toBeGreaterThanOrEqual(44); expect(box!.x).toBeGreaterThanOrEqual(0); expect(box!.x+box!.width).toBeLessThanOrEqual(width);
+  }
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+  await expect(page.getByRole('region',{name:'Job prompt'}).locator('img,script')).toHaveCount(0);
+  expect(remote).toEqual([]);
+  await expect(page.getByRole('button',{name:/Back to Goals|Download chapters/})).toHaveCount(0);
+  await actions.evaluate(element=>element.scrollLeft=0);
+  await page.screenshot({path:info.outputPath(`prompt-actions-${width}.png`),fullPage:true,animations:'disabled'});
+});
+
+test('JS-010,015,020–023,036,037 Archive retries and header Restart submits before Trace', async ({page}, info) => {
+  let deletes=0, storyReads=0, restarts=0;
+  const payloads:unknown[]=[];
+  await page.route('**/api/projects/demo/jobs/job',async route=>{
+    if(route.request().method()==='DELETE'){
+      deletes++;payloads.push(route.request().postDataJSON());
+      return deletes===1?route.fulfill({status:503,json:{error:'Archive failed after cancellation',code:'archive_failed_after_cancel'}}):route.fulfill({status:204});
+    }
+    return route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',title:'Action retry fixture',prompt:'Inspect history after archive.',status:'RUNNING',store:deletes>1?'ARCHIVED':'ACTIVE'}});
+  });
+  await page.route('**/api/projects/demo/jobs/job/story',route=>{storyReads++;return route.fulfill({json:{job_id:'job',status:'completed',restart_scopes:[{scope_id:'recorded',chapter_ordinal:3,title:'Recorded restart'}],root:null}});});
+  await page.route('**/api/projects/demo/jobs/job/restart',route=>{
+    restarts++;payloads.push(route.request().postDataJSON());
+    return restarts===1?route.fulfill({status:503,body:'Temporary restart failure'}):route.fulfill({json:{job_id:'restarted'}});
+  });
+  await page.goto('/project/demo/jobs/job/story');
+  const archive=page.getByRole('button',{name:'Archive',exact:true}); await archive.click();
+  let dialog=page.getByRole('dialog'); await dialog.getByLabel('Cancellation message (optional)').fill('Retain my cancellation');
+  await dialog.getByRole('button',{name:'Archive job',exact:true}).click();
+  await expect(dialog.getByText(/only archiving remains/)).toBeVisible();
+  await expect(dialog.getByLabel('Cancellation message (optional)')).toBeDisabled();
+  await page.screenshot({path:info.outputPath('archive-retry.png'),animations:'disabled'});
+  await dialog.getByRole('button',{name:'Archive job',exact:true}).click();
+  await expect(dialog).toHaveCount(0); await expect(archive).toBeFocused();
+  expect(payloads).toEqual([{reason:'Retain my cancellation'},{reason:'Retain my cancellation'}]);
+  expect(storyReads).toBe(0); await expect(page).toHaveURL(/\/jobs\/job\/story$/);
+  const restart=page.getByRole('button',{name:'Restart',exact:true}); await restart.click(); dialog=page.getByRole('dialog');
+  await expect(dialog.getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
+  await expect(page.locator('#execution-story-tree')).toHaveCount(0);
+  await dialog.getByRole('combobox',{name:'Restart point'}).click(); await page.getByText(/Recorded restart · Chapter 3/).click();
+  await expect(dialog.getByText('Start a new goal', {exact:true})).toBeVisible();
+  await expect(page.getByRole('listbox')).toBeHidden();
+  await page.screenshot({path:info.outputPath('header-restart.png'),animations:'disabled'});
+  await dialog.getByRole('button',{name:'Restart',exact:true}).click();
+  await expect(page.getByText(/Temporary restart failure/)).toBeVisible();
+  await dialog.getByRole('button',{name:'Restart',exact:true}).click();
+  await expect(page).toHaveURL(/\/jobs\/restarted\/story/);
+  expect(payloads[2]).toEqual(payloads[3]);
+  expect(payloads[2]).toMatchObject({scope_id:'recorded',goal:{mode:'new'},request_id:expect.any(String)});
+  expect(storyReads).toBe(1);
+});
+
+for(const width of [1440,390]) test(`JS-004,005,010,036 summary deep link and shared Restart at ${width}px`,async({page},info)=>{
+  await page.setViewportSize({width,height:900});
+  await page.route('**/api/projects/demo/jobs/job/story',route=>route.fulfill({json:{job_id:'job',status:'completed',recipe:{name:'release-checks',source:'fixture.yaml'},started_at:'2026-11-01T10:00:00Z',finished_at:'2026-11-01T10:02:15Z',invocation_sequence:42,restart_scopes:[{scope_id:'recorded',chapter_ordinal:3,title:'Recorded restart'}],root:null}}));
+  await page.goto('/project/demo/jobs/job/story?tab=summary');
+  await expect(page.getByRole('tab',{name:'Trace',exact:true})).toHaveAttribute('aria-selected','true');
+  await expect(page.getByText('release-checks',{exact:true})).toBeVisible();
+  await expect(page.getByText('2m 15s',{exact:true})).toBeVisible();
+  await expect(page.getByText('42',{exact:true})).toBeVisible();
+  await expect(page.getByText('The story API returned no steps for this finished job.')).toBeVisible();
+  await page.screenshot({path:info.outputPath(`trace-summary-${width}.png`),fullPage:true,animations:'disabled'});
+  for(const tab of ['Conversation','Relationships','Input artifacts','DAG','Lease timeline','Trace']){
+    await page.getByRole('tab',{name:tab,exact:true}).click();
+    const opener=page.getByRole('group',{name:'Job actions'}).getByRole('button',{name:'Restart',exact:true});
+    await opener.click();
+    const dialog=page.getByRole('dialog');
+    await expect(dialog.getByRole('combobox',{name:'Restart point'})).toBeVisible();
+    await expect(dialog.getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
+    await expect.poll(()=>dialog.evaluate(element=>element.contains(document.activeElement))).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0); await expect(opener).toBeFocused();
+    await expect(page.getByRole('tab',{name:tab,exact:true})).toHaveAttribute('aria-selected','true');
+  }
 });

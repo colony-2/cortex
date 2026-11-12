@@ -9,9 +9,6 @@ import FinalDocuments from './FinalDocuments';
 import { historicalDocuments } from './historicalDocuments';
 import { object, valueText, recordedTime, savedAnswers, reviewer } from './conversationPresentation';
 import './conversation.css';
-function RecordedValue({ value }: { value: HistoryValue }) {
-  return value.present ? <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{valueText(value.raw)}</pre> : <span>Not recorded</span>;
-}
 function Time({value, reported = false}: {value: HistoryValue; reported?: boolean}) {
   const time = recordedTime(value);
   return <span title={time.title}>{reported ? 'Reported time: ' : ''}{time.text}</span>;
@@ -20,20 +17,14 @@ export function HistoryPair({ entry, onOpen, part }: { entry: HistoryEntry; onOp
   const [expanded, setExpanded] = useState(false);
   const answer = savedAnswers(entry.form_fields, entry.accepted_response.raw, true);
   const receipt = object(entry.actor.receipt);
+  const question = entry.form_fields.question ? valueText(entry.form_fields.question)
+    : Array.isArray(entry.form_fields.fields) ? entry.form_fields.fields.map(field => valueText(object(field).question || object(field).id)).join(' · ') : '';
   return <div className="conversation-pair" data-occurrence={entry.entry_id}>
     {part !== 'response' && <Card size="small" className="conversation-step" aria-label="Recorded request step">
       <div className="conversation-line"><strong>{entry.title.present ? valueText(entry.title.raw) : `${entry.kind} request`}</strong>{onOpen && <Button size="small" onClick={onOpen}>{entry.kind === 'review' ? 'Open review' : 'Open recorded request'}</Button>}</div>
-      <details><summary className="conversation-line conversation-detail-summary"><Time value={entry.requested_at} /><span>State: {entry.state || 'unknown'} · Details</span></summary>
-        <p>Occurrence: {entry.entry_id}</p><p>Attempt: {entry.locator.job_attempt ?? 'not recorded'}</p>
-        <pre>{valueText(entry.locator)}</pre>
-        {entry.state_evidence?.map((e,i) => <p key={i}>{e}</p>)}
-        <RecordedValue value={{present:Object.keys(entry.form_fields ?? {}).length > 0,raw:entry.form_fields}} />
-        <p>Response source: {entry.response_source || 'not recorded'}</p>
-        <p>{reviewer(entry)}</p>
-        {entry.actor.receipt !== undefined && <pre>{valueText(entry.actor.receipt)}</pre>}
-        <RecordedValue value={entry.accepted_response} />
-        {entry.diagnostics?.map((d,i) => <p key={i}>{d.message}</p>)}
-      </details>
+      <div className="conversation-line"><Time value={entry.requested_at} /><span>State: {entry.state || 'unknown'}</span>{!entry.accepted_response.present && <span>{reviewer(entry)}</span>}</div>
+      {question && <div className="conversation-question" title={question}>{question}</div>}
+
     </Card>}
     {part !== 'request' && entry.accepted_response.present && <Card size="small" className="conversation-step conversation-response" aria-label="Accepted response">
       <div className={expanded ? 'conversation-answer expanded' : 'conversation-answer'}>{answer}</div>
@@ -119,17 +110,17 @@ function HistoricalRequest({ tenant, job, entry, legacy, onBack }: { tenant: str
   if (!detail) return <p role="status">Loading recorded request…</p>;
   const catalog = historicalDocuments(detail);
   const form = object(detail.raw_form);
-  return <section aria-label="Recorded request">
+  return <section aria-label="Recorded request" data-occurrence={detail.entry_id}>
     <Button onClick={onBack}>Back to conversation</Button>
     <Typography.Title level={4}>{detail.title.present ? valueText(detail.title.raw) : 'Recorded request'}</Typography.Title>
     <p>Read only</p>
     {(form.question || Array.isArray(form.fields)) && <section aria-label="Review context" style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{form.question ? valueText(form.question) : form.fields.map((field: unknown) => valueText(object(field).question || object(field).id)).join('\n')}</section>}
     {detail.summary.present && <p>{valueText(detail.summary.raw)}</p>}
     {error && <Alert type="warning" message={error} action={<Button onClick={() => {recoveryUsed.current = false; setError(''); setRetry(v => v + 1);}}>Retry request</Button>} />}
-    {catalog.limited && <Alert type="info" message="Limited history: the original form or document metadata was not recorded. Available evidence is shown below." />}
+    {catalog.limited && <Alert type="info" message="Limited history: the original form or document metadata was not recorded. Available documents and answers are shown below." />}
     <ReviewDocuments projectId={tenant} jobId={job} requestId={detail.request_id || detail.entry_id} documents={catalog.documents} documentMetadata={catalog.metadata} overviewDocumentId={catalog.overview} source={{identity:JSON.stringify([tenant,job,detail.entry_id,detail.snapshot_token]),url:id => catalog.members[id] ? conversationArtifactURL(tenant,job,detail.entry_id,catalog.members[id],detail.snapshot_token) : '',onError:failure => {void recover(failure);}}} />
     {detail.accepted_response.present && <section aria-label="Recorded answers"><Typography.Title level={5}>Accepted response</Typography.Title><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{savedAnswers(Object.keys(form).length ? form : detail.form_fields,detail.accepted_response.raw)}</pre></section>}
-    <details><summary>Recorded evidence</summary><HistoryPair entry={detail} /><p>History coverage: {detail.completeness}</p></details>
+    <div className="conversation-line"><Time value={detail.requested_at} /><span>State: {detail.state || 'unknown'}</span><span>{reviewer(detail)}</span>{detail.accepted_response.present && <Time value={{present:!!object(detail.actor.receipt).submitted_at,raw:object(detail.actor.receipt).submitted_at}} reported={detail.actor.provenance === 'reported_receipt'} />}</div>
     {[['Request documents', detail.request_manifest], ['Accepted attachments', detail.response_manifest]].map(([label, members]) => <details key={label as string} open={!Object.keys(catalog.documents).length}>
       <summary>{label as string}</summary>
       {(members as HistoryDetail['request_manifest'])?.length ? <ul>{(members as HistoryDetail['request_manifest']).map(member => <li key={member.artifact_id}>

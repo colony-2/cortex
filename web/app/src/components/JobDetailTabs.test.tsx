@@ -8,7 +8,7 @@ describe('CT-004,006 tab URL precedence', () => {
   it.each([
     ['', 'conversation'], ['?tab=unknown&nodeId=n', 'conversation'], ['?nodeId=n', 'execution'],
     ['?path=root&attempt=2', 'execution'], ['?taskOrdinal=2', 'execution'], ['?attempt=2', 'execution'],
-    ['?input=1&taskOrdinal=2', 'conversation'], ['?tab=summary&input=1&nodeId=n', 'summary'],
+    ['?input=1&taskOrdinal=2', 'conversation'], ['?tab=summary&input=1&nodeId=n', 'execution'], ['?tab=leases', 'leases'],
     ['?requestId=opaque%2Fid&tab=execution&input=1', 'conversation'],
     ['?requestId=&tab=execution', 'conversation'], ['?tab=dag', 'dag'], ['?occurrenceId=x&tab=dag', 'conversation'],
   ])('%s selects %s', (search, expected) => expect(jobDetailTab(new URLSearchParams(search))).toBe(expected));
@@ -20,7 +20,7 @@ it('CT-007 supports arrows, wraparound, Home and End with a single tab stop', ()
   }
   render(<Host />);
   const tabs = screen.getAllByRole('tab');
-  expect(tabs.map(tab => tab.textContent)).toEqual(['Conversation', 'Relationships', 'Input artifacts', 'Summary', 'Steps', 'DAG']);
+  expect(tabs.map(tab => tab.textContent)).toEqual(['Conversation', 'Relationships', 'Input artifacts', 'DAG', 'Lease timeline', 'Trace']);
   const press = (key: string, expected: number) => {
     fireEvent.keyDown(screen.getByRole('tab', { selected: true }), { key });
     expect(tabs[expected]).toHaveAttribute('aria-selected', 'true');

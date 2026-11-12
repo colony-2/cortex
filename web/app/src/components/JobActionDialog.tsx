@@ -26,6 +26,8 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
   useEffect(() => () => {
     if (trigger.current?.isConnected) trigger.current.focus({ preventScroll: true });
   }, []);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const started = useRef(false);
   const submitting = useRef(false);
   const [pending, setPending] = useState([...jobIds]);
@@ -42,11 +44,12 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
     setStatusError(undefined);
     try {
       const detail = await getJob(projectId, jobIds[0]);
+      if (!mounted.current) return;
       if (!detail.status) throw new Error('Job status is unavailable. Retry before archiving.');
       setNeedsReason(!isFinishedJob(detail));
       setAccepted(isFinishedJob(detail) ? detail.completion_status === 'cancelled' : !!detail.cancel_requested);
-    } catch (error) { setStatusError(error instanceof Error ? error.message : String(error)); }
-    finally { setResolving(false); }
+    } catch (error) { if (mounted.current) setStatusError(error instanceof Error ? error.message : String(error)); }
+    finally { if (mounted.current) setResolving(false); }
   };
   useEffect(() => { if (single && action === 'archive' && !job?.status) void resolveStatus(); }, []);
   const showReason = single && needsReason && !resolving && !statusError;
@@ -68,6 +71,7 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
         const ids = pending.slice(offset, offset + 5);
         const results = await Promise.allSettled(ids.map(id =>
           (action === 'cancel' ? cancelJob : archiveJob)(projectId, id, showReason ? reason.trim() || DEFAULT_CANCELLATION_REASON : undefined)));
+        if (!mounted.current) return;
         results.forEach((result, index) => {
           if (result.status === 'fulfilled') succeeded.push(ids[index]);
           else {
@@ -84,11 +88,10 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
           : `Archived ${succeeded.length} job${succeeded.length === 1 ? '' : 's'}`);
         await onComplete(succeeded);
       }
-      if (!failed.length) onClose();
+      if (mounted.current && !failed.length) onClose();
     } finally {
       submitting.current = false;
-      setBusy(false);
-      onBusyChange?.(false);
+      if (mounted.current) { setBusy(false); onBusyChange?.(false); }
     }
   };
 

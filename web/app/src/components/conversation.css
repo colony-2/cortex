@@ -20,3 +20,5 @@
  .conversation-response .conversation-line { height:24px; }
  .conversation-expand { min-height:44px; }
 }
+
+.conversation-question { line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

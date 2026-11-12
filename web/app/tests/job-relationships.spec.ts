@@ -87,10 +87,10 @@ test('REL-001,010,011,012,030,033,038 story links navigate to correct identities
   await expect(related(page).getByRole('link',{name:'Goal · goal-release',exact:true})).toHaveAttribute('href','/project/other/goals/goal-release');
   await expect(related(page).getByRole('link',{name:'Job · Check API compatibility'})).toBeVisible();
   expect(inspections).toEqual(['evidence-105', 'evidence-105']); // Existing development StrictMode replay.
-  await selectStoryTab(page, 'Summary');
+  await selectStoryTab(page, 'Trace');
   await expect(page.getByText('Run Summary',{exact:true})).toBeVisible();
   await expect(related(page)).toBeHidden();
-  await selectStoryTab(page, 'Steps');
+  await selectStoryTab(page, 'Trace');
   await page.getByText('Compatibility checks',{exact:true}).first().click();
   await selectStoryTab(page, 'Relationships');
   expect(inspections).toEqual(['evidence-105', 'evidence-105']); // Existing development StrictMode replay.
@@ -200,11 +200,45 @@ for(const width of [1440,390,320]) test(`REL-040,041,042 story direct content an
   expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
   const requests=childRequests;
   await expect(related(page).getByRole('link',{name:'Job · Check API compatibility'})).toBeVisible();
-  await selectStoryTab(page, 'Steps');
+  await selectStoryTab(page, 'Trace');
   await page.getByText('Compatibility checks',{exact:true}).first().click();
   await selectStoryTab(page, 'Relationships');
   expect(childRequests).toBe(requests);
   if(width===390) await capture(page,'story-mobile-direct.png');
   await page.reload();
   await initiallyVisible(page);
+});
+
+for(const width of [1280,390]) test(`JS-024,025,035,037 pages other attempts, retries, and preserves the chosen goal at ${width}px`, async ({page}, info) => {
+  await page.setViewportSize({width,height:900});
+  const cursors:(string|null)[]=[];
+  let fail=true;
+  await page.route('**/api/projects/demo/jobs?*',route=>{
+    const url=new URL(route.request().url());
+    if(!url.searchParams.has('goal'))return route.fallback();
+    expect(url.searchParams.get('goal')).toBe('goal-evidence');
+    expect(url.searchParams.getAll('status')).toEqual(['all']);
+    expect(url.searchParams.get('includeHidden')).toBe('true');
+    expect(url.searchParams.has('rootOnly')).toBe(false);
+    const cursor=url.searchParams.get('pageToken');cursors.push(cursor);
+    if(!cursor)return route.fulfill({json:{jobs:[current],next_page_token:'next'}});
+    if(cursor==='next')return route.fulfill({json:{jobs:[{...children[0],goal_id:'secondary',title:'Archived earlier attempt'}],next_page_token:'last'}});
+    if(fail){fail=false;return route.fulfill({status:503,json:{error:'Sibling page unavailable'}});}
+    return route.fulfill({json:{jobs:[{...children[0],goal_id:'secondary',title:'Archived earlier attempt'},children[1]]}});
+  });
+  await page.goto('/project/demo/jobs/evidence-105/story?tab=relationships');
+  const attempts=page.getByRole('region',{name:'Other attempts at this goal'});
+  await attempts.getByRole('button',{name:'Load more attempts'}).click();
+  await expect(attempts.getByRole('link',{name:'Archived earlier attempt'})).toBeVisible();
+  await attempts.getByRole('button',{name:'Load more attempts'}).click();
+  await expect(attempts.getByText('Other attempts unavailable')).toBeVisible();
+  await attempts.getByRole('button',{name:'Retry other attempts'}).click();
+  await expect(attempts.getByRole('listitem')).toHaveCount(2);
+  expect(cursors.slice(-3)).toEqual(['next','last','last']);
+  await page.screenshot({path:info.outputPath('sibling-attempts.png'),animations:'disabled',fullPage:true});
+  await attempts.getByRole('link',{name:'Archived earlier attempt'}).click();
+  await expect(page).toHaveURL(/\/jobs\/check-api-106\/story/);
+  await expect(page.getByRole('link',{name:'Goal overview',exact:true})).toHaveAttribute('href','/project/demo/goals/goal-evidence');
+  await page.getByRole('tab',{name:'Relationships',exact:true}).click();
+  await expect(attempts.getByRole('link',{name:'Goal · goal-evidence',exact:true})).toBeVisible();
 });

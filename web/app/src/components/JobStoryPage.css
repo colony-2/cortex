@@ -1,15 +1,12 @@
-.job-story-header .ant-space-item {
-  min-width: 0;
-  max-width: 100%;
-}
-
-.job-story-header .ant-btn {
-  max-width: 100%;
-  height: auto;
-  min-height: 32px;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
+.job-story-header { min-width: 0; max-width: 100%; display: flex; flex-direction: column; gap: 16px; }
+.job-story-actions { display: flex; align-items: center; flex-wrap: nowrap; gap: 12px; max-width: 100%; min-width: 0; overflow-x: auto; padding: 4px; }
+.job-story-actions > * { flex-shrink: 0; }
+.job-story-actions .ant-btn, .job-story-actions .compact-touch-link { min-height: 44px; white-space: nowrap; display: inline-flex; align-items: center; }
+.job-story-actions :focus-visible { outline: 2px solid #1677ff; outline-offset: -2px; }
+.job-story-page > .ant-space > .ant-space-item { min-width: 0; max-width: 100%; }
+.job-prompt-markdown { min-width: 0; overflow-wrap: anywhere; }
+.job-prompt-markdown pre { max-width: 100%; overflow-x: auto; padding: 12px; background: #f5f5f5; }
+.job-prompt-markdown table { display: block; max-width: 100%; overflow-x: auto; }
 
 /* The page owns vertical scrolling; only this region pans horizontally.
    Inline containment makes cqw use the panel, independent of deep row width. */

@@ -33,7 +33,6 @@ import {
 } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import {
-  ArrowLeftOutlined,
   DownloadOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
@@ -43,10 +42,12 @@ import { API_BASE, inputActivityService, type UserInputDetails, type FormRespons
 import InputFormRenderer from './InputFormRenderer';
 import AttemptTabs from './AttemptTabs';
 import CancelJobButton from './CancelJobButton';
-import DownloadChaptersButton from './DownloadChaptersButton';
+import JobActionDialog from './JobActionDialog';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { getJob, getJobInputArtifacts, type InputArtifact } from '@colony2/shared/api';
 import type { RecipeJob } from '@colony2/shared/types';
-import { isFinishedJob, jobStatusPresentation, jobStatusValue } from '../utils/jobStatus';
+import { canArchiveImmediately, isFinishedJob, jobStatusPresentation, jobStatusValue } from '../utils/jobStatus';
 import { goalPath } from './JobWaitLinks';
 import { jobFilterSearch } from '../utils/jobFilters';
 import { buildStoryTree, storyAttempts, storyNodeName, type ArtifactKey as StoredArtifactKey, type StoryNode, type StoryKind, type StoryNodeRef } from '../utils/storyTree';
@@ -272,6 +273,13 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const [artifactAttachments, setArtifactAttachments] = useState<ArtifactKey[]>([]);
 
   const [restartOpen, setRestartOpen] = useState(false);
+  const [restartNode, setRestartNode] = useState<StoryNode | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<{ job?: RecipeJob; immediate: boolean }>();
+  const alive = useRef(true);
+  const restartBusy = useRef(false);
+  const restartGoalInitialized = useRef(false);
+  const restartOpener = useRef<HTMLElement | null>(null);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const [restartSelection, setRestartSelection] = useState<string>();
   const [restartSubmitting, setRestartSubmitting] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, { job: PatchLine[]; scope: ScopePatchLine[] }>>({});
@@ -307,8 +315,9 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const dagIdentity = JSON.stringify([projectId, jobId]);
   const [dagVisited, setDagVisited] = useState<string>();
   useEffect(() => { if (activeTab === 'dag') setDagVisited(dagIdentity); }, [activeTab, dagIdentity]);
-  const stepsActive = useRef(activeTab === 'execution');
-  stepsActive.current = activeTab === 'execution';
+  const storyDemand = activeTab === 'execution' || restartOpen;
+  const storyWanted = useRef(storyDemand);
+  storyWanted.current = storyDemand;
   const requestId = searchParams.has('occurrenceId') ? searchParams.get('occurrenceId') : searchParams.get('requestId');
   const selectTab = (tab: JobDetailTab) => setSearchParams(previous => {
     const next = new URLSearchParams(previous);
@@ -398,8 +407,8 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
 
   const storyGeneration = useRef(0);
   const inFlight = useRef(false);
-  const loadStory = async (opts?: { preserveSelection?: boolean }) => {
-    if (!jobId || !stepsActive.current || inFlight.current) return;
+  const loadStory = async () => {
+    if (!jobId || !storyWanted.current || inFlight.current) return;
     inFlight.current = true;
     const generation = ++storyGeneration.current;
     setLoading(true);
@@ -407,38 +416,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     try {
       const data = await fetchStory(projectId, jobId);
       if (generation !== storyGeneration.current) return;
-      const { treeData: nextTreeData, keyToRef: nextKeyToRef, keyToParent: nextKeyToParent, legacyKeyToKey: nextLegacyKeyToKey } =
-        buildTree(data.root);
       setStory(data);
-
-      const urlNodeId = searchParams.get('nodeId');
-      const urlPath = searchParams.get('path');
-      const urlAttempt = searchParams.get('attempt');
-      const legacyUrlKey =
-        urlPath && urlAttempt ? `${urlPath}|attempt:${urlAttempt}` : urlPath ? `${urlPath}|attempt:1` : null;
-      const legacyResolvedKey = legacyUrlKey ? (nextLegacyKeyToKey.get(legacyUrlKey) ?? null) : null;
-      const rootKey = (nextTreeData[0]?.key as string | undefined) ?? null;
-
-      let nextSelectedKey: string | null = null;
-      if (urlNodeId && nextKeyToRef.has(urlNodeId)) {
-        nextSelectedKey = urlNodeId;
-      } else if (urlNodeId && nextLegacyKeyToKey.has(urlNodeId)) {
-        nextSelectedKey = nextLegacyKeyToKey.get(urlNodeId)!;
-      } else if (legacyResolvedKey && nextKeyToRef.has(legacyResolvedKey)) {
-        nextSelectedKey = legacyResolvedKey;
-      } else if (opts?.preserveSelection && selectedKey && nextKeyToRef.has(selectedKey)) {
-        nextSelectedKey = selectedKey;
-      } else {
-        nextSelectedKey = rootKey;
-      }
-
-      if (nextSelectedKey && nextKeyToRef.has(nextSelectedKey)) {
-        setSelectedKey(nextSelectedKey);
-        const ancestors = ancestorKeysForKey(nextSelectedKey, nextKeyToParent);
-        setExpandedKeys((prev) => opts?.preserveSelection && !!story
-          ? unionKeys(prev, ancestors)
-          : Array.from(nextKeyToRef.keys()));
-      }
     } catch (e) {
       if (generation !== storyGeneration.current) return;
       console.error('Failed to load job story', e);
@@ -456,7 +434,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     setLoading(false);
     setExpandedKeys([]);
     loadMetadata();
-    return () => { ++metadataGeneration.current; ++storyGeneration.current; };
+    return () => { ++metadataGeneration.current; ++storyGeneration.current; inFlight.current = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, jobId]);
 
@@ -468,24 +446,64 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPendingInput]);
 
-  const load = async (opts?: { preserveSelection?: boolean }) => {
+  const load = async () => {
     setHistoryRevision(value => value + 1);
     loadMetadata();
-    await loadStory(opts);
+    await loadStory();
   };
 
   useEffect(() => {
-    stepsActive.current = activeTab === 'execution';
-    if (activeTab === 'execution' && (!story || (autoRefresh && story.status === 'running'))) {
-      void loadStory({ preserveSelection: !!story });
-    }
-    return () => {
-      stepsActive.current = false;
+    if (!storyDemand) {
       ++storyGeneration.current;
       inFlight.current = false;
-    };
-    // Cache stays above the inspector; only activation/identity changes trigger retrieval.
-  }, [activeTab, projectId, jobId]);
+      setLoading(false);
+    } else if (!story || (activeTab === 'execution' && autoRefresh && story.status === 'running')) {
+      void loadStory();
+    }
+    // Losing one consumer keeps the other consumer's request alive.
+  }, [storyDemand, activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'execution' || !story) return;
+    const { treeData: nextTreeData, keyToRef: nextKeyToRef, keyToParent: nextKeyToParent, legacyKeyToKey: nextLegacyKeyToKey } =
+      treeModel;
+
+    const urlNodeId = searchParams.get('nodeId');
+    const urlPath = searchParams.get('path');
+    const urlAttempt = searchParams.get('attempt');
+    const legacyUrlKey =
+      urlPath && urlAttempt ? `${urlPath}|attempt:${urlAttempt}` : urlPath ? `${urlPath}|attempt:1` : null;
+    const legacyResolvedKey = legacyUrlKey ? (nextLegacyKeyToKey.get(legacyUrlKey) ?? null) : null;
+    const rootKey = (nextTreeData[0]?.key as string | undefined) ?? null;
+
+    let nextSelectedKey: string | null = null;
+    if (urlNodeId && nextKeyToRef.has(urlNodeId)) {
+      nextSelectedKey = urlNodeId;
+    } else if (urlNodeId && nextLegacyKeyToKey.has(urlNodeId)) {
+      nextSelectedKey = nextLegacyKeyToKey.get(urlNodeId)!;
+    } else if (legacyResolvedKey && nextKeyToRef.has(legacyResolvedKey)) {
+      nextSelectedKey = legacyResolvedKey;
+    } else if (selectedKey && nextKeyToRef.has(selectedKey)) {
+      nextSelectedKey = selectedKey;
+    } else {
+      nextSelectedKey = rootKey;
+    }
+
+    if (nextSelectedKey && nextKeyToRef.has(nextSelectedKey)) {
+      setSelectedKey(nextSelectedKey);
+      const ancestors = ancestorKeysForKey(nextSelectedKey, nextKeyToParent);
+      setExpandedKeys((prev) => !!selectedKey
+        ? unionKeys(prev, ancestors)
+        : Array.from(nextKeyToRef.keys()));
+    }
+  }, [story, activeTab, treeModel]);
+
+  useEffect(() => {
+    if (restartOpen && story && !restartGoalInitialized.current) {
+      setRestartGoalMode(story.status === 'completed' ? 'new' : 'continue');
+      restartGoalInitialized.current = true;
+    }
+  }, [restartOpen, story]);
 
   useEffect(() => {
     const shouldLoadDetails = !!jobId && requestId === null && (isPendingInput || wantInput);
@@ -559,7 +577,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
 
     if (activeTab === 'execution' && autoRefresh && story?.status === 'running') {
       refreshTimerRef.current = window.setInterval(() => {
-        loadStory({ preserveSelection: true });
+        loadStory();
       }, refreshIntervalMs);
     }
 
@@ -653,23 +671,27 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     setInspection(undefined);
   };
 
-  const openRestart = () => {
+  const openRestart = (node: StoryNode | null = null) => {
+    restartOpener.current = document.activeElement as HTMLElement;
+    setRestartNode(node);
+    restartGoalInitialized.current = !!story;
     resetRestartState();
     setRestartGoalMode(story?.status === 'completed' ? 'new' : 'continue');
     // Compact chapters can contain multiple boundaries. Prefer the recorded scope ID.
-    const matches = restartScopes.filter(scope => selectedNode?.restart_scope_id
-      ? scope.scope_id === selectedNode.restart_scope_id
-      : scope.chapter_ordinal === selectedNode?.restart_chapter_ordinal);
+    const matches = restartScopes.filter(scope => node?.restart_scope_id
+      ? scope.scope_id === node.restart_scope_id
+      : scope.chapter_ordinal === node?.restart_chapter_ordinal);
     setRestartSelection(matches.length === 1 ? scopeKey(matches[0]) : undefined);
     setRestartOpen(true);
   };
 
   const submitRestart = async () => {
-    if (!jobId || !restartable) return;
+    if (!jobId || !restartable || restartBusy.current || loading || error) return;
 
     if (patchError) return;
     const contextPatch = generatedPatch;
 
+    restartBusy.current = true;
     setRestartSubmitting(true);
     try {
       const payload = { ...(restartScopeID ? { scope_id: restartScopeID } : { chapter_ordinal: restartChapterOrdinal }), goal: { mode: restartGoalMode }, ...(contextPatch ? { patch: contextPatch } : {}) };
@@ -694,16 +716,19 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
       }
 
       const data = (await response.json()) as { job_id: string };
+      if (!alive.current) return;
       sessionStorage.removeItem(storageKey);
       message.success('Restarted job');
       setRestartOpen(false);
       resetRestartState();
       navigate(`/project/${projectId}/jobs/${data.job_id}/story${filterSearch}`);
     } catch (e) {
+      if (!alive.current) return;
       console.error('Restart failed', e);
       message.error(e instanceof Error ? e.message : 'Restart failed');
     } finally {
-      setRestartSubmitting(false);
+      restartBusy.current = false;
+      if (alive.current) setRestartSubmitting(false);
     }
   };
 
@@ -780,7 +805,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
       });
       setActiveDetailsTab('overview');
       setPendingInputDetails(null);
-      await load({ preserveSelection: true });
+      await load();
     } catch (e) {
       console.error('Failed to submit input response', e);
       message.error(e instanceof Error ? e.message : 'Failed to submit response');
@@ -792,20 +817,16 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   return (
     <div className="app-page job-story-page" style={{ padding: 24 }}>
       <Space direction="vertical" style={{ width: '100%' }} size="large">
-        <div className="job-story-header" data-testid="job-story-header" style={{ display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'space-between', alignItems: 'center', minWidth: 0 }}>
-          <Space wrap style={{ minWidth: 0, maxWidth: '100%' }}>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(returnTo)}>
-              Back to Goals
-            </Button>
-            <Title level={2} style={{ margin: 0, overflowWrap: 'anywhere' }}>
-              {jobTitle ? `Job Story: ${jobTitle}` : 'Job Story'}
-            </Title>
+        <div className="job-story-header" data-testid="job-story-header">
+          <Title level={2} style={{ margin: 0, overflowWrap: 'anywhere' }}>
+            {jobTitle ? `Job Story: ${jobTitle}` : 'Job Story'}
+          </Title>
+          <div className="job-story-actions" role="group" aria-label="Job actions" onFocusCapture={event => {
+            (event.target.closest('button, a, .ant-select') || event.target).scrollIntoView({ block: 'nearest', inline: 'nearest' });
+          }}>
             <Link className="compact-touch-link" to={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId || '')}/story?tab=dag`} state={location.state}>DAG</Link>
             {treeReturnTo && <Link className="compact-touch-link" to={treeReturnTo}>Return to DAG</Link>}
             {overviewLink && <Link className="compact-touch-link" to={overviewLink} state={{ goalsReturnTo: returnTo }}>Goal overview</Link>}
-          </Space>
-          <Space wrap style={{ maxWidth: '100%' }}>
-            <DownloadChaptersButton key={JSON.stringify([projectId, jobId])} projectId={projectId} jobId={jobId} />
             {(terminalStatus ? !isFinishedJob(job!) : story?.status === 'running') ? (
               <Space>
                 <Text type="secondary">Auto-refresh</Text>
@@ -822,13 +843,15 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                 />
               </Space>
             ) : null}
-            <Button icon={<ReloadOutlined />} onClick={() => load({ preserveSelection: true })}>
+            <Button icon={<ReloadOutlined />} onClick={() => load()}>
               Refresh
             </Button>
+            <Button onClick={() => openRestart()}>Restart</Button>
+            <Button onClick={() => setArchiveTarget({ job, immediate: canArchiveImmediately([jobId], job ? [job] : []) })}>Archive</Button>
             {requestId === null && <CancelJobButton key={`${projectId}/${jobId}`} projectId={projectId} jobId={jobId}
               disabled={!jobId || !!job && !!terminalStatus && isFinishedJob(job)}
-              onCancelled={async () => { await Promise.all([load({ preserveSelection: true }), refreshPendingInputs()]); }} />}
-          </Space>
+              onCancelled={async () => { if (alive.current) await Promise.all([load(), refreshPendingInputs()]); }} />}
+          </div>
         </div>
 
         {!job && (!metadata || metadata.status === 'loading') && <Text role="status" aria-label="Job details loading">Loading job details...</Text>}
@@ -842,13 +865,17 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         {job && <div aria-label="Job cell" style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
           <Text strong>Cell: </Text>{cellLabel(job.cell_name)}
         </div>}
-        {job && <JobLeaseTimeline projectId={projectId} jobId={job.job_id} createdAt={job.created_at} />}
         <JobDetailTabs activeTab={activeTab} onChange={selectTab} />
         <div className="job-detail-panels">
         <section role="tabpanel" id="job-panel-conversation" aria-labelledby="job-tab-conversation" hidden={activeTab !== 'conversation'} tabIndex={0} className="job-detail-panel">
         {job && <section aria-label="Job prompt">
           <Text strong>Prompt</Text>
-          <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginBottom: 0 }}>{prompt || 'No prompt recorded for this job.'}</Typography.Paragraph>
+          {prompt ? <div className="job-prompt-markdown"><Markdown skipHtml remarkPlugins={[remarkGfm]} components={{
+            a: ({ children, href }) => /^(https?:|mailto:)/i.test(href || '')
+              ? <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
+              : <span>{children} (link unavailable)</span>,
+            img: ({ alt }) => <span>Image unavailable: {alt || 'unbound image'}</span>,
+          }}>{prompt}</Markdown></div> : <p>No prompt recorded for this job.</p>}
         </section>}
         <JobConversation onBack={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('occurrenceId'); next.delete('requestId'); return next; })} tenant={projectId} job={jobId} occurrence={searchParams.get('occurrenceId') ?? undefined}
           autoRefresh={autoRefresh} refreshIntervalMs={refreshIntervalMs} requestId={searchParams.get('requestId') ?? undefined}
@@ -929,15 +956,44 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         </section>}
         </section>
         <section role="tabpanel" id="job-panel-relationships" aria-labelledby="job-tab-relationships" hidden={activeTab !== 'relationships'} tabIndex={0} className="job-detail-panel">
-        {job && <JobRelationships projectId={projectId} jobId={jobId!} job={job} />}
+        {job && <JobRelationships showAttempts projectId={projectId} jobId={jobId!} job={job} currentGoal={currentGoal} />}
 
         </section>
-        <section role="tabpanel" id="job-panel-summary" aria-labelledby="job-tab-summary" hidden={activeTab !== 'summary'} tabIndex={0} className="job-detail-panel">
+        <section role="tabpanel" id="job-panel-input-artifacts" aria-labelledby="job-tab-input-artifacts" hidden={activeTab !== 'input-artifacts'} tabIndex={0} className="job-detail-panel">
+        <section className="input-artifacts-disclosure">
+          <h2>{`Input artifacts${inputs?.artifacts ? ` (${inputs.artifacts.length})` : ''}`}</h2>
+          <Card size="small" variant="borderless" className="input-artifacts">
+            {inputs?.error ? <Alert type="error" message="Unable to load input artifacts" description={inputs.error} action={<Button onClick={() => setInputRetry(value => value + 1)}>Retry</Button>} />
+              : !inputs?.artifacts ? <Text>Loading input artifacts</Text>
+              : inputs.artifacts.length === 0 ? <Text>No input artifacts</Text>
+              : <List dataSource={inputs.artifacts} renderItem={artifact => (
+                <List.Item key={artifact.id || JSON.stringify([projectId, artifact.jobId, artifact.taskOrdinal, artifact.name])}>
+                  <div className="input-artifact-description">
+                    {artifact.reason ? <Text>{artifact.name}</Text> : <Button type="link" className="input-artifact-name" onClick={() => openArtifact(inputViewerArtifact(artifact, jobId), inputs.artifacts!.filter(a => !a.reason).map(a => inputViewerArtifact(a, jobId)))}>{artifact.name}</Button>}
+                    {artifact.binding !== undefined && <div><Text>Binding: {artifact.binding}</Text></div>}
+                    {artifact.sources && <div><Text type="secondary">{artifact.sources.join(' · ')}</Text></div>}
+                    {artifact.reason && <div><Text>{artifact.reason}</Text></div>}
+                  </div>
+                  {!artifact.reason && <Space><Text type="secondary">{artifact.sizeBytes >= 0 ? artifactSize(artifact.sizeBytes) : 'Size unknown'}</Text>
+                    <Button aria-label={`Download ${artifact.name}`} icon={<DownloadOutlined />} onClick={() => downloadArtifact(inputViewerArtifact(artifact, jobId))}>Download</Button></Space>}
+                </List.Item>
+              )} />}
+          </Card>
+        </section>
+
+        </section>
+        <section role="tabpanel" id="job-panel-dag" aria-labelledby="job-tab-dag" hidden={activeTab !== 'dag'} tabIndex={0} className="job-detail-panel">
+          {(activeTab === 'dag' || dagVisited === dagIdentity) && <TreeWorkspace key={dagIdentity} tenant={projectId} entry={jobId!} active={activeTab === 'dag'} embedded />}
+        </section>
+        <section role="tabpanel" id="job-panel-leases" aria-labelledby="job-tab-leases" hidden={activeTab !== 'leases'} tabIndex={0} className="job-detail-panel">
+          {activeTab === 'leases' && <JobLeaseTimeline expanded projectId={projectId} jobId={jobId} createdAt={job?.created_at} />}
+        </section>
+        <section role="tabpanel" id="job-panel-execution" aria-labelledby="job-tab-execution" hidden={activeTab !== 'execution'} tabIndex={0} className="job-detail-panel">
+        {activeTab === 'execution' && <>
         <section className="story-summary-disclosure">
           <h2>Run Summary</h2>
-          {!story && <Alert type="info" message="Execution timing and recipe metadata load when you open Steps." action={<Button onClick={() => selectTab('execution')}>Open Steps to load execution timing and recipe metadata</Button>} />}
           <Card size="small" variant="borderless">
-            <Descriptions column={2} bordered size="small">
+            <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small">
               <Descriptions.Item label="Status">
                 {story?.status ? (
                   <Tag color={statusTagColor(story.status)}>{story.status.toUpperCase()}</Tag>
@@ -980,35 +1036,6 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
           </Card>
         </section>
 
-        </section>
-        <section role="tabpanel" id="job-panel-input-artifacts" aria-labelledby="job-tab-input-artifacts" hidden={activeTab !== 'input-artifacts'} tabIndex={0} className="job-detail-panel">
-        <section className="input-artifacts-disclosure">
-          <h2>{`Input artifacts${inputs?.artifacts ? ` (${inputs.artifacts.length})` : ''}`}</h2>
-          <Card size="small" variant="borderless" className="input-artifacts">
-            {inputs?.error ? <Alert type="error" message="Unable to load input artifacts" description={inputs.error} action={<Button onClick={() => setInputRetry(value => value + 1)}>Retry</Button>} />
-              : !inputs?.artifacts ? <Text>Loading input artifacts</Text>
-              : inputs.artifacts.length === 0 ? <Text>No input artifacts</Text>
-              : <List dataSource={inputs.artifacts} renderItem={artifact => (
-                <List.Item key={artifact.id || JSON.stringify([projectId, artifact.jobId, artifact.taskOrdinal, artifact.name])}>
-                  <div className="input-artifact-description">
-                    {artifact.reason ? <Text>{artifact.name}</Text> : <Button type="link" className="input-artifact-name" onClick={() => openArtifact(inputViewerArtifact(artifact, jobId), inputs.artifacts!.filter(a => !a.reason).map(a => inputViewerArtifact(a, jobId)))}>{artifact.name}</Button>}
-                    {artifact.binding !== undefined && <div><Text>Binding: {artifact.binding}</Text></div>}
-                    {artifact.sources && <div><Text type="secondary">{artifact.sources.join(' · ')}</Text></div>}
-                    {artifact.reason && <div><Text>{artifact.reason}</Text></div>}
-                  </div>
-                  {!artifact.reason && <Space><Text type="secondary">{artifact.sizeBytes >= 0 ? artifactSize(artifact.sizeBytes) : 'Size unknown'}</Text>
-                    <Button aria-label={`Download ${artifact.name}`} icon={<DownloadOutlined />} onClick={() => downloadArtifact(inputViewerArtifact(artifact, jobId))}>Download</Button></Space>}
-                </List.Item>
-              )} />}
-          </Card>
-        </section>
-
-        </section>
-        <section role="tabpanel" id="job-panel-dag" aria-labelledby="job-tab-dag" hidden={activeTab !== 'dag'} tabIndex={0} className="job-detail-panel">
-          {(activeTab === 'dag' || dagVisited === dagIdentity) && <TreeWorkspace key={dagIdentity} tenant={projectId} entry={jobId!} active={activeTab === 'dag'} embedded />}
-        </section>
-        <section role="tabpanel" id="job-panel-execution" aria-labelledby="job-tab-execution" hidden={activeTab !== 'execution'} tabIndex={0} className="job-detail-panel">
-        {activeTab === 'execution' && <>
         {loading && !story && <Spin size="large" />}
 
         {error ? (
@@ -1018,7 +1045,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
             message="Failed to load job story"
             description={error}
             action={
-              <Button size="small" onClick={() => loadStory({ preserveSelection: true })}>
+              <Button size="small" onClick={() => loadStory()}>
                 Retry
               </Button>
             }
@@ -1167,7 +1194,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                               <Text type="secondary">
                                 Create a new job from a recorded restart point.
                               </Text>
-                              <Button type="primary" onClick={openRestart}>
+                              <Button type="primary" onClick={() => openRestart(selectedNode)}>
                                 Restart job
                               </Button>
                             </Space>
@@ -1309,7 +1336,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                     key: 'inbox',
                     label: `Inbox${loading ? '' : inboxCount(selectedNode)}`,
                     children: <InboxPanel key={JSON.stringify([projectId, jobId, selectedKey, selectedRef?.jobAttempt, selectedNode.attempt, storyGeneration.current])}
-                      loading={loading} node={selectedNode} projectId={projectId} jobId={jobId} jobAttempt={selectedRef?.jobAttempt || 1} retry={() => load({preserveSelection:true})} />,
+                      loading={loading} node={selectedNode} projectId={projectId} jobId={jobId} jobAttempt={selectedRef?.jobAttempt || 1} retry={() => load()} />,
                   },
                   {
                     key: 'artifacts',
@@ -1415,6 +1442,10 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         />}
       </Modal>}
 
+      {archiveTarget && <JobActionDialog projectId={projectId} jobIds={[jobId]} action="archive"
+        job={archiveTarget.job} immediate={archiveTarget.immediate}
+        onClose={() => { if (alive.current) setArchiveTarget(undefined); }}
+        onComplete={async () => { if (alive.current) await Promise.all([load(), refreshPendingInputs()]); }} />}
       <Modal
         title="Restart Job"
         open={restartOpen}
@@ -1422,12 +1453,13 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
           setRestartOpen(false);
           resetRestartState();
         }}
+        afterClose={() => restartOpener.current?.isConnected && restartOpener.current.focus()}
         width={900}
         okText="Restart"
-        okButtonProps={{ loading: restartSubmitting, disabled: !restartable || !!patchError }}
+        okButtonProps={{ 'aria-label': 'Restart', loading: restartSubmitting, disabled: restartSubmitting || !restartable || !!patchError || loading || !!error }}
         onOk={submitRestart}
       >
-        {selectedNode ? (
+        {story ? (
           <Space direction="vertical" style={{ width: '100%' }} size="middle">
             <Alert
               type="info"
@@ -1442,12 +1474,14 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
               }
             />
 
-            {!restartable && <Alert type="info" showIcon
-              message={selectedNode.restart_unavailable_reason || 'No recorded restart point is available for this node.'}
+            {error && <Alert type="error" message="Failed to load job story" description={error} action={<Button onClick={() => loadStory()}>Retry story</Button>} />}
+            {!restartScopes.length && <Alert type="info" message="No recorded restart points are available." />}
+            {!restartable && restartNode && <Alert type="info" showIcon
+              message={restartNode?.restart_unavailable_reason || 'No recorded restart point is available for this node.'}
               description="Choose a restart point below." />}
-            {restartChapterOrdinal === selectedNode.restart_chapter_ordinal && selectedNode.restart_relationship === 'containing' &&
+            {restartChapterOrdinal === restartNode?.restart_chapter_ordinal && restartNode?.restart_relationship === 'containing' &&
               <Alert type="info" showIcon message="This restarts the containing scope, including its work before this task." />}
-            {restartChapterOrdinal === selectedNode.restart_chapter_ordinal && selectedNode.restart_relationship === 'body' &&
+            {restartChapterOrdinal === restartNode?.restart_chapter_ordinal && restartNode?.restart_relationship === 'body' &&
               <Text type="secondary">Restart from the recipe’s executable body.</Text>}
             <Select
               aria-label="Restart point"
@@ -1685,7 +1719,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
             </Card>
           </Space>
         ) : (
-          <Empty description="Select a restartable node first" />
+          <div>{error ? <Alert type="error" message="Failed to load job story" description={error} action={<Button onClick={() => loadStory()}>Retry story</Button>} /> : <Spin tip="Loading restart points…"><div style={{ minHeight: 80 }} /></Spin>}</div>
         )}
       </Modal>
     </div>

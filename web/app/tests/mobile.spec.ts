@@ -151,7 +151,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
 test('phone story stacks panels, provides selected details access, and preserves node selection on resize', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/project/phone/jobs/one/story');
-  await page.getByRole('tab', { name: 'Steps', exact: true }).click();
+  await page.getByRole('tab', { name: 'Trace', exact: true }).click();
   const tree = page.getByRole('region', { name: 'Execution story tree' });
   await expect(tree).toBeVisible();
   const top = await page.locator('.story-tree-panel').boundingBox();
@@ -299,7 +299,7 @@ test.describe('native browser zoom', () => {
       root: { id: 'root', kind: 'recipe', title: 'Phone recipe', path: [], attempt: 1, status: 'completed', restart_scope_id: 'scope', restart_chapter_ordinal: 1 },
     } }));
     await page.goto('/project/phone/jobs/one/story');
-  await page.getByRole('tab', { name: 'Steps', exact: true }).click();
+  await page.getByRole('tab', { name: 'Trace', exact: true }).click();
     const restart = page.getByRole('button', { name: 'Restart job', exact: true });
     await restart.click();
     dialog = page.getByRole('dialog', { name: 'Restart Job', exact: true });
@@ -338,7 +338,7 @@ for (const width of [320, 390]) {
       return route.fulfill({ contentType: 'text/plain', body: 'Artifact body' });
     });
     await page.goto('/project/phone/jobs/one/story');
-  await page.getByRole('tab', { name: 'Steps', exact: true }).click();
+  await page.getByRole('tab', { name: 'Trace', exact: true }).click();
     // Select by accessible action names, independently of their CSS treatment.
     const overview = page.getByRole('link', { name: 'Goal overview', exact: true });
     const assertTouchArea = async (link: ReturnType<Page['getByRole']>) => {

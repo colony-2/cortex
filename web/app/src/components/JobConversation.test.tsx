@@ -5,6 +5,9 @@ import { APIError, getConversation, getConversationEntry, type HistoryEntry } fr
 vi.mock('@colony2/shared', async () => ({ ...await vi.importActual('@colony2/shared'), getConversation: vi.fn(), getConversationEntry: vi.fn() }));
 const entry = (id = 'one'): HistoryEntry => ({entry_id:id,kind:'review',title:{present:true,raw:'Original review'},summary:{present:false},state:'answered',requested_at:{present:false},locator:{invocation_id:'invoke'},form_fields:{question:'Proceed?'},accepted_response:{present:true,raw:{decision:'approve',feedback:'Keep original'}},response_source:'autofill',actor:{provenance:'reported_receipt',receipt:{actor:{kind:'human',id:'caller'}},legacy_user_id:{present:false}}});
 const page = (entries = [entry()], next?: string) => ({tenant_id:'tenant',job_id:'job',entries,snapshot_revision:1,snapshot_token:'snapshot',observed_at:'now',completeness:'partial',next_page_token:next});
+// Durable occurrence identity remains DOM metadata, not a raw record disclosure.
+const occurrence = (id: string) => document.querySelector(`[data-occurrence="${id}"]`);
+const findOccurrence = (id: string) => waitFor(() => { const node = occurrence(id); expect(node).not.toBeNull(); return node!; });
 beforeEach(() => vi.clearAllMocks());
 describe('conversation retained evidence', () => {
  it('CT-009 CT-010 CT-016 CT-034 renders exact accepted feedback and caller provenance', () => {
@@ -17,7 +20,7 @@ describe('conversation retained evidence', () => {
  it.each(['ordinary', 'structured', 'review'])('CT-010 %s never promotes a missing accepted outcome', kind => {
   const recorded = {...entry(), kind, state:'unknown', accepted_response:{present:false}, actor:{provenance:'automation_receipt',legacy_user_id:{present:false}}};
   render(<HistoryPair entry={recorded} />);
-  expect(screen.getByText('Not recorded')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Accepted response')).toBeNull();
   expect(screen.getByText('Automated response.')).toBeInTheDocument();
   expect(screen.queryByText(/Keep original/)).not.toBeInTheDocument();
   expect(screen.getByText(/State: unknown/)).toBeInTheDocument();
@@ -26,23 +29,23 @@ describe('conversation retained evidence', () => {
   vi.mocked(getConversation).mockResolvedValueOnce(page([entry()], 'next')).mockResolvedValueOnce(page([entry(),entry('two')]));
   render(<JobConversation tenant="tenant" job="job" refreshKey={0} onOpen={vi.fn()} />);
   fireEvent.click(await screen.findByText('Load more events'));
-  await screen.findByText('Occurrence: two');
-  expect(screen.getAllByText('Occurrence: one')).toHaveLength(1);
+  await findOccurrence('two');
+  expect(document.querySelectorAll('[data-occurrence="one"]')).toHaveLength(1);
  });
  it('CT-011 CT-012 preserves supplied order and repeated request identities', async () => {
   vi.mocked(getConversation).mockResolvedValue(page(['two','one'].map(id => ({...entry(id), requested_at:{present:true,raw:'same timestamp'}, locator:{invocation_id:id,collection_ordinals:[7]}}))));
   render(<JobConversation tenant="tenant" job="job" refreshKey={0} onOpen={vi.fn()} />);
-  await screen.findByText('Occurrence: two');
-  expect(screen.getAllByText(/Occurrence:/).map(x => x.textContent)).toEqual(['Occurrence: two','Occurrence: one']);
+  await findOccurrence('two');
+  expect(Array.from(document.querySelectorAll('[data-occurrence]')).map(x => x.getAttribute('data-occurrence'))).toEqual(['two','one']);
  });
  it('CT-013 CT-033 retains entries on expiry and refreshes from a fresh snapshot', async () => {
   vi.mocked(getConversation).mockResolvedValueOnce(page([entry()], 'opaque')).mockRejectedValueOnce(new APIError('expired',410,'history_snapshot_expired')).mockResolvedValueOnce(page([entry(),entry('two')]));
   const view = render(<JobConversation tenant="tenant" job="job" refreshKey={0} onOpen={vi.fn()} />);
   fireEvent.click(await screen.findByText('Load more events'));
   await screen.findByText(/History snapshot expired.*page Refresh button/);
-  expect(screen.getByText('Occurrence: one')).toBeInTheDocument();
+  expect(occurrence('one')).toBeInTheDocument();
   view.rerender(<JobConversation tenant="tenant" job="job" refreshKey={1} onOpen={vi.fn()} />);
-  await screen.findByText('Occurrence: two');
+  await findOccurrence('two');
   expect(vi.mocked(getConversation).mock.calls[2][2]?.pageToken).toBeUndefined();
  });
  it('CT-014 CT-019 opens exact unloaded detail, keeping missing requests unavailable', async () => {
@@ -58,15 +61,15 @@ describe('conversation retained evidence', () => {
   vi.mocked(getConversation).mockImplementationOnce(() => new Promise(r => {resolve = r;})).mockResolvedValue({...page([entry('new')]),job_id:'other'});
   const view = render(<JobConversation tenant="tenant" job="job" onOpen={vi.fn()} />);
   view.rerender(<JobConversation tenant={change === 'tenant' ? 'other' : 'tenant'} job={change === 'job' ? 'other' : 'job'} onOpen={vi.fn()} />);
-  await screen.findByText('Occurrence: new');
+  await findOccurrence('new');
   resolve(page([entry('obsolete')]));
-  await waitFor(() => expect(screen.queryByText('Occurrence: obsolete')).not.toBeInTheDocument());
+  await waitFor(() => expect(occurrence('obsolete')).not.toBeInTheDocument());
  });
  it.each(['cancelled','timed_out','superseded','unknown'])('CT-016 preserves recorded %s closure without inventing an answer', state => {
   render(<HistoryPair entry={{...entry(), state, state_evidence:['Recorded closure evidence'], accepted_response:{present:false}, form_fields:{delay_until:'past eligibility'}}} />);
   expect(screen.getByText(new RegExp(`State: ${state}`))).toBeInTheDocument();
-  expect(screen.getByText('Recorded closure evidence')).toBeInTheDocument();
-  expect(screen.getByText('Not recorded')).toBeInTheDocument();
+  expect(screen.queryByText('Recorded closure evidence')).toBeNull();
+  expect(screen.queryByLabelText('Accepted response')).toBeNull();
   expect(screen.queryByText(/Keep original/)).not.toBeInTheDocument();
  });
  it('CT-020 keeps partial entries visible through failed refresh and retry', async () => {
@@ -75,9 +78,9 @@ describe('conversation retained evidence', () => {
   await screen.findByText('Retained history has a gap');
   view.rerender(<JobConversation tenant="tenant" job="job" refreshKey={2} onOpen={vi.fn()} />);
   await screen.findByText(/History denied.*page Refresh button/);
-  expect(screen.getByText('Occurrence: one')).toBeInTheDocument();
+  expect(occurrence('one')).toBeInTheDocument();
   view.rerender(<JobConversation tenant="tenant" job="job" refreshKey={3} onOpen={vi.fn()} />);
-  await screen.findByText('Occurrence: recovered');
+  await findOccurrence('recovered');
  });
  it('CT-022 ignores obsolete request and tenant details even when transport ignores abort', async () => {
   vi.mocked(getConversation).mockResolvedValue(page([]));
@@ -86,26 +89,26 @@ describe('conversation retained evidence', () => {
   vi.mocked(getConversationEntry).mockImplementationOnce(() => new Promise(r => {resolve = r;})).mockResolvedValueOnce(detail('current'));
   const view = render(<JobConversation tenant="tenant" job="job" occurrence="old" onOpen={vi.fn()} />);
   view.rerender(<JobConversation tenant="other" job="job" occurrence="current" onOpen={vi.fn()} />);
-  await screen.findByText('Occurrence: current');
+  await findOccurrence('current');
   await act(async () => resolve(detail('obsolete')));
-  expect(screen.queryByText('Occurrence: obsolete')).not.toBeInTheDocument();
+  expect(occurrence('obsolete')).not.toBeInTheDocument();
   expect(vi.mocked(getConversationEntry).mock.calls[0][3]?.signal?.aborted).toBe(true);
  });
 
 });
 
 describe('CC compact presentation and saved interpretation', () => {
- it('CC-002 CC-008 keeps full evidence behind Details, expands feedback and omits pending answers', () => {
+ it('CC-002 CC-008 omits raw evidence, expands feedback and omits pending answers', () => {
   const feedback = 'Complete feedback '.repeat(100);
   const {container,rerender} = render(<HistoryPair entry={{...entry(),accepted_response:{present:true,raw:feedback},diagnostics:[{code:'gap',message:'Original diagnostic'}]}} />);
-  expect(container.querySelector('details')).not.toHaveAttribute('open');
-  expect(container.querySelector('details')).toHaveTextContent('Original diagnostic');
-  expect(container.querySelector('details')).toHaveTextContent('invoke');
+  expect(container.querySelector('details')).toBeNull();
+  expect(container).not.toHaveTextContent('Original diagnostic');
+  expect(container).not.toHaveTextContent('invoke');
   fireEvent.click(screen.getByRole('button',{name:'Expand feedback'}));
   expect(container.querySelector('.conversation-answer.expanded')).toHaveTextContent(feedback.trim());
   rerender(<HistoryPair entry={{...entry(),kind:'ordinary',state:'pending',accepted_response:{present:false}}} />);
   expect(screen.queryByLabelText('Accepted response')).toBeNull();
-  expect(container.querySelector('details')).toHaveTextContent('Proceed?');
+  expect(container).toHaveTextContent('Proceed?');
  });
 });
 
@@ -140,7 +143,7 @@ describe('CC compact occurrence and time provenance',()=>{
   const entries=['second','first'].map(id=>({...entry(id),request_id:'same',requested_at:{present:true,raw:'2025-01-02T14:30:00Z'},actor:{...entry().actor,receipt:{submitted_at:'2025-01-02T14:35:00Z',actor:{id:'j@j.com',kind:'human'}}}}));
   vi.mocked(getConversation).mockResolvedValue(page(entries));
   const {container}=render(<JobConversation tenant="tenant" job="job" onOpen={vi.fn()}/>);
-  await screen.findByText('Occurrence: second');
+  await findOccurrence('second');
   expect([...container.querySelectorAll('.conversation-pair')].map(el=>el.getAttribute('data-occurrence'))).toEqual(['second','first']);
   for(const pair of container.querySelectorAll('.conversation-pair'))expect([...pair.children].map(el=>el.getAttribute('aria-label'))).toEqual(['Recorded request step','Accepted response']);
   expect(screen.getAllByText(/Reported time:/)).toHaveLength(2);
@@ -149,9 +152,9 @@ describe('CC compact occurrence and time provenance',()=>{
  it('CC-019 refreshes the whole visible range in one snapshot and retains entries on inconsistent refresh',async()=>{
   vi.mocked(getConversation).mockResolvedValueOnce(page([entry('one')],'next')).mockResolvedValueOnce(page([entry('two')])).mockResolvedValueOnce({...page([entry('new')],'fresh-next'),snapshot_token:'fresh'}).mockResolvedValueOnce({...page([entry('invalid')]),snapshot_token:'wrong'});
   const view = render(<JobConversation tenant="tenant" job="job" refreshKey={0} onOpen={vi.fn()}/>);
-  fireEvent.click(await screen.findByText('Load more events'));await screen.findByText('Occurrence: two');
+  fireEvent.click(await screen.findByText('Load more events'));await findOccurrence('two');
   view.rerender(<JobConversation tenant="tenant" job="job" refreshKey={4} onOpen={vi.fn()} />);await screen.findByText(/snapshot changed during refresh/);
-  expect(screen.getByText('Occurrence: one')).toBeInTheDocument();expect(screen.getByText('Occurrence: two')).toBeInTheDocument();expect(screen.queryByText('Occurrence: invalid')).toBeNull();
+  expect(occurrence('one')).toBeInTheDocument();expect(occurrence('two')).toBeInTheDocument();expect(occurrence('invalid')).toBeNull();
  });
  it('CC-023 explicitly shows an empty retained history',async()=>{
   vi.mocked(getConversation).mockResolvedValue(page([]));render(<JobConversation tenant="tenant" job="job" onOpen={vi.fn()}/>);
@@ -228,7 +231,7 @@ it('CR-007 loads initially without a private refresh button or timer', async () 
  try {
   vi.mocked(getConversation).mockResolvedValue(page());
   render(<JobConversation tenant="tenant" job="job" onOpen={vi.fn()} />);
-  await screen.findByText('Occurrence: one');
+  await findOccurrence('one');
   expect(screen.queryByRole('button',{name:'Refresh history'})).toBeNull();
   await act(async()=>{await vi.advanceTimersByTimeAsync(30000);});
   expect(getConversation).toHaveBeenCalledTimes(1);
@@ -252,11 +255,11 @@ it('CR-009 rebuilds all visible pages in a fresh snapshot',async()=>{
  .mockResolvedValueOnce({...page([entry('fresh-one'),entry('fresh-two')]),snapshot_token:'fresh'});
  const view=render(<JobConversation tenant="tenant" job="job" refreshKey={0} onOpen={vi.fn()}/>);
  fireEvent.click(await screen.findByText('Load more events'));
- await screen.findByText('Occurrence: two');
+ await findOccurrence('two');
  view.rerender(<JobConversation tenant="tenant" job="job" refreshKey={1} onOpen={vi.fn()}/>);
- await screen.findByText('Occurrence: fresh-two');
- expect(screen.getAllByText('Occurrence: fresh-one')).toHaveLength(1);
- expect(screen.queryByText('Occurrence: one')).toBeNull();
+ await findOccurrence('fresh-two');
+ expect(document.querySelectorAll('[data-occurrence="fresh-one"]')).toHaveLength(1);
+ expect(occurrence('one')).toBeNull();
  expect(vi.mocked(getConversation).mock.calls[3][2]?.pageToken).toBe('fresh-next');
 });
 

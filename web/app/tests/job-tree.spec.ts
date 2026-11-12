@@ -142,7 +142,7 @@ test('DAG-01,02,04,05,08,15 embedded DAG discovers lazily and retains local stat
  await panel.getByRole('searchbox').fill('c2j');
  const scroll=await panel.getByLabel('Execution diagram').evaluate(e=>{e.scrollLeft=120;e.scrollTop=40;return {left:e.scrollLeft,top:e.scrollTop};});
  const count=discoveries;
- await page.getByRole('tab',{name:'Summary',exact:true}).click();
+ await page.getByRole('tab',{name:'Trace',exact:true}).click();
  await page.goBack();
  await expect(page.getByRole('tab',{name:'DAG',exact:true})).toHaveAttribute('aria-selected','true');
  await expect(panel.getByLabel('Zoom',{exact:true})).toHaveText('120%');
@@ -155,6 +155,8 @@ test('DAG-01,02,04,05,08,15 embedded DAG discovers lazily and retains local stat
  await panel.getByRole('button',{name:'Toggle branch Plan the DAG improvements'}).click();
  if(process.env.CORTEX_TREE_SCREENSHOTS) await page.screenshot({path:process.env.CORTEX_TREE_SCREENSHOTS+'/embedded-desktop.png',fullPage:true});
  await page.setViewportSize({width:390,height:844});
+ // Wait until the responsive shell has adopted its phone navigation.
+ await expect(page.getByRole('button',{name:'Open navigation',exact:true})).toBeVisible();
  await expect(panel.getByLabel('Execution diagram')).toBeVisible();
  await expect(panel.getByRole('region',{name:'Execution outline'})).toHaveCount(0);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
@@ -165,18 +167,18 @@ test('DAG-06 interrupted entry aborts on tab departure and resumes', async ({pag
  let release!:()=>void; const gate=new Promise<void>(r=>release=r); let calls=0; let resumed=false;
  await page.route('**/jobs/entry/tree-node',async route=>{calls++; if(!resumed) await gate; await route.fulfill({json:{node:nodes[2],observed_at:at}}).catch(()=>{});});
  await page.goto('/project/demo/jobs/entry/story?tab=dag');
- await expect.poll(()=>calls).toBeGreaterThan(0);
- await page.getByRole('tab',{name:'Summary',exact:true}).click();
- // StrictMode may issue another initial request before departure. Establish
- // the baseline only once the visibility effect has actually paused discovery.
- await expect(page.locator('#job-panel-dag .tree-coverage')).toContainText('Partial discovery');
+ await expect.poll(()=>calls).toBe(1);
  const initialCalls=calls;
+ await page.getByRole('tab',{name:'Trace',exact:true}).click();
+ await expect(page.locator('#job-panel-dag .tree-coverage')).toContainText('Partial discovery');
+ expect(calls).toBe(1);
  resumed=true;
  await page.getByRole('tab',{name:'DAG',exact:true}).click();
  await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
  release();
  await expect(page.getByRole('region',{name:'Discovery coverage'})).toContainText('4 loaded jobs');
  expect(calls).toBe(initialCalls+1);
+ if(process.env.CORTEX_TREE_SCREENSHOTS) await page.screenshot({path:process.env.CORTEX_TREE_SCREENSHOTS+'/resumed-discovery.png',fullPage:true});
 });
 
 test('DAG-07 identity changes dispose loaded state; DAG-09,10 recipe returns target original entry',async({page})=>{
@@ -194,12 +196,14 @@ test('DAG-07 identity changes dispose loaded state; DAG-09,10 recipe returns tar
  await expect(page.getByRole('region',{name:'Discovery coverage'})).toContainText('4 loaded jobs');
 });
 
- test('DAG-17,18 Summary and Input artifacts show directly in the browser',async({page})=>{
+ test('DAG-17,18 Run Summary in Trace and Input artifacts show directly in the browser',async({page})=>{
   await page.goto('/project/demo/jobs/entry/story?tab=summary');
-  const summary=page.getByRole('tabpanel',{name:'Summary',exact:true});
+  const summary=page.getByRole('tabpanel',{name:'Trace',exact:true});
   await expect(summary.getByRole('heading',{name:'Run Summary'})).toBeVisible();
   await expect(summary.locator('details')).toHaveCount(0);
-  await expect(summary.getByText('Execution timing and recipe metadata load when you open Steps.')).toBeVisible();
+  await expect(summary.getByText('COMPLETED', {exact:true})).toBeVisible();
+  await expect(summary.getByRole('tree')).toBeVisible();
+  await expect(page.getByRole('tab',{name:'Summary',exact:true})).toHaveCount(0);
   if(process.env.CORTEX_TREE_SCREENSHOTS) await page.screenshot({path:process.env.CORTEX_TREE_SCREENSHOTS+'/summary-direct.png',fullPage:true});
   await page.getByRole('tab',{name:'Input artifacts',exact:true}).click();
   const inputs=page.getByRole('tabpanel',{name:'Input artifacts',exact:true});
@@ -350,7 +354,7 @@ for(const stage of ['ancestor','child-page']) {
   });
   await page.goto('/project/demo/jobs/entry/story?tab=dag');await expect.poll(()=>pending).toBe(1);
   const entry=page.locator('.tree-card[data-job-id="entry"]');await entry.locator('.tree-card-select').click();
-  await page.getByRole('tab',{name:'Summary',exact:true}).click();resumed=true;
+  await page.getByRole('tab',{name:'Trace',exact:true}).click();resumed=true;
   await page.getByRole('tab',{name:'DAG',exact:true}).click();
   await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
   await expect(page.getByRole('region',{name:'Discovery coverage'})).toContainText('4 loaded jobs');

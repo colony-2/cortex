@@ -309,11 +309,12 @@ for (const width of [1280, 390]) {
     await expect(inputPane).not.toHaveAttribute('open');
     await expect(page.getByRole('button', { name: longName, exact: true })).toBeVisible();
     for (let visit = 0; visit < 2; visit++) {
-      await page.getByRole('tab', { name: 'Summary', exact: true }).click();
+      await page.getByRole('tab', { name: 'Trace', exact: true }).click();
       await expect(runSummary.getByRole('heading', { name: 'Run Summary', exact: true })).toBeVisible();
       await expect(runSummary.locator(':scope > summary')).toHaveCount(0);
       await expect(runSummary).not.toHaveAttribute('open');
-      await expect(runSummary.getByRole('button', { name: 'Open Steps to load execution timing and recipe metadata' })).toBeVisible();
+      await expect(page.getByRole('tab', { name: 'Trace', exact: true })).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByRole('alert').filter({ hasText: 'Failed to load job story' })).toBeVisible();
       await expect(page.getByRole('button', { name: longName, exact: true })).not.toBeVisible();
       await page.getByRole('tab', { name: 'Input artifacts', exact: true }).click();
       await expect(page.getByRole('button', { name: longName, exact: true })).toBeVisible();
@@ -321,9 +322,11 @@ for (const width of [1280, 390]) {
     await capture(`input-panes-direct-${width}.png`, true);
     // Keyboard selection of the tabs exposes content without a second activation.
     await page.getByRole('tab', { name: 'Input artifacts', exact: true }).focus();
-    await page.keyboard.press('ArrowRight');
-    await expect(page.getByRole('tab', { name: 'Summary', exact: true })).toBeFocused();
+    await page.keyboard.press('End');
+    await expect(page.getByRole('tab', { name: 'Trace', exact: true })).toBeFocused();
     await expect(runSummary.getByRole('heading', { name: 'Run Summary', exact: true })).toBeVisible();
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowLeft');
     await page.keyboard.press('ArrowLeft');
     await expect(page.getByRole('tab', { name: 'Input artifacts', exact: true })).toBeFocused();
     await expect(page.getByRole('button', { name: longName, exact: true })).toBeVisible();

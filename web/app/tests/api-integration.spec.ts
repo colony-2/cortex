@@ -42,7 +42,8 @@ test(`confirms cancellation and active archive, immediately archives cancelled j
   await page.reload();
   expect((await (await request.get(`${base}/detail-job`)).json()).completion_detail).toBe(customReason);
   expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).cancelTextExecuted)).toBeUndefined();
-  await page.getByRole('button', { name: 'Back to Goals' }).click();
+  await page.getByRole('link', { name: 'Goal overview', exact: true }).click();
+  await page.getByRole('link', { name: 'Back to Goals', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Select job bulk-one', exact: true }).check();
   await page.getByRole('checkbox', { name: 'Select job bulk-two', exact: true }).check();
   await page.getByRole('button', { name: 'Cancel selected' }).click();
@@ -85,7 +86,8 @@ test(`confirms cancellation and active archive, immediately archives cancelled j
   const archivedJob = page.getByRole('link', { name: 'Job bulk-one: Cancelled', exact: true });
   await archivedJob.click();
   await expect(page).toHaveURL(/bulk-one\/story/);
-  await page.getByRole('button', { name: 'Back to Goals' }).click();
+  await page.getByRole('link', { name: 'Goal overview', exact: true }).click();
+  await page.getByRole('link', { name: 'Back to Goals', exact: true }).click();
   await expect(visibility).toHaveValue('all');
   await page.getByRole('checkbox', { name: 'Select job bulk-one', exact: true }).check();
   await visibility.selectOption('inbox');
@@ -199,19 +201,20 @@ test('creates a prompt-only goal and restores expanded list state through naviga
   await name.click();
   await expect(page).toHaveURL(new RegExp(`/jobs/${job.job_id}/story`));
   await expect(page.getByRole('heading', { name: 'Job Story' })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Job prompt' }).locator('div.ant-typography')).toHaveText(prompt);
+  await expect(page.getByRole('region', { name: 'Job prompt' }).locator('.job-prompt-markdown')).toHaveText(prompt);
   await page.goBack();
   await expect(page).toHaveURL(detailURL);
   await expect(page.getByText('Execution requirements', { exact: true }).locator('..')).toHaveAttribute('open', '');
   await page.goForward();
   await expect(page.getByRole('heading', { name: 'Job Story' })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('region', { name: 'Job prompt' }).locator('div.ant-typography')).toHaveText(prompt);
+  await expect(page.getByRole('region', { name: 'Job prompt' }).locator('.job-prompt-markdown')).toHaveText(prompt);
   await page.getByRole('link', { name: 'Goal overview', exact: true }).click();
   await expect(page).toHaveURL(goalURL);
   await expect(page.getByRole('button', { name: 'Expand goal details' })).toHaveCount(0);
   await page.getByRole('link', { name: 'Open execution', exact: true }).click();
-  await page.getByRole('button', { name: 'Back to Goals' }).click();
+  await page.getByRole('link', { name: 'Goal overview', exact: true }).click();
+  await page.getByRole('link', { name: 'Back to Goals', exact: true }).click();
   await expect(page).toHaveURL(detailURL);
   await page.reload();
   await expect(page.getByText('Execution requirements', { exact: true }).locator('..')).toHaveAttribute('open', '');
@@ -272,9 +275,9 @@ test('opens the tenant from the server connection config without a URL override'
   await expect(page.getByText('No pending reviews')).toBeVisible();
 });
 
-// Real downloads in both projects; production additionally crosses HTTP JobDB and SQLite.
-test('downloads persisted job chapters as JSON without changing the story route', async ({ page, request, context, baseURL }, testInfo) => {
-  const { readFile } = await import('node:fs/promises');
+// The export API remains available after removal of its Story page action.
+// Production additionally crosses HTTP JobDB and SQLite.
+test('exports persisted job chapters through the retained API without changing the story route', async ({ page, request, context, baseURL }, testInfo) => {
   const tenant = `chapters-${randomUUID()}`;
   await registerCell(request, tenant);
   const jobId = 'chapter-export';
@@ -322,14 +325,12 @@ test('downloads persisted job chapters as JSON without changing the story route'
   }
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
   await page.goto(route);
-  const downloadEvent = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Download chapters', exact: true }).click();
-  const download = await downloadEvent;
-  expect(download.suggestedFilename()).toBe(`job-${jobId}-chapters.json`);
-  expect(await download.failure()).toBeNull();
-  const file = await download.path();
-  expect(file).toBeTruthy();
-  const text = await readFile(file!, 'utf8');
+  await expect(page.getByRole('button', { name: 'Download chapters', exact: true })).toHaveCount(0);
+  const download = await request.get(`/api/projects/${tenant}/jobs/${jobId}/chapters/download`);
+  expect(download.status(), await download.text()).toBe(200);
+  expect(download.headers()['content-disposition']).toContain(`job-${jobId}-chapters.json`);
+  expect(download.headers()['content-type']).toContain('application/json');
+  const text = await download.text();
   const exported = JSON.parse(text);
   expect(text).toContain('\n  "format_version": 1,');
   expect(exported).toMatchObject({ format_version: 1, project_id: tenant, job_id: jobId });
@@ -350,7 +351,7 @@ test('downloads persisted job chapters as JSON without changing the story route'
     expect(text).not.toContain(artifactContent.toString());
   }
   await expect(page).toHaveURL(new RegExp(`${route}$`));
-  await expect(page.getByRole('button', { name: 'Download chapters', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Download chapters', exact: true })).toHaveCount(0);
 });
 
 
@@ -373,7 +374,7 @@ test('wraps long job story context without overflowing its header', async ({ pag
     const promptRegion = page.getByRole('region', { name: 'Job prompt' });
     const failure = page.getByRole('alert').filter({ hasText: 'Job failed' });
     await expect(heading).toBeVisible();
-    await expect(promptRegion.locator('div.ant-typography')).toHaveText(prompt);
+    await expect(promptRegion.locator('.job-prompt-markdown')).toHaveText(prompt);
     await expect(failure).toContainText(detail);
     const header = page.getByTestId('job-story-header');
     for (const element of [header, promptRegion, failure]) {
@@ -399,7 +400,8 @@ test('shows persisted prompt and failure on the production story through direct 
   await registerCell(request, tenant);
   const jobID = `story-${randomUUID()}`;
   const repo = mkdtempSync(join(tmpdir(), 'cortex-story-'));
-  const prompt = 'Story prompt <literal> 雪\nSecond prompt line';
+  const prompt = 'Story prompt **saved** 雪\nSecond prompt line';
+  const renderedPrompt = 'Story prompt saved 雪\nSecond prompt line';
   const marker = 'Story context diagnostic <literal> 雪\nSecond diagnostic line';
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -433,10 +435,11 @@ test('shows persisted prompt and failure on the production story through direct 
     await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
     const assertContext = async () => {
       const region = page.getByRole('region', { name: 'Job prompt' });
-      await expect(region.locator('div.ant-typography')).toHaveText(prompt);
+      await expect(region.locator('.job-prompt-markdown')).toHaveText(renderedPrompt);
+      await expect(region.locator('.job-prompt-markdown strong')).toHaveText('saved');
       const failure = page.getByRole('alert').filter({ hasText: 'Job failed' });
       await expect(failure).toContainText(stored.completion_detail);
-      expect(await region.evaluate(node => node.textContent)).toBe(`Prompt${prompt}`);
+      expect(await region.evaluate(node => node.textContent)).toBe(`Prompt${renderedPrompt}`);
       await expect(page.getByText('Job details unavailable', { exact: true })).toHaveCount(0);
     };
     await page.goto(`/project/${tenant}/jobs/${jobID}/story`);

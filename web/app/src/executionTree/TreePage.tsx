@@ -29,6 +29,8 @@ export function TreeWorkspace({ tenant, entry, active = true, embedded = false }
     return () => document.removeEventListener('visibilitychange', changed);
   }, []);
   const visible = active && documentVisible;
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
   useEffect(() => {
     if (!visible) return;
     setNow(Date.now());
@@ -38,13 +40,20 @@ export function TreeWorkspace({ tenant, entry, active = true, embedded = false }
   // Identity/refresh isolates discovery; tab departure retains its cursors.
   useEffect(() => {
     const controller = new Traversal(tenant, entry, update); traversal.current = controller;
-    select(entry); collapse(new Set()); initiallyRevealed.current = false; if (visible) void controller.run(); else controller.interrupted = true;
-    return () => controller.cancel();
+    select(entry); collapse(new Set()); initiallyRevealed.current = false;
+    controller.interrupted = true;
+    // Effect replay must dispose its first controller before transport starts.
+    let current = true;
+    queueMicrotask(() => { if (current && visibleRef.current && controller.interrupted) void controller.run(); });
+    return () => { current = false; controller.cancel(); };
   }, [tenant, entry, version]);
   useEffect(() => {
     const controller = traversal.current;
     if (!visible) controller?.pause();
-    else if (controller?.interrupted) void controller.run();
+    else queueMicrotask(() => {
+      // Recheck visibility and identity; another queued start may have resumed it.
+      if (traversal.current === controller && visibleRef.current && controller?.interrupted) void controller.run();
+    });
   }, [visible]);
   useEffect(() => {
     const state = traversal.current?.state;

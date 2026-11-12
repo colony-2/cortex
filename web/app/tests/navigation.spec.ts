@@ -159,7 +159,8 @@ test('badges update through activity events in both widths', async ({ page }) =>
       const box = (await badge.boundingBox())!, rail = (await page.locator('.desktop-navigation').boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(rail.x);
       expect(box.x + box.width).toBeLessThanOrEqual(rail.x + rail.width);
-      expect(await badge.evaluate(el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); })).toBe(true);
+      // Badge counts appear in the DOM before Ant Design's scale-in animation finishes.
+      await expect.poll(() => badge.evaluate(el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); })).toBe(true);
     }
     await page.evaluate(() => scrollTo(0, 0));
     await page.screenshot({ animations: 'disabled', path: `${captures}/${collapsed ? 'collapsed' : 'expanded'}-badge.png` });

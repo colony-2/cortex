@@ -4,14 +4,15 @@ export const jobDetailTabs = [
   ['conversation', 'Conversation'],
   ['relationships', 'Relationships'],
   ['input-artifacts', 'Input artifacts'],
-  ['summary', 'Summary'],
-  ['execution', 'Steps'],
   ['dag', 'DAG'],
+  ['leases', 'Lease timeline'],
+  ['execution', 'Trace'],
 ] as const;
 export type JobDetailTab = typeof jobDetailTabs[number][0];
 
 export function jobDetailTab(search: URLSearchParams): JobDetailTab {
   if (search.has('occurrenceId') || search.has('requestId')) return 'conversation';
+  if (search.get('tab') === 'summary') return 'execution';
   if (search.has('tab')) {
     return jobDetailTabs.find(([key]) => key === search.get('tab'))?.[0] || 'conversation';
   }

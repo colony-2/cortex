@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { listJobChildren } from '@colony2/shared/api';
+import { listJobChildren, listJobs } from '@colony2/shared/api';
 import type { RecipeJob, ListRecipeJobsResponse } from '@colony2/shared/types';
 import JobRelationships from './JobRelationships';
 
-vi.mock('@colony2/shared/api', () => ({ listJobChildren: vi.fn() }));
+vi.mock('@colony2/shared/api', () => ({ listJobs: vi.fn(), listJobChildren: vi.fn() }));
 const api = vi.mocked(listJobChildren);
 const job = { tenant_id: 'tenant', job_id: 'current', goal_id: 'current-goal' } as RecipeJob;
 const child = (id: string, extra = {}) => ({ ...job, job_id: id, goal_id: 'shared', cell_name: 'platform', status: 'READY', store: 'ACTIVE', ...extra } as RecipeJob);
@@ -13,7 +13,7 @@ function mount(current = job, tenant = 'tenant', id = 'current') {
   const result = render(<MemoryRouter><JobRelationships projectId={tenant} jobId={id} job={current} /></MemoryRouter>);
   return result;
 }
-beforeEach(() => api.mockReset().mockResolvedValue({ jobs: [] }));
+beforeEach(() => { api.mockReset().mockResolvedValue({ jobs: [] }); vi.mocked(listJobs).mockReset().mockResolvedValue({jobs:[]}); });
 afterEach(() => vi.clearAllMocks());
 
 it.each([
@@ -122,4 +122,43 @@ it('REL-040,042 DAG-16 shows content directly and preserves rows and cursor thro
   fireEvent.click(screen.getByRole('button',{name:'Load more child jobs'}));
   await waitFor(()=>expect(api).toHaveBeenCalledTimes(3));
   expect(api.mock.calls.at(-1)?.[2]?.pageToken).toBe('last');
+});
+
+it('JS-024,025,034 requests all attempts, keeps current-only continuation and retries the same page independently', async () => {
+  const siblings = vi.mocked(listJobs);
+  siblings.mockResolvedValueOnce({ jobs: [child('current')], next_page_token: 'first' })
+    .mockResolvedValueOnce({ jobs: [child('archived', { store: 'ARCHIVED', goal_id: 'secondary', status: 'COMPLETED' })], next_page_token: 'last' })
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockResolvedValueOnce({ jobs: [child('archived'), child('ready')] });
+  render(<MemoryRouter><JobRelationships projectId="tenant" jobId="current" job={{...job,parent:{job_id:'parent'}}} showAttempts currentGoal="originating" /></MemoryRouter>);
+  const group = within(screen.getByRole('region', { name: 'Other attempts at this goal' }));
+  expect(group.getByRole('status')).toHaveTextContent('Loading other attempts');
+  fireEvent.click(await group.findByRole('button', { name: 'Load more attempts' }));
+  await group.findByRole('link', { name: 'archived' });
+  expect(group.queryByRole('link', { name: 'current', exact: true })).toBeNull();
+  expect(group.getByRole('link', { name: 'Goal · originating' })).toHaveAttribute('href', '/project/tenant/goals/originating');
+  fireEvent.click(group.getByRole('button', { name: 'Load more attempts' }));
+  fireEvent.click(await group.findByRole('button', { name: 'Retry other attempts' }));
+  await group.findByRole('link', { name: 'ready' });
+  expect(group.getAllByRole('listitem')).toHaveLength(2);
+  expect(screen.getByRole('link', { name: 'Job · parent' })).toBeVisible();
+  expect(siblings.mock.calls.map(call => call[1])).toEqual([undefined, 'first', 'last', 'last'].map(pageToken => ({ goal: 'originating', status: [], includeHidden: true, pageSize: 20, pageToken })));
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh relationships' }));
+  await group.findByText('No other attempts at this goal');
+  expect(siblings.mock.calls.at(-1)?.[1]?.pageToken).toBeUndefined();
+});
+it('JS-034 no goal makes no sibling request', async () => {
+  render(<MemoryRouter><JobRelationships showAttempts projectId="tenant" jobId="current" job={job} /></MemoryRouter>);
+  await screen.findByText('No child jobs recorded in this tenant');
+  expect(listJobs).not.toHaveBeenCalled();
+});
+it.each(['tenant','job','goal'].flatMap(change => ['success','failure'].map(outcome => ({change,outcome}))))('JS-035 ignores stale sibling $outcome after $change changes', async ({change,outcome}) => {
+  let resolve!: (value: ListRecipeJobsResponse) => void, reject!: (error: Error) => void;
+  vi.mocked(listJobs).mockReturnValueOnce(new Promise((yes,no) => {resolve=yes; reject=no;})).mockResolvedValue({jobs:[child('fresh')]});
+  const view = render(<MemoryRouter><JobRelationships projectId="tenant" jobId="current" job={job} showAttempts currentGoal="goal" /></MemoryRouter>);
+  view.rerender(<MemoryRouter><JobRelationships projectId={change==='tenant'?'other':'tenant'} jobId={change==='job'?'other':'current'} job={job} showAttempts currentGoal={change==='goal'?'other':'goal'} /></MemoryRouter>);
+  await screen.findByRole('link', {name:'fresh'});
+  await act(async () => outcome==='success' ? resolve({jobs:[child('stale')]}) : reject(new Error('obsolete')));
+  expect(screen.queryByRole('link', {name:'stale'})).toBeNull();
+  expect(screen.queryByText('Other attempts unavailable')).toBeNull();
 });
