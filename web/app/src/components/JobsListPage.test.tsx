@@ -698,7 +698,7 @@ it('bounds immediate batches and keeps targets fixed through selection and filte
   fireEvent.click(screen.getByRole('button', { name: 'Archive selected' }));
   await waitFor(() => expect(changes).toHaveLength(5));
   expect(vi.mocked(fetch).mock.calls.filter(([, init]) => !init?.method || init.method === 'GET')).toHaveLength(1);
-  expect(screen.getByRole('status')).toHaveTextContent('Archiving jobs');
+  expect(screen.getByText('Archiving jobs…')).toHaveAttribute('role', 'status');
   expect(screen.getByRole('button', { name: 'Cancel selected' })).toBeDisabled();
   jobs[0].status = 'ACTIVE';
   fireEvent.click(screen.getAllByRole('button', { name: 'Refresh', exact: true })[0]);
@@ -924,4 +924,87 @@ it.each(['recipe','generic'])('DAG-09 selected %s jobs use the appropriate DAG d
  render(<MemoryRouter initialEntries={['/?expanded=goal:goal']}><JobsListPage projectId="tenant" /></MemoryRouter>);
  await waitFor(()=>expect(getJob).toHaveBeenCalled());
  expect(await screen.findByRole('link',{name:'DAG',exact:true})).toHaveAttribute('href',`/project/tenant/jobs/entry/${job_type==='recipe'?'story?tab=dag':'tree'}`);
+});
+
+const copyId = '3M11h0hfoxIoOk6knxCN6DW9o0u';
+function copyFixture(job_id: string, extra: Partial<RecipeJob> = {}) {
+  return { ...jobIdentity, job_id, prompt: `Work ${job_id}`, status: 'READY', store: 'ACTIVE', created_at: '2026-11-01T00:00:00Z', ...extra };
+}
+function clipboardFixture(clipboard: unknown) {
+  vi.stubGlobal('navigator', { userAgent: navigator.userAgent, clipboard });
+}
+for (const width of [1280, 390]) for (const alias of ['goals', 'jobs']) {
+  it(`GJC-001/002/005/006/008/010/011/013 copies independently at ${width} on ${alias}`, async () => {
+    vi.stubGlobal('innerWidth', width);
+    let resolve!: () => void;
+    const writeText = vi.fn().mockImplementationOnce(() => new Promise<void>(done => { resolve = done; }))
+      .mockRejectedValueOnce(new Error('Denied')).mockResolvedValue(undefined);
+    clipboardFixture({ writeText });
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ jobs: [copyFixture(copyId, { goal_id: 'different-goal' }), copyFixture('untouched')] })));
+    vi.stubGlobal('fetch', fetchMock);
+    const initial = `/project/tenant/${alias}?executionState=cells-v1&expanded=goal%3Adifferent-goal&q=Work&sort=prompt&order=ascend`;
+    render(<MemoryRouter initialEntries={[initial]}><Location /><JobsListPage projectId="tenant" /></MemoryRouter>);
+    const button = await screen.findByRole('button', { name: `Copy job ID ${copyId}`, exact: true });
+    const container = button.closest(width < 768 ? '.goal-card' : 'tr')! as HTMLElement;
+    const local = within(container);
+    expect(button.closest('a')).toBeNull();
+    expect(button.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    expect(local.getByRole('link', { name: `Work ${copyId}`, exact: true })).toHaveAttribute('href', expect.stringContaining(`/jobs/${copyId}/story`));
+    const checkbox = local.getByRole('checkbox', { name: `Select job ${copyId}`, exact: true });
+    fireEvent.click(checkbox);
+    await waitFor(() => expect(getJob).toHaveBeenCalled());
+    const requests = fetchMock.mock.calls.length;
+    const detailReads = vi.mocked(getJob).mock.calls.length;
+    const location = screen.getByTestId('location').textContent;
+    const unchanged = () => {
+      expect(checkbox).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: 'Select job untouched', exact: true })).not.toBeChecked();
+      expect(local.getByRole('button', { name: 'Collapse goal details' })).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByTestId('location').textContent).toBe(location);
+      expect(fetchMock).toHaveBeenCalledTimes(requests);
+      expect(getJob).toHaveBeenCalledTimes(detailReads);
+    };
+    fireEvent.click(button);
+    expect(writeText).toHaveBeenLastCalledWith(copyId);
+    expect(local.queryByText('Job ID copied')).not.toBeInTheDocument();
+    await act(async () => resolve());
+    expect(local.getByRole('status')).toHaveTextContent('Job ID copied'); unchanged();
+    fireEvent.click(button);
+    expect(await local.findByText('Could not copy job ID')).toBeVisible();
+    expect(within(local.getByRole('status')).getByText(copyId, { selector: 'code' })).toHaveTextContent(copyId);
+    expect(local.queryByText('Job ID copied')).not.toBeInTheDocument(); unchanged();
+    fireEvent.click(button);
+    expect(await local.findByText('Job ID copied')).toBeVisible();
+    expect(writeText.mock.calls).toEqual([[copyId], [copyId], [copyId]]); unchanged();
+    const untouched = screen.getByRole('button', { name: 'Copy job ID untouched', exact: true }).closest(width < 768 ? '.goal-card' : 'tr')! as HTMLElement;
+    expect(within(untouched).queryByText('Job ID copied')).not.toBeInTheDocument();
+    expect(within(untouched).getByRole('button', { name: 'Expand goal details' })).toHaveAttribute('aria-expanded', 'false');
+  });
+}
+it.each([undefined, {}])('GJC-007 handles unavailable clipboard %j', async clipboard => {
+  clipboardFixture(clipboard);
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ jobs: [copyFixture(copyId)] }))));
+  render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('button', { name: `Copy job ID ${copyId}` }));
+  expect(await screen.findByText('Could not copy job ID')).toBeVisible();
+  expect(screen.getByText(copyId, { selector: 'code' })).toBeVisible();
+  expect(screen.queryByText('Job ID copied')).not.toBeInTheDocument();
+});
+it.each([true, false])('GJC-003/004 uses the title attempt with active=%s', async active => {
+  const writeText = vi.fn().mockResolvedValue(undefined); clipboardFixture({ writeText });
+  const jobs = [
+    copyFixture('older-active', { goal_id: 'shared', created_at: '2026-11-01T00:00:00Z', status: active ? 'READY' : 'COMPLETED' }),
+    copyFixture(copyId, { goal_id: 'shared', created_at: '2026-11-02T00:00:00Z', status: active ? 'READY' : 'COMPLETED' }),
+    copyFixture('newer-completed', { goal_id: 'shared', created_at: '2026-11-03T00:00:00Z', status: 'COMPLETED' }),
+    copyFixture('newest-archived', { goal_id: 'shared', created_at: '2026-11-04T00:00:00Z', store: 'ARCHIVED' }),
+  ];
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ jobs }))));
+  render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
+  const expected = active ? copyId : 'newest-archived';
+  const button = await screen.findByRole('button', { name: `Copy job ID ${expected}`, exact: true });
+  const row = within(button.closest('tr')!);
+  expect(row.getByRole('link', { name: `Work ${expected}`, exact: true })).toHaveAttribute('href', expect.stringContaining(`/jobs/${expected}/story`));
+  fireEvent.click(button);
+  await screen.findByText('Job ID copied');
+  expect(writeText).toHaveBeenCalledExactlyOnceWith(expected);
 });

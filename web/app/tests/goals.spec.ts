@@ -459,7 +459,7 @@ for (const compact of [false, true]) for (const view of ['', '?view=all']) {
     await archive.press('Enter');
     await expect.poll(() => changes.length).toBe(2);
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(page.getByRole('status')).toHaveText('Archiving jobs…');
+    await expect(page.getByRole('status').filter({ hasText: 'Archiving jobs…' })).toHaveText('Archiving jobs…');
     await expect(archive).toBeDisabled();
     await expect(page.getByRole('button', { name: 'Cancel selected', exact: true })).toBeDisabled();
     release();
@@ -550,5 +550,84 @@ for (const width of [1280, 375]) {
     await page.goto('/project/scope-test/jobs?scope=unrecognized');
     await expect(selector).toHaveValue('all');
     expect(reads.at(-1)!.get('rootOnly')).toBe('false');
+  });
+}
+
+// GJC-001/006/009–014: real clipboard, native input and isolated row feedback.
+for (const width of [1280, 320, 390]) {
+  test.describe(`job ID copying at ${width}px`, () => {
+    test.use({ viewport: { width, height: 900 }, hasTouch: width < 768, permissions: ['clipboard-read', 'clipboard-write'] });
+    for (const alias of ['goals', 'jobs']) test(`copies the title job on ${alias}`, async ({ page, context, baseURL }, testInfo) => {
+      const id = '3M11h0hfoxIoOk6knxCN6DW9o0u';
+      const title = 'Build a reliable dashboard with a long title for a compact screen';
+      const job = { ...jobIdentity, job_id: id, goal_id: 'different-goal', prompt: title, status: 'READY', store: 'ACTIVE', created_at: '2026-11-12T00:00:00Z' };
+      await context.addCookies([{ name: 'colony2:user:email', value: 'copy@example.com', url: baseURL! }]);
+      await mockCells(page, ['platform']);
+      await page.route('**/api/projects/copy/jobs?*', route => route.fulfill({ json: { jobs: [job, { ...job, job_id: 'untouched', goal_id: 'other-goal', prompt: 'Another goal' }] } }));
+      await page.route('**/api/projects/copy/jobs/*', route => route.fulfill({ json: job }));
+      await page.goto(`/project/copy/${alias}?executionState=cells-v1&sort=prompt&order=ascend`);
+      const button = page.getByRole('button', { name: `Copy job ID ${id}`, exact: true });
+      const row = button.locator(width < 768 ? 'xpath=ancestor::*[contains(@class,"goal-card")][1]' : 'xpath=ancestor::tr');
+      const other = page.getByRole('button', { name: 'Copy job ID untouched', exact: true }).locator(width < 768 ? 'xpath=ancestor::*[contains(@class,"goal-card")][1]' : 'xpath=ancestor::tr');
+      await expect(button).toBeVisible();
+      await expect(button.locator('svg')).toHaveCount(1);
+      expect(await button.evaluate(element => element.closest('a') === null && element.textContent === '')).toBe(true);
+      await expect(row.getByRole('link', { name: title, exact: true })).toHaveAttribute('href', new RegExp(`/jobs/${id}/story`));
+      await row.getByRole('checkbox', { name: `Select job ${id}`, exact: true }).check();
+      await row.getByRole('button', { name: 'Expand goal details' }).click();
+      await expect(page.locator('.goal-overview-content')).toBeVisible();
+      const before = page.url();
+      // Wait for the detail load, since the app's event stream stays open.
+      await expect(page.getByLabel('Loading dependency and membership details')).toHaveCount(0);
+      const requests: string[] = [];
+      page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/')) requests.push(request.url()); });
+      const unchanged = async () => {
+        expect(page.url()).toBe(before);
+        await expect(row.getByRole('checkbox', { name: `Select job ${id}`, exact: true })).toBeChecked();
+        await expect(other.getByRole('checkbox')).not.toBeChecked();
+        await expect(row.getByRole('button', { name: 'Collapse goal details' })).toHaveAttribute('aria-expanded', 'true');
+        await expect(other.getByRole('button', { name: 'Expand goal details' })).toHaveAttribute('aria-expanded', 'false');
+        await expect(other.getByRole('status')).toBeEmpty();
+        expect(requests).toEqual([]);
+      };
+      await button.focus();
+      await expect(button).toBeFocused();
+      await expect(page.getByRole('tooltip', { name: `Copy job ID ${id}`, exact: true })).toBeVisible();
+      for (const key of ['Enter', 'Space']) {
+        await page.evaluate(() => navigator.clipboard.writeText('sentinel'));
+        await button.focus(); await page.keyboard.press(key);
+        await expect(row.getByRole('status')).toHaveText('Job ID copied');
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(id);
+        await unchanged();
+      }
+      await page.evaluate(() => navigator.clipboard.writeText('sentinel'));
+      if (width < 768) await button.tap(); else await button.click();
+      await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(id);
+      await unchanged();
+      if (alias === 'goals') await page.screenshot({ path: testInfo.outputPath(`copy-success-${width}.png`), fullPage: true, animations: 'disabled' });
+      await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('Fixture permission denied')) } }));
+      await button.click();
+      await expect(row.getByRole('status')).toContainText('Could not copy job ID');
+      await expect(row.getByRole('status')).not.toContainText('Job ID copied');
+      const manual = row.locator('.goal-copy-manual-id');
+      await expect(manual).toHaveText(id);
+      await expect(manual).toHaveCSS('user-select', 'text');
+      expect(await manual.evaluate(element => {
+        const range = document.createRange(); range.selectNodeContents(element);
+        const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
+        return selection.toString();
+      })).toBe(id);
+      await unchanged();
+      if (width < 768) {
+        const target = (await button.boundingBox())!;
+        expect(target.width).toBeGreaterThanOrEqual(44); expect(target.height).toBeGreaterThanOrEqual(44);
+        for (const neighbor of [row.getByRole('link', { name: title, exact: true }), row.getByRole('checkbox', { name: `Select job ${id}`, exact: true }), row.getByRole('button', { name: 'Collapse goal details' })]) {
+          const box = (await neighbor.boundingBox())!;
+          expect(target.x + target.width <= box.x || box.x + box.width <= target.x || target.y + target.height <= box.y || box.y + box.height <= target.y).toBe(true);
+        }
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      }
+      if (alias === 'goals') await page.screenshot({ path: testInfo.outputPath(`copy-failure-${width}.png`), fullPage: true, animations: 'disabled' });
+    });
   });
 }
