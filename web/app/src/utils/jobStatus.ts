@@ -1,5 +1,7 @@
 import type { RecipeJobSummary, RecipeJobFilterStatus } from '@colony2/shared/types';
 
+export type JobStatusInput = { status: string; store?: string; completion_status?: string; cancel_requested?: boolean };
+
 type StatusPresentation = { label: string; color: string };
 
 export const filterStatuses = {
@@ -29,7 +31,7 @@ export function jobStatusPresentation(status: string): StatusPresentation {
 }
 
 // Keep this precedence in sync with jobDisplayStatus in the Cortex API.
-export function jobStatusValue(job: RecipeJobSummary): RecipeJobFilterStatus {
+export function jobStatusValue(job: JobStatusInput): string {
   // A previous failed attempt must never override a job that is still retrying.
   if (job.store === 'ARCHIVED' || job.status === 'COMPLETED') {
     if (job.completion_status) {
@@ -45,7 +47,7 @@ export function jobStatusValue(job: RecipeJobSummary): RecipeJobFilterStatus {
   return job.status === 'COMPLETED' ? 'OUTCOME_UNAVAILABLE' : job.status;
 }
 
-export function jobStatus(job: RecipeJobSummary): StatusPresentation {
+export function jobStatus(job: JobStatusInput): StatusPresentation {
   return jobStatusPresentation(jobStatusValue(job));
 }
 
@@ -64,7 +66,7 @@ export function canArchiveImmediately(ids: string[], jobs: RecipeJobSummary[]): 
 }
 
 // Terminal classification is broader than the existing immediate-archive policy.
-export function isFinishedJob(job: RecipeJobSummary): boolean {
+export function isFinishedJob(job: JobStatusInput): boolean {
   if (job.store === 'ARCHIVED') return true;
   const status = jobStatusValue(job);
   return status === 'CANCELLED' || status === 'OUTCOME_UNAVAILABLE'

@@ -139,3 +139,40 @@ it('DAG-06 old finalizers cannot mark a new pending run idle or accept obsolete 
  expect(t.state.nodes.size).toBe(1);
  expect(t.state.loading).toBe(false);
 });
+
+it('DAGUI-017,024 confirms only a complete accepted runtime chain, independently of child failures', async () => {
+ const good=create(fixture([n('entry','mid'),n('mid','root'),n('root')],async()=>{throw Error();}));
+ await good.run();expect(good.state.confirmedRoot).toBe('root');
+ for (const [records,limits] of [
+  [[n('entry','missing')],{}],
+  [[n('entry','mid'),n('mid','entry')],{}],
+  [[n('entry','mid'),n('mid','root'),n('root')],{ascent:1}],
+ ] as [TreeNode[],Partial<typeof DEFAULT_BUDGETS>][]) {
+  const t=create(fixture(records),'entry',limits);await t.run();expect(t.state.confirmedRoot).toBeUndefined();
+ }
+ const conflict=create(fixture([n('entry','root'),n('root')],async(_,id)=>page(id==='root'?[n('entry','elsewhere')]:[])));
+ await conflict.run();expect(conflict.state.confirmedRoot).toBe('root'); // rejected child relationship never replaces accepted chain
+ const blocked=create(fixture([n('entry','root'),n('root')],async(_,id)=>page(id==='entry'?[n('root','entry')]:[])));
+ await blocked.run();expect(blocked.state.confirmedRoot).toBeUndefined();
+});
+it('DAGUI-019,020 paused ancestor cursor retries exactly that ancestor and ignores late results', async () => {
+ let finish!:(v:any)=>void, ready!:()=>void;
+ const started=new Promise<void>(r=>ready=r);
+ const source=fixture([n('entry','mid'),n('mid','root'),n('root'),n('sibling','root')]);
+ vi.mocked(source.node).mockImplementationOnce(async()=>({node:n('entry','mid'),observed_at})).mockImplementationOnce(()=>{ready();return new Promise(r=>finish=r);});
+ const t=create(source);const old=t.run();await started;t.pause();expect(t.interrupted).toBe(true);
+ await t.run();await old;finish({node:n('mid','obsolete'),observed_at});await Promise.resolve();
+ expect(t.state.confirmedRoot).toBe('root');expect(t.state.nodes.has('sibling')).toBe(true);expect(t.state.nodes.has('obsolete')).toBe(false);
+ expect(vi.mocked(source.node).mock.calls.map(c=>c[1])).toEqual(['entry','mid','mid','root']);
+});
+
+it('DAG-REVIEW-001 retains pending discovery across repeated pauses without retrying completed or failed runs', async()=>{
+ const source=fixture([n('entry')]);const t=create(source);
+ t.interrupted=true;t.pause();t.pause();
+ expect(t.interrupted).toBe(true);expect(source.node).not.toHaveBeenCalled();
+ await t.run();t.pause();t.pause();
+ expect(t.interrupted).toBe(false);expect(source.node).toHaveBeenCalledTimes(1);
+ const failedSource=fixture([]);const failed=create(failedSource);
+ failed.interrupted=true;await failed.run();failed.pause();failed.pause();
+ expect(failed.state.error).toContain('Entry job unavailable');expect(failed.interrupted).toBe(false);
+});

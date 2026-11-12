@@ -6,13 +6,20 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/colony-2/c2j/pkg/recipejob"
 	"github.com/colony-2/jobdb/pkg/jobdb"
 	"github.com/gorilla/mux"
 )
 
 type treeNode struct {
+	Title             string          `json:"title,omitempty"`
+	Prompt            string          `json:"prompt,omitempty"`
+	Store             jobdb.JobStore  `json:"store,omitempty"`
+	CancelRequested   bool            `json:"cancel_requested,omitempty"`
+	ArchivedAt        *time.Time      `json:"archived_at,omitempty"`
 	TenantID          string          `json:"tenant_id"`
 	JobID             string          `json:"job_id"`
 	ParentJobID       string          `json:"parent_job_id,omitempty"`
@@ -27,16 +34,30 @@ type treeNode struct {
 
 func projectTreeNode(s jobdb.JobSummary) treeNode {
 	n := treeNode{TenantID: s.JobKey.TenantId, JobID: s.JobKey.JobId, ParentJobID: s.ParentJobID, JobType: s.JobType, Status: s.Status, CompletionStatus: s.CompletionStatus, Cell: s.Cell, GoalID: s.GoalID, CreatedAt: s.CreatedAt}
-	// Attribution is context only. Never use metadata to select a tenant or edge.
-	if s.JobType == "recipe" {
-		var meta struct {
-			ParentJobID    string `json:"parent_job_id"`
-			ParentTenantID string `json:"parent_tenant_id"`
+	n.Store, n.CancelRequested, n.ArchivedAt = recipejob.StoreForJob(s), s.CancelRequested, s.ArchivedAt
+	// Decode only allowlisted strings independently. A bad title cannot erase
+	// the prompt or attribution, and metadata never chooses the runtime edge.
+	var meta map[string]json.RawMessage
+	if json.Unmarshal(s.Metadata, &meta) == nil {
+		read := func(key string) string {
+			var value string
+			_ = json.Unmarshal(meta[key], &value)
+			return value
 		}
-		if json.Unmarshal(s.Metadata, &meta) == nil && (meta.ParentTenantID == "" || meta.ParentTenantID == n.TenantID) {
-			n.RecipeParentJobID = meta.ParentJobID
+		if value := read("title"); strings.TrimSpace(value) != "" {
+			n.Title = value
+		}
+		if value := read("prompt"); strings.TrimSpace(value) != "" {
+			n.Prompt = value
+		}
+		var attributionTenant string
+		tenantErr := json.Unmarshal(meta["parent_tenant_id"], &attributionTenant)
+		tenantAllowed := len(meta["parent_tenant_id"]) == 0 || tenantErr == nil && (attributionTenant == "" || attributionTenant == n.TenantID)
+		if s.JobType == "recipe" && tenantAllowed {
+			n.RecipeParentJobID = read("parent_job_id")
 		}
 	}
+
 	return n
 }
 func treeError(w http.ResponseWriter, err error) {

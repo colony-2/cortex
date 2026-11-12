@@ -3,6 +3,10 @@ import { Link, useParams } from 'react-router-dom';
 import type { TreeNode } from '@colony2/shared';
 import { dagPath } from './navigation';
 import { Traversal } from './traversal';
+import { headline, jobStatus, statusPalette } from './presentation';
+import { timing } from './timing';
+
+export const GEOMETRY = { width: 272, height: 228, columnGap: 72, rowGap: 36, padding: 24 };
 
 const jobPath = (tenant: string, job: string) => `/project/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(job)}`;
 export default function TreePage() {
@@ -16,19 +20,43 @@ export function TreeWorkspace({ tenant, entry, active = true, embedded = false }
   const [selected, select] = useState(entry), [collapsed, collapse] = useState(new Set<string>()), [search, setSearch] = useState(''), [zoom, setZoom] = useState(1);
   const viewport = useRef<HTMLDivElement>(null);
   const selectedCard = useRef<HTMLButtonElement>(null);
-  const entryOutline = useRef<HTMLButtonElement>(null);
-  // Identity/Refresh creates a controller. Visibility only pauses it; showing the
-  // retained workspace leaves continuation to the Resume discovery control.
+  const initiallyRevealed = useRef(false);
+  const [now, setNow] = useState(Date.now);
+  const [documentVisible, setDocumentVisible] = useState(document.visibilityState !== 'hidden');
+  useEffect(() => {
+    const changed = () => setDocumentVisible(document.visibilityState !== 'hidden');
+    document.addEventListener('visibilitychange', changed);
+    return () => document.removeEventListener('visibilitychange', changed);
+  }, []);
+  const visible = active && documentVisible;
+  useEffect(() => {
+    if (!visible) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [visible]);
+  // Identity/refresh isolates discovery; tab departure retains its cursors.
   useEffect(() => {
     const controller = new Traversal(tenant, entry, update); traversal.current = controller;
-    select(entry); collapse(new Set()); if (active) void controller.run();
+    select(entry); collapse(new Set()); initiallyRevealed.current = false; if (visible) void controller.run(); else controller.interrupted = true;
     return () => controller.cancel();
   }, [tenant, entry, version]);
-  useEffect(() => { if (!active) traversal.current?.pause(); }, [active]);
+  useEffect(() => {
+    const controller = traversal.current;
+    if (!visible) controller?.pause();
+    else if (controller?.interrupted) void controller.run();
+  }, [visible]);
+  useEffect(() => {
+    const state = traversal.current?.state;
+    if (!visible || !state || state.loading || !state.nodes.has(entry) || initiallyRevealed.current) return;
+    initiallyRevealed.current = true;
+    // A user selection during discovery wins over initial reveal.
+    if (selected === entry) selectedCard.current?.scrollIntoView?.({block:'center',inline:'center'});
+  });
   const controller = traversal.current, state = controller?.state;
   const nodes = state ? [...state.nodes.values()] : [];
   const byID = state?.nodes || new Map<string, TreeNode>();
-  const matches = new Set(nodes.filter(n => search && [n.job_id,n.cell,n.job_type,n.goal_id,n.status,n.completion_status].some(v => v?.toLowerCase().includes(search.toLowerCase()))).map(n => n.job_id));
+  const matches = new Set(nodes.filter(n => search && [n.job_id,n.cell,n.job_type,n.goal_id,n.status,n.completion_status,n.title,n.prompt].some(v => v?.toLowerCase().includes(search.toLowerCase()))).map(n => n.job_id));
   const revealed = new Set<string>();
   for (const id of matches) { let p: string | undefined = id; while (p && !revealed.has(p)) { revealed.add(p); p = byID.get(p)?.parent_job_id; } }
   const children = new Map<string, TreeNode[]>();
@@ -40,44 +68,51 @@ export function TreeWorkspace({ tenant, entry, active = true, embedded = false }
   const sorted = (items: TreeNode[]) => items.sort((a,b) => a.job_id.localeCompare(b.job_id));
   const visibleChildren = (id: string) => collapsed.has(id) && !revealed.has(id) ? [] : sorted(children.get(id) || []);
   const positions = new Map<string, { x: number; y: number }>();
-  let nextX = 0, maxDepth = 0;
+  const {width, height, columnGap, rowGap, padding} = GEOMETRY;
+  let nextY = 0, maxDepth = 0;
   const place = (node: TreeNode, depth: number) => {
-    const kids = visibleChildren(node.job_id); const first = nextX;
-    kids.forEach(child => place(child,depth+1));
-    if (!kids.length) nextX += 260;
-    positions.set(node.job_id,{x:(first+nextX-260)/2+20,y:depth*150+20}); maxDepth = Math.max(depth,maxDepth);
+    const kids = visibleChildren(node.job_id); const first = nextY;
+    kids.forEach(child => place(child, depth+1));
+    if (!kids.length) nextY += height + rowGap;
+    positions.set(node.job_id, {x:padding + depth*(width+columnGap), y:padding+(first+nextY-height-rowGap)/2});
+    maxDepth = Math.max(depth,maxDepth);
   };
   sorted(roots).forEach(n => place(n,0));
+  const canvasWidth = padding*2 + maxDepth*(width+columnGap)+width;
+  const canvasHeight = Math.max(height+padding*2,nextY-rowGap+padding*2);
   const toggle = (id: string) => collapse(previous => { const next = new Set(previous); next.has(id) ? next.delete(id) : next.add(id); return next; });
   const findEntry = () => {
     select(entry); collapse(new Set());
     requestAnimationFrame(() => {
-      const target = window.matchMedia('(max-width: 767px)').matches ? entryOutline.current : selectedCard.current;
+      const target = selectedCard.current;
       target?.focus({preventScroll:true}); target?.scrollIntoView({block:'center',inline:'center',behavior:'smooth'});
     });
   };
   const branchText = (id: string) => { const b = state?.branches.get(id); return b?.reason || (b?.state === 'exhausted' && !(children.get(id)?.length) ? 'No children found in this traversal' : b?.state || 'pending'); };
-  const label = (n: TreeNode) => <><strong>{n.job_id}{n.job_id === entry ? ' · Entry job' : ''}</strong><span>{n.cell || 'Unknown cell'} · {n.job_type || 'Unknown type'}</span><span>{n.status || 'Unknown status'}{n.completion_status ? ` · ${n.completion_status}` : ''}</span></>;
-  const outline = (items: TreeNode[]) => <ul>{sorted(items).map(n => <li key={n.job_id}>
-    <button ref={n.job_id === entry ? entryOutline : undefined} aria-pressed={selected === n.job_id} className={matches.has(n.job_id) ? 'tree-match' : ''} onClick={() => select(n.job_id)}>{label(n)}</button>
-    {!!children.get(n.job_id)?.length && <button aria-label={`Toggle branch ${n.job_id}`} aria-expanded={!collapsed.has(n.job_id) || revealed.has(n.job_id)} onClick={() => toggle(n.job_id)}>{collapsed.has(n.job_id) ? 'Expand' : 'Collapse'}</button>}
-    <small>{collapsed.has(n.job_id) ? 'Collapsed · ' : ''}{branchText(n.job_id)}</small>
-    {!!visibleChildren(n.job_id).length && outline(visibleChildren(n.job_id))}
-  </li>)}</ul>;
+  const root = state?.confirmedRoot ? byID.get(state.confirmedRoot) : undefined;
+  const label = (n: TreeNode) => {
+    const status = jobStatus(n), time = timing(n, root, now);
+    return <><span className="tree-cell">{n.cell || 'Unknown cell'}</span>
+      <strong title={n.title || n.prompt}>{headline(n)}</strong>
+      <span className="tree-status">{status.label || 'Unknown status'}</span>
+      <span>{time.submission}</span><span>{time.span}</span>
+      {n.job_id === entry && <span className="tree-opened">Opened job</span>}</>;
+  };
   const detail = byID.get(selected);
   const incomplete = !!controller?.canResume || !!state?.boundary || !!state?.stop || !!state?.warnings.length || [...(state?.branches.values() || [])].some(b => b.state !== 'exhausted');
   return <section className={embedded ? "execution-tree" : "app-page execution-tree"}>
     {!embedded && <><nav><Link className="compact-touch-link" to={`/project/${encodeURIComponent(tenant)}/goals`}>Back to jobs</Link></nav>
     <h1>DAG</h1></>}
-    <p>Recorded submission family · Tenant {tenant} · Entry {entry}</p>
+    <p>Recorded submission family · Tenant {tenant}</p>
+    <p className="tree-timing-note">Submission offsets are relative to the confirmed root. Age and time to finish include queue and waiting time.</p>
     <div className="tree-toolbar">
       <button onClick={() => refresh()}>Refresh tree</button>
       <button onClick={() => void controller?.run()} disabled={state?.loading || !controller?.canResume}>Resume discovery</button>
-      <button onClick={findEntry}>Find entry job</button>
-      <button aria-label="Zoom out" onClick={() => setZoom(z => Math.max(.2,z-.2))}>−</button>
+      <button onClick={findEntry}>Find opened job</button>
+      <button aria-label="Zoom out" onClick={() => setZoom(z => Math.max(.05,z-.2))}>−</button>
       <output aria-label="Zoom">{Math.round(zoom*100)}%</output>
       <button aria-label="Zoom in" onClick={() => setZoom(z => Math.min(2,z+.2))}>+</button>
-      <button onClick={() => setZoom(Math.min(1,(viewport.current?.clientWidth || 800)/Math.max(260,nextX+40)))}>Fit</button>
+      <button onClick={() => setZoom(Math.max(.05,Math.min(1,(viewport.current?.clientWidth || 800)/canvasWidth)))}>Fit</button>
       <label>Loaded jobs <input aria-label="Search loaded jobs" type="search" value={search} onChange={e => setSearch(e.target.value)} /></label>
       {search && <span>{matches.size} loaded matches</span>}
     </div>
@@ -89,27 +124,27 @@ export function TreeWorkspace({ tenant, entry, active = true, embedded = false }
       {state?.warnings.map(w => <p key={w}>{w}</p>)}
     </section>
     {state?.error ? <div role="alert"><p>{state.error}</p><button onClick={() => refresh()}>Retry entry</button></div> : <div className="tree-workspace">
-      <div>
+      <div className="tree-diagram-column">
         <div ref={viewport} className="tree-viewport" aria-label="Execution diagram">
-          <div style={{width:Math.max(300,nextX+40)*zoom,height:(maxDepth*150+150)*zoom}}>
-            <div className="tree-canvas" style={{width:Math.max(300,nextX+40),height:maxDepth*150+150,transform:`scale(${zoom})`}}>
+          <div style={{width:canvasWidth*zoom,height:canvasHeight*zoom}}>
+            <div className="tree-canvas" style={{width:canvasWidth,height:canvasHeight,transform:`scale(${zoom})`}}>
               <svg aria-label="Runtime parent connections" width="100%" height="100%">{[...positions].map(([id,p]) => {
                 const parent = byID.get(id)?.parent_job_id, start = parent && !state?.blocked.has(id) ? positions.get(parent) : undefined;
-                return start ? <path key={id} data-parent={parent} data-child={id} d={`M ${start.x+110} ${start.y+100} V ${p.y-20} H ${p.x+110} V ${p.y}`} /> : null;
+                return start ? <path key={id} data-parent={parent} data-child={id} d={`M ${start.x+width} ${start.y+height/2} H ${start.x+width+columnGap/2} V ${p.y+height/2} H ${p.x}`} /> : null;
               })}</svg>
-              {[...positions].map(([id,p]) => { const n = byID.get(id)!; return <div key={id} className={`tree-card ${id === entry ? 'tree-entry' : ''} ${matches.has(id) ? 'tree-match' : ''}`} style={{left:p.x,top:p.y}}>
-                <button ref={id === entry ? selectedCard : undefined} aria-pressed={selected === id} onClick={() => select(id)}>{label(n)}</button>
-                {!!children.get(id)?.length && <button aria-label={`Diagram toggle ${id}`} aria-expanded={!collapsed.has(id) || revealed.has(id)} onClick={() => toggle(id)}>{collapsed.has(id) ? 'Expand' : 'Collapse'}</button>}
+              {[...positions].map(([id,p]) => { const n = byID.get(id)!; const [fill,border,text] = statusPalette[jobStatus(n).color] || statusPalette.default; return <div key={id} data-job-id={id} className={`tree-card ${id === entry ? 'tree-entry' : ''} ${matches.has(id) ? 'tree-match' : ''}`} style={{left:p.x,top:p.y,width,height,background:fill,borderColor:border,color:text}}>
+                <button className="tree-card-select" aria-label={`${headline(n)} · ${n.cell || 'Unknown cell'}${id === entry ? ' · Opened job' : ''}`} ref={id === entry ? selectedCard : undefined} aria-pressed={selected === id} onClick={() => select(id)}>{label(n)}</button>
+                {!!children.get(id)?.length && <button className="tree-branch" aria-label={`Toggle branch ${headline(n)}`} aria-expanded={!collapsed.has(id) || revealed.has(id)} onClick={() => toggle(id)}>{collapsed.has(id) ? 'Expand' : 'Collapse'}</button>}
               </div>; })}
             </div>
           </div>
         </div>
-        <section aria-label="Execution outline" className="tree-outline"><h2>Outline</h2>{outline(roots)}</section>
+
       </div>
       {detail && <aside aria-label="Selected job details" className="tree-details"><h2>Selected job</h2>
-        <dl>{Object.entries({Tenant:detail.tenant_id,Job:detail.job_id,Cell:detail.cell || 'Unknown',Type:detail.job_type,Status:detail.status,Completion:detail.completion_status || 'Unknown',Created:detail.created_at || 'Unknown','Runtime parent':detail.parent_job_id || 'No recorded parent','Recipe attribution':detail.recipe_parent_job_id || 'None recorded',Coverage:branchText(detail.job_id)}).map(([key,value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>
-        {detail.goal_id && <p><Link className="compact-touch-link" to={`/project/${encodeURIComponent(tenant)}/goals/${encodeURIComponent(detail.goal_id)}`}>Goal · {detail.goal_id}</Link></p>}
-        {detail.job_type === 'recipe' ? <p><Link className="compact-touch-link" to={`${jobPath(tenant,detail.job_id)}/story`} state={{ treeReturnTo: dagPath(tenant, entry, byID.get(entry)?.job_type) }}>Open story</Link></p> : <p>Generic job summary; no recipe story available.</p>}
+        <dl>{Object.entries({Tenant:detail.tenant_id,Job:detail.job_id,Title:detail.title || 'Unavailable',Prompt:detail.prompt || 'Unavailable',Cell:detail.cell || 'Unknown',Type:detail.job_type,Status:detail.status,Completion:detail.completion_status || 'Unknown',Submitted:detail.created_at || 'Unavailable','Logical termination':detail.archived_at || 'Unavailable','Runtime parent':detail.parent_job_id || 'No recorded parent','Recipe attribution':detail.recipe_parent_job_id || 'None recorded',Coverage:branchText(detail.job_id)}).map(([key,value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>
+        {detail.goal_id && <p><Link className="compact-touch-link" to={`/project/${encodeURIComponent(tenant)}/goals/${encodeURIComponent(detail.goal_id)}`}>Goal overview</Link></p>}
+        {detail.job_type === 'recipe' ? <p><Link className="compact-touch-link" to={`${jobPath(tenant,detail.job_id)}/story`} state={{ treeReturnTo: dagPath(tenant, entry, byID.get(entry)?.job_type) }}>Open execution</Link></p> : <p>Generic job summary; no recipe story available.</p>}
         {state?.branches.get(detail.job_id)?.state === 'failed' && <button disabled={state.loading || controller?.viewCapped} onClick={() => void controller?.run(detail.job_id)}>Retry child page</button>}
         {(controller?.viewCapped || ['limited','malformed'].includes(state?.branches.get(detail.job_id)?.state || '')) && <p><Link className="compact-touch-link" to={dagPath(tenant, detail.job_id, detail.job_type)}>Open branch as entry</Link></p>}
       </aside>}

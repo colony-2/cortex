@@ -6,7 +6,7 @@ export interface Branch { state: 'pending' | 'loading' | 'more' | 'exhausted' | 
 export interface TreeState {
   nodes: Map<string, TreeNode>; branches: Map<string, Branch>; warnings: string[];
   blocked: Set<string>; loading: boolean; error?: string; boundary?: string;
-  started: string; observed?: string; stop?: string;
+  confirmedRoot?: string; started: string; observed?: string; stop?: string;
 }
 export interface TreeAPI {
   node: (tenant: string, id: string, signal: AbortSignal) => Promise<TreeNodeResponse>;
@@ -30,7 +30,10 @@ export class Traversal {
       || [...this.state.branches.values()].some(b => ['pending','more'].includes(b.state)
         || b.state === 'limited' && ['Request limit','Elapsed-time limit'].includes(b.reason || '')));
   }
+  interrupted = false;
   pause() {
+    // Preserve a pending first run or earlier interruption across repeated pauses.
+    this.interrupted ||= this.state.loading;
     ++this.generation;
     this.controller.abort();
     this.state.loading = false;
@@ -48,12 +51,12 @@ export class Traversal {
     }
     const old = this.state.nodes.get(node.job_id);
     if (old && old.parent_job_id !== node.parent_job_id) {
-      this.state.blocked.add(node.job_id); this.warning(`Conflicting parent observations: ${node.job_id}`); return false;
+      this.state.blocked.add(node.job_id); this.state.confirmedRoot = undefined; this.warning(`Conflicting parent observations: ${node.job_id}`); return false;
     }
     let cursor = node.parent_job_id;
     const seen = new Set([node.job_id]);
     while (cursor) {
-      if (seen.has(cursor)) { this.state.blocked.add(node.job_id); this.warning(`Cycle boundary: ${node.job_id}`); return false; }
+      if (seen.has(cursor)) { this.state.blocked.add(node.job_id); this.state.confirmedRoot = undefined; this.warning(`Cycle boundary: ${node.job_id}`); return false; }
       seen.add(cursor); cursor = this.state.nodes.get(cursor)?.parent_job_id;
     }
     if (!old && this.state.nodes.size >= this.budgets.nodes) return false;
@@ -62,10 +65,24 @@ export class Traversal {
     if (!this.state.branches.has(node.job_id)) this.state.branches.set(node.job_id, { state: 'pending', token: '', seen: new Set(), depth: 0 });
     return true;
   }
+  private confirmRoot() {
+    this.state.confirmedRoot = undefined;
+    let id: string | undefined = this.entry;
+    const seen = new Set<string>();
+    while (id) {
+      if (seen.has(id) || this.state.blocked.has(id)) return;
+      seen.add(id);
+      const node = this.state.nodes.get(id);
+      if (!node) return;
+      if (!node.parent_job_id) { this.state.confirmedRoot = id; return; }
+      id = node.parent_job_id;
+    }
+  }
   async run(retry?: string) {
     if (this.disposed || this.state.loading) return;
     const generation = ++this.generation;
     const stale = () => this.disposed || generation !== this.generation;
+    this.interrupted = false;
     this.state.loading = true; this.state.error = undefined; this.state.stop = undefined;
     this.controller = new AbortController();
     const signal = this.controller.signal;
@@ -109,6 +126,9 @@ export class Traversal {
           this.ancestor = result.node.parent_job_id; this.state.boundary = undefined; this.emit();
         } catch { if (stale()) return; this.state.boundary = limit() || 'Ancestor unavailable; known component retained'; break; }
       }
+      // Prove roothood only through the accepted entry chain. Listings can
+      // expose conflicting observations later, so recompute after discovery too.
+      this.confirmRoot();
       // All known ancestry is seeded, even if an upper child listing fails.
       const depth = (id: string) => { let d = 0, p = this.state.nodes.get(id)?.parent_job_id; const seen = new Set([id]); while (p && this.state.nodes.has(p) && !seen.has(p)) { seen.add(p); d++; p = this.state.nodes.get(p)?.parent_job_id; } return d; };
       const queue = [...this.state.nodes.keys()].filter(id => retry ? id === retry : !['exhausted', 'failed', 'malformed'].includes(this.state.branches.get(id)!.state));
@@ -154,6 +174,6 @@ export class Traversal {
         if (limit() || this.pages >= this.budgets.pages) { this.state.stop ||= limit() || 'Page limit'; break; }
       }
     } catch { if (!stale()) { if (!this.initialized) this.state.error = 'Entry job unavailable. Retry or return to jobs.'; else this.state.stop = limit() || 'Discovery interrupted'; } }
-    finally { clearTimeout(timeout); if (!stale()) { this.state.loading = false; this.emit(); } }
+    finally { clearTimeout(timeout); if (!stale()) { this.confirmRoot(); this.state.loading = false; this.emit(); } }
   }
 }

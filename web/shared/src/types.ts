@@ -168,6 +168,11 @@ export interface RestartContext {
 
 /** Narrow raw summary projection. Runtime parentage is independent of recipe attribution. */
 export interface TreeNode {
+  title?: string;
+  prompt?: string;
+  store?: string;
+  cancel_requested?: boolean;
+  archived_at?: string;
   tenant_id: string;
   job_id: string;
   parent_job_id?: string;

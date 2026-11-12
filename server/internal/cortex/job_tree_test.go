@@ -25,6 +25,10 @@ func TestTreeProjection(t *testing.T) {
 	if projectTreeNode(summary).ParentJobID != "" {
 		t.Fatal("metadata fabricated edge")
 	}
+	summary.Metadata = json.RawMessage(`{"title":"Valid title","parent_job_id":"untrusted","parent_tenant_id":42}`)
+	if n := projectTreeNode(summary); n.RecipeParentJobID != "" || n.Title != "Valid title" {
+		t.Fatal("malformed attribution tenant", n)
+	}
 	summary.Metadata = json.RawMessage(`{"parent_job_id":"foreign","parent_tenant_id":"other"}`)
 	if projectTreeNode(summary).RecipeParentJobID != "" {
 		t.Fatal("foreign attribution")
@@ -52,7 +56,7 @@ func TestTreeScopePaginationAndProjection(t *testing.T) {
 			t.Fatal(q)
 		}
 		body := w.Body.String()
-		if !strings.Contains(body, `"job_type":"generic"`) || !strings.Contains(body, `next+/=`) || strings.Contains(body, "foreign") || strings.Contains(body, "prompt") || strings.Contains(body, "client_payload") {
+		if !strings.Contains(body, `"job_type":"generic"`) || !strings.Contains(body, `next+/=`) || strings.Contains(body, "foreign") || !strings.Contains(body, `"prompt":"Build it"`) || strings.Contains(body, "secret") || strings.Contains(body, "client_payload") {
 			t.Fatal(body)
 		}
 	}
@@ -137,5 +141,35 @@ func TestTreeKnownErrorStatuses(t *testing.T) {
 		if w.Code != test.status || strings.Contains(w.Body.String(), test.err.Error()) {
 			t.Fatal(w.Code, w.Body.String())
 		}
+	}
+}
+
+func TestTreeAllowlistedFieldsIndependently(t *testing.T) {
+	// DAGUI-001,002: malformed presentation fields must not erase other fields.
+	for _, metadata := range []string{
+		`{"title":17,"prompt":"  useful prompt 雪  ","parent_job_id":"attribution","secret":"hidden"}`,
+		`{"title":null,"prompt":"  useful prompt 雪  ","parent_job_id":"attribution"}`,
+	} {
+		s := compactJobs(1)[0]
+		s.Metadata = json.RawMessage(metadata)
+		s.ParentJobID = "runtime"
+		end := time.Now().UTC()
+		s.ArchivedAt = &end
+		s.CancelRequested = true
+		n := projectTreeNode(s)
+		if n.Title != "" || n.Prompt != "  useful prompt 雪  " || n.ParentJobID != "runtime" || n.RecipeParentJobID != "attribution" || n.Store != jobdb.JobStoreArchived || !n.CancelRequested || !n.ArchivedAt.Equal(end) {
+			t.Fatalf("%+v", n)
+		}
+		b, _ := json.Marshal(n)
+		if strings.Contains(string(b), "hidden") || strings.Contains(string(b), "metadata") {
+			t.Fatal(string(b))
+		}
+	}
+	s := compactJobs(1)[0]
+	s.JobType = "generic"
+	s.Metadata = json.RawMessage(`{"title":"  Full title  ","prompt":{},"parent_job_id":"ignored"}`)
+	n := projectTreeNode(s)
+	if n.Title != "  Full title  " || n.Prompt != "" || n.RecipeParentJobID != "" {
+		t.Fatal(n)
 	}
 }

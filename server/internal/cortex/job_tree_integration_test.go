@@ -151,6 +151,39 @@ func TestTreeSQLiteHTTPIntegration(t *testing.T) {
 			if lookup("direct-restart").ParentJobID != "" || lookup("lease-restart").ParentJobID != "active" {
 				t.Fatal("restart parentage")
 			}
+			// DAGUI-034: compare HTTP fields with actual compact SQLite records,
+			// including cancellation and the new identity of both restart paths.
+			cancelled := child(grandParent, "cancelled", "platform")
+			if err := runtime.CancelJob(ctx, jobdb.CancelJobRequest{JobKey: cancelled.JobKey, Reason: "timing contract"}); err != nil {
+				t.Fatal(err)
+			}
+			for _, id := range []string{"same", "active", "grandchild", "completed", "failed", "cancelled", "direct-restart", "lease-restart"} {
+				rows, err := runtime.ListJobs(ctx, jobdb.ListJobsRequest{TenantIds: []string{"a"}, JobKeys: []jobdb.JobKey{{TenantId: "a", JobId: id}}, IncludeHidden: true, Stores: []jobdb.JobStore{jobdb.JobStoreActive, jobdb.JobStoreArchived}})
+				if err != nil || len(rows.Jobs) != 1 {
+					t.Fatalf("compact %s: %+v %v", id, rows, err)
+				}
+				raw, projected := rows.Jobs[0], lookup(id)
+				if raw.CreatedAt.IsZero() || !projected.CreatedAt.Equal(raw.CreatedAt) || projected.ParentJobID != raw.ParentJobID || projected.CancelRequested != raw.CancelRequested {
+					t.Fatalf("identity timing %s: %+v vs %+v", id, projected, raw)
+				}
+				if raw.ArchivedAt != nil {
+					if projected.Store != jobdb.JobStoreArchived || projected.ArchivedAt == nil || !projected.ArchivedAt.Equal(*raw.ArchivedAt) || projected.ArchivedAt.Before(projected.CreatedAt) {
+						t.Fatalf("end timing %s: %+v", id, projected)
+					}
+				} else if projected.Store != jobdb.JobStoreActive || projected.ArchivedAt != nil {
+					t.Fatalf("live timing %s: %+v", id, projected)
+				}
+			}
+			original := lookup("completed")
+			for _, id := range []string{"direct-restart", "lease-restart"} {
+				restarted := lookup(id)
+				if !restarted.CreatedAt.After(original.CreatedAt) || restarted.ArchivedAt != nil {
+					t.Fatalf("restart reused prior timing: %+v vs %+v", restarted, original)
+				}
+			}
+			if lookup("cancelled").CompletionStatus != "cancelled" || lookup("cancelled").ArchivedAt == nil {
+				t.Fatal("cancellation must project logical termination")
+			}
 			var found = map[string]bool{}
 			token := ""
 			for {
