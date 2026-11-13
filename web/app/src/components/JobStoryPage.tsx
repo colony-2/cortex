@@ -1,3 +1,4 @@
+import { useAssistantSource } from './AssistantContext';
 import { dagReturnPath } from '../executionTree/navigation';
 import { TreeWorkspace } from '../executionTree/TreePage';
 import InboxPanel, { inboxCount } from './InboxPanel';
@@ -243,6 +244,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
 function JobStoryContent({ projectId }: JobStoryPageProps) {
   const [activeTreeKey, setActiveTreeKey] = useState<string | null>(null);
   const { jobId: routeJobId } = useParams<{ jobId: string }>();
+  useAssistantSource(routeJobId ? { kind: 'story', job_id: routeJobId } : undefined);
   const navigate = useNavigate();
   const location = useLocation();
   const treeReturn = (location.state as { treeReturnTo?: unknown } | null)?.treeReturnTo;

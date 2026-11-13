@@ -17,14 +17,16 @@ import (
 const defaultTenantID = "1"
 
 type Config struct {
-	Addr            string
-	JobDBURL        string
-	WorkingDir      string
-	DefaultTenantID string
-	CORSOrigins     []string
-	StaticFS        fs.FS
-	HTTPClient      *http.Client
-	Logger          *slog.Logger
+	Addr             string
+	JobDBURL         string
+	WorkingDir       string
+	DefaultTenantID  string
+	CORSOrigins      []string
+	StaticFS         fs.FS
+	HTTPClient       *http.Client
+	Logger           *slog.Logger
+	Assistant        *AssistantIntegration
+	AssistantRuntime *AssistantRuntimeConfig
 }
 
 type Server struct {

@@ -24,13 +24,14 @@ func newCommand(opts Options, run func(*cobra.Command, cortex.Config) error) *co
 		opts.Version = "dev"
 	}
 	var cfg cortex.Config
-	var jobdb, legacy, cors string
+	var jobdb, legacy, cors, assistantConfig string
 	root := &cobra.Command{
 		Use: "cortex", Short: "Web interface for c2j jobs", Version: opts.Version,
 		SilenceUsage: true, SilenceErrors: true, Args: cobra.NoArgs,
 	}
 	root.SetVersionTemplate("cortex version {{.Version}}\n")
 	flags := root.PersistentFlags()
+	flags.StringVar(&assistantConfig, "assistant-config", envOr("CORTEX_ASSISTANT_CONFIG", ""), "Trusted assistant JSON configuration file")
 	flags.StringVar(&jobdb, "jobdb", "", "JobDB URI (http(s)://host/tenant); defaults to C2J_JOBDB or .c2/config.yaml")
 	flags.StringVar(&cfg.Addr, "addr", envOr("CORTEX_ADDR", ":8080"), "Listen address")
 	flags.StringVar(&cfg.WorkingDir, "working-dir", envOr("CORTEX_WORKING_DIR", "."), "Directory for c2j config discovery")
@@ -45,6 +46,12 @@ func newCommand(opts Options, run func(*cobra.Command, cortex.Config) error) *co
 		resolved, err := resolveConnection(cmd.Context(), cfg, jobdb, legacy)
 		if err != nil {
 			return err
+		}
+		if assistantConfig != "" {
+			resolved.AssistantRuntime, err = cortex.LoadAssistantRuntimeConfig(assistantConfig)
+			if err != nil {
+				return err
+			}
 		}
 		resolved.CORSOrigins = cortex.SplitCSV(cors)
 		resolved.StaticFS = opts.StaticFS

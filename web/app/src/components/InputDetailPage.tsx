@@ -1,3 +1,4 @@
+import { useAssistantSource } from './AssistantContext';
 import { useCompact } from '../hooks/useCompact';
 import ReviewJobContext from './ReviewJobContext';
 import { useEffect, useRef, useState } from 'react';
@@ -23,6 +24,7 @@ export default function InputDetailPage({ projectId }: InputDetailPageProps) {
   const navigate = useNavigate();
   const [details, setDetails] = useState<UserInputDetails | null>(null);
   const reviews = details?.form.kind === 'review';
+  useAssistantSource(reviews && jobId && details.form.request_id ? { kind: 'review', job_id: jobId, request_id: details.form.request_id } : undefined);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [cancelling, setCancelling] = useState(false);

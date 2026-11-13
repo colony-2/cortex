@@ -3,6 +3,7 @@ import { accessSync, constants } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { accountUIBuildEnvironment } from './tests/helpers/uiBuild.ts';
+import { configureInstalledFonts } from './tests/helpers/fontconfig.ts';
 
 function executableOnPath(name: string): string | undefined {
   return (process.env.PATH ?? '').split(path.delimiter)
@@ -23,6 +24,7 @@ const chromium = process.env.CORTEX_PLAYWRIGHT_BROWSERS_PATH
   ? undefined
   : executableOnPath('chromium');
 const ffmpeg = chromium ? executableOnPath('ffmpeg') : undefined;
+configureInstalledFonts(chromium);
 if (chromium && ffmpeg) {
   // Playwright 1.61.1 has no public FFmpeg path option. Point its registry at
   // the declared executable without downloading or modifying the browser cache.
@@ -62,7 +64,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      testIgnore: ['job-conversation-runtime.spec.ts', 'recipe-input.spec.ts', 'artifact-viewer.spec.ts', 'markup-preview.spec.ts', 'html-preview-security.spec.ts', 'markup-retained.spec.ts'],
+      testIgnore: ['assistant-runtime.spec.ts', 'job-conversation-runtime.spec.ts', 'recipe-input.spec.ts', 'artifact-viewer.spec.ts', 'markup-preview.spec.ts', 'html-preview-security.spec.ts', 'markup-retained.spec.ts'],
       use: { ...devices['Desktop Chrome'] },
     },
     {

@@ -1,3 +1,4 @@
+import { AssistantHost } from './components/AssistantContext';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { FileSearchOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MenuOutlined, OrderedListOutlined, PlayCircleOutlined, SettingOutlined } from '@ant-design/icons';
@@ -189,6 +190,7 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
               aria-expanded={!collapsed}>{collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}</button>}
             onCollapse={toggleNavigation}>{navigation}</Sider>}
         <Content className="app-content">
+          <AssistantHost key={initialTenantId(location.search, location.pathname, defaultTenantId)} tenantId={initialTenantId(location.search, location.pathname, defaultTenantId)}>
           <Routes>
             <Route path="/" element={<Navigate to={`/project/${tenantId}/jobs`} replace />} />
             <Route path="/jobs" element={<JobsListPage key={tenantId} projectId={tenantId} />} />
@@ -206,6 +208,7 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
             <Route path="/project/:projectId/admin" element={<AdminRoute fallbackProjectId={tenantId} />} />
             <Route path="*" element={<Navigate to={`/project/${tenantId}/jobs`} replace />} />
           </Routes>
+          </AssistantHost>
         </Content>
       </Layout>
     </Layout>

@@ -17,3 +17,5 @@ export * from './admin';
 export * from './buildInfo';
 
 export * from './conversation';
+
+export * from './assistant';

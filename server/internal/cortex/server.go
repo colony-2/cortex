@@ -75,6 +75,14 @@ func NewServer(cfg Config, engine jobworkflow.Engine) (*Server, error) {
 		logger:  cfg.Logger,
 		started: time.Now().UTC(),
 	}
+	if cfg.AssistantRuntime != nil {
+		if cfg.Assistant != nil {
+			return nil, fmt.Errorf("choose one assistant composition")
+		}
+		if err := s.composeAssistant(*cfg.AssistantRuntime, ctl, runtime); err != nil {
+			s.logger.Warn("Assistant unavailable: trusted configuration or runtime is incomplete")
+		}
+	}
 	s.router = s.buildRouter(inputService)
 	return s, nil
 }
@@ -88,6 +96,7 @@ func (s *Server) buildRouter(inputService ops.ManagementService) http.Handler {
 	r.Use(s.corsMiddleware)
 
 	api := r.PathPrefix("/api").Subrouter()
+	s.registerAssistantRoutes(api)
 	api.HandleFunc("/build-info", s.handleBuildInfo).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/health", s.handleHealth).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects", s.handleListProjects).Methods(http.MethodGet, http.MethodOptions)

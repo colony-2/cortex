@@ -10,6 +10,7 @@
     "test": "bash scripts/run-all-tests.sh",
     "test:web": "pnpm --filter @colony2/shared test && pnpm --filter @colony2/app test",
     "test:e2e": "pnpm --filter @colony2/app test:e2e",
+    "test:e2e:assistant": "pnpm --filter @colony2/app test:e2e --config playwright.assistant-runtime.config.ts",
     "typecheck:web": "pnpm --filter @colony2/shared typecheck && pnpm --filter @colony2/app typecheck",
     "build:web": "pnpm --filter @colony2/shared build && pnpm --filter @colony2/app build"
   },
