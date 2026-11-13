@@ -200,3 +200,18 @@ without adding an answer. Other questions remain in the page.
 This replaces immediate response-button submission and the rejection-only
 Submit rejection control. Stored option values, field IDs, attachments, and
 review API contracts are unchanged.
+
+Paragraph editors show a live character count without a fixed character cap.
+The former 1,000-character ceiling was hard-coded in Cortex, independent of
+recipe properties. Cortex keeps its existing required and pattern checks.
+The pinned c2j library transports ordinary-field `validation.min_length`,
+`max_length`, and `pattern` settings but does not enforce them when accepting
+review answers. Adding recipe text-length enforcement is separate work.
+
+Feedback still shares backend size budgets with other data. Cortex limits the
+whole review HTTP request, including attachments and multipart overhead, to
+32 MiB. JobDB defaults to 256 KiB of application payload per persisted chapter,
+including encoded answers and retained invocation data. That configurable byte
+budget is not a per-field recipe limit or a universal character count. Exceeding
+it can fail the job; text is not automatically truncated or stored as an artifact.
+Later recipe steps that copy feedback also consume chapter payload space.

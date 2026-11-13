@@ -17,6 +17,9 @@ async function openPendingInput(page: Page) {
   await page.getByRole('tab', { name: 'Pending Input', exact: true }).click();
 }
 
+const longReviewFeedback = 'Please clarify the ownership boundary before approval.\n'.repeat(38)
+  + 'Café — 日本語 🙂\nUnique feedback ending: FL-08';
+
 const reviewGoalPrompt = 'Build a release dashboard with clear review context and reliable metadata. '.repeat(2);
 
 // Real production Cortex, HTTP JobDB, pinned c2j CLI, Git recipe, and browser SSE.
@@ -668,23 +671,40 @@ for (const clarification of [false, true]) {
         await confirm.click();
         await expect(page.getByText('What should change? is required')).toBeVisible();
       }
-      await feedback.fill('Please use the proposed mandate and clarify the ownership boundary.');
+      await feedback.fill(longReviewFeedback);
+      await feedback.press('End');
+      await feedback.press('Enter');
+      await feedback.pressSequentially('Keyboard edit beyond 1000');
+      const completeFeedback = longReviewFeedback + '\nKeyboard edit beyond 1000';
+      await expect(feedback).not.toHaveAttribute('maxlength');
+      await expect(feedback).toHaveValue(completeFeedback);
+      await page.getByRole('button', { name: 'Back', exact: true }).click();
+      expect(await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).toHaveLength(1);
+      await action.click();
+      await expect(feedback).toHaveValue(completeFeedback);
       if (!clarification) await page.locator('input[type=file]').setInputFiles({ name: 'feedback.md', mimeType: 'text/markdown', buffer: Buffer.from('# Feedback from browser') });
       await page.getByRole('button', { name: 'Read design.md', exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
-      await expect(feedback).toHaveValue('Please use the proposed mandate and clarify the ownership boundary.');
+      await expect(feedback).toHaveValue(completeFeedback);
 
       for (const viewport of [{ width: 320, height: 568 }, { width: 768, height: 1024 }, { width: 1440, height: 900 }, { width: 390, height: 844 }]) {
         await page.setViewportSize(viewport);
-        await expect(feedback).toHaveValue('Please use the proposed mandate and clarify the ownership boundary.');
+        await expect(feedback).toHaveValue(completeFeedback);
         await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
       }
-      await page.screenshot({ path: testInfo.outputPath('phone-review.png'), fullPage: true });
+      await expect(page.locator('.ant-input-data-count')).toHaveText(String(completeFeedback.length));
+      await expect(confirm).toBeInViewport();
+      await feedback.evaluate(element => { element.scrollTop = element.scrollHeight; });
+      await page.screenshot({ path: testInfo.outputPath('long-feedback-phone.png') });
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await expect(confirm).toBeInViewport();
+      await page.screenshot({ path: testInfo.outputPath('long-feedback-desktop.png') });
 
       // A rejected request must remain actionable, with the draft preserved.
       let releaseFailure!: () => void;
       const failureGate = new Promise<void>(resolve => { releaseFailure = resolve; });
       await page.route(`**/reviews/${jobID}/respond`, async route => {
+        expect(route.request().postData()).toContain(JSON.stringify(completeFeedback));
         await failureGate;
         await route.fulfill({
           status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Review service temporarily unavailable' }),
@@ -702,8 +722,14 @@ for (const clarification of [false, true]) {
       await expect(page.getByRole('alert').filter({ hasText: 'Review service temporarily unavailable' })).toBeVisible();
       await expect(confirm).toHaveAttribute('aria-busy', 'false');
       await expect(confirm).toBeEnabled();
-      await expect(feedback).toHaveValue('Please use the proposed mandate and clarify the ownership boundary.');
+      await expect(feedback).toHaveValue(completeFeedback);
       expect(await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).toHaveLength(1);
+      // Chromium exposes multipart upload data at interception, but can omit
+      // it from the request associated with the eventual response event.
+      await page.route(`**/reviews/${jobID}/respond`, async route => {
+        expect(route.request().postData()).toContain(JSON.stringify(completeFeedback));
+        await route.continue();
+      }, { times: 1 });
       const [response] = await Promise.all([
         page.waitForResponse(r => r.url().endsWith(`/reviews/${jobID}/respond`) && r.request().method() === 'POST'),
         confirm.click(),
@@ -717,7 +743,7 @@ for (const clarification of [false, true]) {
         return response.status() === 200 ? response.json() : null;
       }, { timeout: 30_000 }).toMatchObject({ status: 'completed', output: {
         answers: { decision: clarification ? 'revise' : 'approve',
-          feedback: 'Please use the proposed mandate and clarify the ownership boundary.',
+          feedback: completeFeedback,
           ...(!clarification ? { annotation: { kind: 'stored', name: 'feedback.md' } } : {}),
         },
         receipt: { request_id: details.form.request_id, actor: { id: 'browser@example.com', kind: 'human' } },
@@ -977,7 +1003,7 @@ test.describe('multi-format review viewers', () => {
 
 test.describe('conventional rejection',()=>{
   test.use({recipeFixture:'browser-review'});
-  test('REV-007 submits rejection feedback with the original revise value through c2j',async({page,request,recipeRun})=>{
+  test('REV-007 submits rejection feedback with the original revise value through c2j',async({page,request,recipeRun},testInfo)=>{
     const {tenant,jobID,stopWorker,startWorker}=recipeRun;
     await stopWorker();
     await page.goto(`/project/${tenant}/reviews/${jobID}`);
@@ -987,17 +1013,23 @@ test.describe('conventional rejection',()=>{
     await reason.fill('   ');
     await page.getByRole('button',{name:'OK'}).click();
     await expect(page.getByText('What should change? is required')).toBeVisible();
-    await reason.fill('Clarify ownership before approval.');
+    await reason.fill(longReviewFeedback);
+    await expect(reason).toHaveValue(longReviewFeedback);
+    await page.getByRole('button',{name:'Back',exact:true}).click();
+    await page.getByRole('button',{name:'Reject',exact:true}).click();
+    await expect(reason).toHaveValue(longReviewFeedback);
+    await page.screenshot({path:testInfo.outputPath('long-feedback-reject.png')});
     const [response]=await Promise.all([
       page.waitForResponse(r=>r.url().endsWith(`/reviews/${jobID}/respond`) && r.request().method()==='POST'),
       page.getByRole('button',{name:'OK'}).click(),
     ]);
+    expect(response.request().postData()).toContain(JSON.stringify(longReviewFeedback));
     expect(response.status(),await response.text()).toBe(200);
     startWorker();
     await expect.poll(async()=>{
       const r=await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`);
       return r.status()===200?r.json():null;
-    },{timeout:30000}).toMatchObject({status:'completed',output:{answers:{decision:'revise',feedback:'Clarify ownership before approval.'}}});
+    },{timeout:30000}).toMatchObject({status:'completed',output:{answers:{decision:'revise',feedback:longReviewFeedback}}});
   });
 });
 

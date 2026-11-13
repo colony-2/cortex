@@ -103,9 +103,11 @@ describe('InputFormRenderer', () => {
     expect(editor).toHaveFocus();
     await user.upload(container.querySelector('input[type=file]')!,file);
     expect(container.querySelectorAll('textarea')).toHaveLength(1);
-    expect(editor).toHaveAttribute('maxlength','1000');
-    await user.type(editor,'Invalid{Enter}details');
-    expect(editor).toHaveValue('Invalid\ndetails');
+    expect(editor).not.toHaveAttribute('maxlength');
+    const invalid = 'Invalid\ndetails '.repeat(150) + '終わり';
+    await user.click(editor);
+    await user.paste(invalid);
+    expect(editor).toHaveValue(invalid);
     expect(mockOnSubmit).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button',{name:'OK',exact:true}));
     await screen.findByText('Start with Reason');
@@ -113,15 +115,62 @@ describe('InputFormRenderer', () => {
     await user.click(screen.getByRole('button',{name:'Back',exact:true}));
     await waitFor(()=>expect(screen.getByRole('button',{name:'Accept',exact:true})).toHaveFocus());
     await user.click(screen.getByRole('button',{name:'Return',exact:true}));
-    expect(editor).toHaveValue('Invalid\ndetails');
+    expect(editor).toHaveValue(invalid);
     expect(screen.getByLabelText('Owner')).toHaveValue('Sam');
     expect(screen.getByText('evidence.txt')).toBeVisible();
     await user.clear(editor);
-    await user.type(editor,'Reason: ownership');
+    const valid = 'Reason: ownership\n' + 'Please clarify café ownership. '.repeat(70) + '終わり';
+    await user.paste(valid);
     await user.click(screen.getByRole('button',{name:'OK',exact:true}));
     await waitFor(()=>expect(mockOnSubmit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
-      fields:{choice:'return',feedback:'Reason: ownership',owner:'Sam'},response:'return',attachments:{file},
+      fields:{choice:'return',feedback:valid,owner:'Sam'},response:'return',attachments:{file},
     })));
+  });
+
+  it('edits and counts feedback beyond 1,000 characters and submits only on explicit OK', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<InputFormRenderer form={{ id: 'long-review', title: 'Review', kind: 'review', fields: [
+      { id: 'decision', label: 'Decision', type: 'multiple_choice', required: true, options: ['approve', 'revise'] },
+      { id: 'feedback', label: 'Feedback', type: 'paragraph_text', required: true },
+    ] }} onSubmit={mockOnSubmit} />);
+    await user.click(screen.getByRole('button', { name: 'Approve', exact: true }));
+    const editor = screen.getByLabelText('Feedback');
+    expect(editor).not.toHaveAttribute('maxlength');
+    await user.paste('x'.repeat(995));
+    await user.type(editor, ' past the boundary{Enter}');
+    const pasted = 'Café — 日本語 🙂\n'.repeat(80) + 'Unique ending';
+    await user.paste(pasted);
+    const complete = 'x'.repeat(995) + ' past the boundary\n' + pasted;
+    expect(editor).toHaveValue(complete);
+    expect(container.querySelector('.ant-input-data-count')).toHaveTextContent(String(complete.length));
+    expect(container.querySelector('.ant-input-data-count')?.textContent).not.toContain('/');
+    await user.keyboard('{Backspace}');
+    const edited = complete.slice(0, -1);
+    expect(editor).toHaveValue(edited);
+    expect(container.querySelector('.ant-input-data-count')?.textContent).toBe(String(edited.length));
+    fireEvent.submit(container.querySelector('form')!);
+    await user.click(screen.getByRole('button', { name: 'Back', exact: true }));
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Reject', exact: true }));
+    expect(editor).toHaveValue(edited);
+    await user.click(screen.getByRole('button', { name: 'OK', exact: true }));
+    await waitFor(() => expect(mockOnSubmit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      fields: { decision: 'revise', feedback: edited },
+    })));
+  });
+
+  it('submits a long ordinary paragraph with another field ID intact', async () => {
+    const user = userEvent.setup();
+    render(<InputFormRenderer form={{ id: 'ordinary', title: 'Notes', fields: [
+      { id: 'notes', label: 'Notes', type: 'paragraph_text', required: true },
+    ] }} onSubmit={mockOnSubmit} />);
+    const editor = screen.getByLabelText('Notes');
+    expect(editor).not.toHaveAttribute('maxlength');
+    const notes = 'Long ordinary paragraph.\n'.repeat(90) + 'Exact ending 日本語';
+    await user.click(editor);
+    await user.paste(notes);
+    await user.click(screen.getByRole('button', { name: 'Submit', exact: true }));
+    await waitFor(() => expect(mockOnSubmit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ fields: { notes } })));
   });
 
   it.each([false,true])('RC-005 confirms without paragraph feedback (other field=%s)',async other => {

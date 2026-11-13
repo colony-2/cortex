@@ -189,7 +189,6 @@ export default function InputFormRenderer({
               rows={4} 
               placeholder={field.placeholder}
               showCount
-              maxLength={1000}
             />
           </Form.Item>
         );
