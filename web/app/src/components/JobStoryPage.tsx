@@ -48,7 +48,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { getJob, getJobInputArtifacts, type InputArtifact } from '@colony2/shared/api';
 import type { RecipeJob } from '@colony2/shared/types';
-import { canArchiveImmediately, isFinishedJob, jobStatusPresentation, jobStatusValue } from '../utils/jobStatus';
+import { canArchiveImmediately, isFinishedJob, confirmsRecoveryCompletion, jobStatusPresentation, jobStatusValue } from '../utils/jobStatus';
 import { goalPath } from './JobWaitLinks';
 import { jobFilterSearch } from '../utils/jobFilters';
 import { buildStoryTree, storyAttempts, storyNodeName, type ArtifactKey as StoredArtifactKey, type StoryNode, type StoryKind, type StoryNodeRef } from '../utils/storyTree';
@@ -294,6 +294,20 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const [pendingInputSubmitting, setPendingInputSubmitting] = useState(false);
 
   const jobId = routeJobId || '';
+  const storageKey = `json-patch-v2:cortex:restart:${projectId}:${jobId}`;
+  type SavedRestart = { payload: string; request: unknown };
+  const [savedRestart, setSavedRestart] = useState<SavedRestart | null>(() => {
+    try {
+      const value = sessionStorage.getItem(storageKey);
+      const saved = value ? parseJobJSON(value) as SavedRestart : null;
+      return saved && typeof saved.payload === 'string' && saved.request && typeof saved.request === 'object' ? saved : null;
+    } catch { return null; }
+  });
+  const [restartError, setRestartError] = useState<string>();
+  const [cancelSource, setCancelSource] = useState(false);
+  const [cancellationBusy, setCancellationBusy] = useState(false);
+  const [cancellationResult, setCancellationResult] = useState<string>();
+  const [cancellationError, setCancellationError] = useState<string>();
   const artifactIdentity = JSON.stringify([projectId, jobId]);
   const activeArtifact = artifactOwner === artifactIdentity ? selectedArtifact : null;
 
@@ -369,22 +383,26 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const terminalStatus = job ? jobStatusValue(job) : undefined;
   const failed = terminalStatus && ['failed_app', 'failed_system', 'failed_timeout'].includes(terminalStatus);
   const failureDetail = job?.completion_detail?.trim() ? job.completion_detail : undefined;
-  const loadMetadata = () => {
+  const loadMetadata = async (): Promise<RecipeJob | undefined> => {
     const generation = ++metadataGeneration.current;
     setLoadedJob(previous => ({ projectId, jobId, status: 'loading',
       job: previous?.projectId === projectId && previous.jobId === jobId ? previous.job : undefined,
-      observedJob: previous?.projectId === projectId && previous.jobId === jobId ? previous.observedJob : undefined }));
-    void getJob(projectId, jobId).then(job => {
-      if (generation === metadataGeneration.current) setLoadedJob({ projectId, jobId, job, observedJob: job, status: 'loaded' });
-    }).catch(error => {
-      // Metadata failure must not prevent story inspection.
-      if (generation === metadataGeneration.current) setLoadedJob(previous => ({ projectId, jobId, status: 'failed',
-        observedJob: previous?.projectId === projectId && previous.jobId === jobId ? previous.job ?? previous.observedJob : undefined,
+      observedJob: previous?.projectId === projectId && previous.jobId === jobId ? previous.job ?? previous.observedJob : undefined }));
+    try {
+      const detail = await getJob(projectId, jobId);
+      if (!alive.current || generation !== metadataGeneration.current) return;
+      // getJob is an exact read; reject a mismatched response as unavailable.
+      if (detail.job_id !== jobId || (detail.tenant_id && detail.tenant_id !== projectId)) throw new Error('Job detail identity does not match the selected source');
+      setLoadedJob({ projectId, jobId, job: detail, observedJob: detail, status: 'loaded' });
+      return detail;
+    } catch (error) {
+      if (alive.current && generation === metadataGeneration.current) setLoadedJob(previous => ({ projectId, jobId, status: 'failed',
+        observedJob: previous?.projectId === projectId && previous.jobId === jobId ? previous.observedJob : undefined,
         error: error instanceof Error ? error.message : 'Could not load job details' }));
-    });
+    }
   };
-  const navigationGoal = typeof location.state?.goalId === 'string' ? location.state.goalId : undefined;
-  const currentGoal = navigationGoal || job?.goal_id;
+  const currentGoal = job?.goal_id;
+  const sourceFinished = metadata?.status === 'loaded' && confirmsRecoveryCompletion(job);
   const overviewPath = currentGoal ? goalPath(projectId, currentGoal) : undefined;
   const savedOverview = location.state?.goalReturnTo;
   const overviewLink = typeof savedOverview === 'string' && savedOverview.split('?')[0] === overviewPath ? savedOverview : overviewPath;
@@ -674,6 +692,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   };
 
   const openRestart = (node: StoryNode | null = null) => {
+    setRestartError(undefined);
     restartOpener.current = document.activeElement as HTMLElement;
     setRestartNode(node);
     restartGoalInitialized.current = !!story;
@@ -687,47 +706,54 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     setRestartOpen(true);
   };
 
-  const submitRestart = async () => {
-    if (!jobId || !restartable || restartBusy.current || loading || error) return;
+  const sendRestart = async (saved: SavedRestart) => {
+    const response = await fetch(
+      `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/restart`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: stringifyJobJSON(saved.request) }
+    );
+    if (!response.ok) {
+      const diagnostic = await response.text().catch(() => 'Unknown error');
+      throw new Error(`${response.status} ${response.statusText}${diagnostic ? ` - ${diagnostic}` : ''}`);
+    }
+    const data = (await response.json()) as { job_id: string };
+    if (!alive.current) return;
+    sessionStorage.removeItem(storageKey);
+    setSavedRestart(null);
+    message.success('Restarted job');
+    setRestartOpen(false);
+    resetRestartState();
+    navigate(`/project/${projectId}/jobs/${data.job_id}/story${filterSearch}`);
+  };
 
-    if (patchError) return;
-    const contextPatch = generatedPatch;
-
+  const submitRestart = async (replay = false) => {
+    if (!jobId || restartBusy.current || cancellationBusy) return;
+    if (!replay && (!restartable || loading || error || patchError)) return;
+    if (replay && !savedRestart) return;
     restartBusy.current = true;
     setRestartSubmitting(true);
+    setRestartError(undefined);
     try {
-      const payload = { ...(restartScopeID ? { scope_id: restartScopeID } : { chapter_ordinal: restartChapterOrdinal }), goal: { mode: restartGoalMode }, ...(contextPatch ? { patch: contextPatch } : {}) };
-      const storageKey = 'json-patch-v2:' + `cortex:restart:${projectId}:${jobId}`;
-      const serialized = stringifyJobJSON(payload)!;
-      const stored = sessionStorage.getItem(storageKey);
-      const previous = stored ? parseJobJSON(stored) as { payload: string; request: unknown } : null;
-      const request = previous?.payload === serialized ? previous.request : { ...payload, request_id: newId() };
-      sessionStorage.setItem(storageKey, stringifyJobJSON({ payload: serialized, request })!);
-      const response = await fetch(
-        `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/restart`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: stringifyJobJSON(request),
+      if (replay) {
+        // Replay is independent of fresh admission evidence and editor state.
+        await sendRestart(savedRestart!);
+      } else {
+        const payload = { ...(restartScopeID ? { scope_id: restartScopeID } : { chapter_ordinal: restartChapterOrdinal }), goal: { mode: restartGoalMode }, ...(generatedPatch ? { patch: generatedPatch } : {}) };
+        const serialized = stringifyJobJSON(payload)!;
+        if (savedRestart?.payload === serialized) throw new Error('Use Retry saved request to resend this unchanged submission.');
+        if (restartGoalMode === 'continue') {
+          const confirmationGeneration = metadataGeneration.current + 1;
+          const detail = await loadMetadata();
+          if (!alive.current) return;
+          if (confirmationGeneration !== metadataGeneration.current || !confirmsRecoveryCompletion(detail)) throw new Error('Source completion is not confirmed. Refresh, wait for completion, or start a new goal.');
         }
-      );
-
-      if (!response.ok) {
-        const errText = await response.text().catch(() => 'Unknown error');
-        throw new Error(`${response.status} ${response.statusText}${errText ? ` - ${errText}` : ''}`);
+        if (!alive.current) return;
+        const saved = { payload: serialized, request: { ...payload, request_id: newId() } };
+        sessionStorage.setItem(storageKey, stringifyJobJSON(saved)!);
+        setSavedRestart(saved);
+        await sendRestart(saved);
       }
-
-      const data = (await response.json()) as { job_id: string };
-      if (!alive.current) return;
-      sessionStorage.removeItem(storageKey);
-      message.success('Restarted job');
-      setRestartOpen(false);
-      resetRestartState();
-      navigate(`/project/${projectId}/jobs/${data.job_id}/story${filterSearch}`);
     } catch (e) {
-      if (!alive.current) return;
-      console.error('Restart failed', e);
-      message.error(e instanceof Error ? e.message : 'Restart failed');
+      if (alive.current) setRestartError(e instanceof Error ? e.message : 'Restart failed');
     } finally {
       restartBusy.current = false;
       if (alive.current) setRestartSubmitting(false);
@@ -1452,15 +1478,34 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         title="Restart Job"
         open={restartOpen}
         onCancel={() => {
+          if (restartBusy.current || cancellationBusy) return;
           setRestartOpen(false);
           resetRestartState();
         }}
         afterClose={() => restartOpener.current?.isConnected && restartOpener.current.focus()}
         width={900}
         okText="Restart"
-        okButtonProps={{ 'aria-label': 'Restart', loading: restartSubmitting, disabled: restartSubmitting || !restartable || !!patchError || loading || !!error }}
-        onOk={submitRestart}
+        okButtonProps={{ 'aria-label': 'Restart', loading: restartSubmitting, disabled: restartSubmitting || cancellationBusy || !restartable || !!patchError || loading || !!error || (restartGoalMode === 'continue' && !sourceFinished) }}
+        onOk={() => void submitRestart()}
       >
+        <Space direction="vertical" style={{ width: '100%', marginBottom: 16 }}>
+          <Alert type={sourceFinished ? 'success' : 'info'} message={sourceFinished ? 'Source completion confirmed' : metadata?.status === 'failed' ? 'Source completion unavailable' : metadata?.status === 'loading' ? 'Checking source completion…' : 'Wait for source completion before continuing this goal'}
+            description={metadata?.error || (sourceFinished ? 'Completion permits a fresh request; admission is checked by the restart service.' : 'Wait and Refresh, cancel this source explicitly, or start a new goal.')} />
+          {cancellationResult && <Alert type="info" message={cancellationResult} description={sourceFinished ? 'Source completion is now confirmed.' : 'Cancellation remains pending until fresh job detail confirms completion.'} />}
+          {cancellationError && <Alert type="error" message="Source cancellation failed" description={cancellationError} />}
+          {restartError && <Alert type="error" message="Restart failed" description={restartError} />}
+          <Space wrap>
+            <Button disabled={restartSubmitting || cancellationBusy} onClick={() => void loadMetadata()}>Refresh source</Button>
+            {!sourceFinished && <Button disabled={restartSubmitting || cancellationBusy} onClick={() => setCancelSource(true)}>Cancel source</Button>}
+            <Button disabled={restartSubmitting || cancellationBusy} onClick={() => setRestartGoalMode('new')}>Start a new goal</Button>
+            {overviewLink && <Link to={overviewLink}>View goal</Link>}
+          </Space>
+          {savedRestart && <Card size="small" title="Saved restart request">
+            <Typography.Paragraph>The following saved request will be retried unchanged, independently of the current editor and source completion.</Typography.Paragraph>
+            <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 180, overflow: 'auto' }}>{stringifyJobJSON(savedRestart.request)}</pre>
+            <Button disabled={restartSubmitting || cancellationBusy} onClick={() => void submitRestart(true)}>Retry saved request</Button>
+          </Card>}
+        </Space>
         {story ? (
           <Space direction="vertical" style={{ width: '100%' }} size="middle">
             <Alert
@@ -1490,7 +1535,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
               placeholder="Choose a restart point"
               style={{ width: '100%' }}
               value={restartSelection}
-              onChange={setRestartSelection}
+              disabled={restartSubmitting || cancellationBusy} onChange={setRestartSelection}
               options={restartScopes.map(scope => ({
                 value: scopeKey(scope),
                 label: `${scope.title || scope.path?.join(" / ") || "Restart point"} · Chapter ${scope.chapter_ordinal} · ${formatTimestamp(scope.started_at)}`,
@@ -1499,9 +1544,9 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
               optionFilterProp="label"
             />
 
-            <Select aria-label="Restart goal" value={restartGoalMode} onChange={setRestartGoalMode} style={{ width: '100%' }}
+            <Select aria-label="Restart goal" value={restartGoalMode} disabled={restartSubmitting || cancellationBusy} onChange={setRestartGoalMode} style={{ width: '100%' }}
               options={[{ value: 'continue', label: 'Continue this goal' }, { value: 'new', label: 'Start a new goal' }]} />
-            <Card title="Context Patching" size="small">
+            <Card title="Context Patching" size="small"><fieldset disabled={restartSubmitting || cancellationBusy} style={{ border: 0, padding: 0, margin: 0 }}>
               <Space direction="vertical" style={{ width: '100%' }} size="middle">
                 <Space style={{ width: '100%', justifyContent: 'space-between' }}>
                   <Text type="secondary">
@@ -1718,12 +1763,23 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                   </Space>
                 )}
               </Space>
-            </Card>
+            </fieldset></Card>
           </Space>
         ) : (
           <div>{error ? <Alert type="error" message="Failed to load job story" description={error} action={<Button onClick={() => loadStory()}>Retry story</Button>} /> : <Spin tip="Loading restart points…"><div style={{ minHeight: 80 }} /></Spin>}</div>
         )}
       </Modal>
+      {cancelSource && <JobActionDialog projectId={projectId} jobIds={[jobId]} action="cancel" job={job}
+        onBusyChange={setCancellationBusy}
+        onFailure={failures => { if (alive.current) { setCancellationError(failures.map(failure => failure.error).join('; ')); void loadMetadata(); } }}
+        onClose={() => { if (alive.current) { setCancelSource(false); void loadMetadata(); } }}
+        onComplete={async () => {
+          if (!alive.current) return;
+          setCancellationError(undefined);
+          setCancellationResult('Cancellation requested for this source');
+          await loadMetadata();
+        }} />}
+
     </div>
   );
 }

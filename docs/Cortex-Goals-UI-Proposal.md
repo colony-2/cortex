@@ -1,5 +1,17 @@
 # Proposed Cortex support for goals
 
+> Stage 1 supersedes this historical proposal wherever it promises concurrent
+> fresh same-goal recovery, live secondary membership, inferred winners/closure,
+> or remembered navigation as membership. Current browser behavior is described
+> in [the README](../README.md#recovering-a-job-and-navigating-goals) and
+> [recovery guidance](../GUIDE-Restart-Context.md#recovery-from-the-browser).
+> Fresh same-goal recovery requires exact completion confirmation; cancellation
+> is explicit and separate. Exact saved-request replay remains available.
+> Primary membership alone drives current goal navigation. Historical parent,
+> wait-target and settled-result links retain their recorded identities.
+> Future failure-record concepts below remain a separate backend-dependent stage.
+
+
 Status: proposal, 2026-10-25.
 
 Based on [the feature request](../FEATURE-REQUEST-CORTEX-GOALS.md), the current

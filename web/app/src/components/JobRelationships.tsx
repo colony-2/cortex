@@ -57,7 +57,7 @@ function useSiblings(projectId: string, jobId: string, goal?: string) {
         const rows = [...previous.rows];
         const identity = (row: RecipeJobSummary) => JSON.stringify([row.tenant_id || projectId, row.job_id]);
         const seen = new Set([JSON.stringify([projectId, jobId]), ...rows.map(identity)]);
-        for (const row of page.jobs) if (!seen.has(identity(row))) { rows.push(row); seen.add(identity(row)); }
+        for (const row of page.jobs) if (row.goal_id === goal && (!row.tenant_id || row.tenant_id === projectId) && !seen.has(identity(row))) { rows.push(row); seen.add(identity(row)); }
         return { rows, token: page.next_page_token, loading: false, error: false };
       });
     }).catch(() => {

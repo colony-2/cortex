@@ -48,13 +48,14 @@ func jobDisplayStatus(job recipejob.RecipeJob) string {
 	return string(job.Status)
 }
 
-// JobDB does not yet filter by completion outcome. Filter compact summaries on
+// JobDB also returns secondary-goal candidates and cannot filter completion outcomes.
+// Apply primary membership and display status together to compact summaries on
 // the server, filling the result page without inspecting individual jobs.
 // Bound scans per request; sparse pages retain the cursor so nothing is lost.
 const maxDisplayStatusPages = 20
 
 func listJobsByDisplayStatus(ctx context.Context, lister recipejob.Lister, req recipejob.ListRecipeJobsRequest, statuses []string, rootOnly bool) (recipejob.ListRecipeJobsResponse, error) {
-	if len(statuses) == 0 {
+	if len(statuses) == 0 && len(req.GoalIDs) == 0 {
 		return listScopedRecipeJobs(ctx, lister, req, rootOnly)
 	}
 	result := recipejob.ListRecipeJobsResponse{Jobs: make([]recipejob.RecipeJob, 0, req.PageSize)}
@@ -76,11 +77,14 @@ func listJobsByDisplayStatus(ctx context.Context, lister recipejob.Lister, req r
 			return recipejob.ListRecipeJobsResponse{}, err
 		}
 		for _, job := range page.Jobs {
-			if slices.Contains(statuses, jobDisplayStatus(job)) {
+			if (len(req.GoalIDs) == 0 || slices.Contains(req.GoalIDs, job.GoalID)) && (len(statuses) == 0 || slices.Contains(statuses, jobDisplayStatus(job))) {
 				result.Jobs = append(result.Jobs, job)
 			}
 		}
 		result.NextPageToken = page.NextPageToken
+		if result.NextPageToken != "" && seen[result.NextPageToken] {
+			return recipejob.ListRecipeJobsResponse{}, fmt.Errorf("job list cursor did not advance")
+		}
 		if result.NextPageToken == "" || len(result.Jobs) >= pageSize {
 			break
 		}

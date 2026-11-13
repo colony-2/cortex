@@ -126,10 +126,10 @@ it('REL-040,042 DAG-16 shows content directly and preserves rows and cursor thro
 
 it('JS-024,025,034 requests all attempts, keeps current-only continuation and retries the same page independently', async () => {
   const siblings = vi.mocked(listJobs);
-  siblings.mockResolvedValueOnce({ jobs: [child('current')], next_page_token: 'first' })
-    .mockResolvedValueOnce({ jobs: [child('archived', { store: 'ARCHIVED', goal_id: 'secondary', status: 'COMPLETED' })], next_page_token: 'last' })
+  siblings.mockResolvedValueOnce({ jobs: [child('current', {goal_id:'originating'})], next_page_token: 'first' })
+    .mockResolvedValueOnce({ jobs: [child('archived', { store: 'ARCHIVED', goal_id: 'originating', status: 'COMPLETED' })], next_page_token: 'last' })
     .mockRejectedValueOnce(new Error('offline'))
-    .mockResolvedValueOnce({ jobs: [child('archived'), child('ready')] });
+    .mockResolvedValueOnce({ jobs: [child('archived',{goal_id:'originating'}), child('ready',{goal_id:'originating'})] });
   render(<MemoryRouter><JobRelationships projectId="tenant" jobId="current" job={{...job,parent:{job_id:'parent'}}} showAttempts currentGoal="originating" /></MemoryRouter>);
   const group = within(screen.getByRole('region', { name: 'Other attempts at this goal' }));
   expect(group.getByRole('status')).toHaveTextContent('Loading other attempts');
@@ -154,7 +154,7 @@ it('JS-034 no goal makes no sibling request', async () => {
 });
 it.each(['tenant','job','goal'].flatMap(change => ['success','failure'].map(outcome => ({change,outcome}))))('JS-035 ignores stale sibling $outcome after $change changes', async ({change,outcome}) => {
   let resolve!: (value: ListRecipeJobsResponse) => void, reject!: (error: Error) => void;
-  vi.mocked(listJobs).mockReturnValueOnce(new Promise((yes,no) => {resolve=yes; reject=no;})).mockResolvedValue({jobs:[child('fresh')]});
+  vi.mocked(listJobs).mockReturnValueOnce(new Promise((yes,no) => {resolve=yes; reject=no;})).mockResolvedValue({jobs:[child('fresh', {tenant_id:change==='tenant'?'other':'tenant', goal_id:change==='goal'?'other':'goal'})]});
   const view = render(<MemoryRouter><JobRelationships projectId="tenant" jobId="current" job={job} showAttempts currentGoal="goal" /></MemoryRouter>);
   view.rerender(<MemoryRouter><JobRelationships projectId={change==='tenant'?'other':'tenant'} jobId={change==='job'?'other':'current'} job={job} showAttempts currentGoal={change==='goal'?'other':'goal'} /></MemoryRouter>);
   await screen.findByRole('link', {name:'fresh'});

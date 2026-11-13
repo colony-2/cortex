@@ -98,3 +98,17 @@ it('classifies terminal outcomes without treating stale completion detail as fin
   expect(isFinishedJob({...job,status:'COMPLETED',completion_status:'future_status'})).toBe(true);
   expect(isFinishedJob({...job,status:'COMPLETED',completion_status:undefined})).toBe(true);
 });
+
+it.each([
+  [{status:'ACTIVE',store:'ARCHIVED'},true],
+  [{status:'COMPLETED',store:'ACTIVE'},true],
+  [{status:'COMPLETED'},true],
+  [{status:'CANCELLED',store:'ACTIVE',cancel_requested:true},false],
+  [{status:'READY',completion_status:'failed_app'},false],
+  [{status:'ACTIVE',completion_status:'success'},false],
+  [undefined,false],
+  [{status:''},false],
+])('C1-R01 R02 confirms recovery only from raw completion evidence %j', async (job,expected) => {
+  const {confirmsRecoveryCompletion}=await import('./jobStatus');
+  expect(confirmsRecoveryCompletion(job)).toBe(expected);
+});

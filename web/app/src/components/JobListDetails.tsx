@@ -54,7 +54,6 @@ export default function JobListDetails({ job, inspection, projectId, showPrompt 
   add('Cancellation', job.cancel_requested ? 'Requested' : undefined);
   add('Wait state', inspection?.blocking_wait?.state);
   add('Wait deadline', jobTime(job.blocking_wait_summary?.deadline || inspection?.blocking_wait?.deadline));
-  add('Other goals', inspection?.other_goal_ids?.length ? <Space wrap>{inspection.other_goal_ids.map(id => <Link className="compact-touch-link" key={id} to={goalPath(projectId, id)}>{id}</Link>)}</Space> : undefined);
 
   return <Space direction="vertical" size="middle" style={{ width: '100%', overflowWrap: 'anywhere' }}>
     {showPrompt && job.prompt && <div style={{ whiteSpace: 'pre-wrap' }}>{job.prompt}</div>}

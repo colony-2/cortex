@@ -216,15 +216,16 @@ for(const width of [1280,390]) test(`JS-024,025,035,037 pages other attempts, re
   await page.route('**/api/projects/demo/jobs?*',route=>{
     const url=new URL(route.request().url());
     if(!url.searchParams.has('goal'))return route.fallback();
+    if(url.searchParams.get('goal')==='goal-api')return route.fulfill({json:{jobs:[]}});
     expect(url.searchParams.get('goal')).toBe('goal-evidence');
     expect(url.searchParams.getAll('status')).toEqual(['all']);
     expect(url.searchParams.get('includeHidden')).toBe('true');
     expect(url.searchParams.has('rootOnly')).toBe(false);
     const cursor=url.searchParams.get('pageToken');cursors.push(cursor);
     if(!cursor)return route.fulfill({json:{jobs:[current],next_page_token:'next'}});
-    if(cursor==='next')return route.fulfill({json:{jobs:[{...children[0],goal_id:'secondary',title:'Archived earlier attempt'}],next_page_token:'last'}});
+    if(cursor==='next')return route.fulfill({json:{jobs:[{...children[0],goal_id:'goal-evidence',title:'Archived earlier attempt'}],next_page_token:'last'}});
     if(fail){fail=false;return route.fulfill({status:503,json:{error:'Sibling page unavailable'}});}
-    return route.fulfill({json:{jobs:[{...children[0],goal_id:'secondary',title:'Archived earlier attempt'},children[1]]}});
+    return route.fulfill({json:{jobs:[{...children[0],goal_id:'goal-evidence',title:'Archived earlier attempt'},{...children[1],goal_id:'goal-evidence'}]}});
   });
   await page.goto('/project/demo/jobs/evidence-105/story?tab=relationships');
   const attempts=page.getByRole('region',{name:'Other attempts at this goal'});
@@ -238,7 +239,7 @@ for(const width of [1280,390]) test(`JS-024,025,035,037 pages other attempts, re
   await page.screenshot({path:info.outputPath('sibling-attempts.png'),animations:'disabled',fullPage:true});
   await attempts.getByRole('link',{name:'Archived earlier attempt'}).click();
   await expect(page).toHaveURL(/\/jobs\/check-api-106\/story/);
-  await expect(page.getByRole('link',{name:'Goal overview',exact:true})).toHaveAttribute('href','/project/demo/goals/goal-evidence');
+  await expect(page.getByRole('link',{name:'Goal overview',exact:true})).toHaveAttribute('href','/project/demo/goals/goal-api');
   await page.getByRole('tab',{name:'Relationships',exact:true}).click();
-  await expect(attempts.getByRole('link',{name:'Goal · goal-evidence',exact:true})).toBeVisible();
+  await expect(attempts.getByRole('link',{name:'Goal · goal-api',exact:true})).toBeVisible();
 });

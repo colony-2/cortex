@@ -6,6 +6,36 @@ applied. The boundary is identified by **tenant/project, source job ID, and
 chapter ordinal**. No revision token is required: later chapters do not change
 the selected history prefix.
 
+## Recovery from the browser
+
+People can recover a source without creating a competing live attempt. **Cancel source**
+opens the existing confirmation for that exact job; cancellation never starts a restart
+or cancels a sibling. Keep the restart dialog open while waiting, then use **Refresh
+source**. Cancellation remains pending until exact job detail reports archived storage
+or completed scheduler state. An active CANCELLED label, old outcome or failed read
+cannot confirm completion. Naturally completed sources need no cancellation.
+
+A fresh **Continue this goal** submission reads the exact source again immediately
+before sending. Completion permits the request; the restart service still decides
+admission. **Start a new goal** preserves the source and its siblings. Restart errors
+stay beside the retained boundary and patch. Cancellation success and restart failure
+are reported separately; diagnostic text never establishes a blocker or goal closure.
+
+**Retry saved request** resends the saved ID, boundary, goal mode and patch unchanged,
+including after reload or a lost response. It needs no new completion, open-goal or
+sibling-absence check. Current authority and request validation still apply. Refresh
+and cancellation preserve the saved identity; deliberately submitting a changed
+boundary, patch or goal mode creates a new request. The saved request preview is
+independent of the current editor.
+
+Current-goal links and **Other attempts** follow successful exact detail's primary
+goal. Remembered navigation is only a return destination. Old extra-goal fields can
+remain in raw history but create no live membership. Old goal URLs stay literal:
+**No retained jobs for this goal** means a successful exhausted read, without proving
+closure or deletion. Empty pages with continuation and unavailable reads remain
+distinct. Historical attempts, recorded parent/child links and settled result identities
+remain separate; a missing exact job never selects a neighbor.
+
 ## Select a restart boundary
 
 Fetch the story as usual:

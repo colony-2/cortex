@@ -101,7 +101,7 @@ func TestDisplayStatusPaginationAcrossEmptyPages(t *testing.T) {
 		t.Run(fmt.Sprint(rootOnly), func(t *testing.T) {
 			jobs := compactJobs(3)
 			for i := range jobs {
-				jobs[i].Status, jobs[i].CompletionStatus = jobdb.JobStatusCompleted, "failed_app"
+				jobs[i].Status, jobs[i].CompletionStatus, jobs[i].GoalID = jobdb.JobStatusCompleted, "failed_app", "goal"
 			}
 			engine := &compactListEngine{pages: map[string]jobdb.ListJobsResponse{
 				"":          {Jobs: compactJobs(2), NextPageToken: "empty"},
@@ -185,7 +185,7 @@ func TestDisplayStatusFilteringWithRemoteSQLite(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer runtime.Shutdown()
-	backend := httptest.NewServer(testjobdb.Handler(remote.NewServer(runtime.Runtime)))
+	backend := httptest.NewServer(primaryFixtureHandler(remote.NewServer(runtime.Runtime)))
 	defer backend.Close()
 	server, err := NewRemoteServer(Config{WorkingDir: writeC2JConfig(t), JobDBURL: backend.URL})
 	if err != nil {
@@ -196,41 +196,14 @@ func TestDisplayStatusFilteringWithRemoteSQLite(t *testing.T) {
 	base := api.URL + "/api/projects/tenant/jobs"
 	postJSON[jobdb.Cell](t, api.URL+"/api/projects/tenant/cells", map[string]string{"name": "alpha", "repo": "github.com/acme/boo-alpha"})
 	var goal string
-	outcomes := []string{"failed_app", "success", "failed_app", "success", ""}
+	outcomes := []string{"failed_app", "failed_system", "failed_app", "success"}
 	for i := range outcomes {
 		id := fmt.Sprintf("job-%d", i)
-		job := postJSON[recipejob.RecipeJob](t, base, map[string]any{"job_id": id, "cell": "alpha", "repo": "github.com/acme/boo-alpha", "recipe": "smoke"})
+		job := submitPrimaryFixture(t, server, "tenant", id, "alpha", goal, nil)
 		if i == 0 {
 			goal = job.GoalID
-		} else {
-			_, err := server.engine.(jobdb.GoalRuntime).AddGoalCandidate(ctx, jobdb.AddGoalCandidateRequest{GoalKey: jobdb.GoalKey{TenantId: "tenant", GoalID: goal}, JobID: id})
-			if err != nil {
-				t.Fatal(err)
-			}
 		}
-	}
-	for i, outcome := range outcomes {
-		if outcome == "" {
-			continue
-		}
-		id := fmt.Sprintf("job-%d", i)
-		lease, err := server.engine.GetJobLease(ctx, jobdb.GetJobLeaseRequest{JobKey: jobdb.JobKey{TenantId: "tenant", JobId: id}, WorkerID: "status-test", Routes: []jobdb.Route{{JobType: "recipe"}}, LeaseDuration: time.Minute})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if lease == nil {
-			t.Fatal("expected job lease")
-		}
-		err = lease.Complete(ctx, jobdb.CompleteExecutionRequest{Status: outcome, Chapter: &jobdb.Chapter{
-			Ordinal: 1, TaskType: "recipe", CreatedAt: time.Now().UTC(),
-			Body: jobdb.JobAttemptOutcomeChapter{Outcome: jobdb.ApplicationOutputOutcome{
-				Output: jobdb.ApplicationOutputBytes{Data: []byte(`{"ok":true}`)},
-			}},
-		}})
-		lease.StopKeepAlive()
-		if err != nil {
-			t.Fatal(err)
-		}
+		completePrimaryFixture(t, server.engine, "tenant", id, outcomes[i])
 	}
 	for _, statuses := range [][]string{{"failed_app"}, {"READY", "failed_app"}, {"success"}} {
 		query := url.Values{"displayStatus": statuses, "pageSize": {"1"}, "cellNames": {"alpha"}, "goal": {goal}}
@@ -255,11 +228,8 @@ func TestDisplayStatusFilteringWithRemoteSQLite(t *testing.T) {
 			query.Set("pageToken", page.NextPageToken)
 		}
 		want := map[string]bool{"job-0": true, "job-2": true}
-		if statuses[0] == "READY" {
-			want["job-4"] = true
-		}
 		if statuses[0] == "success" {
-			want = map[string]bool{"job-1": true, "job-3": true}
+			want = map[string]bool{"job-3": true}
 		}
 		if !reflect.DeepEqual(seen, want) {
 			t.Fatalf("statuses=%v got=%v want=%v", statuses, seen, want)
@@ -305,7 +275,7 @@ func TestDisplayStatusFilteringWithRemoteSQLite(t *testing.T) {
 			}
 			want := map[string]bool{"job-2": true}
 			if query.Get("status") == "all" {
-				want["job-1"], want["job-3"], want["job-4"] = true, true, true
+				want["job-1"], want["job-3"] = true, true
 			}
 			if includeHidden == "true" {
 				want["job-0"] = true
@@ -314,5 +284,79 @@ func TestDisplayStatusFilteringWithRemoteSQLite(t *testing.T) {
 				t.Fatalf("query=%v got=%v want=%v", query, seen, want)
 			}
 		}
+	}
+}
+
+// Translated stored summaries model historical overlaps/multiple successes. They
+// assert Cortex reads only; they do not exercise or certify database conversion.
+func TestPrimaryMembershipHistoricalPages(t *testing.T) {
+	for _, statuses := range [][]string{nil, {"success"}} {
+		jobs := compactJobs(4)
+		started := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+		finished := started.Add(time.Hour)
+		for i := range jobs {
+			jobs[i].CreatedAt = started
+			jobs[i].ArchivedAt = &finished
+			jobs[i].GoalID = "chosen"
+			jobs[i].Status = jobdb.JobStatusCompleted
+			jobs[i].CompletionStatus = "success"
+		}
+		jobs[0].GoalID = "former-B"
+		engine := &compactListEngine{pages: map[string]jobdb.ListJobsResponse{
+			"":               {Jobs: jobs[:1], NextPageToken: "secondary-only"},
+			"secondary-only": {NextPageToken: "retained+/="},
+			"retained+/=":    {Jobs: jobs[1:3], NextPageToken: "last"},
+			"last":           {Jobs: jobs[3:]},
+		}}
+		req := recipejob.ListRecipeJobsRequest{TenantID: "tenant", GoalIDs: []string{"chosen", "another"}, PageSize: 2, Stores: []jobdb.JobStore{jobdb.JobStoreActive, jobdb.JobStoreArchived}, IncludeHidden: true, CellNames: []string{"platform"}}
+		first, err := listJobsByDisplayStatus(context.Background(), engine, req, statuses, false)
+		if err != nil || len(first.Jobs) != 2 || first.Jobs[0].JobID != "1" || first.Jobs[1].JobID != "2" || first.NextPageToken != "last" {
+			t.Fatalf("first=%+v err=%v", first, err)
+		}
+		req.PageToken = first.NextPageToken
+		last, err := listJobsByDisplayStatus(context.Background(), engine, req, statuses, false)
+		if err != nil || len(last.Jobs) != 1 || last.Jobs[0].JobID != "3" || last.NextPageToken != "" {
+			t.Fatalf("last=%+v err=%v", last, err)
+		}
+		for _, r := range engine.requests {
+			if !r.IncludeHidden || len(r.Stores) != 2 || !reflect.DeepEqual(r.GoalIDs, req.GoalIDs) || !reflect.DeepEqual(r.TenantIds, []string{"tenant"}) || !reflect.DeepEqual(r.CellNames, []string{"platform"}) {
+				t.Fatalf("scope lost: %+v", r)
+			}
+		}
+	}
+}
+
+func TestPrimaryMembershipScanLimitAndBadCursors(t *testing.T) {
+	engine := &compactListEngine{pages: map[string]jobdb.ListJobsResponse{}}
+	token := ""
+	for i := 0; i < maxDisplayStatusPages; i++ {
+		next := fmt.Sprint(i)
+		engine.pages[token] = jobdb.ListJobsResponse{Jobs: compactJobs(1), NextPageToken: next}
+		token = next
+	}
+	match := compactJobs(1)
+	match[0].GoalID = "chosen"
+	engine.pages[token] = jobdb.ListJobsResponse{Jobs: match}
+	req := recipejob.ListRecipeJobsRequest{TenantID: "tenant", GoalIDs: []string{"chosen"}, PageSize: 1}
+	first, err := listJobsByDisplayStatus(context.Background(), engine, req, nil, false)
+	if err != nil || len(first.Jobs) != 0 || first.NextPageToken != token || len(engine.requests) != 20 {
+		t.Fatalf("bounded: %+v %v requests=%d", first, err, len(engine.requests))
+	}
+	req.PageToken = token
+	last, err := listJobsByDisplayStatus(context.Background(), engine, req, nil, false)
+	if err != nil || len(last.Jobs) != 1 || last.NextPageToken != "" {
+		t.Fatalf("continuation: %+v %v", last, err)
+	}
+	for _, statuses := range [][]string{nil, {"READY"}} {
+		engine.pages = map[string]jobdb.ListJobsResponse{"loop": {Jobs: match, NextPageToken: "loop"}}
+		req.PageToken = "loop"
+		if _, err := listJobsByDisplayStatus(context.Background(), engine, req, statuses, false); err == nil {
+			t.Fatal("nonadvancing cursor accepted at full capacity")
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := listJobsByDisplayStatus(ctx, engine, req, nil, false); err == nil {
+		t.Fatal("cancelled scan succeeded")
 	}
 }

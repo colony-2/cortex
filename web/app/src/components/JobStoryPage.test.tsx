@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation, useNavigate, useParams } from
 import JobStoryPage from './JobStoryPage';
 import * as storyTree from '../utils/storyTree';
 import { jobIdentity } from '../test/cellFixtures';
-import { getJob, getJobInputArtifacts, listJobChildren } from '@colony2/shared/api';
+import { getJob, getJobInputArtifacts, listJobChildren, cancelJob, listJobs } from '@colony2/shared/api';
 import type { RecipeJob } from '@colony2/shared/types';
 import DownloadChaptersButton from './DownloadChaptersButton';
 import { inputActivityService, getConversation, getFinalDocuments } from '@colony2/shared';
@@ -22,6 +22,7 @@ vi.mock('@colony2/shared', async (importOriginal) => ({
 vi.mock('@colony2/shared/api', async (importOriginal) => ({
   ...await importOriginal<typeof import('@colony2/shared/api')>(),
   getJob: vi.fn(),
+  cancelJob: vi.fn(),
   getJobInputArtifacts: vi.fn().mockResolvedValue({ artifacts: [] }),
   listJobs: vi.fn().mockResolvedValue({ jobs: [] }),
   getJobLeaseEvents: vi.fn().mockResolvedValue({ events: [] }),
@@ -65,12 +66,15 @@ function mount(search = '?tab=execution', response: unknown = story) {
   return fetchMock;
 }
 beforeEach(() => {
+  sessionStorage.clear();
   inputState.pendingInputs = [];
   inputState.refresh.mockClear();
   vi.mocked(getFinalDocuments).mockReset().mockResolvedValue({job_id:'job',manifest_id:'empty',state:'empty',documents:[]});
   vi.mocked(getConversation).mockReset().mockRejectedValue(new Error('History unavailable'));
   vi.mocked(getJobInputArtifacts).mockReset().mockResolvedValue({ artifacts: [] });
-  vi.mocked(getJob).mockReset().mockResolvedValue({ ...jobIdentity, goal_id: 'goal' } as RecipeJob);
+  vi.mocked(getJob).mockReset().mockResolvedValue({ ...jobIdentity, job_id: 'job', goal_id: 'goal' } as RecipeJob);
+  vi.mocked(cancelJob).mockReset().mockImplementation(async (...args) => (await vi.importActual<typeof import('@colony2/shared/api')>('@colony2/shared/api')).cancelJob(...args));
+  vi.mocked(listJobs).mockReset().mockResolvedValue({jobs:[]});
   vi.mocked(listJobChildren).mockReset().mockResolvedValue({ jobs: [] });
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
@@ -190,6 +194,7 @@ describe('job story history', () => {
     expect(screen.getByRole('tab', { name: 'Attempt 3' })).toHaveAttribute('aria-selected', 'true');
   });
   it('shows a short scoped operation name and keeps source and restart in Overview', async () => {
+    vi.mocked(getJob).mockResolvedValue(metadata());
     const source = 'git+https://github.com/colony-2/c2ops.git//codex@abc123';
     const scopeID = 'root/scope:"op:codex"#1';
     const fetchMock = mount('?tab=execution', { ...story, restart_scopes: [
@@ -269,6 +274,7 @@ describe('job story history', () => {
   });
 
   it('restarts from submission without carrying over a recipe context patch', async () => {
+    vi.mocked(getJob).mockResolvedValue(metadata());
     const fetchMock = mount('', { ...story,
       root: { ...jobAttempt(1), restart_chapter_ordinal: 4 },
       restart_scopes: [
@@ -323,6 +329,7 @@ describe('job story history', () => {
   });
 
   it('uses the recorded historical chapter even when the current attempt has the same scope ID', async () => {
+    vi.mocked(getJob).mockResolvedValue(metadata());
     const fetchMock = mount('?nodeId=jobAttempt%3A2%7Cn_3', { ...story,
       root: { ...jobAttempt(3), restart_chapter_ordinal: 30, past_attempts: [
         { ...jobAttempt(2), restart_chapter_ordinal: 14, restart_relationship: 'body' },
@@ -345,6 +352,7 @@ describe('job story history', () => {
   });
 
   it('selects an exact scope in a compact chapter and reuses a restart request after a lost response', async () => {
+    vi.mocked(getJob).mockResolvedValue(metadata());
     const fetch = mount('', { ...story,
       root: { ...jobAttempt(1), restart_chapter_ordinal: 4, restart_scope_id: 'target/scope' },
       restart_scopes: [
@@ -372,7 +380,7 @@ describe('job story history', () => {
     expect(JSON.parse(first[1]!.body as string)).toMatchObject({ scope_id: 'target/scope', request_id: expect.any(String) });
     expect(JSON.parse(first[1]!.body as string)).not.toHaveProperty('chapter_ordinal');
     fetch.mockResolvedValueOnce({ ok: false, status: 400, statusText: 'Bad Request', text: async () => 'Request rejected' });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Restart', exact: true }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Retry saved request', exact: true }));
     await waitFor(() => expect(fetch.mock.calls.filter(([url]) => String(url).endsWith('/restart'))).toHaveLength(2));
     const requests = fetch.mock.calls.filter(([url]) => String(url).endsWith('/restart'));
     expect(requests[1][1]!.body).toBe(requests[0][1]!.body);
@@ -621,14 +629,14 @@ describe('job story context', () => {
     expect(screen.getByLabelText('Job cell')).toHaveTextContent('Cell: owning-cell'); // JC-004
     expect(screen.getByRole('heading', { name: 'Job Story: Current' })).toBeVisible();
   });
-  it('loads metadata despite navigation goal state and preserves its precedence', async () => {
+  it('C1-M06 uses returned primary membership over navigation goal state', async () => {
     vi.mocked(getJob).mockResolvedValue(metadata({ goal_id: 'other', title: 'Loaded' }));
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => story }));
     render(<MemoryRouter initialEntries={[{ pathname: '/project/tenant/jobs/job/story', state: { goalId: 'navigation' } }]}>
       <Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId="tenant" />} /></Routes>
     </MemoryRouter>);
     await screen.findByRole('heading', { name: 'Job Story: Loaded' });
-    expect(screen.getByRole('link', { name: 'Goal overview' })).toHaveAttribute('href', '/project/tenant/goals/navigation');
+    expect(screen.getByRole('link', { name: 'Goal overview' })).toHaveAttribute('href', '/project/tenant/goals/other');
   });
   it('renders story while metadata is pending and recovers metadata after failure', async () => {
     const pending = deferred<RecipeJob>();
@@ -749,7 +757,7 @@ describe('job story context', () => {
   it('retains final metadata after terminal story polling stops', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     vi.mocked(getJob).mockResolvedValue(metadata({ status: 'ACTIVE', store: 'ACTIVE' }));
-    const fetchMock = mount('', { ...story, status: 'running' });
+    const fetchMock = mount('?tab=execution', { ...story, status: 'running' });
     await screen.findByRole('switch', { name: 'Auto-refresh' });
     const final = deferred<RecipeJob>();
     vi.mocked(getJob).mockReturnValueOnce(final.promise);
@@ -757,6 +765,7 @@ describe('job story context', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
     expect(screen.getByRole('switch', { name: 'Auto-refresh' })).toBeChecked();
     await act(async () => { final.resolve(metadata({ status: 'COMPLETED', store: 'ACTIVE', completion_status: 'failed_app', completion_detail: 'Final diagnostic' })); });
+    fireEvent.click(screen.getByRole('tab',{name:'Conversation',exact:true}));
     expect(await screen.findByText('Final diagnostic')).toBeVisible();
   });
   it.each(['job', 'tenant'])('clears metadata warnings immediately across %s navigation', async change => {
@@ -775,7 +784,7 @@ describe('job story context', () => {
     expect(screen.queryByText('Old warning')).toBeNull();
     expect(screen.queryByText('Job details unavailable')).toBeNull();
     expect(screen.getByRole('status', { name: 'Job details loading' })).toBeVisible();
-    await act(async () => { current.resolve(metadata()); });
+    await act(async () => { current.resolve(metadata({job_id:change==='job'?'new':'job',tenant_id:change==='tenant'?'other':'tenant'})); });
     expect(screen.getByText('No prompt recorded for this job.')).toBeVisible();
   });
   it.each(['job', 'tenant'].flatMap(change => ['success', 'failure'].map(outcome => ({ change, outcome }))))('isolates context across $change changes and late $outcome', async ({ change, outcome }) => {
@@ -803,7 +812,7 @@ describe('job story context', () => {
     expect(screen.queryByText('Leaked warning')).toBeNull();
     expect(screen.queryByText('Leaked')).toBeNull();
     expect(screen.queryByLabelText('Job cell')).toBeNull(); // JC-007
-    await act(async () => { current.resolve(metadata({ title: 'Current', cell_name: 'current-cell' })); });
+    await act(async () => { current.resolve(metadata({job_id:change==='job'?'new':'job',tenant_id:change==='tenant'?'other':'tenant',title:'Current',cell_name:'current-cell'})); });
     expect(screen.getByRole('heading', { name: 'Job Story: Current' })).toBeVisible();
     expect(screen.getByLabelText('Job cell')).toHaveTextContent('Cell: current-cell');
   });
@@ -1404,7 +1413,7 @@ describe('Conversation tab layout', () => {
 describe('Steps on demand', () => {
   it('STP-001,002,003,007,008,014,015 defers retrieval and inspector construction, then reuses cache', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
-    vi.mocked(getJob).mockResolvedValue({ ...jobIdentity, status: 'RUNNING', recipe: 'fixture.yaml' } as RecipeJob);
+    vi.mocked(getJob).mockResolvedValue({ ...jobIdentity, job_id: 'job', status: 'RUNNING', recipe: 'fixture.yaml' } as RecipeJob);
     const construction = vi.spyOn(storyTree, 'buildStoryTree');
     const requests = mount('');
     await screen.findByRole('switch', { name: 'Auto-refresh' });
@@ -1736,7 +1745,7 @@ describe('JS shared story actions', () => {
 });
 
 it('JS-020,022,023 Archive retains accepted cancellation and refreshes metadata on retry without leaving the job', async () => {
-  vi.mocked(getJob).mockResolvedValue(metadata({status:'RUNNING',store:'ACTIVE'}));
+  vi.mocked(getJob).mockImplementation(async (tenant,id)=>metadata({job_id:id,tenant_id:tenant,status:'RUNNING',store:'ACTIVE'}));
   const requests=mount(''); await screen.findByRole('region',{name:'Job prompt'});
   requests.mockResolvedValueOnce(new Response(JSON.stringify({error:'Archive unavailable after cancellation',code:'archive_failed_after_cancel'}),{status:503}))
     .mockResolvedValue(new Response(null,{status:204}));
@@ -1762,7 +1771,7 @@ it.each(['restart','archive'].flatMap(action=>['job','tenant'].flatMap(change=>[
   const data={...story,restart_scopes:[{scope_id:'point',chapter_ordinal:1,title:'Recorded point'}]};
   const requests=vi.fn((url:string, init?:RequestInit)=>init?.method ? pending.promise : Promise.resolve({ok:true,json:async()=>data}));
   vi.stubGlobal('fetch',requests);
-  vi.mocked(getJob).mockResolvedValue(metadata({status:'RUNNING',store:'ACTIVE'}));
+  vi.mocked(getJob).mockImplementation(async (tenant,id)=>metadata({job_id:id,tenant_id:tenant,status:action==='restart'?'COMPLETED':'RUNNING',store:'ACTIVE'}));
   function Host(){const {projectId}=useParams(); const navigate=useNavigate(); return <><button onClick={()=>navigate(change==='job'?'/project/tenant/jobs/new/story':'/project/other/jobs/job/story')}>Switch identity</button><JobStoryPage projectId={projectId!}/><output data-testid="path">{useLocation().pathname}</output></>;}
   render(<MemoryRouter initialEntries={['/project/tenant/jobs/job/story']}><Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<Host/>}/></Routes></MemoryRouter>);
   await screen.findByRole('region',{name:'Job prompt'});
@@ -1773,6 +1782,7 @@ it.each(['restart','archive'].flatMap(action=>['job','tenant'].flatMap(change=>[
     fireEvent.click(screen.getByText(/Recorded point · Chapter/));
   }
   fireEvent.click(within(dialog).getByRole('button',{name:action==='restart'?'Restart':'Archive job',exact:true}));
+  await waitFor(()=>expect(requests.mock.calls.filter(([,init])=>init?.method)).toHaveLength(1));
   fireEvent.click(screen.getByRole('button',{name:'Switch identity'}));
   await screen.findByRole('region',{name:'Job prompt'});
   const before=vi.mocked(getJob).mock.calls.length;
@@ -1816,4 +1826,199 @@ it.each([['success',true],['failed_app',true],['failed_system',true],['failed_ti
     expect(screen.getByRole('dialog')).toBeVisible();
     expect(requests.mock.calls.filter(([,init])=>init?.method==='DELETE')).toHaveLength(0);
   }
+});
+
+const recoveryStory = {...story,status:'failed',restart_scopes:[{scope_id:'recorded',chapter_ordinal:12,title:'Recovery boundary'}]};
+async function recoveryDialog() {
+  const requests=mount('',recoveryStory);
+  requests.mockImplementation(async (url:string,init?:RequestInit)=> {
+    if(url.includes('restart-context')) return {ok:true,text:async()=>JSON.stringify({project_id:'tenant',job_id:'job',scope_id:'recorded',chapter_ordinal:12,job:{git:{author:'old'}},visible:{},redacted_paths:[]})};
+    if(init?.method==='POST') return {ok:false,status:409,statusText:'Conflict',text:async()=> 'admission unavailable: diagnostic only'};
+    return {ok:true,json:async()=>recoveryStory};
+  });
+  fireEvent.click(screen.getByRole('button',{name:'Restart',exact:true}));
+  const dialog=screen.getByRole('dialog');
+  const selector=await within(dialog).findByRole('combobox',{name:'Restart point'});
+  fireEvent.mouseDown(selector);
+  fireEvent.click(await screen.findByText(/Recovery boundary · Chapter/));
+  return {requests,dialog,postCalls:()=>requests.mock.calls.filter(([,init])=>init?.method==='POST')};
+}
+async function recoveryPatch(dialog:HTMLElement) {
+  fireEvent.click(within(dialog).getByRole('switch'));
+  await within(dialog).findByRole('region',{name:'Context before patching'});
+  fireEvent.click(within(dialog).getAllByRole('button',{name:'Add line'})[0]);
+  fireEvent.change(within(dialog).getByPlaceholderText('e.g. git.author'),{target:{value:'git.author'}});
+  fireEvent.change(within(dialog).getByPlaceholderText('e.g. "james@example.com"'),{target:{value:'retained draft'}});
+}
+
+describe('C1 source recovery',()=>{
+  beforeEach(()=>{vi.mocked(getJob).mockResolvedValue(metadata());vi.mocked(cancelJob).mockResolvedValue(undefined);});
+  it.each(['ACTIVE','CANCELLED','READY'])('C1-R02 R03 R10 blocks fresh %s with stale outcome but allows a fork without cancellation',async status=>{
+    vi.mocked(getJob).mockResolvedValue(metadata({status,store:'ACTIVE',completion_status:'success',cancel_requested:true}));
+    const {dialog,postCalls}=await recoveryDialog();
+    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
+    expect(within(dialog).getByRole('button',{name:'Cancel source'})).toBeEnabled();
+    fireEvent.click(within(dialog).getByRole('button',{name:'Start a new goal',exact:true}));
+    fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
+    await within(dialog).findByText('admission unavailable: diagnostic only',{exact:false});
+    expect(JSON.parse(postCalls()[0][1]!.body as string).goal.mode).toBe('new');
+    expect(cancelJob).not.toHaveBeenCalled();
+  });
+  it('C1-R04 R05 R07 R11 R12 R15 keeps boundary, patch and saved request through explicit pending cancellation and conflict',async()=>{
+    vi.mocked(getJob).mockResolvedValue(metadata({status:'ACTIVE',store:'ACTIVE'}));
+    const {dialog,postCalls}=await recoveryDialog();
+    await recoveryPatch(dialog);
+    // Save a deliberate fork whose response is rejected, then cancel the source.
+    fireEvent.click(within(dialog).getByRole('button',{name:'Start a new goal',exact:true}));
+    fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
+    await within(dialog).findByText('Restart failed');
+    const saved=sessionStorage.getItem('json-patch-v2:cortex:restart:tenant:job');
+    fireEvent.click(within(dialog).getByRole('button',{name:'Cancel source'}));
+    const confirmation=(await screen.findByText('Cancel job?')).closest('[role=dialog]') as HTMLElement;
+    expect(within(confirmation).getByText('job',{exact:true})).toBeVisible();
+    expect(cancelJob).not.toHaveBeenCalled();
+    fireEvent.click(within(confirmation).getByRole('button',{name:'Cancel job',exact:true}));
+    await within(dialog).findByText('Cancellation requested for this source');
+    expect(cancelJob).toHaveBeenCalledExactlyOnceWith('tenant','job',expect.any(String));
+    expect(postCalls()).toHaveLength(1);
+    expect(within(dialog).getByText(/Cancellation remains pending/)).toBeVisible();
+    expect(within(dialog).getByPlaceholderText('e.g. "james@example.com"')).toHaveValue('retained draft');
+    expect(within(dialog).getByText(/Recovery boundary · Chapter/)).toBeVisible();
+    expect(sessionStorage.getItem('json-patch-v2:cortex:restart:tenant:job')).toBe(saved);
+    vi.mocked(getJob).mockResolvedValue(metadata({status:'COMPLETED',store:'ACTIVE',completion_status:undefined}));
+    fireEvent.click(within(dialog).getByRole('button',{name:'Refresh source'}));
+    await within(dialog).findByText('Source completion confirmed');
+    fireEvent.click(within(dialog).getByRole('button',{name:'Retry saved request'}));
+    await waitFor(()=>expect(postCalls()).toHaveLength(2));
+    expect(postCalls()[0][1]!.body).toBe(postCalls()[1][1]!.body);
+    expect(within(dialog).getByText('Cancellation requested for this source')).toBeVisible();
+    expect(within(dialog).getByText('Restart failed')).toBeVisible();
+  });
+  it('C1-R06 R07 reconciles denied cancellation with natural completion and keeps the draft',async()=>{
+    vi.mocked(getJob).mockResolvedValue(metadata({status:'ACTIVE',store:'ACTIVE'}));
+    vi.mocked(cancelJob).mockRejectedValue(new Error('403 source cancellation denied'));
+    const {dialog,postCalls}=await recoveryDialog();
+    await recoveryPatch(dialog);
+    fireEvent.click(within(dialog).getByRole('button',{name:'Cancel source'}));
+    vi.mocked(getJob).mockResolvedValue(metadata({status:'COMPLETED',store:'ACTIVE'}));
+    fireEvent.click(within((await screen.findByText('Cancel job?')).closest('[role=dialog]') as HTMLElement).getByRole('button',{name:'Cancel job',exact:true}));
+    await within(dialog).findByText('Source cancellation failed');
+    fireEvent.click(within((await screen.findByText('Cancel failed jobs')).closest('[role=dialog]') as HTMLElement).getAllByRole('button',{name:'Close',exact:true}).at(-1)!);
+    await within(dialog).findByText('Source completion confirmed');
+    expect(within(dialog).getByPlaceholderText('e.g. "james@example.com"')).toHaveValue('retained draft');
+    expect(within(dialog).getByRole('button',{name:'Start a new goal',exact:true})).toBeEnabled();
+    expect(postCalls()).toHaveLength(0);
+  });
+  it.each(['running','denied','unavailable','mismatched','missing'])('C1-R08 freshly rejects %s evidence before POST',async state=>{
+    const {dialog,postCalls}=await recoveryDialog();
+    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
+    if(state==='running') vi.mocked(getJob).mockResolvedValue(metadata({status:'ACTIVE',store:'ACTIVE'}));
+    else if(state==='missing') vi.mocked(getJob).mockResolvedValue(metadata({job_id:undefined}));
+    else if(state==='mismatched') vi.mocked(getJob).mockResolvedValue(metadata({job_id:'neighbor'}));
+    else vi.mocked(getJob).mockRejectedValue(new Error(state));
+    const before=vi.mocked(getJob).mock.calls.length;
+    fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
+    await within(dialog).findByText('Restart failed');
+    expect(getJob).toHaveBeenCalledTimes(before+1);
+    expect(postCalls()).toHaveLength(0);
+    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
+  });
+  it('C1-R07 R08 natural completion is reread immediately before fresh same-goal POST',async()=>{
+    const {dialog,postCalls}=await recoveryDialog();
+    const before=vi.mocked(getJob).mock.calls.length;
+    fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
+    await within(dialog).findByText('Restart failed');
+    expect(getJob).toHaveBeenCalledTimes(before+1);
+    expect(JSON.parse(postCalls()[0][1]!.body as string)).toMatchObject({goal:{mode:'continue'}});
+    expect(cancelJob).not.toHaveBeenCalled();
+  });
+  it('C1-R13 R14 M07 X03 reloads exact saved replay despite denied confirmation and differing current controls',async()=>{
+    const request={request_id:'retained-id',scope_id:'old-boundary',goal:{mode:'continue'},patch:[{op:'add',path:'/context/large',value:'literal 9007199254740993'}]};
+    sessionStorage.setItem('json-patch-v2:cortex:restart:tenant:job',JSON.stringify({payload:'old payload',request}));
+    vi.mocked(getJob).mockRejectedValue(new Error('403 completion denied'));
+    const {dialog,postCalls}=await recoveryDialog();
+    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole('button',{name:'Start a new goal',exact:true}));
+    const reads=vi.mocked(getJob).mock.calls.length;
+    fireEvent.click(within(dialog).getByRole('button',{name:'Retry saved request'}));
+    await within(dialog).findByText('Restart failed');
+    expect(getJob).toHaveBeenCalledTimes(reads);
+    expect(JSON.parse(postCalls()[0][1]!.body as string)).toEqual(request);
+    expect(listJobs).not.toHaveBeenCalled();
+    expect(screen.queryByRole('link',{name:'Goal overview'})).toBeNull();
+  });
+  it.each(['job','tenant'])('C1-R09 ignores late fresh confirmation after %s navigation',async change=>{
+    const pending=deferred<RecipeJob>();
+    const {dialog,postCalls}=await recoveryDialog();
+    vi.mocked(getJob).mockReturnValueOnce(pending.promise);
+    fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
+    cleanup();
+    vi.mocked(getJob).mockResolvedValue(metadata({tenant_id:change==='tenant'?'other':'tenant',job_id:change==='job'?'other':'job',status:'ACTIVE',store:'ACTIVE'}));
+    render(<MemoryRouter initialEntries={[`/project/${change==='tenant'?'other':'tenant'}/jobs/${change==='job'?'other':'job'}/story`]}><Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId={change==='tenant'?'other':'tenant'} />} /></Routes></MemoryRouter>);
+    await act(async()=>pending.resolve(metadata()));
+    expect(postCalls()).toHaveLength(0);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+it('C1-R08 rejects a confirmation superseded by a newer read',async()=>{
+  vi.mocked(getJob).mockResolvedValue(metadata());
+  const {dialog,postCalls}=await recoveryDialog();
+  const old=deferred<RecipeJob>();vi.mocked(getJob).mockReturnValueOnce(old.promise);
+  fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
+  vi.mocked(getJob).mockResolvedValue(metadata());
+  fireEvent.click(screen.getByRole('button',{name:/Refresh$/}));
+  await act(async()=>old.resolve(metadata()));
+  expect(postCalls()).toHaveLength(0);
+  expect(within(dialog).getByText('Restart failed')).toBeVisible();
+});
+it.each(['job','tenant'].flatMap(change=>['success','failure'].map(outcome=>({change,outcome}))))('C1-R09 ignores late cancellation $outcome after $change change',async({change,outcome})=>{
+ vi.mocked(getJob).mockResolvedValue(metadata({status:'ACTIVE',store:'ACTIVE'}));
+ const pending=deferred<void>();vi.mocked(cancelJob).mockReturnValue(pending.promise);
+ const {dialog,postCalls}=await recoveryDialog();
+ fireEvent.click(within(dialog).getByRole('button',{name:'Cancel source'}));
+ const confirmation=(await screen.findByText('Cancel job?')).closest('[role=dialog]') as HTMLElement;
+ fireEvent.click(within(confirmation).getByRole('button',{name:'Cancel job',exact:true}));
+ cleanup();
+ const tenant=change==='tenant'?'other':'tenant',id=change==='job'?'other':'job';
+ vi.mocked(getJob).mockResolvedValue(metadata({tenant_id:tenant,job_id:id,status:'ACTIVE',store:'ACTIVE'}));
+ render(<MemoryRouter initialEntries={[`/project/${tenant}/jobs/${id}/story`]}><Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId={tenant}/>} /></Routes></MemoryRouter>);
+ await screen.findByRole('region',{name:'Job prompt'});const reads=vi.mocked(getJob).mock.calls.length;
+ await act(async()=>outcome==='success'?pending.resolve():pending.reject(new Error('obsolete cancellation')));
+ expect(getJob).toHaveBeenCalledTimes(reads);expect(postCalls()).toHaveLength(0);
+ expect(screen.queryByText('Cancellation requested for this source')).toBeNull();
+});
+it('C1-R14 saved replay remains available without story or completion reconstruction',async()=>{
+ const raw='{"request_id":"persisted","chapter_ordinal":9,"goal":{"mode":"continue"},"patch":[{"op":"add","path":"/sequence/a/outputs/n","value":9007199254740993}]}';
+ sessionStorage.setItem('json-patch-v2:cortex:restart:tenant:job','{"payload":"retained","request":'+raw+'}');
+ vi.mocked(getJob).mockRejectedValue(new Error('detail denied'));
+ const requests=mount('');requests.mockRejectedValue(new Error('story unavailable'));
+ fireEvent.click(screen.getByRole('button',{name:'Restart',exact:true}));
+ const dialog=screen.getByRole('dialog');await within(dialog).findByText('Failed to load job story');
+ requests.mockResolvedValueOnce({ok:false,status:409,text:async()=> 'controlled closed goal replay response'});
+ const reads=vi.mocked(getJob).mock.calls.length;
+ fireEvent.click(within(dialog).getByRole('button',{name:'Retry saved request'}));
+ await within(dialog).findByText('Restart failed');
+ const post=requests.mock.calls.find(([,init])=>init?.method==='POST')!;
+ expect(post[1]!.body).toBe(raw);expect(getJob).toHaveBeenCalledTimes(reads);
+});
+
+it.each(['boundary','mode'])('C1-R15 deliberate %s changes use a new request identity',async change=>{
+ vi.mocked(getJob).mockResolvedValue(metadata());
+ const data={...recoveryStory,restart_scopes:[...recoveryStory.restart_scopes,{scope_id:'alternate',chapter_ordinal:14,title:'Alternate boundary'}]};
+ const requests=mount('',data);
+ requests.mockImplementation(async(_url:string,init?:RequestInit)=>init?.method==='POST'?{ok:false,status:409,text:async()=> 'retained conflict'}:{ok:true,json:async()=>data});
+ fireEvent.click(screen.getByRole('button',{name:'Restart',exact:true}));
+ const dialog=screen.getByRole('dialog');
+ fireEvent.mouseDown(await within(dialog).findByRole('combobox',{name:'Restart point'}));fireEvent.click(await screen.findByText(/Recovery boundary · Chapter/));
+ fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));await within(dialog).findByText('Restart failed');
+ const posts=()=>requests.mock.calls.filter(([,init])=>init?.method==='POST');
+ const first=JSON.parse(posts()[0][1]!.body as string);
+ if(change==='mode')fireEvent.click(within(dialog).getByRole('button',{name:'Start a new goal',exact:true}));
+ else {fireEvent.mouseDown(within(dialog).getByRole('combobox',{name:'Restart point'}));fireEvent.click(await screen.findByText(/Alternate boundary · Chapter/));}
+ fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
+ await waitFor(()=>expect(posts()).toHaveLength(2));
+ const second=JSON.parse(posts()[1][1]!.body as string);
+ expect(second.request_id).not.toBe(first.request_id);
+ expect(second).toMatchObject(change==='mode'?{goal:{mode:'new'},scope_id:'recorded'}:{scope_id:'alternate',goal:{mode:'continue'}});
 });

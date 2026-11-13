@@ -524,13 +524,13 @@ it('inspects only visible selections, revalidates on refresh/reopen, and ignores
   vi.stubGlobal('fetch', vi.fn(async (url: string) => (new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs })))));
   let resolveFirst!: (job: RecipeJob) => void;
   vi.mocked(getJob).mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
-    .mockImplementation(async (tenant, id) => ({ ...jobIdentity, tenant_id: tenant, job_id: id, other_goal_ids: [`${id} inspected`] } as RecipeJob));
+    .mockImplementation(async (tenant, id) => ({ ...jobIdentity, tenant_id: tenant, job_id: id, completion_detail: `${id} inspected` } as RecipeJob));
   render(<StrictMode><MemoryRouter initialEntries={['/?expanded=goal:goal']}><JobsListPage projectId="tenant" /></MemoryRouter></StrictMode>);
   const attempts = await screen.findByRole('region', { name: 'Attempts' });
   await waitFor(() => expect(getJob).toHaveBeenCalledExactlyOnceWith('tenant', 'first'));
   fireEvent.click(within(attempts).getAllByRole('button', { name: 'Details' })[1]);
   expect((await screen.findAllByText('second inspected'))[0]).toBeVisible();
-  await act(async () => resolveFirst({ ...jobIdentity, job_id: 'first', other_goal_ids: ['LATE first'] } as RecipeJob));
+  await act(async () => resolveFirst({ ...jobIdentity, job_id: 'first', completion_detail: 'LATE first' } as RecipeJob));
   expect(screen.queryByText('LATE first')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   await waitFor(() => expect(getJob).toHaveBeenCalledTimes(3));
@@ -548,7 +548,7 @@ it('retries failed inspection and never reuses another tenant’s details', asyn
   const job = { ...jobIdentity, job_id: 'same', goal_id: 'goal', prompt: 'Same ID', status: 'READY', store: 'ACTIVE' };
   vi.stubGlobal('fetch', vi.fn(async (url: string) => (new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs: [job] })))));
   vi.mocked(getJob).mockRejectedValueOnce(new Error('Unavailable'))
-    .mockImplementation(async (tenant) => ({ ...job, other_goal_ids: [`${tenant} details`] } as RecipeJob));
+    .mockImplementation(async (tenant) => ({ ...job, completion_detail: `${tenant} details` } as RecipeJob));
   const view = (tenant: string) => <MemoryRouter initialEntries={['/?expanded=goal:goal']}><JobsListPage projectId={tenant} /></MemoryRouter>;
   const { rerender } = render(view('first'));
   fireEvent.click(await screen.findByRole('button', { name: 'Retry details' }));
@@ -588,7 +588,7 @@ it('keeps collapsed summaries compact and follows an empty page cursor in Strict
   expect(getJob).not.toHaveBeenCalled();
 });
 
-it('groups only primary membership while honoring a server-filtered secondary goal', async () => {
+it('C1-M01 M02 M08 ignores legacy secondary membership and keeps displaced goals literal', async () => {
   // Compatibility fields from an older backend must not restore secondary groups.
   const job = { ...jobIdentity, job_id: 'member', goal_id: 'primary', other_goal_ids: ['secondary'], prompt: 'Member', status: 'READY', store: 'ACTIVE' };
   vi.stubGlobal('fetch', vi.fn(async (url: string) => (new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs: [job] })))));
@@ -598,7 +598,9 @@ it('groups only primary membership while honoring a server-filtered secondary go
   expect(screen.getByRole('link', { name: 'Goal overview' })).toHaveAttribute('href', '/project/tenant/goals/primary');
   expect(getJob).not.toHaveBeenCalled();
   rerender(<MemoryRouter><JobsListPage projectId="tenant" goalId="secondary" /></MemoryRouter>);
-  await waitFor(() => expect(getJob).toHaveBeenCalledExactlyOnceWith('tenant', 'member'));
+  await screen.findByText('No retained jobs for this goal');
+  expect(getJob).not.toHaveBeenCalled();
+  expect(screen.queryByText('Other goals')).toBeNull();
   expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('goal=secondary'))).toBe(true);
 });
 
@@ -1007,4 +1009,71 @@ it.each([true, false])('GJC-003/004 uses the title attempt with active=%s', asyn
   fireEvent.click(button);
   await screen.findByText('Job ID copied');
   expect(writeText).toHaveBeenCalledExactlyOnceWith(expected);
+});
+
+it.each([403, 503])('C1-M08 M09 keeps loading, failed reads (%s), sparse continuation and exhaustion distinct on a literal goal URL',async status=>{
+ let resolve!:(r:Response)=>void;
+ const requests=vi.fn((_url:string)=>new Promise<Response>(done=>{resolve=done;}));vi.stubGlobal('fetch',requests);
+ render(<MemoryRouter initialEntries={['/project/tenant/goals/former-A']}><JobsListPage projectId="tenant" goalId="former-A" /></MemoryRouter>);
+ expect(await screen.findByText('Loading jobs for this goal…')).toBeVisible();
+ expect(screen.queryByText('No retained jobs for this goal')).toBeNull();
+ await act(async()=>resolve(new Response(JSON.stringify({error:'Controlled list failure'}),{status})));
+ expect(await screen.findByText('Jobs for this goal unavailable')).toBeVisible();
+ expect(screen.queryByText('No retained jobs for this goal')).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Retry',exact:true}));
+ await act(async()=>resolve(new Response(JSON.stringify({jobs:[],next_page_token:'opaque+/='}))));
+ expect(await screen.findByText('No retained matches on this page. More results may be available.')).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'Next jobs'}));
+ expect(requests.mock.calls.at(-1)?.[0]).toContain('opaque%2B%2F%3D');
+ await act(async()=>resolve(new Response(JSON.stringify({jobs:[]}))));
+ expect(await screen.findByText('No retained jobs for this goal')).toBeVisible();
+ // A refreshed suffix cannot reuse evidence from the previous empty prefix.
+ fireEvent.click(screen.getByRole('button',{name:'Refresh',exact:true}));
+ await act(async()=>resolve(new Response(JSON.stringify({jobs:[]}))));
+ expect(await screen.findByText('No retained matches on this page.')).toBeVisible();
+ expect(screen.queryByText('No retained jobs for this goal')).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'First page'}));
+ await act(async()=>resolve(new Response(JSON.stringify({jobs:[]}))));
+ expect(await screen.findByText('No retained jobs for this goal')).toBeVisible();
+ expect(getJob).not.toHaveBeenCalled();
+});
+
+it.each([false, true])('C1-M08 M09 REV-001 keeps exhausted cursor absence page-local; direct entry=%s', async direct => {
+ const goalPath = '/project/tenant/goals/former-A';
+ const cursor = 'opaque+/=';
+ const retained = { ...jobIdentity, tenant_id: 'tenant', job_id: 'retained', goal_id: 'former-A', prompt: 'Retained primary attempt', status: 'COMPLETED', store: 'ARCHIVED' };
+ const requests = vi.fn(async (input: string) => {
+  const url = new URL(input, 'http://localhost');
+  expect(url.searchParams.get('goal')).toBe('former-A');
+  return new Response(JSON.stringify(url.searchParams.has('pageToken') ? { jobs: [] } : { jobs: [retained], next_page_token: cursor }));
+ });
+ vi.stubGlobal('fetch', requests);
+ const initial = goalPath + (direct ? '?executionState=cells-v1&pageToken=' + encodeURIComponent(cursor) : '');
+ function Location() { const location = useLocation(); return <output aria-label="Literal goal URL">{location.pathname + location.search}</output>; }
+ render(<MemoryRouter initialEntries={[initial]}><Location /><JobsListPage projectId="tenant" goalId="former-A" /></MemoryRouter>);
+ if (!direct) {
+  expect((await screen.findAllByText('Retained primary attempt')).length).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Next jobs' }));
+ }
+ expect(await screen.findByText('No retained matches on this page.')).toBeVisible();
+ expect(screen.queryByText('No retained jobs for this goal')).toBeNull();
+ expect(screen.queryByRole('button', { name: 'Next jobs' })).toBeNull();
+ expect(screen.getByLabelText('Literal goal URL').textContent).toBe(goalPath + '?executionState=cells-v1&pageToken=' + encodeURIComponent(cursor));
+ expect(new URL(requests.mock.calls.at(-1)![0], 'http://localhost').searchParams.get('pageToken')).toBe(cursor);
+ fireEvent.click(screen.getByRole('button', { name: 'First page' }));
+ expect((await screen.findAllByText('Retained primary attempt')).length).toBeGreaterThan(0);
+ expect(screen.getByLabelText('Literal goal URL').textContent).toBe(goalPath + '?executionState=cells-v1');
+ expect(screen.getByRole('button', { name: 'Next jobs' })).toBeEnabled();
+});
+it.each([false,true])('C1-M05 M10 preserves explicitly missing selection instead of a terminal neighbor; empty=%s',async empty=>{
+ const historical=['first','second'].map(job_id=>({...jobIdentity,tenant_id:'tenant',job_id,goal_id:'chosen',status:'COMPLETED',store:'ARCHIVED',completion_status:'success',prompt:'Historical results'}));
+ vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({jobs:empty?[]:historical}))));
+ vi.mocked(getJob).mockRejectedValue(new Error('404 selected identity missing'));
+ render(<MemoryRouter initialEntries={['/project/tenant/goals/chosen?inspect=missing']}><JobsListPage projectId="tenant" goalId="chosen"/></MemoryRouter>);
+ await screen.findByText('Could not load job details');
+ expect(getJob).toHaveBeenCalledExactlyOnceWith('tenant','missing');
+ expect(screen.getByText('Requested job: missing')).toBeVisible();
+ expect(screen.getByRole('link',{name:'DAG',exact:true})).toHaveAttribute('href','/project/tenant/jobs/missing/story?tab=dag');
+ if(!empty) expect(screen.getAllByText('Succeeded')).toHaveLength(2);
+ expect(screen.queryByText('Other goals')).toBeNull();
 });

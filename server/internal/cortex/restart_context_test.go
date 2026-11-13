@@ -3,8 +3,11 @@ package cortex
 import (
 	"context"
 	"errors"
+	"github.com/colony-2/jobdb/pkg/jobdb"
+	"github.com/gorilla/mux"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -77,5 +80,81 @@ func TestRestartContextHTTP(t *testing.T) {
 	for _, body := range []string{`{}`, `{"chapter_ordinal":17,"scope_id":"scope"}`, `{"chapter_ordinal":"17"}`} {
 		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/projects/tenant/jobs/source/restart", strings.NewReader(body))
 		doJSON[errorResponse](t, req, http.StatusBadRequest)
+	}
+}
+
+// The forwarding boundary must not turn a saved replay into fresh admission.
+// Unimplemented engine methods panic: completion/goal/sibling preflights fail this test.
+type replayForwardService struct {
+	storyService
+	calls []story.RestartRecipeJobRequest
+}
+
+func (s *replayForwardService) RestartRecipeJob(_ context.Context, req story.RestartRecipeJobRequest) (*story.RestartRecipeJobResponse, error) {
+	s.calls = append(s.calls, req)
+	return &story.RestartRecipeJobResponse{TenantID: req.ProjectID, JobID: "accepted-successor", GoalID: "returned-primary"}, nil
+}
+
+func TestSavedReplayForwardingWithoutAdmissionPreflights(t *testing.T) {
+	source := compactJobs(1)
+	source[0].JobKey.JobId = "source"
+	source[0].GoalID = "returned-primary"
+	// A source may still look active after a saved request was accepted. Cortex
+	// cannot determine closure from this read; the owning service reconciles it.
+	source[0].Status = jobdb.JobStatusActive
+	source[0].CompletionStatus = "success"
+	engine := &compactListEngine{pages: map[string]jobdb.ListJobsResponse{"": {Jobs: source}}}
+	service := &replayForwardService{}
+	server := &Server{engine: engine, story: service}
+	for _, body := range []string{
+		`{"request_id":"saved","scope_id":"retained-boundary","goal":{"mode":"continue"},"patch":[{"op":"add","path":"/sequence/a~1b/outputs/n","value":9007199254740993}]}`,
+		`{"request_id":"legacy","chapter_ordinal":0}`,
+		`{"request_id":"fork","chapter_ordinal":12,"goal":{"mode":"new"}}`,
+	} {
+		before := len(service.calls)
+		// Repeat the identical accepted request with a live successor, then after
+		// closure. Those facts belong to the service and add no Cortex veto.
+		for range 3 {
+			w := httptest.NewRecorder()
+			req := mux.SetURLVars(httptest.NewRequest("POST", "/restart", strings.NewReader(body)), map[string]string{"projectId": "tenant", "jobId": "source"})
+			server.requireJob(server.handleRestartJob)(w, req)
+			if w.Code != http.StatusCreated {
+				t.Fatalf("%d %s", w.Code, w.Body)
+			}
+		}
+		first := service.calls[before]
+		if first.ProjectID != "tenant" || first.JobID != "source" || first.RequestID == "" {
+			t.Fatalf("identity lost: %+v", first)
+		}
+		if !reflect.DeepEqual(first, service.calls[before+1]) || !reflect.DeepEqual(first, service.calls[before+2]) {
+			t.Fatal("saved request changed in forwarding")
+		}
+	}
+	if len(engine.requests) != 9 {
+		t.Fatal("unexpected visibility reads")
+	}
+	for _, req := range engine.requests {
+		if len(req.GoalIDs) != 0 || !reflect.DeepEqual(req.JobKeys, []jobdb.JobKey{{TenantId: "tenant", JobId: "source"}}) {
+			t.Fatalf("not exact visibility: %+v", req)
+		}
+	}
+	before := len(service.calls)
+	for _, body := range []string{`{"scope_id":"point"}`, `{"request_id":"x","scope_id":"point","goal":{"mode":"bad"}}`, `{"request_id":"x","scope_id":"point","chapter_ordinal":1}`, `{"request_id":"x","scope_id":"point"} {}`, `{"request_id":"x","scope_id":"point","patch":[{"op":"remove","path":"/context/workspace"}]}`} {
+		w := httptest.NewRecorder()
+		req := mux.SetURLVars(httptest.NewRequest("POST", "/restart", strings.NewReader(body)), map[string]string{"projectId": "tenant", "jobId": "source"})
+		server.requireJob(server.handleRestartJob)(w, req)
+		if w.Code != 400 {
+			t.Fatalf("invalid request accepted: %s status %d", body, w.Code)
+		}
+	}
+	if len(service.calls) != before {
+		t.Fatal("validation bypassed")
+	}
+	engine.pages[""] = jobdb.ListJobsResponse{}
+	w := httptest.NewRecorder()
+	req := mux.SetURLVars(httptest.NewRequest("POST", "/restart", strings.NewReader(`{"request_id":"saved","scope_id":"point"}`)), map[string]string{"projectId": "other", "jobId": "source"})
+	server.requireJob(server.handleRestartJob)(w, req)
+	if w.Code != 404 || len(service.calls) != before {
+		t.Fatal("visibility bypassed")
 	}
 }

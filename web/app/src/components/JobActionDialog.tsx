@@ -13,6 +13,7 @@ interface Props {
   action: JobAction;
   onClose: () => void;
   onComplete: (succeeded: string[]) => void | Promise<void>;
+  onFailure?: (failures: { id: string; error: string }[]) => void;
   immediate?: boolean;
   disabled?: boolean;
   job?: RecipeJobSummary;
@@ -21,7 +22,7 @@ interface Props {
 
 // Mount a fresh dialog for each action so its confirmed IDs cannot change with
 // filtering, selection, or a background list refresh.
-export default function JobActionDialog({ projectId, jobIds, action, onClose, onComplete, onBusyChange, disabled = false, immediate = false, job }: Props) {
+export default function JobActionDialog({ projectId, jobIds, action, onClose, onComplete, onFailure, onBusyChange, disabled = false, immediate = false, job }: Props) {
   const trigger = useRef(document.activeElement as HTMLElement | null);
   useEffect(() => () => {
     if (trigger.current?.isConnected) trigger.current.focus({ preventScroll: true });
@@ -81,6 +82,7 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
         });
       }
       setFailures(failed);
+      if (failed.length) onFailure?.(failed);
       setPending(failed.map(result => result.id));
       if (succeeded.length) {
         message.success(action === 'cancel'
@@ -104,7 +106,7 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
 
   if (immediate && !failures.length) return <span role="status" aria-live="polite">Archiving jobs…</span>;
 
-  return <Modal open title={failures.length ? `${verb} failed jobs` : `${label}?`} okText={label} cancelText={failures.length ? "Close" : "Keep jobs"}
+  return <Modal open zIndex={1100} title={failures.length ? `${verb} failed jobs` : `${label}?`} okText={label} cancelText={failures.length ? "Close" : "Keep jobs"}
     onOk={submit} onCancel={onClose} closable={!busy} maskClosable={!busy} keyboard={!busy}
     okButtonProps={{ danger: true, loading: busy, disabled: disabled || busy || resolving || !!statusError || (showReason && count > 4000) || !pending.length, 'aria-label': label }}
     cancelButtonProps={{ disabled: busy }}>

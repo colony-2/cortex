@@ -9,7 +9,7 @@ import JobListDetails from './JobListDetails';
 // Mounted only for a visible selection, keyed by tenant and job by the parent.
 // List responses never enter this state. Reopening remounts and revalidates.
 export default function SelectedJobDetails({ projectId, jobId, summary, refresh, prompt, navigationState, inspectionRequests }: {
-  inspectionRequests?: Map<string, ReturnType<typeof getJob>>; projectId: string; jobId: string; summary: RecipeJobSummary; refresh: number; prompt?: string; navigationState: Record<string, unknown>;
+  inspectionRequests?: Map<string, ReturnType<typeof getJob>>; projectId: string; jobId: string; summary?: RecipeJobSummary; refresh: number; prompt?: string; navigationState: Record<string, unknown>;
 }) {
   const [job, setJob] = useState<RecipeJob>();
   const [error, setError] = useState<string>();
@@ -18,7 +18,7 @@ export default function SelectedJobDetails({ projectId, jobId, summary, refresh,
   const request = useRef<{ key: string; promise: ReturnType<typeof getJob> }>();
   useEffect(() => {
     let active = true;
-    setLoading(true); setError(undefined);
+    setLoading(true); setError(undefined); setJob(undefined);
     const cacheKey = JSON.stringify([projectId, jobId, refresh]);
     const key = JSON.stringify([projectId, jobId, refresh, retry]);
     // React StrictMode replays effects; reuse the same request for that replay.
@@ -28,6 +28,7 @@ export default function SelectedJobDetails({ projectId, jobId, summary, refresh,
       request.current = { key, promise };
     }
     request.current.promise.then(result => {
+      if (result.job_id !== jobId || (result.tenant_id && result.tenant_id !== projectId)) throw new Error('Job detail identity does not match the requested job');
       if (active) setJob(result);
     }).catch(reason => {
       if (active) setError(reason instanceof Error ? reason.message : 'Could not load job details');
@@ -35,10 +36,11 @@ export default function SelectedJobDetails({ projectId, jobId, summary, refresh,
     return () => { active = false; };
   }, [projectId, jobId, refresh, retry, inspectionRequests]);
   return <>
-    <Link className="compact-touch-link" to={dagPath(projectId, jobId, (job || summary).job_type)}>DAG</Link>
+    <Link className="compact-touch-link" to={dagPath(projectId, jobId, (job || summary)?.job_type || 'recipe')}>DAG</Link>
     {error && <Alert type="error" showIcon message="Could not load job details" description={error}
       action={<Button onClick={() => setRetry(value => value + 1)}>Retry details</Button>} />}
     {loading && <Spin size="small" aria-label="Loading dependency and membership details" />}
-    <JobListDetails job={summary} inspection={job} projectId={projectId} showPrompt={!!summary.prompt && summary.prompt !== prompt} navigationState={navigationState} />
+    {!summary && <p>Requested job: {jobId}</p>}
+    {(job || summary) && <JobListDetails job={(job || summary)!} inspection={job} projectId={projectId} showPrompt={!!(job || summary)?.prompt && (job || summary)?.prompt !== prompt} navigationState={navigationState} />}
   </>;
 }

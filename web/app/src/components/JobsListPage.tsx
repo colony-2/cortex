@@ -9,6 +9,7 @@ import { getCell, getJob, listJobs } from '@colony2/shared/api';
 import type { RecipeJobSummary } from '@colony2/shared/types';
 import { jobStatus, jobStatusOptions, canArchiveImmediately } from '../utils/jobStatus';
 import { jobTime } from './JobListDetails';
+import SelectedJobDetails from './SelectedJobDetails';
 import GoalJobOverview, { AttemptStatus } from './GoalJobOverview';
 import { abbreviatePrompt, jobTimestamp, latestActiveJob } from '../utils/goalPresentation';
 import { jobFilterSearch, nextFilterSelection, readJobFilters } from '../utils/jobFilters';
@@ -78,8 +79,9 @@ function JobsList({ projectId, goalId }: Props) {
     ...(goalId ? { goalReturnTo: location.pathname + location.search } : {}) });
   const [jobs, setJobs] = useState<RecipeJobSummary[]>([]);
   const [nextPage, setNextPage] = useState<string>();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [goalAbsenceKnown, setGoalAbsenceKnown] = useState(false);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [submitOpen, setSubmitOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -96,6 +98,7 @@ function JobsList({ projectId, goalId }: Props) {
   const registry = useCells(projectId, 'ALL', refresh);
   const loadVersion = useRef(0);
   const loadedScope = useRef<string>();
+  const emptyPrefix = useRef<{ scope: string; refresh: number; next?: string }>();
   const inspectionRequests = useRef(new Map<string, ReturnType<typeof getJob>>());
   const listRequest = useRef<{ key: string; promise: ReturnType<typeof listJobs> }>();
   const [params, setParams] = useSearchParams();
@@ -137,7 +140,14 @@ function JobsList({ projectId, goalId }: Props) {
         : listJobs(projectId, { cellNames, goal: goalId, includeHidden, ...(goalId ? {} : { rootOnly }), displayStatus: goalId ? [] : JSON.parse(statusesKey) || [], pageToken }) };
       const page = await listRequest.current.promise;
       if (version !== loadVersion.current) return;
-      setJobs(page.jobs); setNextPage(page.next_page_token);
+      const retained = goalId ? page.jobs.filter(job => job.goal_id === goalId) : page.jobs;
+      // Only an initial page or the continuation of a proven empty prefix can
+      // establish goal-wide absence. Scope changes and refresh invalidate proof.
+      const prefixKnown = !pageToken || (emptyPrefix.current?.scope === scope
+        && emptyPrefix.current.refresh === refresh && emptyPrefix.current.next === pageToken);
+      emptyPrefix.current = { scope, refresh, next: !retained.length && prefixKnown ? page.next_page_token : undefined };
+      setGoalAbsenceKnown(!!goalId && !retained.length && prefixKnown && !page.next_page_token);
+      setJobs(retained); setNextPage(page.next_page_token);
       setSelectedIds(previous => previous.filter(id => page.jobs.some(job => job.job_id === id)));
     })().catch(reason => {
       if (version === loadVersion.current) {
@@ -241,7 +251,7 @@ function JobsList({ projectId, goalId }: Props) {
     query.delete('expanded'); ids.forEach(id => query.append('expanded', id));
   }, true);
   const details = (row: Row) => <GoalJobOverview inspectionRequests={inspectionRequests.current} jobs={row.group.jobs} projectId={projectId} refresh={refresh} navigationState={navigationState(row.group.goalId)} selectedIds={selectedIds} onSelect={setSelection} />;
-  const visibleInspectionIds = (goalId ? [{ jobs }] : rows.filter(isExpanded).map(row => row.group))
+  const visibleInspectionIds = goalId && params.get('inspect') ? [params.get('inspect')!] : (goalId ? [{ jobs }] : rows.filter(isExpanded).map(row => row.group))
     .map(group => group.jobs.find(job => params.getAll('inspect').includes(job.job_id)) || latestActiveJob(group.jobs))
     .filter(Boolean).map(job => job.job_id);
   const visibleInspectionKey = JSON.stringify(visibleInspectionIds);
@@ -306,7 +316,9 @@ function JobsList({ projectId, goalId }: Props) {
       {error && <Alert type="error" showIcon message={error} action={<Space wrap><Button onClick={() => setRefresh(value => value + 1)}>Retry</Button>{rootOnly && <Button onClick={() => changeScope(false)}>All goals</Button>}</Space>} />}
       {goalId ? <Spin spinning={loading}>
         <section aria-label="Goal overview">
-          <GoalJobOverview inspectionRequests={inspectionRequests.current} jobs={jobs} projectId={projectId} refresh={refresh} navigationState={navigationState(goalId)} />
+          {jobs.length ? <GoalJobOverview requestedSelection={params.get('inspect') || undefined} inspectionRequests={inspectionRequests.current} jobs={jobs} projectId={projectId} refresh={refresh} navigationState={navigationState(goalId)} />
+            : <Empty description={loading ? 'Loading jobs for this goal…' : error ? 'Jobs for this goal unavailable' : nextPage ? 'No retained matches on this page. More results may be available.' : goalAbsenceKnown ? 'No retained jobs for this goal' : 'No retained matches on this page.'} />}
+          {!jobs.length && !loading && params.get('inspect') && <SelectedJobDetails key={params.get('inspect')!} projectId={projectId} jobId={params.get('inspect')!} refresh={refresh} navigationState={navigationState(goalId)} />}
         </section>
       </Spin> : <>
         {compact && <Button aria-expanded={controlsOpen} onClick={() => setControlsOpen(value => !value)}>Filters and sorting{filters.cell !== null || filters.status !== null || search || params.get('sort') ? ' (active)' : ''}</Button>}

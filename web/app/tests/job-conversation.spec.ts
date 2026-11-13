@@ -592,12 +592,16 @@ test('JS-010,015,020–023,036,037 Archive retries and header Restart submits be
   await expect(dialog.getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
   await expect(page.locator('#execution-story-tree')).toHaveCount(0);
   await dialog.getByRole('combobox',{name:'Restart point'}).click(); await page.getByText(/Recorded restart · Chapter 3/).click();
-  await expect(dialog.getByText('Start a new goal', {exact:true})).toBeVisible();
+  const goalMode=dialog.locator('.ant-select').filter({has:page.getByRole('combobox',{name:'Restart goal'})});
+  await expect(goalMode).toHaveText('Start a new goal');
+  await expect(dialog.getByRole('button',{name:'Start a new goal',exact:true})).toBeEnabled();
   await expect(page.getByRole('listbox')).toBeHidden();
   await page.screenshot({path:info.outputPath('header-restart.png'),animations:'disabled'});
   await dialog.getByRole('button',{name:'Restart',exact:true}).click();
   await expect(page.getByText(/Temporary restart failure/)).toBeVisible();
-  await dialog.getByRole('button',{name:'Restart',exact:true}).click();
+  await expect(goalMode).toHaveText('Start a new goal');
+  expect(restarts).toBe(1);
+  await dialog.getByRole('button',{name:'Retry saved request',exact:true}).click();
   await expect(page).toHaveURL(/\/jobs\/restarted\/story/);
   expect(payloads[2]).toEqual(payloads[3]);
   expect(payloads[2]).toMatchObject({scope_id:'recorded',goal:{mode:'new'},request_id:expect.any(String)});

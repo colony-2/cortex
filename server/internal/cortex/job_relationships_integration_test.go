@@ -65,6 +65,7 @@ func TestChildrenRuntimeIntegration(t *testing.T) {
 			defer parentA.StopKeepAlive()
 			parentB := leaseFor(jobdb.JobKey{TenantId: "b", JobId: "same"})
 			defer parentB.StopKeepAlive()
+			completePrimaryFixture(t, runtime, "a", unrelated.JobKey.JobId, "failed_app")
 			child := func(parent jobdb.ExecutionLease, id, cell string) jobdb.JobHandle {
 				t.Helper()
 				h, err := parent.SubmitJob(ctx, jobdb.SubmitJobRequest{Job: jobdb.SubmitJob{TenantId: "b", JobID: id, Cell: cell, CellRepo: "github.com/acme/" + cell, JobType: "recipe", Data: jobdb.NewTaskDataOrPanic(1)}})
@@ -78,9 +79,8 @@ func TestChildrenRuntimeIntegration(t *testing.T) {
 			if active.JobKey.TenantId != "a" {
 				t.Fatalf("tenant escape: %+v", active)
 			}
-			if _, err := runtime.AddGoalCandidate(ctx, jobdb.AddGoalCandidateRequest{GoalKey: jobdb.GoalKey{TenantId: "a", GoalID: active.GoalID}, JobID: unrelated.JobKey.JobId}); err != nil {
-				t.Fatal(err)
-			}
+			assertHistoricalSameGoalPeer(t, ctx, runtime, active, unrelated)
+
 			hidden := child(parentA, "hidden", "platform")
 			completed := child(parentA, "completed", "platform")
 			if _, err := parentA.CreateCell(ctx, jobdb.CreateCellRequest{TenantID: "a", Name: "other", Repo: "github.com/acme/other", RequestID: "create-other"}); err != nil {
@@ -112,7 +112,7 @@ func TestChildrenRuntimeIntegration(t *testing.T) {
 			for {
 				w := httptest.NewRecorder()
 				request := mux.SetURLVars(httptest.NewRequest("GET", fmt.Sprintf("/children?pageSize=2&pageToken=%s", url.QueryEscape(token)), nil).WithContext(ctx), map[string]string{"projectId": "a", "jobId": "same"})
-				(&Server{engine: childrenRuntimeEngine{runtime: runtime}}).handleJobChildren(w, request)
+				(&Server{engine: childrenRuntimeEngine{runtime: runtime, translatedGoal: active.GoalID}}).handleJobChildren(w, request)
 				if w.Code != 200 {
 					t.Fatalf("%d %s", w.Code, w.Body)
 				}
@@ -146,9 +146,36 @@ func TestChildrenRuntimeIntegration(t *testing.T) {
 
 type childrenRuntimeEngine struct {
 	jobworkflow.Engine
-	runtime jobdb.WorkflowRuntime
+	runtime        jobdb.WorkflowRuntime
+	translatedGoal string
 }
 
 func (e childrenRuntimeEngine) ListJobs(ctx context.Context, req jobdb.ListJobsRequest) (jobdb.ListJobsResponse, error) {
-	return e.runtime.ListJobs(ctx, req)
+	page, err := e.runtime.ListJobs(ctx, req)
+	// Bounded stored-summary translation: no database membership mutation. Parent
+	// filtering still runs in the real runtime, so this unrelated root stays out.
+	for i := range page.Jobs {
+		if page.Jobs[i].JobKey.JobId == "unrelated-same-goal" && e.translatedGoal != "" {
+			page.Jobs[i].GoalID = e.translatedGoal
+		}
+	}
+	return page, err
+}
+
+// Confirm the bounded translated read fixture really presents an unrelated
+// same-goal root before proving structural child/tree reads exclude it.
+func assertHistoricalSameGoalPeer(t *testing.T, ctx context.Context, runtime jobdb.WorkflowRuntime, active, unrelated jobdb.JobHandle) {
+	t.Helper()
+	page, err := (childrenRuntimeEngine{runtime: runtime, translatedGoal: active.GoalID}).ListJobs(ctx, jobdb.ListJobsRequest{TenantIds: []string{"a"}, JobKeys: []jobdb.JobKey{active.JobKey, unrelated.JobKey}, Stores: []jobdb.JobStore{jobdb.JobStoreActive, jobdb.JobStoreArchived}, PageSize: 2, IncludeHidden: true})
+	if err != nil || len(page.Jobs) != 2 {
+		t.Fatalf("translated peer fixture: %+v %v", page, err)
+	}
+	for _, row := range page.Jobs {
+		if row.GoalID != active.GoalID {
+			t.Fatal("translated membership missing")
+		}
+		if row.JobKey == unrelated.JobKey && row.ParentJobID != "" {
+			t.Fatal("unrelated peer gained parentage")
+		}
+	}
 }

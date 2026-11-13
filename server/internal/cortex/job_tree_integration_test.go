@@ -66,6 +66,7 @@ func TestTreeSQLiteHTTPIntegration(t *testing.T) {
 			defer parentA.StopKeepAlive()
 			parentB := leaseFor(jobdb.JobKey{TenantId: "b", JobId: "same"})
 			defer parentB.StopKeepAlive()
+			completePrimaryFixture(t, runtime, "a", unrelated.JobKey.JobId, "failed_app")
 			child := func(parent jobdb.ExecutionLease, id, cell string) jobdb.JobHandle {
 				t.Helper()
 				h, err := parent.SubmitJob(ctx, jobdb.SubmitJobRequest{Job: jobdb.SubmitJob{TenantId: "b", JobID: id, Cell: cell, CellRepo: "github.com/acme/" + cell, JobType: "generic", Metadata: json.RawMessage(`{"parent_job_id":"copied-attribution","parent_tenant_id":"a"}`), Data: jobdb.NewTaskDataOrPanic(1)}})
@@ -79,9 +80,8 @@ func TestTreeSQLiteHTTPIntegration(t *testing.T) {
 			if active.JobKey.TenantId != "a" {
 				t.Fatalf("tenant escape: %+v", active)
 			}
-			if _, err := runtime.AddGoalCandidate(ctx, jobdb.AddGoalCandidateRequest{GoalKey: jobdb.GoalKey{TenantId: "a", GoalID: active.GoalID}, JobID: unrelated.JobKey.JobId}); err != nil {
-				t.Fatal(err)
-			}
+			assertHistoricalSameGoalPeer(t, ctx, runtime, active, unrelated)
+
 			hidden := child(parentA, "hidden", "platform")
 			completed := child(parentA, "completed", "platform")
 			if _, err := parentA.CreateCell(ctx, jobdb.CreateCellRequest{TenantID: "a", Name: "other", Repo: "github.com/acme/other", RequestID: "create-other"}); err != nil {
@@ -109,7 +109,7 @@ func TestTreeSQLiteHTTPIntegration(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			app := &Server{engine: childrenRuntimeEngine{runtime: runtime}}
+			app := &Server{engine: childrenRuntimeEngine{runtime: runtime, translatedGoal: active.GoalID}}
 			router := mux.NewRouter()
 			router.HandleFunc("/projects/{projectId}/jobs/{jobId}/tree-node", app.handleTreeNode)
 			router.HandleFunc("/projects/{projectId}/jobs/{jobId}/tree-children", app.handleTreeChildren)
@@ -189,7 +189,7 @@ func TestTreeSQLiteHTTPIntegration(t *testing.T) {
 			for {
 				w := httptest.NewRecorder()
 				request := mux.SetURLVars(httptest.NewRequest("GET", fmt.Sprintf("/children?pageSize=2&pageToken=%s", url.QueryEscape(token)), nil).WithContext(ctx), map[string]string{"projectId": "a", "jobId": "same"})
-				(&Server{engine: childrenRuntimeEngine{runtime: runtime}}).handleTreeChildren(w, request)
+				(&Server{engine: childrenRuntimeEngine{runtime: runtime, translatedGoal: active.GoalID}}).handleTreeChildren(w, request)
 				if w.Code != 200 {
 					t.Fatalf("%d %s", w.Code, w.Body)
 				}

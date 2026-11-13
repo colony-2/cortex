@@ -72,3 +72,8 @@ export function isFinishedJob(job: JobStatusInput): boolean {
   return status === 'CANCELLED' || status === 'OUTCOME_UNAVAILABLE'
     || status?.startsWith('completion:') || ['success', 'failed_app', 'failed_system', 'failed_timeout'].includes(status);
 }
+
+// Fresh recovery requires raw exact-detail evidence, not a display label/outcome.
+export function confirmsRecoveryCompletion(job?: JobStatusInput): boolean {
+  return !!job && (job.store === 'ARCHIVED' || job.status === 'COMPLETED');
+}

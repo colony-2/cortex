@@ -13,6 +13,7 @@ import (
 	"github.com/colony-2/jobdb/pkg/jobdb"
 	"github.com/colony-2/jobdb/pkg/jobdb/runtime/remote"
 	sqliteruntime "github.com/colony-2/jobdb/pkg/jobdb/runtime/sqlite"
+	"github.com/gorilla/mux"
 )
 
 func TestJobsListGoalMetadataAndStatusPagination(t *testing.T) {
@@ -21,7 +22,7 @@ func TestJobsListGoalMetadataAndStatusPagination(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer runtime.Shutdown()
-	backend := httptest.NewServer(testjobdb.Handler(remote.NewServer(runtime.Runtime)))
+	backend := httptest.NewServer(primaryFixtureHandler(remote.NewServer(runtime.Runtime)))
 	defer backend.Close()
 	srv, err := NewRemoteServer(Config{WorkingDir: writeC2JConfig(t), JobDBURL: backend.URL})
 	if err != nil {
@@ -33,21 +34,21 @@ func TestJobsListGoalMetadataAndStatusPagination(t *testing.T) {
 	postJSON[jobdb.Cell](t, base+"/cells", map[string]string{"name": "alpha", "repo": "github.com/acme/boo-alpha"})
 	var goal string
 	for i := 0; i < 26; i++ {
-		job := postJSON[recipejob.RecipeJob](t, base+"/jobs", map[string]any{
-			"job_id": fmt.Sprintf("attempt-%02d", i), "cell": "alpha", "repo": "github.com/acme/boo-alpha", "inputs": map[string]any{"prompt": "Build a useful tool", "type": "build"},
-		})
+		var job recipejob.RecipeJob
 		if i == 0 {
+			job = postJSON[recipejob.RecipeJob](t, base+"/jobs", map[string]any{"job_id": fmt.Sprintf("attempt-%02d", i), "cell": "alpha", "repo": "github.com/acme/boo-alpha", "inputs": map[string]any{"prompt": "Build a useful tool", "type": "build"}})
 			goal = job.GoalID
+		} else {
+			job = submitPrimaryFixture(t, srv, "goals-test", fmt.Sprintf("attempt-%02d", i), "alpha", goal, map[string]interface{}{"prompt": "Build a useful tool", "type": "build"})
 		}
-		if job.Prompt != "Build a useful tool" || job.GoalID == "" {
+		if job.Prompt != "Build a useful tool" || job.GoalID != goal {
 			t.Fatalf("submission metadata: %#v", job)
 		}
-		if i > 0 {
-			_, err := srv.engine.(jobdb.GoalRuntime).AddGoalCandidate(testjobdb.Context(context.Background()), jobdb.AddGoalCandidateRequest{GoalKey: jobdb.GoalKey{TenantId: "goals-test", GoalID: goal}, JobID: job.JobID})
-			if err != nil {
-				t.Fatal(err)
-			}
+		outcome := "failed_app"
+		if i < 2 {
+			outcome = "cancelled"
 		}
+		completePrimaryFixture(t, srv.engine, "goals-test", job.JobID, outcome)
 	}
 	type page struct {
 		Jobs []recipejob.RecipeJob `json:"jobs"`
@@ -67,26 +68,18 @@ func TestJobsListGoalMetadataAndStatusPagination(t *testing.T) {
 	if len(last.Jobs) != 1 || last.Next != "" {
 		t.Fatalf("last page: %#v", last)
 	}
-	// The matching jobs are outside the initial unfiltered page of size one.
-	// Filtering must happen before pagination, including additional goal memberships.
-	for _, job := range []recipejob.RecipeJob{first.Jobs[24], last.Jobs[0]} {
-		req, _ := http.NewRequest(http.MethodPost, base+"/jobs/"+job.JobID+"/cancel", nil)
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusNoContent {
-			t.Fatalf("cancel status: %d", resp.StatusCode)
-		}
-	}
-	filteredQuery := "/jobs?status=CANCELLED&cellNames=alpha&goal=" + url.QueryEscape(goal) + "&pageSize=1"
+	// Completed unsuccessful predecessors retain primary membership. Display
+	// status intersects cell/goal scope before result pagination.
+	filteredQuery := "/jobs?displayStatus=CANCELLED&cellNames=alpha&goal=" + url.QueryEscape(goal) + "&pageSize=1"
 	filtered := getJSON[page](t, base+filteredQuery)
-	if len(filtered.Jobs) != 1 || string(filtered.Jobs[0].Status) != "CANCELLED" || filtered.Next == "" {
+	for len(filtered.Jobs) == 0 && filtered.Next != "" {
+		filtered = getJSON[page](t, base+filteredQuery+"&pageToken="+url.QueryEscape(filtered.Next))
+	}
+	if len(filtered.Jobs) != 1 || jobDisplayStatus(filtered.Jobs[0]) != "CANCELLED" || filtered.Next == "" {
 		t.Fatalf("status filter before pagination: %#v", filtered)
 	}
 	filteredLast := getJSON[page](t, base+filteredQuery+"&pageToken="+url.QueryEscape(filtered.Next))
-	if len(filteredLast.Jobs) != 1 || string(filteredLast.Jobs[0].Status) != "CANCELLED" || filteredLast.Jobs[0].JobID == filtered.Jobs[0].JobID || filteredLast.Next != "" {
+	if len(filteredLast.Jobs) != 1 || jobDisplayStatus(filteredLast.Jobs[0]) != "CANCELLED" || filteredLast.Jobs[0].JobID == filtered.Jobs[0].JobID || filteredLast.Next != "" {
 		t.Fatalf("filtered continuation: %#v", filteredLast)
 	}
 	postJSON[jobdb.Cell](t, base+"/cells", map[string]string{"name": "beta", "repo": "github.com/acme/beta"})
@@ -101,44 +94,30 @@ func TestJobsListGoalMetadataAndStatusPagination(t *testing.T) {
 }
 
 func TestJobsListMultipleCellsBeforePagination(t *testing.T) {
-	runtime, err := sqliteruntime.StartEmbeddedRuntime(testjobdb.Context(context.Background()))
-	if err != nil {
-		t.Fatal(err)
+	// Stored translated history can contain multi-cell attempts that current
+	// primary-goal admission rejects. Keep real runtime setup in the preceding test.
+	jobs := compactJobs(5)
+	for i, entry := range []struct{ id, cell string }{{"alpha-one", "alpha"}, {"beta-one", "beta"}, {"alpha-two", "alpha"}, {"self", "self"}, {"other-goal", "beta"}} {
+		jobs[i].JobKey.JobId = entry.id
+		jobs[i].Cell = entry.cell
+		jobs[i].GoalID = "goal"
+		jobs[i].Status = jobdb.JobStatusCompleted
+		jobs[i].CompletionStatus = "failed_app"
+		if i < 2 {
+			jobs[i].CompletionStatus = "cancelled"
+		}
+		if i == 4 {
+			jobs[i].GoalID = "elsewhere"
+		}
 	}
-	defer runtime.Shutdown()
-	backend := httptest.NewServer(testjobdb.Handler(remote.NewServer(runtime.Runtime)))
-	defer backend.Close()
-	srv, err := NewRemoteServer(Config{WorkingDir: writeC2JConfig(t), JobDBURL: backend.URL})
-	if err != nil {
-		t.Fatal(err)
-	}
-	api := httptest.NewServer(srv)
+	engine := &historicalSummaryEngine{rows: jobs}
+	srv := &Server{engine: engine}
+	router := mux.NewRouter()
+	router.HandleFunc("/api/projects/{projectId}/jobs", srv.handleListJobs)
+	api := httptest.NewServer(router)
 	defer api.Close()
-	base := api.URL + "/api/projects/cells-test/jobs"
-	for _, name := range []string{"alpha", "beta", "self"} {
-		postJSON[jobdb.Cell](t, api.URL+"/api/projects/cells-test/cells", map[string]string{"name": name, "repo": "github.com/acme/boo-" + name})
-	}
-	var goal string
-	for _, entry := range []struct{ id, cell string }{
-		{"alpha-one", "alpha"}, {"beta-one", "beta"}, {"alpha-two", "alpha"}, {"self", "self"}, {"other-goal", "beta"},
-	} {
-		job := postJSON[recipejob.RecipeJob](t, base, map[string]any{"job_id": entry.id, "cell": entry.cell, "repo": "github.com/acme/boo-" + entry.cell, "recipe": "smoke"})
-		if goal == "" {
-			goal = job.GoalID
-		} else if entry.id != "other-goal" {
-			_, err := srv.engine.(jobdb.GoalRuntime).AddGoalCandidate(testjobdb.Context(context.Background()), jobdb.AddGoalCandidateRequest{
-				GoalKey: jobdb.GoalKey{TenantId: "cells-test", GoalID: goal}, JobID: job.JobID,
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-		if entry.id == "alpha-one" || entry.id == "beta-one" {
-			if err := srv.engine.CancelJob(testjobdb.Context(context.Background()), jobdb.CancelJob{JobKey: jobdb.JobKey{TenantId: "cells-test", JobId: job.JobID}}); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
+	base := api.URL + "/api/projects/tenant/jobs"
+	goal := "goal"
 	type page struct {
 		Jobs []recipejob.RecipeJob `json:"jobs"`
 		Next string                `json:"next_page_token"`
