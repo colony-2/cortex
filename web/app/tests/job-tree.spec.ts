@@ -267,7 +267,7 @@ async function checkGeometry(page: Page) {
 async function capture(page:Page,name:string) {
  if(!process.env.CORTEX_TREE_SCREENSHOTS)return;
  mkdirSync(process.env.CORTEX_TREE_SCREENSHOTS,{recursive:true});
- await page.screenshot({path:`${process.env.CORTEX_TREE_SCREENSHOTS}/${name}.png`,fullPage:true});
+ await page.screenshot({path:`${process.env.CORTEX_TREE_SCREENSHOTS}/${name}.png`,fullPage:!name.endsWith('confirmation'),animations:'disabled'});
 }
 for(const size of [{width:1600,height:1000},{width:390,height:844}]) {
  test(`DAGUI-006,008,018,025–032 rendered graph geometry, markers and controls ${size.width}`,async({page})=>{
@@ -285,8 +285,8 @@ for(const size of [{width:1600,height:1000},{width:390,height:844}]) {
   const fill=await entry.evaluate(e=>getComputedStyle(e).backgroundColor);
   expect(fill).toBe('rgb(230, 244, 255)');
   await expect(details.getByRole('link',{name:'Goal overview'})).toHaveAttribute('href','/project/demo/goals/goal');
-  await expect(details.getByRole('link',{name:'Goal overview'})).toHaveClass('compact-touch-link');
-  await expect(details.getByRole('link',{name:'Open execution'})).toHaveClass('compact-touch-link');
+  await expect(details.getByRole('link',{name:'Goal overview'})).toHaveClass('tree-detail-action');
+  await expect(details.getByRole('link',{name:'Open execution'})).toHaveClass('tree-detail-action');
   await page.getByRole('button',{name:'Fit',exact:true}).click();await checkGeometry(page);
   await capture(page,`dag-${size.width}`);
   await root.locator('.tree-card-select').focus();await page.keyboard.press('Enter');
@@ -396,5 +396,125 @@ for(const size of [{width:1600,height:1000},{width:390,height:844}]) {
   await visibility('hidden');await visibility('visible');
   await expect(page.getByRole('button',{name:'Resume discovery'})).toBeDisabled();
   expect(reads).toBe(completedReads);
+ });
+}
+
+for (const route of ['tree','story?tab=dag']) for (const width of [1440,390]) {
+ test(`selected job header icons support tooltips and keyboard use in ${route} at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:1000});
+  await page.route('**/jobs/entry/tree-node',r=>r.fulfill({json:{node:{...nodes[2],status:'ACTIVE'},observed_at:at}}));
+  await page.route('**/jobs/*/tree-children?*',r=>{
+   const id=new URL(r.request().url()).pathname.split('/').at(-2);
+   return r.fulfill({json:{nodes:nodes.filter(n=>n.parent_job_id===id).map(n=>n.job_id==='entry'?{...n,status:'ACTIVE'}:n),observed_at:at}});
+  });
+  await page.goto('/project/demo/jobs/entry/'+route);
+  await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
+  const details=page.getByRole('complementary',{name:'Selected job details'});
+  await expect(details.locator('.tree-detail-status')).toHaveText('Running');
+  const actions=details.getByRole('group',{name:'Selected job actions'});
+  const cancel=actions.getByRole('button',{name:'Cancel job',exact:true});
+  const goal=actions.getByRole('link',{name:'Goal overview',exact:true});
+  const execution=actions.getByRole('link',{name:'Open execution',exact:true});
+  await expect(goal).toHaveAttribute('href','/project/demo/goals/goal');
+  await expect(execution).toHaveAttribute('href','/project/demo/jobs/entry/story');
+  expect(await details.locator('dl').evaluate(dl=>!!(dl.compareDocumentPosition(document.querySelector('.tree-detail-actions')!)&Node.DOCUMENT_POSITION_PRECEDING))).toBe(true);
+  const boxes=await Promise.all([details,actions,cancel,goal,execution].map(e=>e.boundingBox()));
+  const [pane,group,...controls]=boxes;
+  expect(Math.abs(group!.x+group!.width-(pane!.x+pane!.width-17))).toBeLessThanOrEqual(1);
+  expect(group!.y-pane!.y).toBeLessThanOrEqual(18);
+  for (const box of controls) {
+   expect(box!.width).toBe(width<768?44:32);expect(box!.height).toBe(width<768?44:32);
+  }
+  for (const control of [cancel,goal,execution]) {
+   await expect(control.locator('svg')).toHaveCount(1);expect(await control.textContent()).toBe('');
+  }
+  await page.mouse.move(0,0);
+  await details.getByRole('heading',{name:'Selected job'}).focus();
+  await page.keyboard.press('Tab');await expect(cancel).toBeFocused();
+  await expect(page.getByRole('tooltip',{name:'Cancel job',exact:true})).toBeVisible();
+  await page.keyboard.press('Enter');await expect(page.getByRole('dialog')).toContainText('Job: entry');
+  // The modal moves focus after its opening transition; Escape must originate inside it.
+  await expect.poll(()=>page.locator('.ant-modal-wrap').evaluate(e=>e.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(cancel).toBeFocused();
+  await page.keyboard.press('Tab');await expect(goal).toBeFocused();
+  await expect(page.getByRole('tooltip',{name:'Goal overview',exact:true})).toBeVisible();
+  await page.keyboard.press('Tab');await expect(execution).toBeFocused();
+  await expect(page.getByRole('tooltip',{name:'Open execution',exact:true})).toBeVisible();
+  await capture(page,`job-actions-${width}-${route.startsWith('story')?'dag':'tree'}`);
+  await execution.blur();await expect(page.getByRole('tooltip',{name:'Open execution',exact:true})).toBeHidden();
+  if(process.env.CORTEX_TREE_SCREENSHOTS)await details.screenshot({path:`${process.env.CORTEX_TREE_SCREENSHOTS}/job-actions-pane-${width}-${route.startsWith('story')?'dag':'tree'}.png`,animations:'disabled'});
+  await cancel.hover();await expect(page.getByRole('tooltip',{name:'Cancel job',exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+  await execution.focus();
+  await page.keyboard.press('Shift+Tab');await expect(goal).toBeFocused();
+  await page.keyboard.press('Enter');await expect(page).toHaveURL('/project/demo/goals/goal');
+ });
+}
+
+for (const route of ['tree','story?tab=dag']) for (const width of [1440,390]) {
+ test(`cancel selected generic job in ${route} at ${width}px without resetting the diagram`,async({page})=>{
+  await page.setViewportSize({width,height:1000});
+  const child={...nodes[1],status:width===390?'PENDING_JOBS':'CRASH_CONCERN',archived_at:undefined,store:'ACTIVE',completion_status:'failed_app'};
+  let submitted=false, finished=false;
+  const mutations:{tenant:string;job:string;reason:string}[]=[];
+  await page.route('**/jobs/*/tree-node', async r=>{
+   const id=new URL(r.request().url()).pathname.split('/').at(-2);
+   const node=id==='middle' ? (finished?{...child,status:'COMPLETED',store:'ARCHIVED',archived_at:'2026-11-12T09:18:42Z',completion_status:'cancelled'}:child) : nodes.find(n=>n.job_id===id);
+   await r.fulfill({json:{node,observed_at:at}});
+  });
+  // Listings intentionally keep old status; exact observations must win.
+  await page.route('**/jobs/*/tree-children?*',r=>{
+   const id=new URL(r.request().url()).pathname.split('/').at(-2);
+   return r.fulfill({json:{nodes:nodes.filter(n=>n.parent_job_id===id).map(n=>n.job_id==='middle'?child:n),observed_at:at}});
+  });
+  await page.route('**/jobs/*/cancel',async r=>{
+   expect(r.request().method()).toBe('POST');
+   const path=new URL(r.request().url()).pathname;
+   mutations.push({tenant:path.split('/')[3],job:path.split('/').at(-2)!,reason:r.request().postDataJSON().reason});
+   submitted=true;await r.fulfill({status:204});
+  });
+  await page.goto('/project/demo/jobs/entry/'+route);
+  await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
+  const card=page.locator('.tree-card[data-job-id="middle"]');
+  await card.locator('.tree-card-select').click();
+  const details=page.getByRole('complementary',{name:'Selected job details'});
+  await expect(details).toContainText(width===390?'Waiting for jobs':'Job keeps failing');
+  await expect(details.getByRole('link',{name:'Open execution'})).toHaveCount(0);
+  await card.getByRole('button',{name:'Toggle branch Validate compact records'}).click();
+  await page.getByRole('searchbox',{name:'Search loaded jobs'}).fill('Review');
+  await page.getByRole('button',{name:'Zoom in'}).click();
+  await details.scrollIntoViewIfNeeded();
+  await capture(page,`cancel-${width}-${route.startsWith('story')?'dag':'tree'}-selected`);
+  const diagramScroll=await page.getByLabel('Execution diagram').evaluate(e=>[e.scrollLeft,e.scrollTop]);
+  const trigger=details.getByRole('button',{name:'Cancel job'});await trigger.focus();await page.keyboard.press('Enter');
+  const dialog=page.getByRole('dialog');
+  await expect(dialog).toContainText('Tenant: demo');await expect(dialog).toContainText('Job: middle');
+  await expect(dialog).toContainText('Child jobs already submitted will not be cancelled');
+  await dialog.getByRole('textbox',{name:'Cancellation message (optional)'}).fill(' Stop selected job ');
+  await expect(dialog).not.toHaveClass(/zoom-(appear|enter)/);
+  await expect(page.locator('.ant-modal-mask')).not.toHaveClass(/fade-(appear|enter)/);
+  await capture(page,`cancel-${width}-${route.startsWith('story')?'dag':'tree'}-confirmation`);
+  await dialog.getByRole('button',{name:'Cancel job',exact:true}).focus();await page.keyboard.press('Enter');
+  await expect(dialog).toHaveCount(0);expect(submitted).toBe(true);
+  expect(mutations).toEqual([{tenant:'demo',job:'middle',reason:'Stop selected job'}]);
+  await expect(details).toContainText('Cancellation requested');
+  await expect(details.getByRole('button',{name:'Cancel job'})).toHaveCount(0);
+  await expect(details.getByRole('heading',{name:'Selected job'})).toBeFocused();
+  await expect(card).toContainText('Cancellation requested');
+  expect(await page.getByLabel('Execution diagram').evaluate(e=>[e.scrollLeft,e.scrollTop])).toEqual(diagramScroll);
+  await expect(page.getByRole('searchbox',{name:'Search loaded jobs'})).toHaveValue('Review');
+  await expect(page.getByLabel('Zoom',{exact:true})).toHaveText('120%');
+  await expect(card.locator('.tree-branch')).toHaveAttribute('aria-expanded','false');
+  await expect(card.locator('.tree-card-select')).toHaveAttribute('aria-pressed','true');
+  await capture(page,`cancel-${width}-${route.startsWith('story')?'dag':'tree'}-pending`);
+  finished=true;await details.getByRole('button',{name:'Refresh status'}).click();
+  await expect(details).toContainText('Cancelled');await expect(card).toContainText('Cancelled');
+  await expect(details.getByRole('button',{name:'Refresh status'})).toHaveCount(0);
+  await capture(page,`cancel-${width}-${route.startsWith('story')?'dag':'tree'}-finished`);
+  expect(mutations).toHaveLength(1);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+  await page.getByRole('button',{name:'Refresh tree'}).click();
+  await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
+  await card.locator('.tree-card-select').click();await expect(details).toContainText('Cancelled');
  });
 }

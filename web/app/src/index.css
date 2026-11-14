@@ -391,8 +391,16 @@ html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-heig
 .tree-viewport { min-height: 300px; overscroll-behavior: contain; }
 .tree-timing-note { color: #526174; }
 .tree-details { background: white; border: 1px solid #cad8e6; border-radius: 8px; padding: 16px; overflow-wrap: anywhere; }
+.tree-details-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.tree-details-header h2 { margin: 0; font-size: 18px; line-height: 28px; }
+.tree-detail-actions { display: flex; gap: 4px; margin-left: auto; }
+.execution-tree .tree-detail-action { display: inline-flex; align-items: center; justify-content: center; flex: none; box-sizing: border-box; width: 32px; height: 32px; padding: 0; border: 1px solid #abb8c9; border-radius: 5px; background: white; color: #172a46; font-size: 16px; text-decoration: none; }
+.execution-tree .tree-detail-action:hover { background: #eef4fa; border-color: #1677ff; }
+.execution-tree .tree-detail-cancel { color: #cf1322; border-color: #ffa39e; }
+.execution-tree .tree-detail-cancel:hover { color: #a8071a; background: #fff1f0; border-color: #cf1322; }
 .tree-details dt { font-weight: 600; }.tree-details dd { margin: 0 0 10px; }
 @media (max-width: 767px) { .execution-tree { padding: 12px; } .tree-workspace { grid-template-columns: minmax(0,1fr); } .tree-viewport { max-height: 520px; } .execution-tree button { min-height: 44px; } .tree-details { min-width: 0; } }
+@media (max-width: 767px) { .execution-tree .tree-detail-action { width: 44px; height: 44px; } }
 
 
 /* Long original markup remains scrollable beside the inline phone controls. */

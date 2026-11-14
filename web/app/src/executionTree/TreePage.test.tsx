@@ -181,3 +181,89 @@ it('MRV-002 does not start a queued discovery after leaving the tab', async () =
  await screen.findByText('Discovery finished:',{exact:false});
  expect(getTreeNode).toHaveBeenCalledTimes(1);
 });
+
+vi.mock('@colony2/shared/api', async original => ({...await original<typeof import('@colony2/shared/api')>(),cancelJob:vi.fn()}));
+import { cancelJob } from '@colony2/shared/api';
+import { within } from '@testing-library/react';
+
+it.each(['recipe','generic'])('offers cancellation for all unfinished %s nodes and truthful terminal or pending details', async job_type => {
+ for (const extra of [
+  ...['READY','PENDING_JOBS','AWAITING_FUTURE','ACTIVE','CRASH_CONCERN','EXPIRED'].map(status=>({status,completion_status:'failed_app'})),
+  {status:'ACTIVE',cancel_requested:true}, {status:'COMPLETED'}, {status:'COMPLETED',completion_status:'custom'},
+  {status:'ACTIVE',store:'ARCHIVED'}, {status:'ACTIVE',archived_at:'now'}, {status:'CANCELLED'}, {status:'unknown'}, {status:''},
+ ]) {
+  const node={tenant_id:'t',job_id:'single',job_type,...extra};
+  vi.mocked(getTreeNode).mockResolvedValue({node,observed_at:'now'});
+  vi.mocked(getTreeChildren).mockResolvedValue({nodes:[],observed_at:'now'});
+  const {unmount}=render(<MemoryRouter><TreeWorkspace tenant="t" entry="single" embedded /></MemoryRouter>);
+  const pane=await screen.findByRole('complementary');
+  const eligible=['READY','PENDING_JOBS','AWAITING_FUTURE','ACTIVE','CRASH_CONCERN','EXPIRED'].includes(extra.status) && !('cancel_requested' in extra) && !('store' in extra) && !('archived_at' in extra);
+  expect(!!within(pane).queryByRole('button',{name:'Cancel job'})).toBe(eligible);
+  if(extra.status==='CRASH_CONCERN') expect(pane).toHaveTextContent('Job keeps failing');
+  if('cancel_requested' in extra) { expect(pane).toHaveTextContent('Cancellation requested');expect(within(pane).getByRole('button',{name:'Refresh status'})).toBeEnabled(); }
+  unmount();
+ }
+});
+
+it('cancels the captured child, locks through reconciliation, preserves context and protects the newer outcome from discovery', async () => {
+ const opened={tenant_id:'t',job_id:'opened',job_type:'recipe',status:'ACTIVE',title:'Opened title'};
+ const child={...opened,job_id:'child',job_type:'generic',parent_job_id:'opened',status:'CRASH_CONCERN',title:'Selected child'};
+ let exact=false, release!:(value:any)=>void;
+ vi.mocked(cancelJob).mockReset().mockResolvedValue();
+ vi.mocked(getTreeNode).mockImplementation(async(_,id)=> {
+  if(id==='child' && exact) return new Promise(resolve=>release=resolve);
+  return {node:id==='child'?child:opened,observed_at:'old'};
+ });
+ vi.mocked(getTreeChildren).mockImplementation(async(_,id)=>({nodes:id==='opened'?[child]:[],observed_at:'old'}));
+ const changed=vi.fn();
+ render(<MemoryRouter><TreeWorkspace tenant="t" entry="opened" embedded onJobChanged={changed} /></MemoryRouter>);
+ await screen.findByText('Discovery finished:',{exact:false});
+ fireEvent.click(screen.getByRole('button',{name:'Selected child · Unknown cell'}));
+ fireEvent.change(screen.getByRole('searchbox'),{target:{value:'Selected'}});
+ fireEvent.click(screen.getByRole('button',{name:'Zoom in'}));
+ const pane=screen.getByRole('complementary');
+ fireEvent.click(within(pane).getByRole('button',{name:'Cancel job'}));
+ const dialog=screen.getByRole('dialog');
+ expect(dialog).toHaveTextContent('Tenant: t');expect(dialog).toHaveTextContent('Job: child');expect(dialog).toHaveTextContent('Child jobs already submitted will not be cancelled');
+ fireEvent.change(within(dialog).getByRole('textbox'),{target:{value:' chosen reason 雪 '}});
+ // A programmatic selection change while confirmation is open cannot retarget it.
+ fireEvent.click(screen.getByRole('button',{name:'Opened title · Unknown cell · Opened job'}));
+ exact=true;
+ const confirm=within(dialog).getByRole('button',{name:'Cancel job',exact:true});
+ fireEvent.click(confirm);fireEvent.click(confirm);
+ await waitFor(()=>expect(getTreeNode).toHaveBeenCalledWith('t','child',expect.any(AbortSignal)));
+ expect(cancelJob).toHaveBeenCalledTimes(1);expect(cancelJob).toHaveBeenCalledWith('t','child','chosen reason 雪');
+ expect(confirm).toBeDisabled();
+ await act(async()=>{release({node:{...child,status:'COMPLETED',store:'ARCHIVED',completion_status:'cancelled'},observed_at:'new'});});
+ await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
+ fireEvent.click(screen.getByRole('button',{name:'Selected child · Unknown cell'}));
+ expect(pane).toHaveTextContent('Cancelled');expect(within(pane).queryByRole('button',{name:'Cancel job'})).toBeNull();
+ expect(screen.getByRole('searchbox')).toHaveValue('Selected');expect(screen.getByLabelText('Zoom',{exact:true})).toHaveTextContent('120%');
+ expect(changed).toHaveBeenCalledWith(expect.objectContaining({tenant_id:'t',job_id:'child',completion_status:'cancelled'}));
+ fireEvent.click(screen.getByRole('button',{name:'Refresh tree'}));
+ await screen.findByText('Discovery finished:',{exact:false});
+ fireEvent.click(screen.getByRole('button',{name:'Selected child · Unknown cell'}));
+ expect(screen.getByRole('complementary')).toHaveTextContent('Cancelled');
+ expect(screen.getByRole('button',{name:'Selected child · Unknown cell'})).toHaveTextContent('Cancelled');
+});
+
+it('keeps failed cancellation retries tied to the captured job and message', async()=>{
+ const node={tenant_id:'t',job_id:'child',job_type:'generic',status:'PENDING_JOBS',title:'Waiting child'};
+ vi.mocked(getTreeNode).mockResolvedValue({node,observed_at:'now'});
+ vi.mocked(getTreeChildren).mockResolvedValue({nodes:[],observed_at:'now'});
+ vi.mocked(cancelJob).mockReset().mockRejectedValueOnce(Error('denied')).mockResolvedValue();
+ render(<MemoryRouter><TreeWorkspace tenant="t" entry="child" /></MemoryRouter>);
+ fireEvent.click(await screen.findByRole('button',{name:'Cancel job'}));
+ const dialog=screen.getByRole('dialog');fireEvent.change(within(dialog).getByRole('textbox'),{target:{value:'saved message'}});
+ fireEvent.click(within(dialog).getByRole('button',{name:'Cancel job',exact:true}));
+ await screen.findByText('1 job operation failed');
+ await waitFor(()=>expect(within(dialog).getByRole('button',{name:'Cancel job',exact:true})).toBeEnabled());
+ expect(within(dialog).getByRole('textbox')).toHaveValue('saved message');
+ fireEvent.click(within(dialog).getByRole('button',{name:'Cancel job',exact:true}));
+ await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
+ expect(cancelJob).toHaveBeenNthCalledWith(2,'t','child','saved message');
+ expect(screen.getByRole('complementary')).toHaveTextContent('Cancellation requested');
+ fireEvent.click(screen.getByRole('button',{name:'Refresh tree'}));
+ await screen.findByText('Discovery finished:',{exact:false});
+ expect(screen.getByRole('complementary')).toHaveTextContent('Cancellation requested');
+});

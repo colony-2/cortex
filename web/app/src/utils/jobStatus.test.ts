@@ -35,7 +35,7 @@ describe('job display status', () => {
   it('offers the displayed outcomes with a single Cancelled option and no generic Completed option', () => {
     const options = jobStatusOptions([{ ...job, completion_status: 'future_outcome' }], ['completion:previous_outcome']);
     expect(options.map(option => option.label)).toEqual([
-      'Ready', 'Waiting for jobs', 'Scheduled', 'Running', 'Worker unresponsive', 'Expired',
+      'Ready', 'Waiting for jobs', 'Scheduled', 'Running', 'Job keeps failing', 'Expired',
       'Cancellation requested', 'Cancelled', 'Succeeded', 'Failed (application)', 'Failed (system)',
       'Timed out', 'Finished (outcome unavailable)', 'Finished (previous_outcome)', 'Finished (future_outcome)',
     ]);
@@ -111,4 +111,15 @@ it.each([
 ])('C1-R01 R02 confirms recovery only from raw completion evidence %j', async (job,expected) => {
   const {confirmsRecoveryCompletion}=await import('./jobStatus');
   expect(confirmsRecoveryCompletion(job)).toBe(expected);
+});
+
+it('uses archive timestamps as terminal evidence and shares the failing-job label without changing filter values', () => {
+ for (const status of ['CRASH_CONCERN','EXPIRED']) {
+  expect(isFinishedJob({status,completion_status:'failed_app'})).toBe(false);
+  expect(isFinishedJob({status,archived_at:'2026-11-13T00:00:00Z'})).toBe(true);
+  expect(jobStatus({status,archived_at:'2026-11-13T00:00:00Z'}).label).toBe('Finished (outcome unavailable)');
+ }
+ expect(jobStatus({status:'CRASH_CONCERN'})).toEqual({label:'Job keeps failing',color:'orange'});
+ expect(jobStatusOptions([],['CRASH_CONCERN'])).toContainEqual({value:'CRASH_CONCERN',label:'Job keeps failing'});
+ expect(readJobFilters(new URLSearchParams('status=CRASH_CONCERN')).status).toEqual(['CRASH_CONCERN']);
 });

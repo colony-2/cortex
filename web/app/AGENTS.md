@@ -47,4 +47,4 @@ Primary routes:
 
 Use `@colony2/shared` for API calls and input activity state.
 
-The current-model read-only job execution tree is permitted at `/project/:projectId/jobs/:jobId/tree`. Runtime parentage defines its edges.
+The current-model job execution tree (with selected-job cancellation) is permitted at `/project/:projectId/jobs/:jobId/tree`. Runtime parentage defines its edges.

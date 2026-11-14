@@ -9,6 +9,9 @@ export type JobAction = 'cancel' | 'archive';
 
 interface Props {
   projectId: string;
+  scopeText?: string;
+  onSettled?: (succeeded: string[], failures: { id: string; error: string }[]) => Promise<boolean>;
+  focusFallback?: () => void;
   jobIds: string[];
   action: JobAction;
   onClose: () => void;
@@ -22,10 +25,11 @@ interface Props {
 
 // Mount a fresh dialog for each action so its confirmed IDs cannot change with
 // filtering, selection, or a background list refresh.
-export default function JobActionDialog({ projectId, jobIds, action, onClose, onComplete, onFailure, onBusyChange, disabled = false, immediate = false, job }: Props) {
+export default function JobActionDialog({ projectId, jobIds, action, onClose, onComplete, onFailure, onBusyChange, scopeText, onSettled, focusFallback, disabled = false, immediate = false, job }: Props) {
   const trigger = useRef(document.activeElement as HTMLElement | null);
   useEffect(() => () => {
     if (trigger.current?.isConnected) trigger.current.focus({ preventScroll: true });
+    else focusFallback?.();
   }, []);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -84,13 +88,14 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
       setFailures(failed);
       if (failed.length) onFailure?.(failed);
       setPending(failed.map(result => result.id));
+      const resolved = await onSettled?.(succeeded, failed);
       if (succeeded.length) {
         message.success(action === 'cancel'
           ? `Cancellation requested for ${succeeded.length} job${succeeded.length === 1 ? '' : 's'}`
           : `Archived ${succeeded.length} job${succeeded.length === 1 ? '' : 's'}`);
         await onComplete(succeeded);
       }
-      if (mounted.current && !failed.length) onClose();
+      if (mounted.current && (!failed.length || resolved)) onClose();
     } finally {
       submitting.current = false;
       if (mounted.current) { setBusy(false); onBusyChange?.(false); }
@@ -112,10 +117,11 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
     cancelButtonProps={{ disabled: busy }}>
     <Space direction="vertical" style={{ width: '100%' }}>
       <Typography.Paragraph>
-        {action === 'cancel'
+        {scopeText || (action === 'cancel'
           ? 'Cancel these jobs outright, including any pending review or input. Finished jobs remain unchanged.'
-          : 'Move these jobs out of the inbox and cancel any unfinished work. History and artifacts remain available in All jobs. Jobs cannot currently be restored to the inbox.'}
+          : 'Move these jobs out of the inbox and cancel any unfinished work. History and artifacts remain available in All jobs. Jobs cannot currently be restored to the inbox.')}
       </Typography.Paragraph>
+      {scopeText && <Typography.Paragraph>Tenant: {projectId}<br />Job: {jobIds[0]}</Typography.Paragraph>}
       {resolving && <Typography.Paragraph role="status">Checking job status…</Typography.Paragraph>}
       {statusError && <Alert type="error" message={statusError} action={<button onClick={resolveStatus}>Retry status check</button>} />}
       {showReason && <div>
@@ -128,7 +134,7 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
         {pending.map(id => <li key={id}>{id}</li>)}
       </ul>
       {failures.length > 0 && <Alert type="error" showIcon message={`${failures.length} job operation${failures.length === 1 ? '' : 's'} failed`}
-        description={<><p>Only the failed jobs remain selected. Retry to complete the operation.</p>
+        description={<><p>{onSettled ? 'Status was checked again. Retry is available only while the job is unfinished and no cancellation is recorded.' : 'Only the failed jobs remain selected. Retry to complete the operation.'}</p>
           {failures.map(failure => <div key={failure.id} style={{ overflowWrap: 'anywhere' }}><strong>{failure.id}:</strong> {failure.error}</div>)}
         </>} />}
     </Space>

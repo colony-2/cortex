@@ -15,8 +15,12 @@ import (
 )
 
 func TestCancellationReasonValidation(t *testing.T) {
-	for _, method := range []string{http.MethodPost, http.MethodDelete} {
+	for _, method := range []string{http.MethodPost, http.MethodDelete, "generic"} {
 		t.Run(method, func(t *testing.T) {
+			generic := method == "generic"
+			if generic {
+				method = http.MethodPost
+			}
 			srv, err := NewUITestServer(Config{WorkingDir: writeC2JConfig(t)})
 			if err != nil {
 				t.Fatal(err)
@@ -39,7 +43,14 @@ func TestCancellationReasonValidation(t *testing.T) {
 			}
 			for i, tc := range cases {
 				id := "case-" + strings.Repeat("x", i+1)
-				postJSON[map[string]interface{}](t, ts.URL+"/api/projects/a/jobs", map[string]interface{}{"job_id": id, "recipe": "smoke", "cell": "self", "repo": "github.com/acme/boo-self"})
+				if generic {
+					_, err := srv.engine.SubmitJob(testjobdb.Context(context.Background()), jobdb.SubmitJob{TenantId: "a", JobID: id, Cell: "self", CellRepo: "github.com/acme/boo-self", JobType: "generic", Data: jobdb.NewTaskDataOrPanic(1)})
+					if err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					postJSON[map[string]interface{}](t, ts.URL+"/api/projects/a/jobs", map[string]interface{}{"job_id": id, "recipe": "smoke", "cell": "self", "repo": "github.com/acme/boo-self"})
+				}
 				path := ts.URL + "/api/projects/a/jobs/" + id
 				if method == http.MethodPost {
 					path += "/cancel"

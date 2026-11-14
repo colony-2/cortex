@@ -1011,7 +1011,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
 
         </section>
         <section role="tabpanel" id="job-panel-dag" aria-labelledby="job-tab-dag" hidden={activeTab !== 'dag'} tabIndex={0} className="job-detail-panel">
-          {(activeTab === 'dag' || dagVisited === dagIdentity) && <TreeWorkspace key={dagIdentity} tenant={projectId} entry={jobId!} active={activeTab === 'dag'} embedded />}
+          {(activeTab === 'dag' || dagVisited === dagIdentity) && <TreeWorkspace key={dagIdentity} tenant={projectId} entry={jobId!} active={activeTab === 'dag'} embedded onJobChanged={node => { if (node.tenant_id === projectId && node.job_id === jobId) { void loadMetadata(); void refreshPendingInputs(); } }} />}
         </section>
         <section role="tabpanel" id="job-panel-leases" aria-labelledby="job-tab-leases" hidden={activeTab !== 'leases'} tabIndex={0} className="job-detail-panel">
           {activeTab === 'leases' && <JobLeaseTimeline expanded projectId={projectId} jobId={jobId} createdAt={job?.created_at} />}

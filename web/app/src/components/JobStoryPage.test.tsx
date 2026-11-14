@@ -1,5 +1,6 @@
+import { message } from 'antd';
 import { StrictMode } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import JobStoryPage from './JobStoryPage';
@@ -8,12 +9,23 @@ import { jobIdentity } from '../test/cellFixtures';
 import { getJob, getJobInputArtifacts, listJobChildren, cancelJob, listJobs } from '@colony2/shared/api';
 import type { RecipeJob } from '@colony2/shared/types';
 import DownloadChaptersButton from './DownloadChaptersButton';
-import { inputActivityService, getConversation, getFinalDocuments } from '@colony2/shared';
+import { inputActivityService, getConversation, getFinalDocuments, getTreeNode, getTreeChildren } from '@colony2/shared';
 
 const inputState = vi.hoisted(() => ({ pendingInputs: [] as any[], refresh: vi.fn() }));
+const scrollIntoView = vi.fn();
+const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView');
+// jsdom omits this browser API; portal focus also reaches the header's handler.
+beforeAll(() => {
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView });
+});
+afterAll(() => {
+  if (originalScrollIntoView) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalScrollIntoView);
+  else delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
+});
 vi.mock('@colony2/shared', async (importOriginal) => ({
   ...await importOriginal<typeof import('@colony2/shared')>(),
   getFinalDocuments: vi.fn(),
+  getTreeNode: vi.fn(), getTreeChildren: vi.fn(),
   getConversation: vi.fn().mockRejectedValue(new Error('History unavailable')),
   getConversationRequest: vi.fn().mockRejectedValue(new Error('Request unavailable')),
   getConversationEntry: vi.fn().mockRejectedValue(new Error('Request unavailable')),
@@ -66,6 +78,7 @@ function mount(search = '?tab=execution', response: unknown = story) {
   return fetchMock;
 }
 beforeEach(() => {
+  scrollIntoView.mockClear();
   sessionStorage.clear();
   inputState.pendingInputs = [];
   inputState.refresh.mockClear();
@@ -77,7 +90,7 @@ beforeEach(() => {
   vi.mocked(listJobs).mockReset().mockResolvedValue({jobs:[]});
   vi.mocked(listJobChildren).mockReset().mockResolvedValue({ jobs: [] });
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+afterEach(async () => { await act(async () => { cleanup(); message.destroy(); }); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('job story history', () => {
   it('preserves the expanded goal return location after selecting a node and a detail tab', async () => {
@@ -1022,13 +1035,18 @@ it('keeps story cancellation confirmed by default and retries only after an expl
     return { ok: true, json: async () => response };
   });
   const trigger = await screen.findByRole('button', { name: 'Cancel job', exact: true });
+  act(() => trigger.focus());
+  expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
   fireEvent.click(trigger);
   let dialog = screen.getByRole('dialog');
+  await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
   expect(changes).toEqual([]);
   fireEvent.click(within(dialog).getByRole('button', { name: 'Keep jobs', exact: true }));
+  await waitFor(() => expect(trigger).toHaveFocus());
   expect(changes).toEqual([]);
   fireEvent.click(trigger);
   dialog = screen.getByRole('dialog');
+  await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
   fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel job', exact: true }));
   await within(dialog).findByText(/Cancellation unavailable/);
   await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Cancel job', exact: true })).toBeEnabled());
@@ -2021,4 +2039,23 @@ it.each(['boundary','mode'])('C1-R15 deliberate %s changes use a new request ide
  const second=JSON.parse(posts()[1][1]!.body as string);
  expect(second.request_id).not.toBe(first.request_id);
  expect(second).toMatchObject(change==='mode'?{goal:{mode:'new'},scope_id:'recorded'}:{scope_id:'alternate',goal:{mode:'continue'}});
+});
+
+
+it.each(['job','child'])('refreshes the story header and pending inputs only for opened-job cancellation: %s', async selected => {
+ const opened={tenant_id:'tenant',job_id:'job',job_type:'recipe',status:'READY',title:'Opened job title'};
+ const child={...opened,job_id:'child',parent_job_id:'job',title:'Child job title'};
+ let cancelled=false;
+ vi.mocked(getJob).mockResolvedValue({...jobIdentity,job_id:'job',status:'READY',store:'ACTIVE'} as RecipeJob);
+ vi.mocked(getTreeNode).mockImplementation(async (_,id)=>({node:cancelled&&id===selected?{...(id==='job'?opened:child),status:'COMPLETED',store:'ARCHIVED',completion_status:'cancelled'}:id==='job'?opened:child,observed_at:'now'}));
+ vi.mocked(getTreeChildren).mockImplementation(async (_,id)=>({nodes:id==='job'?[child]:[],observed_at:'now'}));
+ vi.mocked(cancelJob).mockImplementation(async()=>{cancelled=true;});
+ mount('?tab=dag');await screen.findByText('Discovery finished:',{exact:false});
+ const before=vi.mocked(getJob).mock.calls.length, inputsBefore=inputState.refresh.mock.calls.length;
+ if(selected==='child') fireEvent.click(screen.getByRole('button',{name:'Child job title · Unknown cell'}));
+ fireEvent.click(within(screen.getByRole('complementary',{name:'Selected job details'})).getByRole('button',{name:'Cancel job'}));
+ fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:'Cancel job',exact:true}));
+ await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
+ expect(getJob).toHaveBeenCalledTimes(before+(selected==='job'?1:0));
+ expect(inputState.refresh).toHaveBeenCalledTimes(inputsBefore+(selected==='job'?1:0));
 });

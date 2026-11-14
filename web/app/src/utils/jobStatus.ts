@@ -1,6 +1,6 @@
 import type { RecipeJobSummary, RecipeJobFilterStatus } from '@colony2/shared/types';
 
-export type JobStatusInput = { status: string; store?: string; completion_status?: string; cancel_requested?: boolean };
+export type JobStatusInput = { status: string; store?: string; completion_status?: string; cancel_requested?: boolean; archived_at?: string };
 
 type StatusPresentation = { label: string; color: string };
 
@@ -9,7 +9,7 @@ export const filterStatuses = {
   PENDING_JOBS: { label: 'Waiting for jobs', color: 'gold' },
   AWAITING_FUTURE: { label: 'Scheduled', color: 'cyan' },
   ACTIVE: { label: 'Running', color: 'purple' },
-  CRASH_CONCERN: { label: 'Worker unresponsive', color: 'orange' },
+  CRASH_CONCERN: { label: 'Job keeps failing', color: 'orange' },
   EXPIRED: { label: 'Expired', color: 'orange' },
   CANCEL_REQUESTED: { label: 'Cancellation requested', color: 'orange' },
   CANCELLED: { label: 'Cancelled', color: 'default' },
@@ -32,19 +32,15 @@ export function jobStatusPresentation(status: string): StatusPresentation {
 
 // Keep this precedence in sync with jobDisplayStatus in the Cortex API.
 export function jobStatusValue(job: JobStatusInput): string {
-  // A previous failed attempt must never override a job that is still retrying.
-  if (job.store === 'ARCHIVED' || job.status === 'COMPLETED') {
-    if (job.completion_status) {
-      switch (job.completion_status) {
-        case 'cancelled': return 'CANCELLED';
-        case 'success': case 'failed_app': case 'failed_system': case 'failed_timeout': return job.completion_status;
-        default: return `completion:${job.completion_status}`;
-      }
+  // Earlier attempt outcomes never override an unfinished scheduler state.
+  if (job.store === 'ARCHIVED' || job.archived_at || job.status === 'COMPLETED') {
+    switch (job.completion_status) {
+      case 'cancelled': return 'CANCELLED';
+      case 'success': case 'failed_app': case 'failed_system': case 'failed_timeout': return job.completion_status;
+      default: return job.completion_status ? `completion:${job.completion_status}` : 'OUTCOME_UNAVAILABLE';
     }
-  } else if (job.cancel_requested) {
-    return 'CANCEL_REQUESTED';
   }
-  return job.status === 'COMPLETED' ? 'OUTCOME_UNAVAILABLE' : job.status;
+  return job.cancel_requested ? 'CANCEL_REQUESTED' : job.status;
 }
 
 export function jobStatus(job: JobStatusInput): StatusPresentation {
@@ -75,5 +71,5 @@ export function isFinishedJob(job: JobStatusInput): boolean {
 
 // Fresh recovery requires raw exact-detail evidence, not a display label/outcome.
 export function confirmsRecoveryCompletion(job?: JobStatusInput): boolean {
-  return !!job && (job.store === 'ARCHIVED' || job.status === 'COMPLETED');
+  return !!job && (job.store === 'ARCHIVED' || !!job.archived_at || job.status === 'COMPLETED');
 }

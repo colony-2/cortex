@@ -18,6 +18,6 @@ it('DAGUI-007,008 status parity for generic summaries and previous retry failure
  expect(jobStatus({...n,status:'COMPLETED',completion_status:'custom'}).label).toBe('Finished (custom)');
  expect(jobStatus({...n,store:'ARCHIVED',status:'COMPLETED'}).label).toBe('Finished (outcome unavailable)');
  expect(jobStatus({...n,store:'ARCHIVED',completion_status:'success',cancel_requested:true}).label).toBe('Succeeded');
- expect(jobStatus({...n,store:'ARCHIVED'})).toEqual(jobStatusPresentation('READY'));
+ expect(jobStatus({...n,store:'ARCHIVED'})).toEqual(jobStatusPresentation('OUTCOME_UNAVAILABLE'));
  expect(jobStatus({...n,status:'COMPLETED',completion_status:'cancelled'}).label).toBe('Cancelled');
 });

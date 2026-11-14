@@ -818,7 +818,7 @@ it.each(['ACTIVE', 'ARCHIVED'])('CID-010 opens an existing UUID job from the %s 
    <Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId="tenant" />} />
   </Routes>
  </MemoryRouter>);
- const link = await screen.findByRole('link', { name: `Job ${id}: Ready`, exact: true });
+ const link = await screen.findByRole('link', { name: `Job ${id}: ${store === 'ARCHIVED' ? 'Finished (outcome unavailable)' : 'Ready'}`, exact: true });
  expect(link.getAttribute('href')).toContain(`/project/tenant/jobs/${id}/story`);
  fireEvent.click(link);
  await screen.findByRole('tab', {name:'Conversation',exact:true});
@@ -1076,4 +1076,16 @@ it.each([false,true])('C1-M05 M10 preserves explicitly missing selection instead
  expect(screen.getByRole('link',{name:'DAG',exact:true})).toHaveAttribute('href','/project/tenant/jobs/missing/story?tab=dag');
  if(!empty) expect(screen.getAllByText('Succeeded')).toHaveLength(2);
  expect(screen.queryByText('Other goals')).toBeNull();
+});
+
+
+it('retains an existing CRASH_CONCERN URL and labels its selected filter Job keeps failing', async()=>{
+ vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({jobs:[{...jobIdentity,job_id:'retrying',status:'CRASH_CONCERN',store:'ACTIVE',completion_status:'failed_app'}]}))));
+ render(<MemoryRouter initialEntries={['/project/tenant/jobs?status=CRASH_CONCERN']}><Location /><JobsListPage projectId="tenant" /></MemoryRouter>);
+ await screen.findByRole('link',{name:'Job retrying: Job keeps failing',exact:true});
+ expect(screen.getByTestId('location')).toHaveTextContent('status=CRASH_CONCERN');
+ fireEvent.click(screen.getByRole('button',{name:'Filter statuses'}));
+ const dropdown=within(document.querySelector('.ant-table-filter-dropdown') as HTMLElement);
+ expect(dropdown.getByRole('checkbox',{name:'Select Job keeps failing',exact:true})).toBeChecked();
+ expect(dropdown.queryByText('Worker unresponsive')).toBeNull();
 });

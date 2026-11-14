@@ -164,7 +164,7 @@ describe('CC compact occurrence and time provenance',()=>{
 
 describe('current conversation activity', () => {
  const metadata = (status: string, extra = {}) => ({status,store:'ACTIVE',...extra}) as import('@colony2/shared/types').RecipeJob;
- it.each([['ACTIVE','Running'], ['READY','Pending'], ['PENDING_JOBS','Pending'], ['AWAITING_FUTURE','Pending'], ['CRASH_CONCERN','Worker unresponsive'], ['EXPIRED','Expired']])('CV-009 CV-010 renders %s from metadata', (status,label) => {
+ it.each([['ACTIVE','Running'], ['READY','Pending'], ['PENDING_JOBS','Pending'], ['AWAITING_FUTURE','Pending'], ['CRASH_CONCERN','Job keeps failing'], ['EXPIRED','Expired']])('CV-009 CV-010 renders %s from metadata', (status,label) => {
   render(<CurrentActivity metadata={metadata(status)} freshness="loaded" />);
   expect(screen.getByText(label)).toBeInTheDocument();
   expect(screen.getAllByLabelText('Current job activity')).toHaveLength(1);

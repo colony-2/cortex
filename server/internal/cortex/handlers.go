@@ -225,6 +225,29 @@ func (s *Server) requireJob(next http.HandlerFunc) http.HandlerFunc {
 	return s.requireJobVisibility(next, false)
 }
 
+// Cancellation supports generic jobs too. Keep the visible-only mutation
+// policy; hidden-inclusive tree reads do not grant mutation access.
+func (s *Server) requireCancellableJob(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		key := jobdb.JobKey{TenantId: s.tenantID(r), JobId: mux.Vars(r)["jobId"]}
+		page, err := s.engine.ListJobs(r.Context(), jobdb.ListJobsRequest{
+			TenantIds: []string{key.TenantId}, JobKeys: []jobdb.JobKey{key},
+			Stores: []jobdb.JobStore{jobdb.JobStoreActive, jobdb.JobStoreArchived}, PageSize: 1,
+		})
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		for _, job := range page.Jobs {
+			if job.JobKey == key {
+				next(w, r)
+				return
+			}
+		}
+		writeError(w, recipejob.ErrJobNotFound)
+	}
+}
+
 func (s *Server) requireArchivedJob(next http.HandlerFunc) http.HandlerFunc {
 	return s.requireJobVisibility(next, true)
 }

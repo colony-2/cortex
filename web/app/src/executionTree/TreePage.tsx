@@ -1,3 +1,8 @@
+import { Button, Tooltip } from 'antd';
+import { ExportOutlined, FlagOutlined, StopOutlined } from '@ant-design/icons';
+import JobActionDialog from '../components/JobActionDialog';
+import { isFinishedJob } from '../utils/jobStatus';
+import { useJobCancellation } from './useJobCancellation';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { TreeNode } from '@colony2/shared';
@@ -13,11 +18,13 @@ export default function TreePage() {
   const { projectId = '', jobId = '' } = useParams();
   return <main><TreeWorkspace key={JSON.stringify([projectId, jobId])} tenant={projectId} entry={jobId} /></main>;
 }
-export function TreeWorkspace({ tenant, entry, active = true, embedded = false }: { tenant: string; entry: string; active?: boolean; embedded?: boolean }) {
+export function TreeWorkspace({ tenant, entry, active = true, embedded = false, onJobChanged }: { onJobChanged?: (node: TreeNode) => void; tenant: string; entry: string; active?: boolean; embedded?: boolean }) {
   const [, update] = useReducer(n => n + 1, 0);
   const [version, refresh] = useReducer(n => n + 1, 0);
   const traversal = useRef<Traversal>();
   const [selected, select] = useState(entry), [collapsed, collapse] = useState(new Set<string>()), [search, setSearch] = useState(''), [zoom, setZoom] = useState(1);
+  const cancellation = useJobCancellation(tenant, entry, onJobChanged);
+  const detailHeading = useRef<HTMLHeadingElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const selectedCard = useRef<HTMLButtonElement>(null);
   const initiallyRevealed = useRef(false);
@@ -63,8 +70,8 @@ export function TreeWorkspace({ tenant, entry, active = true, embedded = false }
     if (selected === entry) selectedCard.current?.scrollIntoView?.({block:'center',inline:'center'});
   });
   const controller = traversal.current, state = controller?.state;
-  const nodes = state ? [...state.nodes.values()] : [];
-  const byID = state?.nodes || new Map<string, TreeNode>();
+  const nodes = state ? [...state.nodes.values()].map(cancellation.overlay) : [];
+  const byID = new Map(nodes.map(node => [node.job_id, node]));
   const matches = new Set(nodes.filter(n => search && [n.job_id,n.cell,n.job_type,n.goal_id,n.status,n.completion_status,n.title,n.prompt].some(v => v?.toLowerCase().includes(search.toLowerCase()))).map(n => n.job_id));
   const revealed = new Set<string>();
   for (const id of matches) { let p: string | undefined = id; while (p && !revealed.has(p)) { revealed.add(p); p = byID.get(p)?.parent_job_id; } }
@@ -108,6 +115,7 @@ export function TreeWorkspace({ tenant, entry, active = true, embedded = false }
       {n.job_id === entry && <span className="tree-opened">Opened job</span>}</>;
   };
   const detail = byID.get(selected);
+  const cancellationState = detail && cancellation.state(detail.job_id);
   const incomplete = !!controller?.canResume || !!state?.boundary || !!state?.stop || !!state?.warnings.length || [...(state?.branches.values() || [])].some(b => b.state !== 'exhausted');
   return <section className={embedded ? "execution-tree" : "app-page execution-tree"}>
     {!embedded && <><nav><Link className="compact-touch-link" to={`/project/${encodeURIComponent(tenant)}/goals`}>Back to jobs</Link></nav>
@@ -150,13 +158,38 @@ export function TreeWorkspace({ tenant, entry, active = true, embedded = false }
         </div>
 
       </div>
-      {detail && <aside aria-label="Selected job details" className="tree-details"><h2>Selected job</h2>
-        <dl>{Object.entries({Tenant:detail.tenant_id,Job:detail.job_id,Title:detail.title || 'Unavailable',Prompt:detail.prompt || 'Unavailable',Cell:detail.cell || 'Unknown',Type:detail.job_type,Status:detail.status,Completion:detail.completion_status || 'Unknown',Submitted:detail.created_at || 'Unavailable','Logical termination':detail.archived_at || 'Unavailable','Runtime parent':detail.parent_job_id || 'No recorded parent','Recipe attribution':detail.recipe_parent_job_id || 'None recorded',Coverage:branchText(detail.job_id)}).map(([key,value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>
-        {detail.goal_id && <p><Link className="compact-touch-link" to={`/project/${encodeURIComponent(tenant)}/goals/${encodeURIComponent(detail.goal_id)}`}>Goal overview</Link></p>}
-        {detail.job_type === 'recipe' ? <p><Link className="compact-touch-link" to={`${jobPath(tenant,detail.job_id)}/story`} state={{ treeReturnTo: dagPath(tenant, entry, byID.get(entry)?.job_type) }}>Open execution</Link></p> : <p>Generic job summary; no recipe story available.</p>}
+      {detail && <aside aria-label="Selected job details" className="tree-details">
+        <div className="tree-details-header">
+          <h2 ref={detailHeading} tabIndex={-1}>Selected job</h2>
+          <div className="tree-detail-actions" role="group" aria-label="Selected job actions">
+            {cancellation.eligible(detail) && <Tooltip title="Cancel job" trigger={['hover', 'focus']}>
+              <Button className="tree-detail-action tree-detail-cancel" danger aria-label="Cancel job" icon={<StopOutlined />} onClick={() => cancellation.open(detail)} />
+            </Tooltip>}
+            {detail.goal_id && <Tooltip title="Goal overview" trigger={['hover', 'focus']}>
+              <Link className="tree-detail-action" aria-label="Goal overview" to={`/project/${encodeURIComponent(tenant)}/goals/${encodeURIComponent(detail.goal_id)}`}><FlagOutlined /></Link>
+            </Tooltip>}
+            {detail.job_type === 'recipe' && <Tooltip title="Open execution" trigger={['hover', 'focus']}>
+              <Link className="tree-detail-action" aria-label="Open execution" to={`${jobPath(tenant,detail.job_id)}/story`} state={{ treeReturnTo: dagPath(tenant, entry, byID.get(entry)?.job_type) }}><ExportOutlined /></Link>
+            </Tooltip>}
+          </div>
+        </div>
+        <p className="tree-detail-status" role="status">{jobStatus(detail).label || 'Unknown status'}</p>
+        {cancellationState?.busy && <p role="status">Checking cancellation status…</p>}
+        {cancellationState?.unavailable && <p role="status">Status unavailable</p>}
+        {cancellationState?.notice && <p role="status">{cancellationState.notice}</p>}
+        {cancellationState?.error && <p role="alert">{cancellationState?.error}</p>}
+        {(!isFinishedJob(detail) && !cancellation.eligible(detail) || cancellationState?.unavailable) && <Button disabled={cancellationState?.busy} onClick={() => void cancellation.refresh(detail)}>Refresh status</Button>}
+
+        <dl>{Object.entries({Tenant:detail.tenant_id,Job:detail.job_id,Title:detail.title || 'Unavailable',Prompt:detail.prompt || 'Unavailable',Cell:detail.cell || 'Unknown',Type:detail.job_type,Status:jobStatus(detail).label,Completion:detail.completion_status || 'Unknown',Submitted:detail.created_at || 'Unavailable','Logical termination':detail.archived_at || 'Unavailable','Runtime parent':detail.parent_job_id || 'No recorded parent','Recipe attribution':detail.recipe_parent_job_id || 'None recorded',Coverage:branchText(detail.job_id)}).map(([key,value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>
+        {detail.job_type !== 'recipe' && <p>Generic job summary; no recipe story available.</p>}
         {state?.branches.get(detail.job_id)?.state === 'failed' && <button disabled={state.loading || controller?.viewCapped} onClick={() => void controller?.run(detail.job_id)}>Retry child page</button>}
         {(controller?.viewCapped || ['limited','malformed'].includes(state?.branches.get(detail.job_id)?.state || '')) && <p><Link className="compact-touch-link" to={dagPath(tenant, detail.job_id, detail.job_type)}>Open branch as entry</Link></p>}
       </aside>}
     </div>}
+    {cancellation.target && <JobActionDialog projectId={cancellation.target.tenant_id} jobIds={[cancellation.target.job_id]} action="cancel"
+      scopeText="Cancel this job? Child jobs already submitted will not be cancelled. Running work may take time to stop, and actions already performed will not be undone."
+      disabled={!cancellation.eligible(cancellation.overlay(cancellation.target)) && !cancellation.state(cancellation.target.job_id)?.busy}
+      onBusyChange={cancellation.busy} onSettled={cancellation.settled} onClose={cancellation.close} onComplete={() => {}}
+      focusFallback={() => detailHeading.current?.focus({preventScroll:true})} />}
   </section>;
 }

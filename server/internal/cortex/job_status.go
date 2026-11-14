@@ -29,13 +29,14 @@ func parseDisplayStatuses(values []string) ([]string, error) {
 // Keep this precedence in sync with jobStatusValue in the web app: a previous
 // attempt's outcome never overrides a job that is still running or retrying.
 func jobDisplayStatus(job recipejob.RecipeJob) string {
-	if job.Store == jobdb.JobStoreArchived || job.Status == jobdb.JobStatusCompleted {
+	if job.Store == jobdb.JobStoreArchived || job.ArchivedAt != nil || job.Status == jobdb.JobStatusCompleted {
 		switch job.CompletionStatus {
 		case "cancelled":
 			return "CANCELLED"
 		case "success", "failed_app", "failed_system", "failed_timeout":
 			return job.CompletionStatus
 		case "":
+			return "OUTCOME_UNAVAILABLE"
 		default:
 			return "completion:" + job.CompletionStatus
 		}
