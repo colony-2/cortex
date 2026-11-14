@@ -175,9 +175,15 @@ document_metadata:
     order: 1
 ```
 
-Cortex selects the overview initially, falling back to the first document ordered
-by ascending `order`, with absent orders last and document IDs breaking ties.
-The mobile reader starts with descriptive cards and opens when a file is chosen.
+Cortex groups documents as primary, supporting, diagnostic, then neutral (including
+unrecognized roles). Within each role, valid integer `order` values from 0 through
+1,000,000 sort first in ascending order, with absent or invalid orders last.
+Ties use the UTF-8 bytes of exact document IDs, without normalization.
+Cortex initially selects the attached overview, otherwise the first ordered primary,
+otherwise the smallest UTF-8 document ID. The same fallback applies when a selected
+document disappears; a still-attached selection is preserved. Both desktop and
+mobile load the starting document immediately, with document navigation collapsed.
+Opening navigation shows a desktop list or mobile descriptive cards and selector.
 Titles, descriptions, and Primary/Supporting/Diagnostic roles explain each file;
 filenames remain visible. Source links open attached files without recursively
 expanding their sources. Metadata grants no additional artifact access and does

@@ -188,7 +188,7 @@ for (const width of [375, 767, 768, 1280]) {
     await expect(nav).toContainText('Primary');
     await expect(nav).toContainText('Supporting');
     await expect(nav).toContainText('Diagnostic');
-    expect(await nav.locator('.review-document-entry strong').allTextContents()).toEqual(['Supporting','Diagnostic','Overview',...Array.from({length:24},(_,i)=>`other-${i}`).sort().map(id=>`${id}.md`)]);
+    expect(await nav.locator('.review-document-entry strong').allTextContents()).toEqual(['Overview','Supporting','Diagnostic',...Array.from({length:24},(_,i)=>`other-${i}`).sort().map(id=>`${id}.md`)]);
     if(compact) {
       await expect(page.getByRole('dialog')).toHaveCount(0);
       await expect(nav.getByText('Starting document')).toBeVisible();
@@ -211,7 +211,7 @@ for (const width of [375, 767, 768, 1280]) {
       expect(reads.length).toBeGreaterThan(0);
       expect(reads.every(url=>new URL(url).searchParams.get('document_id')==='z')).toBe(true);
       await expect(nav.locator('[aria-current=true]')).toContainText('Overview');
-      expect(await nav.locator('.review-document-entry').first().textContent()).toContain('Supporting');
+      expect(await nav.locator('.review-document-entry').first().textContent()).toContain('Overview');
       await expect(nav.locator('button').last()).toBeAttached();await nav.locator('button').last().scrollIntoViewIfNeeded();
     }
     const scope=page.getByRole('region',{name:'Selected document'});

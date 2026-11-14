@@ -246,7 +246,7 @@ describe('RDM metadata catalog', () => {
     render(<ReviewDocuments projectId="tenant" jobId="job" requestId="r" documents={docs} documentMetadata={metadata} overviewDocumentId="z"/>);
     await screen.findByRole('heading',{name:'Contents'});
     const nav=screen.getByRole('navigation',{name:'Review documents'});
-    expect([...nav.querySelectorAll('button')].map(b=>b.textContent)).toEqual(['a.mda','Supporting notesSupportingb · b.md','Diagnostic reportDiagnostic雪/target · target.md','OverviewPrimaryz · z.mdRead this first']);
+    expect([...nav.querySelectorAll('button')].map(b=>b.textContent)).toEqual(['OverviewPrimaryz · z.mdRead this first','Supporting notesSupportingb · b.md','Diagnostic reportDiagnostic雪/target · target.md','a.mda']);
     expect(fetcher.mock.calls).toHaveLength(1);
     expect(fetcher.mock.calls[0][0]).toContain('document_id=z');
     expect(screen.queryByText('Never attached')).toBeNull();
@@ -270,9 +270,10 @@ describe('RDM metadata catalog', () => {
     const {rerender,container}=render(<ReviewDocuments {...props} documents={docs} documentMetadata={bad as never} overviewDocumentId="missing"/>);
     await screen.findByRole('heading',{name:'Loaded'});
     expect(container.querySelector('script')).toBeNull();
+    expect(screen.getAllByText('**plain**')).toHaveLength(1);
+    expect(screen.getByRole('button',{name:'a.md a'})).toHaveAttribute('aria-current','true');
+    fireEvent.click(screen.getByRole('button',{name:/<script>bad\(\)<\/script>/}));
     expect(screen.getAllByText('**plain**')).toHaveLength(2);
-    const nav=screen.getByRole('navigation');
-    expect(nav.querySelector('button')).toHaveAttribute('aria-current','true');
     fireEvent.click(screen.getByRole('button',{name:'b.md b'}));
     rerender(<ReviewDocuments {...props} documents={docs} documentMetadata={{a:{order:0}}} overviewDocumentId="a"/>);
     expect(screen.getByRole('button',{name:'b.md b'})).toHaveAttribute('aria-current','true');
@@ -282,11 +283,11 @@ describe('RDM metadata catalog', () => {
     rerender(<ReviewDocuments {...props} documents={docs} overviewDocumentId="a"/>);
     expect(screen.getByRole('button',{name:'z.md z'})).toHaveAttribute('aria-current','true');
   });
-  it.each([undefined, '', 'missing'])('RDM-004 falls back to first ordered document for overview %s', async overview => {
+  it.each([undefined, '', 'missing'])('RDM-004 falls back to smallest UTF-8 ID without a primary for overview %s', async overview => {
     const fetcher=vi.fn(async()=>new Response('# Loaded'));vi.stubGlobal('fetch',fetcher);
     render(<ReviewDocuments projectId="t" jobId="j" requestId="r" documents={docs} overviewDocumentId={overview} documentMetadata={{b:{order:0}}}/>);
     await screen.findByRole('heading',{name:'Loaded'});
-    expect(fetcher.mock.calls[0][0]).toContain('document_id=b');
+    expect(fetcher.mock.calls[0][0]).toContain('document_id=a');
   });
   it.each([null,'0',-1,1.1,1_000_001])('RDM-010 treats invalid order %s as absent', async order => {
     vi.stubGlobal('fetch',vi.fn(async()=>new Response('# Loaded')));

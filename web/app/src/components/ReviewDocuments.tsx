@@ -17,9 +17,12 @@ export default function ReviewDocuments(props: Props) {
 function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata = {}, overviewDocumentId, source, response }: Props) {
   const compact = useCompact();
   const [showNavigation, setShowNavigation] = useState(false);
-  const ids = Object.keys(documents).sort((a, b) => displayOrder(documentMetadata[a]?.order) - displayOrder(documentMetadata[b]?.order) || (a < b ? -1 : a > b ? 1 : 0));
+  const ids = Object.keys(documents).sort((a, b) =>
+    roleOrder(documentMetadata[a]?.role) - roleOrder(documentMetadata[b]?.role) ||
+    displayOrder(documentMetadata[a]?.order) - displayOrder(documentMetadata[b]?.order) || compareDocumentIds(a, b));
   const attached = (id?: string): id is string => id !== undefined && Object.prototype.hasOwnProperty.call(documents, id);
-  const initial = attached(overviewDocumentId) ? overviewDocumentId : ids[0];
+  const initial = attached(overviewDocumentId) ? overviewDocumentId
+    : ids.find(id => documentMetadata[id]?.role === 'primary') ?? [...ids].sort(compareDocumentIds)[0];
   const [selection, setSelection] = useState(initial);
   const selected = attached(selection) ? selection : initial;
   const catalog = useRef<HTMLDivElement>(null);
@@ -133,4 +136,17 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
 
 function displayOrder(order: unknown): number {
   return typeof order === 'number' && Number.isInteger(order) && order >= 0 && order <= 1_000_000 ? order : Infinity;
+}
+
+function roleOrder(role: unknown): number {
+  return role === 'primary' ? 0 : role === 'supporting' ? 1 : role === 'diagnostic' ? 2 : 3;
+}
+
+const utf8 = new TextEncoder();
+function compareDocumentIds(a: string, b: string): number {
+  const left = utf8.encode(a), right = utf8.encode(b);
+  for (let i = 0; i < Math.min(left.length, right.length); i++) {
+    if (left[i] !== right[i]) return left[i] - right[i];
+  }
+  return left.length - right.length;
 }
