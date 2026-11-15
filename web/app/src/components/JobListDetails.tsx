@@ -55,6 +55,11 @@ export default function JobListDetails({ job, inspection, projectId, showPrompt 
   add('Wait state', inspection?.blocking_wait?.state);
   add('Wait deadline', jobTime(job.blocking_wait_summary?.deadline || inspection?.blocking_wait?.deadline));
 
+  // Old servers or cached summaries may still carry deprecated membership IDs.
+  // Remove them from the projection without changing either source object.
+  const rawData = { ...job, blocking_wait: inspection?.blocking_wait };
+  delete (rawData as Partial<RecipeJob>).other_goal_ids;
+
   return <Space direction="vertical" size="middle" style={{ width: '100%', overflowWrap: 'anywhere' }}>
     {showPrompt && job.prompt && <div style={{ whiteSpace: 'pre-wrap' }}>{job.prompt}</div>}
     <JobLeaseTimeline projectId={projectId} jobId={job.job_id} createdAt={job.created_at} />
@@ -100,7 +105,7 @@ export default function JobListDetails({ job, inspection, projectId, showPrompt 
     </details>
     <details open={isOpen('data')}>
       <summary onClick={event => { event.preventDefault(); toggle('data'); }}>All job data</summary>
-      <pre style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>{stringifyJobJSON({ ...job, other_goal_ids: inspection?.other_goal_ids, blocking_wait: inspection?.blocking_wait }, 2)}</pre>
+      <pre style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>{stringifyJobJSON(rawData, 2)}</pre>
     </details>
   </Space>;
 }

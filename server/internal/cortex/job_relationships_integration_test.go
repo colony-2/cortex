@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/colony-2/c2j/pkg/recipejob"
 	"github.com/colony-2/colony2/server/internal/testjobdb"
 	"github.com/colony-2/jobdb/pkg/jobdb"
 	"github.com/colony-2/jobdb/pkg/jobdb/celltest"
@@ -146,7 +147,7 @@ func TestChildrenRuntimeIntegration(t *testing.T) {
 
 type childrenRuntimeEngine struct {
 	jobworkflow.Engine
-	runtime        jobdb.WorkflowRuntime
+	runtime        recipejob.Lister
 	translatedGoal string
 }
 
@@ -164,7 +165,7 @@ func (e childrenRuntimeEngine) ListJobs(ctx context.Context, req jobdb.ListJobsR
 
 // Confirm the bounded translated read fixture really presents an unrelated
 // same-goal root before proving structural child/tree reads exclude it.
-func assertHistoricalSameGoalPeer(t *testing.T, ctx context.Context, runtime jobdb.WorkflowRuntime, active, unrelated jobdb.JobHandle) {
+func assertHistoricalSameGoalPeer(t *testing.T, ctx context.Context, runtime recipejob.Lister, active, unrelated jobdb.JobHandle) {
 	t.Helper()
 	page, err := (childrenRuntimeEngine{runtime: runtime, translatedGoal: active.GoalID}).ListJobs(ctx, jobdb.ListJobsRequest{TenantIds: []string{"a"}, JobKeys: []jobdb.JobKey{active.JobKey, unrelated.JobKey}, Stores: []jobdb.JobStore{jobdb.JobStoreActive, jobdb.JobStoreArchived}, PageSize: 2, IncludeHidden: true})
 	if err != nil || len(page.Jobs) != 2 {

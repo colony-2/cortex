@@ -44,3 +44,6 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
   unobserve: vi.fn(),
   disconnect: vi.fn(),
 }));
+
+// jsdom has no layout or scrolling; browser suites verify actual focus scrolling.
+Element.prototype.scrollIntoView = vi.fn();

@@ -1,5 +1,14 @@
 # Restore stored job-list fields in Cortex
 
+> Current goal contract: use primary-only navigation and creation-time primary
+> selection. Secondary IDs are deliberately empty in current detail/submission
+> responses and excluded from raw display; inspection must not restore them.
+> Historical decoding remains supported. A compact wait summary does not explain
+> dependencies: selected-job inspection retains the complete wait, conditions,
+> deadlines, reasons and exact result producers. An empty secondary-ID field says
+> nothing about those waits. Goal reads, `FailGoal(message)` and ordinary input-file
+> attachments remain supported; protected-record integration remains separate.
+
 c2j again preserves completion detail, the full client payload and revision,
 task coordinates, and prerequisite IDs in ordinary job lists. Restore their
 display from the existing list response. A page still makes one JobDB
@@ -68,9 +77,9 @@ clear stale badges and diagnostics.
 - Do not call `GetJob`, `GetJobRun`, artifact/task APIs, goal-membership APIs,
   or dependency-explanation APIs for every row on refresh or expansion merely
   to show these restored fields.
-- `other_goal_ids` and full `blocking_wait` remain unloaded. Empty values do not
-  prove that no extra memberships or dependency explanations exist. Load those
-  only during explicit selected-job/wait inspection.
+- `other_goal_ids` remains omitted from current display and empty in detail responses.
+  Full `blocking_wait` is unloaded in lists; load it only during explicit
+  selected-job/wait inspection. Do not infer dependencies from either empty field.
 - Opening an input form or taking a task action still requires the existing
   fresh task-handle lookup and stale-occurrence protection. List coordinates
   do not replace those checks.

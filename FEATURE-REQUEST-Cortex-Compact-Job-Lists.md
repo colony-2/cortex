@@ -1,12 +1,20 @@
 # Cortex: render compact job lists and inspect selected attempts
 
+> Current goal contract supersedes historical secondary-membership recommendations
+> throughout this request, including discovery by explicit inspection. Use primary-only
+> grouping/navigation and creation-time primary selection. Current detail/submission
+> projections and raw display omit secondary IDs; historical decoding remains valid.
+> Explicit selected-job inspection still supplies complete waits and exact recorded
+> producers. This fix changes neither dependencies nor storage; protected-record
+> integration and the accepted JobDB migration remain separate.
+
 > 2026-10-29 update: c2j and JobDB restored stored completion detail, execution
 > requirements, full client payloads, task coordinates, and prerequisite IDs.
 > Cortex now renders these directly from list responses. The field exclusions
 > below describe the original migration and are superseded by
 > [the restored-fields guide](GUIDE-Cortex-Restored-Job-List-Fields.md).
-> Additional goal memberships and evaluated dependency explanations still
-> require explicit selected-job inspection; the one-list-call boundary remains.
+> Evaluated dependency explanations still require explicit selected-job
+> inspection; the one-list-call boundary remains. Secondary IDs stay omitted.
 
 ## Problem and required outcome
 

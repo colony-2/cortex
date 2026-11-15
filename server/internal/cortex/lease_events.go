@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
-	"github.com/colony-2/c2j/pkg/jobinspect"
 	"github.com/colony-2/jobdb/pkg/jobdb"
 	"github.com/gorilla/mux"
 )
@@ -18,7 +18,12 @@ func (s *Server) handleJobLeaseEvents(w http.ResponseWriter, r *http.Request) {
 		writeError(w, jobdb.ErrInvalidLeaseEventRequest)
 		return
 	}
-	options := jobinspect.LeaseEventOptions{IncludeHidden: true, PageSize: 100}
+	tenant, job := mux.Vars(r)["projectId"], mux.Vars(r)["jobId"]
+	if job == "self" || strings.TrimSpace(tenant) != tenant || strings.TrimSpace(job) != job {
+		writeError(w, jobdb.ErrInvalidLeaseEventRequest)
+		return
+	}
+	request := jobdb.ListLeaseEventsRequest{TenantID: tenant, JobIDs: []string{job}, IncludeHidden: true, PageSize: 100}
 	for key, values := range query {
 		if len(values) != 1 {
 			writeError(w, jobdb.ErrInvalidLeaseEventRequest)
@@ -31,21 +36,33 @@ func (s *Server) handleJobLeaseEvents(w http.ResponseWriter, r *http.Request) {
 				writeError(w, jobdb.ErrInvalidLeaseEventRequest)
 				return
 			}
-			options.PageSize = size
+			request.PageSize = size
 		case "pageToken":
-			options.PageToken = values[0]
+			request.PageToken = values[0]
 		default:
 			writeError(w, jobdb.ErrInvalidLeaseEventRequest)
 			return
 		}
+	}
+	request, err = jobdb.NormalizeLeaseEventRequest(request)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := r.Context().Err(); err != nil {
+		writeError(w, err)
+		return
 	}
 	s.requireArchivedJob(func(w http.ResponseWriter, r *http.Request) {
 		if s.leaseEvents == nil {
 			writeJSON(w, http.StatusNotImplemented, errorResponse{Error: "Lease history is unavailable on this runtime", Code: "unsupported_lease_events"})
 			return
 		}
-		service := jobinspect.Service{Runtime: s.leaseEvents, Tenant: mux.Vars(r)["projectId"]}
-		page, err := service.ListJobLeaseEvents(r.Context(), mux.Vars(r)["jobId"], options)
+		if err := r.Context().Err(); err != nil {
+			writeError(w, err)
+			return
+		}
+		page, err := s.leaseEvents.ListLeaseEvents(r.Context(), request)
 		if err != nil {
 			writeError(w, err)
 			return

@@ -188,6 +188,7 @@ func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if job, err := recipejob.GetRecipeJob(r.Context(), s.engine, recipejob.GetRecipeJobRequest{TenantID: tenantID, JobID: key.JobID}); err == nil {
+		job.OtherGoalIDs = nil
 		writeJSON(w, http.StatusCreated, job)
 		return
 	}
@@ -216,6 +217,7 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	job.OtherGoalIDs = nil
 	writeJSON(w, http.StatusOK, job)
 }
 

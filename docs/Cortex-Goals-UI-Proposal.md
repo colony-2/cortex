@@ -1,5 +1,14 @@
 # Proposed Cortex support for goals
 
+> Current contract also supersedes every attachment action and secondary-membership
+> grouping, discovery or display recommendation in this historical proposal. Use
+> primary-only navigation and creation-time primary selection. Current detail and
+> submission responses and raw display omit secondary IDs. Optional historical
+> decoding and literal goal URLs remain supported; parent, wait and result/artifact
+> producer links retain their recorded targets. Goal reads, waits, `FailGoal(message)`
+> and ordinary input-file uploads remain valid. Protected-record integration and
+> the separately accepted JobDB migration are outside this bounded consumer fix.
+
 > Stage 1 supersedes this historical proposal wherever it promises concurrent
 > fresh same-goal recovery, live secondary membership, inferred winners/closure,
 > or remembered navigation as membership. Current browser behavior is described

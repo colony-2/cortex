@@ -24,11 +24,15 @@ type leaseEventsEngine struct {
 	missing                     bool
 	visibilityError, eventError error
 	ctx                         context.Context
+	afterVisibility             func()
 }
 
 func (e *leaseEventsEngine) ListJobs(ctx context.Context, req jobdb.ListJobsRequest) (jobdb.ListJobsResponse, error) {
 	e.visibility = append(e.visibility, req)
 	e.ctx = ctx
+	if e.afterVisibility != nil {
+		e.afterVisibility()
+	}
 	if e.visibilityError != nil {
 		return jobdb.ListJobsResponse{}, e.visibilityError
 	}
@@ -164,10 +168,49 @@ func TestLeaseEventsContext(t *testing.T) {
 }
 
 type leaseEventsRuntime struct {
-	jobdb.WorkflowRuntime
 	engine *leaseEventsEngine
 }
 
 func (r leaseEventsRuntime) ListLeaseEvents(ctx context.Context, req jobdb.ListLeaseEventsRequest) (jobdb.ListLeaseEventsResponse, error) {
 	return r.engine.ListLeaseEvents(ctx, req)
+}
+
+func TestLeaseEventsInvalidScopeBeforeReads(t *testing.T) {
+	for _, scope := range []map[string]string{
+		{"projectId": "tenant", "jobId": "self"}, {"projectId": "", "jobId": "selected"},
+		{"projectId": " ", "jobId": "selected"}, {"projectId": "tenant", "jobId": ""},
+		{"projectId": "tenant", "jobId": " "}, {"projectId": " tenant", "jobId": "selected"},
+		{"projectId": "tenant", "jobId": " selected"},
+	} {
+		engine := &leaseEventsEngine{}
+		w := httptest.NewRecorder()
+		req := mux.SetURLVars(httptest.NewRequest("GET", "/", nil), scope)
+		(&Server{engine: engine, leaseEvents: leaseEventsRuntime{engine: engine}}).handleJobLeaseEvents(w, req)
+		if w.Code != 400 || len(engine.visibility) != 0 || len(engine.reads) != 0 {
+			t.Fatalf("scope=%v: %d %s", scope, w.Code, w.Body)
+		}
+	}
+}
+
+func TestLeaseEventsCancellationBeforeAndDuringVisibility(t *testing.T) {
+	for _, during := range []bool{false, true} {
+		engine := &leaseEventsEngine{}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		if during {
+			engine.afterVisibility = cancel
+		} else {
+			cancel()
+		}
+		req := mux.SetURLVars(httptest.NewRequest("GET", "/", nil).WithContext(ctx), map[string]string{"projectId": "tenant", "jobId": "selected"})
+		w := httptest.NewRecorder()
+		(&Server{engine: engine, leaseEvents: leaseEventsRuntime{engine: engine}}).handleJobLeaseEvents(w, req)
+		wantVisibility := 0
+		if during {
+			wantVisibility = 1
+		}
+		if w.Code < 400 || len(engine.visibility) != wantVisibility || len(engine.reads) != 0 {
+			t.Fatalf("during=%v: %d %+v", during, w.Code, engine)
+		}
+	}
 }

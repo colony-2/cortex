@@ -1,5 +1,17 @@
 # Cortex: goal-oriented execution and operator views
 
+> Current contract: this feature request is historical. Its candidate-attachment,
+> secondary-membership display/discovery and clean-cutover/no-migration instructions
+> below are superseded. Cortex uses primary-only navigation and creation-time primary
+> selection. It neither attaches existing jobs nor exposes secondary IDs in current
+> detail/submission responses or raw display. Historical IDs remain decodable; exact
+> parent, wait, result and artifact producers remain literal, including a settled
+> G → B witness when B's primary is H. Goal reads, waits and `FailGoal(message)` remain
+> supported by the existing APIs. Ordinary input-file attachments remain supported.
+> This bounded consumer fix changes no storage and requires no dependency upgrade;
+> the accepted JobDB migration and protected-record integration remain separate.
+> See [current recovery guidance](GUIDE-Restart-Context.md#recovery-from-the-browser).
+
 ## Objective
 
 Make goals and their candidate jobs visible throughout Cortex. A user waiting

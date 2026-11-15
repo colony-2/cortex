@@ -10,6 +10,8 @@ import { fixtureGitTransport } from './helpers/gitTransport';
 
 for (const width of [1440, 390]) {
 test(`confirms cancellation and active archive, immediately archives cancelled jobs at ${width}px`, async ({ page, request, context, baseURL }) => {
+  // This scenario covers cancellation, bulk archiving, navigation and retained messages.
+  test.setTimeout(90_000);
   page.on('pageerror', error => console.error('Browser error:', error));
   await page.setViewportSize({ width, height: 844 });
   const tenant = `actions-${randomUUID()}`;
