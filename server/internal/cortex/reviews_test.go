@@ -44,6 +44,14 @@ func (f *reviewRuntimeStub) SubmitFormResponse(_ context.Context, tenant, job st
 	return input.Output{Receipt: &input.Receipt{RequestID: sub.RequestID, Actor: actor}}, nil
 }
 
+func (f *reviewRuntimeStub) SubmitStructuredResponse(_ context.Context, tenant, job string, sub input.StructuredSubmission, actor input.Actor) (input.Output, error) {
+	f.tenant, f.actor = tenant, actor
+	if sub.RequestID != f.forms[job].RequestID {
+		return input.Output{}, input.ErrStaleRequest
+	}
+	return input.Output{Response: sub.Response, Receipt: &input.Receipt{RequestID: sub.RequestID, SubmissionID: sub.SubmissionID, Actor: actor}}, nil
+}
+
 type reviewArtifactEngine struct {
 	jobworkflow.Engine
 	tenant string

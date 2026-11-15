@@ -12,17 +12,19 @@ function referenceIdentity(value: unknown): string | undefined {
   return undefined;
 }
 export function historicalDocuments(detail: HistoryDetail) {
-  const form = object(detail.raw_form), originals = object(form.documents);
+  const rawForm = object(detail.raw_form);
+  const structured = object(rawForm.presentation).type === 'review/v2';
+  const form = structured ? object(rawForm.request) : rawForm, originals = object(form.documents);
   const documents: Record<string, ReaderDocument> = Object.create(null);
   const members: Record<string, string> = Object.create(null);
   for (const [id, raw] of Object.entries(originals)) {
     const doc = object(raw), stored = object(doc.stored), key = object(stored.key);
     documents[id] = {name:typeof doc.name === 'string' ? doc.name : typeof key.name === 'string' ? key.name : id, ...(typeof key.name === 'string' ? {stored:doc.stored} : {})};
-    const pointer = `/documents/${id.replace(/~/g,'~0').replace(/\//g,'~1')}`;
+    const pointer = `${structured ? '/request' : ''}/documents/${id.replace(/~/g,'~0').replace(/\//g,'~1')}`;
     const matches = detail.request_manifest.filter(member => {
       const original = member.original_ref ?? member.ref;
       const identity = referenceIdentity(raw);
-      return (identity !== undefined && referenceIdentity(original) === identity) || member.associations?.some(a => a.source === pointer);
+      return (identity !== undefined && (referenceIdentity(original) === identity || referenceIdentity(member.ref) === identity)) || (doc.kind !== 'stored' && member.associations?.some(a => a.source === pointer));
     });
     const ids = [...new Set(matches.map(m => m.artifact_id))];
     if (ids.length === 1) {
@@ -38,4 +40,26 @@ export function historicalDocuments(detail: HistoryDetail) {
     }
   }
   return {documents, members, metadata: object(form.document_metadata) as Record<string, ReviewDocumentMetadata>, overview:typeof form.overview_document_id === 'string' ? form.overview_document_id : undefined, limited:!detail.raw_form || !form.document_metadata};
+}
+
+// Only explicitly contributed notes belong to the discussion. Manifest presence
+// alone never makes an unrelated artifact a review document.
+export function historicalTurnAttachments(detail: HistoryDetail) {
+  const request=object(object(detail.raw_form).request);
+  const result:Record<string,{member:string}>=Object.create(null);
+  const turns=Array.isArray(request.conversation)?[...request.conversation]:[];
+  const output=object(detail.raw_accepted_output);
+  const accepted=object(output.response??detail.accepted_response.raw);
+  if(detail.accepted_response.present&&Array.isArray(accepted.attachments))turns.push({attachments:accepted.attachments});
+  turns.forEach((turn,index)=>{
+    const attachments=object(turn).attachments;
+    if(!Array.isArray(attachments))return;
+    attachments.forEach((raw,i)=>{
+      const identity=referenceIdentity(raw);
+      const matches=[...detail.request_manifest,...detail.response_manifest].filter(m=>identity!==undefined&&referenceIdentity(m.original_ref??m.ref)===identity);
+      const ids=[...new Set(matches.map(m=>m.artifact_id))];
+      if(ids.length===1)result[`${index}/${i}`]={member:ids[0]};
+    });
+  });
+  return result;
 }

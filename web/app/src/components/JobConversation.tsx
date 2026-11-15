@@ -9,6 +9,8 @@ import FinalDocuments from './FinalDocuments';
 import { historicalDocuments } from './historicalDocuments';
 import { object, valueText, recordedTime, savedAnswers, reviewer } from './conversationPresentation';
 import './conversation.css';
+import { ReviewV2Discussion } from './ReviewV2';
+import { parseReviewV2 } from '@colony2/shared';
 function Time({value, reported = false}: {value: HistoryValue; reported?: boolean}) {
   const time = recordedTime(value);
   return <span title={time.title}>{reported ? 'Reported time: ' : ''}{time.text}</span>;
@@ -17,11 +19,11 @@ export function HistoryPair({ entry, onOpen, part }: { entry: HistoryEntry; onOp
   const [expanded, setExpanded] = useState(false);
   const answer = savedAnswers(entry.form_fields, entry.accepted_response.raw, true);
   const receipt = object(entry.actor.receipt);
-  const question = entry.form_fields.question ? valueText(entry.form_fields.question)
+  const question = object(entry.form_fields.presentation).type === 'review/v2' ? valueText(object(entry.form_fields.request).question) : entry.form_fields.question ? valueText(entry.form_fields.question)
     : Array.isArray(entry.form_fields.fields) ? entry.form_fields.fields.map(field => valueText(object(field).question || object(field).id)).join(' · ') : '';
   return <div className="conversation-pair" data-occurrence={entry.entry_id}>
     {part !== 'response' && <Card size="small" className="conversation-step" aria-label="Recorded request step">
-      <div className="conversation-line"><strong>{entry.title.present ? valueText(entry.title.raw) : `${entry.kind} request`}</strong>{onOpen && <Button size="small" onClick={onOpen}>{entry.kind === 'review' ? 'Open review' : 'Open recorded request'}</Button>}</div>
+      <div className="conversation-line"><strong>{entry.title.present ? valueText(entry.title.raw) : `${entry.kind} request`}</strong>{onOpen && <Button size="small" onClick={onOpen}>{entry.kind === 'review' || object(entry.form_fields.presentation).type === 'review/v2' ? 'Open review' : 'Open recorded request'}</Button>}</div>
       <div className="conversation-line"><Time value={entry.requested_at} /><span>State: {entry.state || 'unknown'}</span>{!entry.accepted_response.present && <span>{reviewer(entry)}</span>}</div>
       {question && <div className="conversation-question" title={question}>{question}</div>}
 
@@ -109,11 +111,16 @@ function HistoricalRequest({ tenant, job, entry, legacy, onBack }: { tenant: str
   if (!detail && error) return <Alert type="warning" message="Request unavailable" description={<>{error} <Button onClick={() => {recoveryUsed.current = false; setRetry(v => v + 1);}}>Retry request</Button></>} />;
   if (!detail) return <p role="status">Loading recorded request…</p>;
   const catalog = historicalDocuments(detail);
-  const form = object(detail.raw_form);
+  const rawForm = object(detail.raw_form);
+  const form = object(rawForm.presentation).type === 'review/v2' ? object(rawForm.request) : rawForm;
+  let review;
+  try {if(object(rawForm.presentation).type === 'review/v2')review=parseReviewV2(rawForm.request);}catch{/* raw output remains available */}
   return <section aria-label="Recorded request" data-occurrence={detail.entry_id}>
     <Button onClick={onBack}>Back to conversation</Button>
     <Typography.Title level={4}>{detail.title.present ? valueText(detail.title.raw) : 'Recorded request'}</Typography.Title>
     <p>Read only</p>
+    {review&&<ReviewV2Discussion turns={review.conversation} request={review}/>}
+    {object(rawForm.presentation).type&&object(rawForm.presentation).type!=='review/v2'&&<Alert type="warning" message="Unsupported recorded presentation. Raw data remains available."/>}
     {(form.question || Array.isArray(form.fields)) && <section aria-label="Review context" style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{form.question ? valueText(form.question) : form.fields.map((field: unknown) => valueText(object(field).question || object(field).id)).join('\n')}</section>}
     {detail.summary.present && <p>{valueText(detail.summary.raw)}</p>}
     {error && <Alert type="warning" message={error} action={<Button onClick={() => {recoveryUsed.current = false; setError(''); setRetry(v => v + 1);}}>Retry request</Button>} />}

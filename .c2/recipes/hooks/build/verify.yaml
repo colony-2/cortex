@@ -315,7 +315,9 @@ sequence:
     inputs:
       working_directory: '${{ context.environment.op.worktree_path }}'
       shell: bash
-      timeout: 30m
+      # The full suite is serial in CI and now contains over 250 cases.
+      # Give it time to finish and report assertions instead of killing it mid-run.
+      timeout: 60m
       continue_on_error: false
       capture_diagnostics: always
       env: *verification-env

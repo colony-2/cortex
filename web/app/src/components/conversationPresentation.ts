@@ -13,6 +13,13 @@ export function recordedTime(value: HistoryValue): { text: string; title?: strin
   return {text:date.toLocaleString(undefined, {year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}),title:date.toLocaleString(undefined,{timeZoneName:'long'})};
 }
 export function savedAnswers(fields: Record<string, unknown>, response: unknown, compact = false): string {
+  if (object(fields.presentation).type === 'review/v2') {
+    const request=object(fields.request), envelope=object(response), answer=object(envelope.response??response);
+    const directions=Array.isArray(request.directions)?request.directions:[];
+    const direction=directions.find(d=>object(d).id===answer.direction);
+    const settings=Array.isArray(request.settings)?request.settings:[];
+    return [direction?.label??answer.direction,answer.feedback,...Object.entries(object(answer.settings)).map(([id,v])=>`${settings.find(s=>object(s).id===id)?.label??id}: ${valueText(v)}`)].filter(v=>v!==undefined&&v!=='').join(compact?' · ':'\n');
+  }
   const questions = Array.isArray(fields.fields) ? fields.fields : [];
   const label = (question: any, answer: unknown) => {
     const options = Array.isArray(question.options) ? question.options : [];

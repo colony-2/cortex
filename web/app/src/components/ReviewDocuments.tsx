@@ -7,7 +7,7 @@ import DocumentPreview from './review/DocumentPreview';
 import { resolveArtifactLink, type NavigationIntent } from './review/artifactLinks';
 import { loadDocument, type DocumentData } from './review/document';
 
-export interface DocumentSource { identity: string; url: (id: string) => string; onError?: (error: unknown) => void }
+export interface DocumentSource { identity: string; contentIdentity?: (id: string) => string; url: (id: string) => string; onError?: (error: unknown) => void }
 export type ReaderDocument = { name?: string; stored?: ReviewDocument['stored']; sizeBytes?: number };
 interface Props { source?: DocumentSource; projectId: string; jobId: string; requestId: string; documents: Record<string, ReaderDocument>; documentMetadata?: Record<string, ReviewDocumentMetadata>; overviewDocumentId?: string; response?: ReactNode }
 export default function ReviewDocuments(props: Props) {
@@ -40,8 +40,10 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
   const documentURL = (id: string) => source ? source.url(id) : inputActivityService.reviewDocumentURL(projectId, jobId, requestId, id);
   const path = (id: string) => documents[id]?.stored?.key.name || documents[id]?.name || id;
   const url = selected ? documentURL(selected) : '';
+  const contentKey = selected ? source?.contentIdentity?.(selected) ?? url : '';
+  const [contentIdentity,setContentIdentity] = useState('');
   useEffect(() => {
-    if (reveal.current && (error || content?.url === url)) {
+    if (reveal.current && (error || contentIdentity === contentKey)) {
       previewRoot.current?.scrollIntoView?.({ block: 'start' });
       reveal.current = false;
     }
@@ -57,14 +59,14 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
   useEffect(() => {
     setError(undefined);
     if (!url) { setError('Original document unavailable: no unambiguous retained mapping.'); setContent(undefined); cached.current = undefined; return; }
-    if (cached.current?.url === url) return;
+    if (cached.current && contentIdentity === contentKey) return;
     setContent(undefined); cached.current = undefined;
     const controller = new AbortController();
     loadDocument(url, name, controller.signal).then(data => {
-      if (!controller.signal.aborted) { cached.current = { url, data }; setContent(cached.current); }
+      if (!controller.signal.aborted) { cached.current = { url, data }; setContent(cached.current); setContentIdentity(contentKey); }
     }).catch(e => { if (!controller.signal.aborted) { setError(e.message); source?.onError?.(e); } });
     return () => controller.abort();
-  }, [url, name, retry]);
+  }, [contentKey, name, retry, !!url]);
   const filename = (id: string) => documents[id]?.name || documents[id]?.stored?.key.name || id;
   const title = (id: string) => documentMetadata[id]?.title?.trim() ? documentMetadata[id].title! : filename(id);
   const openDocument = (id: string, focus = false, fragment?: string) => {
@@ -96,8 +98,8 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
       : <span key={source}>{source} (unavailable)</span>)}</div> : null;
   };
   const preview = error ? <Alert type="error" showIcon message={error} action={<Button onClick={() => { cached.current = undefined; setContent(undefined); setRetry(v => v + 1); }}>Retry</Button>} />
-    : !content || content.url !== url ? <Spin aria-label="Loading document" />
-    : <DocumentPreview htmlContext={{canonicalPath: path(selected), attachments: Object.keys(documents).filter(id => !!documentURL(id)).map(id => ({key:id, path:path(id), url:documentURL(id)}))}} reviewOptions={{ storedBytes: doc?.sizeBytes ?? doc?.stored?.key.sizeBytes }} key={url} data={content.data} name={name} markdownSource={markdownSource} setMarkdownSource={setMarkdownSource} dual={dual} setDual={setDual} navigationIntent={navigationIntent?.documentId === selected ? navigationIntent : undefined} navigation={{
+    : !content || contentIdentity !== contentKey ? <Spin aria-label="Loading document" />
+    : <DocumentPreview htmlContext={{canonicalPath: path(selected), attachments: Object.keys(documents).filter(id => !!documentURL(id)).map(id => ({key:id, path:path(id), url:documentURL(id)}))}} reviewOptions={{ storedBytes: doc?.sizeBytes ?? doc?.stored?.key.sizeBytes }} key={contentKey} data={content.data} name={name} markdownSource={markdownSource} setMarkdownSource={setMarkdownSource} dual={dual} setDual={setDual} navigationIntent={navigationIntent?.documentId === selected ? navigationIntent : undefined} navigation={{
       resolve: reference => resolveArtifactLink(reference, path(selected), Object.entries(documents).map(([key, d]) => ({key, path: path(key), aliases: [key, ...(d.name ? [d.name] : [])]}))),
       open: (key, fragment) => openDocument(key, true, fragment),
       url: source ? documentURL : undefined,
@@ -123,7 +125,7 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
       <div className="review-reading-track">
         <Card><section ref={previewRoot} className="review-document-content" aria-label="Selected document">
           {!selected ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents attached" /> : <>
-            {(!content || content.url !== url || error) && <DocumentOptions key={url} storedBytes={doc?.sizeBytes ?? doc?.stored?.key.sizeBytes} />}
+            {(!content || contentIdentity !== contentKey || error) && <DocumentOptions key={url} storedBytes={doc?.sizeBytes ?? doc?.stored?.key.sizeBytes} />}
             {preview}{details}
           </>}
         </section></Card>

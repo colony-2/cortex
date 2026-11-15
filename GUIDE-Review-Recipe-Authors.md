@@ -221,3 +221,5 @@ including encoded answers and retained invocation data. That configurable byte
 budget is not a per-field recipe limit or a universal character count. Exceeding
 it can fail the job; text is not automatically truncated or stored as an artifact.
 Later recipe steps that copy feedback also consume chapter payload space.
+
+For the new structured interface with explicit feedback rules, recipe-defined settings and continuous discussion, see [Recipe-defined reviews with continuous discussion](GUIDE-Review-v2.md). Existing ordinary reviews continue to use this guide.

@@ -271,7 +271,7 @@ describe('InputActivityService', () => {
       const result = await inputActivityService.getInputDetails(projectId, 'job-1');
       
       expect((globalThis as any).fetch).toHaveBeenCalledWith(
-        `http://localhost:8080/api/projects/${projectId}/user-inputs/job-1`
+        `http://localhost:8080/api/projects/${projectId}/user-inputs/job-1`, { signal: undefined }
       );
       expect(result).toEqual(mockDetails);
     });
@@ -418,4 +418,16 @@ describe('A05 review document URL identity', () => {
     expect(url.searchParams.get('request_id')).toBe('request & 1');
     expect(url.searchParams.get('document_id')).toBe('folder/雪.md');
   });
+});
+
+describe('review/v2 structured submission',()=>{
+ it('sends ordered multipart uploads, sparse typed settings and stable correlation; returns native receipt',async()=>{
+  const output={response:{direction:'ask',feedback:' exact ',attachments:[],settings:{strange:false,zero:0,reset:null}},receipt:{request_id:'request-v2',submission_id:'correlation'}};
+  const fetchMock=vi.fn().mockResolvedValue(new Response(JSON.stringify(output),{status:200}));vi.stubGlobal('fetch',fetchMock);
+  const files=[new File(['one'],'same.md'),new File(['two'],'same.md')];
+  const result=await inputActivityService.submitReviewV2('tenant','job','request-v2',{direction:'ask',feedback:' exact ',attachments:[],settings:{strange:false,zero:0,reset:null}},files,'correlation');
+  const body=fetchMock.mock.calls[0][1].body as FormData;
+  expect(JSON.parse(body.get('submission') as string)).toEqual({request_id:'request-v2',submission_id:'correlation',response:output.response});
+  expect(body.getAll('attachments')).toEqual(files);expect(result).toEqual(output);vi.unstubAllGlobals();
+ });
 });

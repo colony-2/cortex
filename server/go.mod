@@ -6,6 +6,7 @@ require (
 	github.com/colony-2/c2j v0.0.127-0.20261113193326-d031eb49c677
 	github.com/colony-2/cortex-assistant v0.0.0-20261112203308-0561937f92a8
 	github.com/colony-2/jobdb v0.0.83
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
@@ -49,7 +50,6 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v0.0.5-0.20231225225746-43d5d4cd4e0e // indirect
 	github.com/google/cel-go v0.28.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/itchyny/gojq v0.12.19 // indirect

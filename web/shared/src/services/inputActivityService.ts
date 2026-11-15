@@ -1,9 +1,10 @@
 import { validateJobCell } from '../cellProtocol';
 import type { RecipeJobSummary } from '../types';
+import { APIError } from '../api';
 import { API_BASE } from '../apiBase';
 import { parseJobJSON, stringifyJobJSON } from '../jobJSON';
 
-function createSubmissionId(): string {
+export function createSubmissionId(): string {
   if (typeof globalThis.crypto.randomUUID === 'function') return globalThis.crypto.randomUUID();
   // randomUUID requires a secure context; getRandomValues also works on HTTP.
   const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
@@ -98,7 +99,7 @@ export interface FormContext {
 export interface ReviewDocumentMetadata {
   title?: string;
   description?: string;
-  role?: '' | 'primary' | 'supporting' | 'diagnostic';
+  role?: '' | 'neutral' | 'primary' | 'supporting' | 'diagnostic';
   order?: number;
   source_document_ids?: string[];
 }
@@ -111,6 +112,10 @@ export interface ReviewDocument {
 
 export interface InputFormConfig {
   kind?: string;
+  presentation?: { type?: string; [key: string]: unknown };
+  request?: unknown;
+  request_schema?: Record<string, unknown>;
+  response_schema?: Record<string, unknown>;
   request_id?: string;
   documents?: Record<string, ReviewDocument>;
   document_metadata?: Record<string, ReviewDocumentMetadata>;
@@ -426,7 +431,7 @@ class InputActivityService extends EventEmitter {
     }
   }
 
-  async getInputDetails(projectId: string, jobId: string, force = false): Promise<UserInputDetails> {
+  async getInputDetails(projectId: string, jobId: string, force = false, signal?: AbortSignal): Promise<UserInputDetails> {
     const cacheKey = JSON.stringify([projectId, jobId]);
 
     // Check cache first
@@ -435,9 +440,9 @@ class InputActivityService extends EventEmitter {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/projects/${projectId}/user-inputs/${jobId}`);
+      const response = await fetch(`${API_BASE}/projects/${projectId}/user-inputs/${jobId}`, { signal });
       if (!response.ok) {
-        throw new Error(`Failed to fetch input details: ${response.statusText}`);
+        throw new APIError(`Failed to fetch input details: ${response.statusText}`, response.status);
       }
 
       const details = await response.json();
@@ -498,6 +503,22 @@ class InputActivityService extends EventEmitter {
     this.formDetailsCache.delete(JSON.stringify([projectId, jobId]));
     this.pendingInputsCache.delete(projectId);
     this.emit('input_completed', { jobId });
+  }
+
+  async submitReviewV2(projectId: string, jobId: string, requestId: string, response: import('../reviewV2').ReviewV2Response, attachments: File[], submissionId = createSubmissionId()): Promise<import('../reviewV2').ReviewV2Output> {
+    const body = new FormData();
+    body.append('submission', JSON.stringify({ request_id: requestId, submission_id: submissionId, response }));
+    for (const file of attachments) body.append('attachments', file);
+    const result = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/reviews/${encodeURIComponent(jobId)}/respond`, { method: 'POST', body });
+    if (!result.ok) {
+      const error = await result.json().catch(() => null);
+      throw new Error(error?.error || 'Submission could not be confirmed. Refresh to check acceptance before retrying.');
+    }
+    const output = await result.json();
+    this.formDetailsCache.delete(JSON.stringify([projectId, jobId]));
+    this.pendingInputsCache.delete(projectId);
+    this.emit('input_completed', { jobId });
+    return output;
   }
 
   async cancelInput(projectId: string, jobId: string, reason?: string): Promise<void> {

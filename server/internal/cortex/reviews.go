@@ -20,6 +20,7 @@ import (
 type inputRuntime interface {
 	GetForm(context.Context, string, string) (input.InputForm, error)
 	SubmitFormResponse(context.Context, string, string, input.FormSubmission, input.Actor) (input.Output, error)
+	SubmitStructuredResponse(context.Context, string, string, input.StructuredSubmission, input.Actor) (input.Output, error)
 }
 
 // Pending rows add occurrence timing without exposing form fields or documents.
@@ -131,13 +132,26 @@ func (s *Server) handleReviewResponse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
+	form, formErr := s.inputs.GetForm(r.Context(), s.tenantID(r), mux.Vars(r)["jobId"])
+	if formErr != nil {
+		writeHTTPError(w, http.StatusConflict, formErr)
+		return
+	}
+	if len(form.Presentation) > 0 || (form.Kind != "review" && form.ResponseSchema != nil) {
+		s.submitReviewV2(w, r, form, input.Actor{ID: email, Kind: "human"}, mux.Vars(r)["jobId"])
+		return
+	}
 	var submission input.FormSubmission
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		defer func() {
+			if r.MultipartForm != nil {
+				_ = r.MultipartForm.RemoveAll()
+			}
+		}()
 		if err := r.ParseMultipartForm(4 << 20); err != nil {
 			writeHTTPError(w, http.StatusBadRequest, err)
 			return
 		}
-		defer r.MultipartForm.RemoveAll()
 		if err := json.Unmarshal([]byte(r.FormValue("submission")), &submission); err != nil {
 			writeHTTPError(w, http.StatusBadRequest, err)
 			return
@@ -168,6 +182,10 @@ func (s *Server) handleReviewResponse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := s.inputs.SubmitFormResponse(r.Context(), s.tenantID(r), mux.Vars(r)["jobId"], submission, input.Actor{ID: email, Kind: "human"})
+	writeReviewResult(w, result, err)
+}
+
+func writeReviewResult(w http.ResponseWriter, result input.Output, err error) {
 	if errors.Is(err, input.ErrInputNotPending) || errors.Is(err, input.ErrStaleRequest) {
 		writeHTTPError(w, http.StatusConflict, err)
 		return

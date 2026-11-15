@@ -113,3 +113,26 @@ func TestAssistantCaptureStory(t *testing.T) {
 		t.Fatalf("story: %+v request=%+v", capture, reader.request)
 	}
 }
+
+func TestAssistantCaptureReviewV2(t *testing.T) {
+	_, _, form := nativeReviewV2(t)
+	ref := artifacts.NewStoredRef(jobdb.ArtifactKey{JobId: "child", TaskOrdinal: 3, Name: "original.md", SizeBytes: 8})
+	form.Request.(map[string]any)["documents"] = map[string]any{"original": ref}
+	runtime := &reviewRuntimeStub{forms: map[string]input.InputForm{"parent": form}}
+	engine := &assistantCaptureEngine{data: map[string][]byte{"original.md": []byte("original")}}
+	s := &Server{inputs: runtime, engine: engine}
+	source := AssistantSource{Kind: "review", JobID: "parent", RequestID: form.RequestID}
+	capture, err := s.captureAssistantSource(context.Background(), "tenant", source, assistantCaptureLimits{100, 100, 3})
+	if err != nil || len(capture.Documents) != 1 || capture.Documents[0].Text != "original" || engine.keys[0].JobId != "child" {
+		t.Fatalf("capture=%+v error=%v", capture, err)
+	}
+	delete(runtime.forms, "parent")
+	if _, err = s.captureAssistantSource(context.Background(), "tenant", source, assistantCaptureLimits{100, 100, 3}); !errors.Is(err, ErrAssistantConflict) {
+		t.Fatalf("gap allowed stale context: %v", err)
+	}
+	form.RequestID = "successor"
+	runtime.forms["parent"] = form
+	if _, err = s.captureAssistantSource(context.Background(), "tenant", source, assistantCaptureLimits{100, 100, 3}); !errors.Is(err, ErrAssistantConflict) {
+		t.Fatalf("successor allowed stale context: %v", err)
+	}
+}

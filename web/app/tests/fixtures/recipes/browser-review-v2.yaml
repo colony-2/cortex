@@ -1,0 +1,1408 @@
+{
+  "id": "browser-input",
+  "version": "1.0",
+  "input_schema": {
+    "prompt": {
+      "type": "string",
+      "default_value": ""
+    }
+  },
+  "sequence": [
+    {
+      "id": "draft",
+      "op": "command_execution",
+      "inputs": {
+        "working_directory": "{{ context.environment.op.outbox }}",
+        "run": "printf '# Keep unsent drafts\\n\\nOriginal material remains readable while questions are answered.\\n' > design.md\nprintf '# Recovery\\n\\nSaved drafts survive a restart.\\n' > recovery.md"
+      }
+    },
+    {
+      "id": "first",
+      "op": "input",
+      "inputs": {
+        "form": {
+          "title": "Review direction",
+          "presentation": {
+            "type": "review/v2"
+          },
+          "request": {
+            "review_id": "${{ context.workflow.job_id + \"/review-thread\" }}",
+            "title": "Keep unsent drafts",
+            "question": "Approve this direction so detailed planning can begin?",
+            "documents": {
+              "design": "${{ sequence.draft.artifacts[\"design.md\"] }}",
+              "recovery": "${{ sequence.draft.artifacts[\"recovery.md\"] }}"
+            },
+            "document_metadata": {
+              "design": {
+                "title": "Proposed direction",
+                "role": "primary",
+                "order": 0
+              },
+              "recovery": {
+                "title": "Recovery notes",
+                "role": "supporting",
+                "order": 1
+              }
+            },
+            "overview_document_id": "design",
+            "directions": [
+              {
+                "id": "approve",
+                "label": "Approve direction",
+                "continues_review": false,
+                "feedback_mode": "forbidden",
+                "allow_attachments": false
+              },
+              {
+                "id": "question",
+                "label": "Ask a question",
+                "continues_review": true,
+                "feedback_mode": "required",
+                "allow_attachments": true
+              },
+              {
+                "id": "annotate",
+                "label": "Review doc comments",
+                "feedback_mode": "required",
+                "allow_attachments": true,
+                "continues_review": false
+              },
+              {
+                "id": "revise",
+                "label": "Request changes",
+                "continues_review": false,
+                "feedback_mode": "required",
+                "allow_attachments": true
+              }
+            ],
+            "feedback": {
+              "label": "Question or requested change"
+            },
+            "settings": [
+              {
+                "id": "response_style",
+                "control": "choice",
+                "label": "Response style",
+                "value": "detailed",
+                "default": "brief",
+                "reset_label": "Use brief answers",
+                "choices": [
+                  {
+                    "value": "brief",
+                    "label": "Brief"
+                  },
+                  {
+                    "value": "detailed",
+                    "label": "Detailed"
+                  }
+                ],
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "brief",
+                    "detailed"
+                  ]
+                },
+                "applies_to": [
+                  "approve",
+                  "question",
+                  "revise"
+                ],
+                "effect": "Selects the brief or detailed final report template."
+              },
+              {
+                "id": "context_hint",
+                "control": "text",
+                "label": "Context hint",
+                "value": "release",
+                "default": null,
+                "reset_label": "Use default context",
+                "schema": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "minLength": 1,
+                  "pattern": "[^\t-\r    -     　﻿]"
+                },
+                "applies_to": [
+                  "question"
+                ],
+                "effect": "Carries nullable context to the next response."
+              },
+              {
+                "id": "citations",
+                "control": "boolean",
+                "label": "Include citations",
+                "value": true,
+                "default": false,
+                "reset_label": "No citations",
+                "schema": {
+                  "type": "boolean"
+                },
+                "applies_to": [
+                  "question"
+                ],
+                "effect": "Includes report citations."
+              },
+              {
+                "id": "examples",
+                "control": "number",
+                "label": "Example count",
+                "value": 2,
+                "default": 0,
+                "reset_label": "No examples",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10
+                },
+                "applies_to": [
+                  "revise"
+                ],
+                "effect": "Changes the number of examples."
+              }
+            ],
+            "conversation": []
+          },
+          "request_schema": {
+            "type": "object"
+          },
+          "response_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "direction",
+                  "feedback",
+                  "attachments",
+                  "settings"
+                ],
+                "properties": {
+                  "direction": {
+                    "const": "approve"
+                  },
+                  "feedback": {
+                    "type": "string",
+                    "maxLength": 0
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "stored"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "stored"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "stored": {
+                          "type": "object",
+                          "required": [
+                            "key"
+                          ]
+                        }
+                      }
+                    },
+                    "maxItems": 0
+                  },
+                  "settings": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "response_style": {
+                        "type": "string",
+                        "enum": [
+                          "brief",
+                          "detailed"
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "direction",
+                  "feedback",
+                  "attachments",
+                  "settings"
+                ],
+                "properties": {
+                  "direction": {
+                    "const": "question"
+                  },
+                  "feedback": {
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "stored"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "stored"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "stored": {
+                          "type": "object",
+                          "required": [
+                            "key"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "settings": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "response_style": {
+                        "type": "string",
+                        "enum": [
+                          "brief",
+                          "detailed"
+                        ]
+                      },
+                      "context_hint": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "minLength": 1,
+                        "pattern": "[^\t-\r    -     　﻿]"
+                      },
+                      "citations": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                },
+                "anyOf": [
+                  {
+                    "properties": {
+                      "feedback": {
+                        "pattern": "[^\t-\r    -     　﻿]"
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "attachments": {
+                        "minItems": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "direction",
+                  "feedback",
+                  "attachments",
+                  "settings"
+                ],
+                "properties": {
+                  "direction": {
+                    "const": "revise"
+                  },
+                  "feedback": {
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "stored"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "stored"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "stored": {
+                          "type": "object",
+                          "required": [
+                            "key"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "settings": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "response_style": {
+                        "type": "string",
+                        "enum": [
+                          "brief",
+                          "detailed"
+                        ]
+                      },
+                      "examples": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10
+                      }
+                    }
+                  }
+                },
+                "anyOf": [
+                  {
+                    "properties": {
+                      "feedback": {
+                        "pattern": "[^\t-\r    -     　﻿]"
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "attachments": {
+                        "minItems": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "direction",
+                  "feedback",
+                  "attachments",
+                  "settings"
+                ],
+                "properties": {
+                  "direction": {
+                    "const": "annotate"
+                  },
+                  "feedback": {
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "stored"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "stored"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "stored": {
+                          "type": "object",
+                          "required": [
+                            "key"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "settings": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "response_style": {
+                        "type": "string",
+                        "enum": [
+                          "brief",
+                          "detailed"
+                        ]
+                      }
+                    }
+                  }
+                },
+                "anyOf": [
+                  {
+                    "properties": {
+                      "feedback": {
+                        "pattern": "[^\t-\r    -     　﻿]"
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "attachments": {
+                        "minItems": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "second",
+      "op": "input",
+      "inputs": {
+        "form": {
+          "title": "Review direction",
+          "presentation": {
+            "type": "review/v2"
+          },
+          "request": {
+            "review_id": "${{ context.workflow.job_id + \"/review-thread\" }}",
+            "title": "Keep unsent drafts",
+            "question": "Approve this direction so detailed planning can begin?",
+            "documents": {
+              "design": "${{ sequence.draft.artifacts[\"design.md\"] }}",
+              "recovery": "${{ sequence.draft.artifacts[\"recovery.md\"] }}"
+            },
+            "document_metadata": {
+              "design": {
+                "title": "Proposed direction",
+                "role": "primary",
+                "order": 0
+              },
+              "recovery": {
+                "title": "Recovery notes",
+                "role": "supporting",
+                "order": 1
+              }
+            },
+            "overview_document_id": "design",
+            "directions": [
+              {
+                "id": "approve",
+                "label": "Approve direction",
+                "continues_review": false,
+                "feedback_mode": "forbidden",
+                "allow_attachments": false
+              },
+              {
+                "id": "question",
+                "label": "Ask a question",
+                "continues_review": true,
+                "feedback_mode": "required",
+                "allow_attachments": true
+              },
+              {
+                "id": "annotate",
+                "label": "Review doc comments",
+                "feedback_mode": "required",
+                "allow_attachments": true,
+                "continues_review": false
+              },
+              {
+                "id": "revise",
+                "label": "Request changes",
+                "continues_review": false,
+                "feedback_mode": "required",
+                "allow_attachments": true
+              }
+            ],
+            "feedback": {
+              "label": "Question or requested change"
+            },
+            "settings": [
+              {
+                "id": "response_style",
+                "control": "choice",
+                "label": "Response style",
+                "value": "${{ has(sequence.first.outputs.response.settings.response_style) ? sequence.first.outputs.response.settings.response_style : \"detailed\" }}",
+                "default": "brief",
+                "reset_label": "Use brief answers",
+                "choices": [
+                  {
+                    "value": "brief",
+                    "label": "Brief"
+                  },
+                  {
+                    "value": "detailed",
+                    "label": "Detailed"
+                  }
+                ],
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "brief",
+                    "detailed"
+                  ]
+                },
+                "applies_to": [
+                  "approve",
+                  "question",
+                  "revise"
+                ],
+                "effect": "Selects the brief or detailed final report template."
+              },
+              {
+                "id": "context_hint",
+                "control": "text",
+                "label": "Context hint",
+                "value": "${{ has(sequence.first.outputs.response.settings.context_hint) ? sequence.first.outputs.response.settings.context_hint : \"release\" }}",
+                "default": null,
+                "reset_label": "Use default context",
+                "schema": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "minLength": 1,
+                  "pattern": "[^\t-\r    -     　﻿]"
+                },
+                "applies_to": [
+                  "question"
+                ],
+                "effect": "Carries nullable context to the next response."
+              },
+              {
+                "id": "citations",
+                "control": "boolean",
+                "label": "Include citations",
+                "value": "${{ has(sequence.first.outputs.response.settings.citations) ? sequence.first.outputs.response.settings.citations : true }}",
+                "default": false,
+                "reset_label": "No citations",
+                "schema": {
+                  "type": "boolean"
+                },
+                "applies_to": [
+                  "question"
+                ],
+                "effect": "Includes report citations."
+              },
+              {
+                "id": "examples",
+                "control": "number",
+                "label": "Example count",
+                "value": 2,
+                "default": 0,
+                "reset_label": "No examples",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10
+                },
+                "applies_to": [
+                  "revise"
+                ],
+                "effect": "Changes the number of examples."
+              }
+            ],
+            "conversation": [
+              {
+                "role": "human",
+                "direction": "${{ sequence.first.outputs.response.direction }}",
+                "text": "${{ sequence.first.outputs.response.feedback }}",
+                "attachments": "${{ sequence.first.outputs.response.attachments }}",
+                "settings": "${{ sequence.first.outputs.response.settings }}",
+                "receipt": "${{ sequence.first.outputs.receipt }}"
+              },
+              {
+                "role": "agent",
+                "text": "Saved drafts return when you reopen the app.",
+                "attachments": []
+              }
+            ]
+          },
+          "request_schema": {
+            "type": "object"
+          },
+          "response_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "direction",
+                  "feedback",
+                  "attachments",
+                  "settings"
+                ],
+                "properties": {
+                  "direction": {
+                    "const": "approve"
+                  },
+                  "feedback": {
+                    "type": "string",
+                    "maxLength": 0
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "stored"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "stored"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "stored": {
+                          "type": "object",
+                          "required": [
+                            "key"
+                          ]
+                        }
+                      }
+                    },
+                    "maxItems": 0
+                  },
+                  "settings": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "response_style": {
+                        "type": "string",
+                        "enum": [
+                          "brief",
+                          "detailed"
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "direction",
+                  "feedback",
+                  "attachments",
+                  "settings"
+                ],
+                "properties": {
+                  "direction": {
+                    "const": "question"
+                  },
+                  "feedback": {
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "stored"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "stored"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "stored": {
+                          "type": "object",
+                          "required": [
+                            "key"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "settings": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "response_style": {
+                        "type": "string",
+                        "enum": [
+                          "brief",
+                          "detailed"
+                        ]
+                      },
+                      "context_hint": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "minLength": 1,
+                        "pattern": "[^\t-\r    -     　﻿]"
+                      },
+                      "citations": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                },
+                "anyOf": [
+                  {
+                    "properties": {
+                      "feedback": {
+                        "pattern": "[^\t-\r    -     　﻿]"
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "attachments": {
+                        "minItems": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "direction",
+                  "feedback",
+                  "attachments",
+                  "settings"
+                ],
+                "properties": {
+                  "direction": {
+                    "const": "revise"
+                  },
+                  "feedback": {
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "stored"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "stored"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "stored": {
+                          "type": "object",
+                          "required": [
+                            "key"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "settings": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "response_style": {
+                        "type": "string",
+                        "enum": [
+                          "brief",
+                          "detailed"
+                        ]
+                      },
+                      "examples": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10
+                      }
+                    }
+                  }
+                },
+                "anyOf": [
+                  {
+                    "properties": {
+                      "feedback": {
+                        "pattern": "[^\t-\r    -     　﻿]"
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "attachments": {
+                        "minItems": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "direction",
+                  "feedback",
+                  "attachments",
+                  "settings"
+                ],
+                "properties": {
+                  "direction": {
+                    "const": "annotate"
+                  },
+                  "feedback": {
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "stored"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "stored"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "stored": {
+                          "type": "object",
+                          "required": [
+                            "key"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "settings": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "response_style": {
+                        "type": "string",
+                        "enum": [
+                          "brief",
+                          "detailed"
+                        ]
+                      }
+                    }
+                  }
+                },
+                "anyOf": [
+                  {
+                    "properties": {
+                      "feedback": {
+                        "pattern": "[^\t-\r    -     　﻿]"
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "attachments": {
+                        "minItems": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "final",
+      "op": "input",
+      "inputs": {
+        "form": {
+          "title": "Review direction",
+          "presentation": {
+            "type": "review/v2"
+          },
+          "request": {
+            "review_id": "${{ context.workflow.job_id + \"/review-thread\" }}",
+            "title": "Keep unsent drafts",
+            "question": "Approve this direction so detailed planning can begin?",
+            "documents": {
+              "design": "${{ sequence.draft.artifacts[\"design.md\"] }}",
+              "recovery": "${{ sequence.draft.artifacts[\"recovery.md\"] }}"
+            },
+            "document_metadata": {
+              "design": {
+                "title": "Proposed direction",
+                "role": "primary",
+                "order": 0
+              },
+              "recovery": {
+                "title": "Recovery notes",
+                "role": "supporting",
+                "order": 1
+              }
+            },
+            "overview_document_id": "design",
+            "directions": [
+              {
+                "id": "approve",
+                "label": "Approve direction",
+                "continues_review": false,
+                "feedback_mode": "forbidden",
+                "allow_attachments": false
+              },
+              {
+                "id": "question",
+                "label": "Ask a question",
+                "continues_review": true,
+                "feedback_mode": "required",
+                "allow_attachments": true
+              },
+              {
+                "id": "annotate",
+                "label": "Review doc comments",
+                "feedback_mode": "required",
+                "allow_attachments": true,
+                "continues_review": false
+              },
+              {
+                "id": "revise",
+                "label": "Request changes",
+                "continues_review": false,
+                "feedback_mode": "required",
+                "allow_attachments": true
+              }
+            ],
+            "feedback": {
+              "label": "Question or requested change"
+            },
+            "settings": [
+              {
+                "id": "response_style",
+                "control": "choice",
+                "label": "Response style",
+                "value": "${{ has(sequence.first.outputs.response.settings.response_style) ? sequence.first.outputs.response.settings.response_style : \"detailed\" }}",
+                "default": "brief",
+                "reset_label": "Use brief answers",
+                "choices": [
+                  {
+                    "value": "brief",
+                    "label": "Brief"
+                  },
+                  {
+                    "value": "detailed",
+                    "label": "Detailed"
+                  }
+                ],
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "brief",
+                    "detailed"
+                  ]
+                },
+                "applies_to": [
+                  "approve",
+                  "question",
+                  "revise"
+                ],
+                "effect": "Selects the brief or detailed final report template."
+              },
+              {
+                "id": "context_hint",
+                "control": "text",
+                "label": "Context hint",
+                "value": "${{ has(sequence.first.outputs.response.settings.context_hint) ? sequence.first.outputs.response.settings.context_hint : \"release\" }}",
+                "default": null,
+                "reset_label": "Use default context",
+                "schema": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "minLength": 1,
+                  "pattern": "[^\t-\r    -     　﻿]"
+                },
+                "applies_to": [
+                  "question"
+                ],
+                "effect": "Carries nullable context to the next response."
+              },
+              {
+                "id": "citations",
+                "control": "boolean",
+                "label": "Include citations",
+                "value": "${{ has(sequence.first.outputs.response.settings.citations) ? sequence.first.outputs.response.settings.citations : true }}",
+                "default": false,
+                "reset_label": "No citations",
+                "schema": {
+                  "type": "boolean"
+                },
+                "applies_to": [
+                  "question"
+                ],
+                "effect": "Includes report citations."
+              },
+              {
+                "id": "examples",
+                "control": "number",
+                "label": "Example count",
+                "value": 2,
+                "default": 0,
+                "reset_label": "No examples",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10
+                },
+                "applies_to": [
+                  "revise"
+                ],
+                "effect": "Changes the number of examples."
+              }
+            ],
+            "conversation": [
+              {
+                "role": "human",
+                "direction": "${{ sequence.first.outputs.response.direction }}",
+                "text": "${{ sequence.first.outputs.response.feedback }}",
+                "attachments": "${{ sequence.first.outputs.response.attachments }}",
+                "settings": "${{ sequence.first.outputs.response.settings }}",
+                "receipt": "${{ sequence.first.outputs.receipt }}"
+              },
+              {
+                "role": "agent",
+                "text": "Saved drafts return when you reopen the app.",
+                "attachments": []
+              },
+              {
+                "role": "human",
+                "direction": "${{ sequence.second.outputs.response.direction }}",
+                "text": "${{ sequence.second.outputs.response.feedback }}",
+                "attachments": "${{ sequence.second.outputs.response.attachments }}",
+                "settings": "${{ sequence.second.outputs.response.settings }}",
+                "receipt": "${{ sequence.second.outputs.receipt }}"
+              },
+              {
+                "role": "agent",
+                "text": "Earlier notes keep their original producer references.",
+                "attachments": []
+              }
+            ]
+          },
+          "request_schema": {
+            "type": "object"
+          },
+          "response_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "direction",
+                  "feedback",
+                  "attachments",
+                  "settings"
+                ],
+                "properties": {
+                  "direction": {
+                    "const": "approve"
+                  },
+                  "feedback": {
+                    "type": "string",
+                    "maxLength": 0
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "stored"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "stored"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "stored": {
+                          "type": "object",
+                          "required": [
+                            "key"
+                          ]
+                        }
+                      }
+                    },
+                    "maxItems": 0
+                  },
+                  "settings": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "response_style": {
+                        "type": "string",
+                        "enum": [
+                          "brief",
+                          "detailed"
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "direction",
+                  "feedback",
+                  "attachments",
+                  "settings"
+                ],
+                "properties": {
+                  "direction": {
+                    "const": "question"
+                  },
+                  "feedback": {
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "stored"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "stored"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "stored": {
+                          "type": "object",
+                          "required": [
+                            "key"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "settings": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "response_style": {
+                        "type": "string",
+                        "enum": [
+                          "brief",
+                          "detailed"
+                        ]
+                      },
+                      "context_hint": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "minLength": 1,
+                        "pattern": "[^\t-\r    -     　﻿]"
+                      },
+                      "citations": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                },
+                "anyOf": [
+                  {
+                    "properties": {
+                      "feedback": {
+                        "pattern": "[^\t-\r    -     　﻿]"
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "attachments": {
+                        "minItems": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "direction",
+                  "feedback",
+                  "attachments",
+                  "settings"
+                ],
+                "properties": {
+                  "direction": {
+                    "const": "revise"
+                  },
+                  "feedback": {
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "stored"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "stored"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "stored": {
+                          "type": "object",
+                          "required": [
+                            "key"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "settings": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "response_style": {
+                        "type": "string",
+                        "enum": [
+                          "brief",
+                          "detailed"
+                        ]
+                      },
+                      "examples": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10
+                      }
+                    }
+                  }
+                },
+                "anyOf": [
+                  {
+                    "properties": {
+                      "feedback": {
+                        "pattern": "[^\t-\r    -     　﻿]"
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "attachments": {
+                        "minItems": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "direction",
+                  "feedback",
+                  "attachments",
+                  "settings"
+                ],
+                "properties": {
+                  "direction": {
+                    "const": "annotate"
+                  },
+                  "feedback": {
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "stored"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "stored"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "stored": {
+                          "type": "object",
+                          "required": [
+                            "key"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "settings": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "response_style": {
+                        "type": "string",
+                        "enum": [
+                          "brief",
+                          "detailed"
+                        ]
+                      }
+                    }
+                  }
+                },
+                "anyOf": [
+                  {
+                    "properties": {
+                      "feedback": {
+                        "pattern": "[^\t-\r    -     　﻿]"
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "attachments": {
+                        "minItems": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "first": "${{ sequence.first.outputs }}",
+    "second": "${{ sequence.second.outputs }}",
+    "final": "${{ sequence.final.outputs }}",
+    "report": "${{ has(sequence.first.outputs.response.settings.response_style) && sequence.first.outputs.response.settings.response_style == \"brief\" ? \"Brief report\" : \"Detailed report with supporting explanation\" }}"
+  }
+}

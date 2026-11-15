@@ -47,7 +47,10 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: [['list'], ['html', { open: 'never' }]],
-  timeout: 30000, // 30s per test
+  // Compound journeys include full navigations, responsive layouts and dialogs.
+  // Allow their total on constrained CI workers; action/assertion limits below
+  // still catch a stalled interaction after 15 seconds.
+  timeout: process.env.CI ? 60_000 : 30_000,
   expect: {
     timeout: 15000 // 15s default timeout for expect assertions
   },

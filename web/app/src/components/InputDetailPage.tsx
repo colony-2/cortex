@@ -2,14 +2,15 @@ import { useAssistantSource } from './AssistantContext';
 import { useCompact } from '../hooks/useCompact';
 import ReviewJobContext from './ReviewJobContext';
 import { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, Button, Space, Typography, message, Spin, Alert } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
-import { inputActivityService, type UserInputDetails, type FormResponse } from '@colony2/shared';
+import { inputActivityService, type UserInputDetails, type FormResponse, parseReviewV2 } from '@colony2/shared';
 import ReviewDocuments from './ReviewDocuments';
 import InputFormRenderer from './InputFormRenderer';
 import { adaptInputFormConfig } from '../utils/formAdapter';
 import { reviewActionField } from '../utils/reviewForm';
+import ReviewV2 from './ReviewV2';
 import CancelJobButton from './CancelJobButton';
 
 const { Title, Text } = Typography;
@@ -19,6 +20,12 @@ interface InputDetailPageProps {
 }
 
 export default function InputDetailPage({ projectId }: InputDetailPageProps) {
+  const [search] = useSearchParams();
+  const {jobId} = useParams<{jobId:string}>();
+  const selected=search.get('review_id');
+  return selected && jobId ? <ReviewV2 key={JSON.stringify([projectId,jobId,selected])} tenant={projectId} job={jobId} reviewId={selected}/> : <InputRequestPage projectId={projectId}/>;
+}
+function InputRequestPage({ projectId }: InputDetailPageProps) {
   const compact = useCompact();
   const { jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
@@ -108,6 +115,14 @@ export default function InputDetailPage({ projectId }: InputDetailPageProps) {
     );
   }
 
+  if (details.form.presentation?.type || details.form.response_schema) {
+    if(details.form.presentation?.type !== 'review/v2') return <Alert type="error" message="Unsupported input presentation" description={`This client cannot answer ${details.form.presentation?.type ?? 'this structured request'}.`}/>;
+    try {
+      const request = parseReviewV2(details.form.request);
+      if(!details.form.request_id || !details.form.request_schema || !details.form.response_schema)throw new Error('Missing native structured request contract');
+      return <ReviewV2 tenant={projectId} job={jobId} reviewId={request.review_id} initial={details}/>;
+    } catch(e) {return <Alert type="error" message="Incompatible review request" description={e instanceof Error ? e.message : String(e)}/>;}
+  }
   const form = adaptInputFormConfig(details.form, jobId);
   const reviewPrompt = reviewActionField(form)?.label;
 

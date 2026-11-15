@@ -59,14 +59,24 @@ func (s *Server) captureAssistantSource(ctx context.Context, tenant string, sour
 			}
 			return capture, ErrAssistantUnavailable
 		}
-		if form.Kind != "review" || form.RequestID != source.RequestID {
+		documents := form.Documents
+		if form.Presentation["type"] == "review/v2" {
+			request, err := reviewV2Form(form)
+			if err != nil {
+				return capture, ErrAssistantInvalid
+			}
+			documents = request.Documents
+		} else if form.Kind != "review" {
 			return capture, ErrAssistantConflict
 		}
-		if len(form.Documents) > limits.Documents {
+		if form.RequestID != source.RequestID {
+			return capture, ErrAssistantConflict
+		}
+		if len(documents) > limits.Documents {
 			return capture, ErrAssistantInvalid
 		}
-		ids := make([]string, 0, len(form.Documents))
-		for id := range form.Documents {
+		ids := make([]string, 0, len(documents))
+		for id := range documents {
 			ids = append(ids, id)
 		}
 		sort.Strings(ids)
@@ -75,7 +85,7 @@ func (s *Server) captureAssistantSource(ctx context.Context, tenant string, sour
 			if err := ctx.Err(); err != nil {
 				return capture, err
 			}
-			ref := form.Documents[id]
+			ref := documents[id]
 			d := assistantCapturedDocument{ID: id, Outcome: "unavailable"}
 			// Only the authoritative stored reference is eligible. A URL is never fetched.
 			if ref.Kind != artifacts.RefKindStored || ref.Stored == nil || ref.Validate() != nil {
@@ -146,7 +156,17 @@ func (s *Server) captureAssistantSource(ctx context.Context, tenant string, sour
 			}
 			return capture, ErrAssistantUnavailable
 		}
-		if current.RequestID != source.RequestID || current.Kind != "review" || !reflect.DeepEqual(form.Documents, current.Documents) {
+		currentDocuments := current.Documents
+		if current.Presentation["type"] == "review/v2" {
+			request, err := reviewV2Form(current)
+			if err != nil {
+				return capture, ErrAssistantConflict
+			}
+			currentDocuments = request.Documents
+		} else if current.Kind != "review" {
+			return capture, ErrAssistantConflict
+		}
+		if current.RequestID != source.RequestID || !reflect.DeepEqual(documents, currentDocuments) {
 			return capture, ErrAssistantConflict
 		}
 	case "story":

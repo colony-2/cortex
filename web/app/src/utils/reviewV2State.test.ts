@@ -1,0 +1,41 @@
+import {describe,it,expect} from 'vitest';
+import {reviewV2Fixture} from '../../../shared/src/test/reviewV2Fixture';
+import {reconcileReviewV2,reviewV2FromForm} from './reviewV2State';
+import type {HistoryDetail,RecipeJob,ReviewV2Output,UserInputDetails} from '@colony2/shared';
+const request=reviewV2Fixture();
+const current=(id='native-one',r=request):UserInputDetails=>({jobId:'job',status:'pending',startTime:'now',form:{request_id:id,presentation:{type:'review/v2'},request:r,response_schema:{oneOf:[]},request_schema:{type:'object'}}});
+const output=(direction='ask',id='native-one'):ReviewV2Output=>({response:{direction,feedback:' same text ',attachments:[],settings:{old:null}},receipt:{request_id:id,submission_id:'submission-'+id}});
+const history=(accepted=true,id='native-one'):HistoryDetail=>({entry_id:'entry-'+id,request_id:id,raw_form:current(id).form,accepted_response:{present:accepted,raw:output().response},raw_accepted_output:accepted?output('ask',id):undefined,actor:{receipt:accepted?output('ask',id).receipt:undefined}} as HistoryDetail);
+const job=(status='ACTIVE',extra={}):RecipeJob=>({status,store:'ACTIVE',...extra} as RecipeJob);
+describe('review/v2 reconciliation',()=>{
+ it('requires an exact current input occurrence before enabling actions',()=>{expect(reconcileReviewV2('review-one',current(),history(false),job()).phase).toBe('actionable');expect(reconcileReviewV2('review-one',undefined,history(false),job()).phase).toBe('unavailable');expect(reviewV2FromForm({kind:'review'})).toBeUndefined();});
+ it('recovers acceptance during a gap and preserves exact feedback and settings',()=>{const view=reconcileReviewV2('review-one',undefined,history(),job());expect(view.phase).toBe('waiting');expect(view.conversation).toEqual([{role:'human',direction:'ask',text:' same text ',attachments:[],settings:{old:null},receipt:output().receipt}]);});
+ it('recorded acceptance disables an independently observed stale current input',()=>{const view=reconcileReviewV2('review-one',current(),history(),job());expect(view.phase).toBe('waiting');expect(view.current).toBeUndefined();});
+ it('provisional acceptance also disables a stale current input',()=>{const view=reconcileReviewV2('review-one',current(),undefined,job(),{request,output:output()});expect(view.phase).toBe('waiting');});
+ it('retains verified originals through provisional acceptance without reusing contribution bindings',()=>{
+  const frozen=history(false);
+  const previous=reconcileReviewV2('review-one',current(),frozen,job());
+  const view=reconcileReviewV2('review-one',undefined,undefined,job(),{request,output:output()},previous);
+  expect(view.phase).toBe('waiting');expect(view.documentHistory).toBe(frozen);
+  expect(view.history).toBeUndefined();expect(view.conversation[0].text).toBe(' same text ');
+ });
+ it('retains original mappings across occurrences only while all original references match',()=>{
+  const frozen=history();
+  const previous=reconcileReviewV2('review-one',undefined,frozen,job());
+  const next=reviewV2Fixture();
+  const successor=reconcileReviewV2('review-one',current('native-two',next),undefined,job(),undefined,previous);
+  expect(successor.documentHistory).toBe(frozen);
+  const changed=reviewV2Fixture();changed.documents.design.stored.key.name='replacement.md';
+  expect(reconcileReviewV2('review-one',current('native-two',changed),undefined,job(),undefined,previous).documentHistory).toBeUndefined();
+  const other=reviewV2Fixture();other.review_id='other';
+  expect(reconcileReviewV2('other',current('other',other),undefined,job(),undefined,previous).documentHistory).toBeUndefined();
+ });
+ it('matching successors replace authoritative conversation without appending old turns',()=>{const next=reviewV2Fixture();next.conversation=[{role:'human',direction:'ask',text:' same text ',attachments:[],receipt:output().receipt,settings:{old:null}},{role:'agent',text:'Actual answer',attachments:[]}];const view=reconcileReviewV2('review-one',current('native-two',next),history(),job(),{request,output:output()});expect(view.phase).toBe('actionable');expect(view.current?.form.request_id).toBe('native-two');expect(view.conversation).toEqual(next.conversation);});
+ it('receipt identity distinguishes repeated identical words',()=>{const req=reviewV2Fixture();req.conversation=[{role:'human',direction:'ask',text:' same text ',attachments:[],receipt:output('ask','older').receipt}];const h=history();h.raw_form=current('native-one',req).form;const view=reconcileReviewV2('review-one',undefined,h,job());expect(view.conversation).toHaveLength(2);});
+ it('does not let an old provisional response hide a retained successor',()=>{const h=history(false,'native-two');const next=reviewV2Fixture();next.conversation=[{role:'agent',text:'New answer',attachments:[]}];h.raw_form=current('native-two',next).form;const view=reconcileReviewV2('review-one',undefined,h,job(),{request,output:output()});expect(view.request).toBe(next);expect(view.conversation).toHaveLength(1);});
+ it('keeps different logical reviews and ordinary inputs separate',()=>{const other=reviewV2Fixture();other.review_id='other';for(const input of [current('other',other),{...current(),form:{question:'ordinary'}}]){const view=reconcileReviewV2('review-one',input,history(),job());expect(view.phase).toBe('other');expect(view.current).toBeUndefined();expect(view.request.review_id).toBe('review-one');}});
+ it('exit responses mean sent without implying publication or job success',()=>{const h=history();h.raw_accepted_output=output('go');const view=reconcileReviewV2('review-one',undefined,h,job());expect(view.phase).toBe('sent');expect(view.message).toBeUndefined();});
+ it.each(['cancelled','failed_app','failed_system','failed_timeout','success'])('stops at actual terminal outcome %s',completion=>{const view=reconcileReviewV2('review-one',undefined,history(),job('COMPLETED',{completion_status:completion}));expect(view.phase).toBe('terminal');expect(view.current).toBeUndefined();});
+ it('cancellation requests and retrying failures remain nonterminal',()=>{const view=reconcileReviewV2('review-one',undefined,history(),job('READY',{cancel_requested:true,completion_status:'failed_app'}));expect(view.phase).toBe('waiting');});
+ it('fails closed for missing selection and preserves saved content without inventing closure',()=>{expect(()=>reconcileReviewV2('missing',current(),history(),job())).toThrow();const old=reconcileReviewV2('review-one',undefined,history(),job());const view=reconcileReviewV2('review-one',undefined,undefined,job(),undefined,old);expect(view.phase).toBe('unavailable');expect(view.request).toBe(old.request);});
+});
