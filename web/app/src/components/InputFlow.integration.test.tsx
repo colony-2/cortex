@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { useEffect } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter, MemoryRouter, Routes, Route } from 'react-router-dom';
@@ -348,6 +349,14 @@ describe('Input Flow - Complete E2E Integration', () => {
 
 describe('MAL review draft preservation', () => {
   it('MAL-014 preserves draft and request identity without submitting on document navigation', async () => {
+    const router = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+    function NavigationHarness() {
+      const navigate = router.useNavigate();
+      const location = router.useLocation();
+      useEffect(() => { mockNavigate.mockImplementation(navigate); }, [navigate]);
+      return <output aria-label="Review URL">{location.pathname}{location.search}</output>;
+    }
+    mockNavigate.mockReset();
     const details = {...createMockSingleQuestionDetails('review-job'),form:{kind:'review' as const,request_id:'request-1',overview_document_id:'a',document_metadata:{a:{title:'Design overview',order:5,source_document_ids:['b']},b:{title:'Source notes',order:0}},fields:[{id:'notes',question:'Notes',type:'paragraph_text' as const,required:true}],documents:{
       a:{kind:'stored' as const,stored:{key:{jobId:'producer',taskOrdinal:1,name:'bar.md'}}},
       b:{kind:'stored' as const,stored:{key:{jobId:'producer',taskOrdinal:2,name:'foo.md'}}},
@@ -357,7 +366,7 @@ describe('MAL review draft preservation', () => {
     const fetcher=vi.fn(async(url:string)=>url.includes('/documents?')?new Response(url.includes('document_id=a')?'[next](foo.md)':'# Foo'):new Response('{}',{headers:{'Content-Type':'application/json'}}));
     vi.stubGlobal('fetch',fetcher);
     try {
-      render(<MemoryRouter initialEntries={['/project/tenant/reviews/review-job']}><Routes><Route path="/project/:projectId/reviews/:jobId" element={<InputDetailPage projectId="tenant"/>}/></Routes></MemoryRouter>);
+      render(<MemoryRouter initialEntries={['/project/tenant/reviews/review-job']}><NavigationHarness/><Routes><Route path="/project/:projectId/reviews/:jobId" element={<InputDetailPage projectId="tenant"/>}/></Routes></MemoryRouter>);
       await userEvent.setup().type(await screen.findByRole('textbox',{name:'Notes'}),'Keep this draft');
       expect(screen.queryByRole('navigation',{name:'Review documents'})).toBeNull();
       fireEvent.click(screen.getByRole('button',{name:'Show documents'}));
@@ -366,9 +375,17 @@ describe('MAL review draft preservation', () => {
       fireEvent.click(screen.getByRole('button',{name:/Design overview/}));
       fireEvent.click(await screen.findByRole('button',{name:'next'}));await screen.findByRole('heading',{name:'Foo'});
       expect(screen.getByRole('textbox',{name:'Notes'})).toHaveValue('Keep this draft');
-      expect(submit).not.toHaveBeenCalled();expect(mockNavigate).not.toHaveBeenCalled();
+      expect(submit).not.toHaveBeenCalled();
+      const destination = (id: string) => ({pathname:'/project/tenant/reviews/review-job',search:`?request_id=request-1&document_id=${id}`,hash:''});
+      expect(mockNavigate.mock.calls).toEqual([
+        [destination('a'), {replace:true}],
+        [destination('b')],
+        [destination('a')],
+        [destination('b')],
+      ]);
+      expect(screen.getByLabelText('Review URL')).toHaveTextContent('/project/tenant/reviews/review-job?request_id=request-1&document_id=b');
       expect(fetcher.mock.calls.filter(([url])=>url.includes('/documents?')).every(([url])=>url.includes('request_id=request-1'))).toBe(true);
       expect(screen.queryByText('Required')).toBeNull();expect(getDetails).toHaveBeenCalledTimes(1);
-    } finally {getDetails.mockRestore();submit.mockRestore();vi.unstubAllGlobals();}
+    } finally {getDetails.mockRestore();submit.mockRestore();vi.unstubAllGlobals();mockNavigate.mockReset();}
   });
 });

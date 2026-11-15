@@ -136,17 +136,27 @@ for (const viewport of [{width:1280,height:800},{width:390,height:844}]) {
       await scope.getByRole('button',{name:'escape',exact:true}).click();
       await expect(scope.getByRole('status')).toContainText('outside-context');
       expect(requested).toHaveLength(initialRequests);
+      expect(page.url()).toBe(originalURL);
       const next=scope.getByRole('button',{name:'next',exact:true});await next.focus();await page.keyboard.press('Enter');
       await expect(scope.getByRole('heading',{name:'Target',exact:true}).nth(1)).toBeInViewport();
       await expect(page.getByLabel('Document preview',{exact:true})).toBeFocused();
+      if(viewer==='review') {
+        const url=new URL(page.url());
+        expect(url.pathname).toBe('/project/tenant/reviews/job');
+        expect(url.searchParams.getAll('request_id')).toEqual(['request-1']);
+        expect(url.searchParams.getAll('document_id')).toEqual(['b/雪']);
+      } else expect(page.url()).toBe(originalURL);
+      const targetURL=page.url();
       if(viewer==='review'&&viewport.width>=600)await expect(page.getByRole('navigation',{name:'Review documents'})).toBeAttached();
       await page.screenshot({path:testInfo.outputPath(`${viewer}-${viewport.width}-target.png`)});
       expect(new Set(requested).size).toBe(2);const targetRequests=requested.length;expect(requested.at(-1)).not.toContain('ignored');
       await scope.getByRole('button',{name:'missing anchor',exact:true}).click();await expect(scope.getByRole('status')).toContainText('Anchor unavailable: unknown');
       await scope.getByRole('button',{name:'same',exact:true}).click();await expect(scope.getByRole('heading',{name:'Target',exact:true}).nth(1)).toBeInViewport();
       await scope.getByRole('button',{name:'self',exact:true}).click({modifiers:['Control']});await expect(scope.getByRole('heading',{name:'Target',exact:true}).first()).toBeInViewport();
-      expect(requested).toHaveLength(targetRequests);expect(context.pages()).toHaveLength(1);expect(page.url()).toBe(originalURL);
+      expect(requested).toHaveLength(targetRequests);expect(context.pages()).toHaveLength(1);expect(page.url()).toBe(targetURL);
       await scope.getByRole('button',{name:'json',exact:true}).click();await expect(scope.getByLabel('Formatted JSON')).toContainText('42');
+      if(viewer==='review')expect(new URL(page.url()).searchParams.getAll('document_id')).toEqual(['z']);
+      else expect(page.url()).toBe(originalURL);
       expect(new Set(requested).size).toBe(3);expect(writes).toEqual([]);
       if(viewer==='story')await scope.getByRole('button',{name:'Close',exact:true}).last().click();
       if(viewer==='story'&&opener)await expect(opener).toBeFocused();

@@ -492,3 +492,103 @@ it('CC/RM-002 preserves historical metadata without a stored mapping and reports
   fireEvent.click(screen.getByRole('button',{name:'Document options'}));
   expect(screen.getByRole('dialog')).toHaveTextContent('Stored size: Unknown bytes');
 });
+
+describe('controlled review selection', () => {
+  const docs = { a: { name: 'a.md' }, 'b/雪': { name: 'b.md' }, c: { name: 'c.md' } };
+  it('H21-23 delegates catalog, source and attachment links; local controls never navigate', async () => {
+    const select = vi.fn();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('# Alpha\n\n[next](b.md#target) [self](a.md#alpha) [missing](missing.md)')));
+    render(<ReviewDocuments projectId="tenant" jobId="job" requestId="r" documents={docs}
+      documentMetadata={{ a: { source_document_ids: ['b/雪'] } }} selection={{ documentId: 'a', onSelect: select }} />);
+    await screen.findByRole('heading', { name: 'Alpha' });
+    fireEvent.click(screen.getByRole('button', { name: 'next' }));
+    expect(select).toHaveBeenLastCalledWith('b/雪');
+    expect(screen.getByRole('heading', { name: 'Alpha' })).toBeVisible();
+    fireEvent.click(screen.getByRole('link', { name: /b.md.*b\/雪/ }));
+    expect(select).toHaveBeenLastCalledWith('b/雪');
+    fireEvent.click(screen.getByRole('navigation', { name: 'Review documents' }).querySelectorAll('button')[2]);
+    expect(select).toHaveBeenLastCalledWith('c');
+    select.mockClear();
+    fireEvent.click(screen.getByRole('navigation', { name: 'Review documents' }).querySelectorAll('button')[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'self' }));
+    fireEvent.click(screen.getByRole('button', { name: 'missing' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hide documents' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show documents' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Document options' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Markdown', exact: true }));
+    expect(select).not.toHaveBeenCalled();
+    expect(screen.getByRole('link', { name: 'Download' }).getAttribute('href')).toContain('/reviews/job/documents?request_id=r&document_id=a');
+  });
+  it.each(['success', 'failure'])('H25-26 aborts parent-driven obsolete loads and suppresses late %s', async result => {
+    let settle!: (value: Response) => void;
+    let reject!: (error: Error) => void;
+    let signal!: AbortSignal;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, options: RequestInit) => {
+      if (new URL(url).searchParams.get('document_id') === 'b/雪') {
+        signal = options.signal as AbortSignal;
+        return new Promise<Response>((resolve, fail) => { settle = resolve; reject = fail; });
+      }
+      return new Response('# Current\n[self](a.md#current)');
+    }));
+    const select = vi.fn();
+    const view = (id: string) => <ReviewDocuments projectId="tenant" jobId="job" requestId="r" documents={docs} selection={{ documentId: id, onSelect: select }} />;
+    const { rerender } = render(view('a'));
+    const scroll = vi.fn();
+    screen.getByLabelText('Selected document').scrollIntoView = scroll;
+    await screen.findByRole('heading', { name: 'Current' });
+    fireEvent.click(screen.getByRole('button', { name: 'self' }));
+    rerender(view('b/雪'));
+    await screen.findByLabelText('Loading document');
+    rerender(view('a'));
+    await screen.findByRole('heading', { name: 'Current' });
+    expect(signal.aborted).toBe(true);
+    await act(async () => result === 'success' ? settle(new Response('# Obsolete')) : reject(new Error('Obsolete error')));
+    expect(screen.queryByText(/Obsolete/)).toBeNull();
+    expect(select).not.toHaveBeenCalled();
+    expect(scroll).toHaveBeenCalledWith({ block: 'start' });
+  });
+  it('H27 keeps parent selection on fetch failure and retries the identical endpoint', async () => {
+    const select = vi.fn();
+    const mock = vi.fn().mockResolvedValueOnce(new Response('denied', { status: 403 })).mockResolvedValueOnce(new Response('# Recovered'));
+    vi.stubGlobal('fetch', mock);
+    render(<ReviewDocuments projectId="tenant" jobId="job" requestId="r" documents={docs} selection={{ documentId: 'b/雪', onSelect: select }} />);
+    await screen.findByText(/Could not load/);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByRole('heading', { name: 'Recovered' });
+    expect(mock.mock.calls[0][0]).toBe(mock.mock.calls[1][0]);
+    expect(select).not.toHaveBeenCalled();
+  });
+});
+
+
+it('keeps retained content across refreshed URLs while controlled navigation cancels obsolete loads', async () => {
+  let finish!: (response: Response) => void;
+  let pendingSignal!: AbortSignal;
+  const fetcher = vi.fn(async (url: string, options: RequestInit) => {
+    if (url.includes('/b?')) {
+      pendingSignal = options.signal as AbortSignal;
+      return new Promise<Response>(resolve => { finish = resolve; });
+    }
+    return new Response('# Retained original');
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const select = vi.fn();
+  const view = (documentId: string, snapshot: string) => <ReviewDocuments projectId="t" jobId="j" requestId="logical-review"
+    documents={{ a: { name: 'a.md' }, b: { name: 'b.md' } }}
+    source={{ identity: 'logical-review', contentIdentity: id => `original/${id}`, url: id => `/retained/${id}?snapshot=${snapshot}` }}
+    selection={{ documentId, onSelect: select }} />;
+  const { rerender } = render(view('a', 'first'));
+  await screen.findByRole('heading', { name: 'Retained original' });
+  rerender(view('a', 'second'));
+  expect(screen.getByRole('heading', { name: 'Retained original' })).toBeVisible();
+  expect(fetcher).toHaveBeenCalledOnce();
+  expect(screen.getByRole('link', { name: 'Download' })).toHaveAttribute('href', '/retained/a?snapshot=second');
+  rerender(view('b', 'second'));
+  await screen.findByLabelText('Loading document');
+  rerender(view('a', 'second'));
+  await screen.findByRole('heading', { name: 'Retained original' });
+  expect(pendingSignal.aborted).toBe(true);
+  await act(async () => { finish(new Response('# Obsolete retained original')); });
+  expect(screen.queryByRole('heading', { name: 'Obsolete retained original' })).toBeNull();
+  expect(select).not.toHaveBeenCalled();
+});

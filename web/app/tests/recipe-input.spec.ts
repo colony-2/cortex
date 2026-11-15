@@ -871,6 +871,7 @@ test.describe('multi-format review viewers', () => {
   test('E01-E11 previews stored formats safely and preserves review responses', async ({ page, request, recipeRun }, testInfo) => {
     const {tenant,jobID,observer,stopWorker,startWorker}=recipeRun;
     await stopWorker();
+    const details=await(await request.get(`/api/projects/${tenant}/user-inputs/${jobID}`)).json();
     // The observer was the last opened tab; reviewer animations need a foreground tab.
     await page.bringToFront();
     const fetched: string[]=[]; const external: string[]=[];
@@ -907,8 +908,13 @@ test.describe('multi-format review viewers', () => {
     await page.route(/\/documents\?.*document_id=log(?:&|$)/,route=>route.fulfill({status:404,body:'missing document'}),{times:1});
     await read('checks.log');await expect(page.getByText(/Could not load this document/)).toBeVisible();await page.getByRole('button',{name:'Retry',exact:true}).click();await page.getByLabel('Search document').fill('needle');await expect(page.locator('mark')).toHaveText('needle');await back();
     await read('changes.patch');await expect(page.getByLabel('Side by side diff')).toBeVisible();await back();
-    for(const name of ['mock.html','delayed.html','vector.svg']){
+    for(const [name,id] of [['mock.html','html'],['delayed.html','delayed'],['vector.svg','svg']] as const){
       await read(name);
+      await expect.poll(()=>{
+        const url=new URL(page.url());
+        return {pathname:url.pathname,requestIds:url.searchParams.getAll('request_id'),documentIds:url.searchParams.getAll('document_id')};
+      }).toEqual({pathname:`/project/${tenant}/reviews/${jobID}`,requestIds:[details.form.request_id],documentIds:[id]});
+      const selectedReviewURL=page.url();
       if(name.endsWith('.html')) {
         await expect(page.getByText(/Interactive HTML runs automatically/)).toBeVisible();
         const iframe=page.getByTitle(`Interactive HTML preview: ${name}`);
@@ -937,7 +943,7 @@ test.describe('multi-format review viewers', () => {
       }
       // Observe delayed connection attempts while the rendered preview is active.
       await page.waitForTimeout(2100);expect(external).toHaveLength(0);
-      await expect(page).toHaveURL(new RegExp(`/reviews/${jobID}$`));
+      await expect(page).toHaveURL(selectedReviewURL);
       await page.getByRole('radio',{name:'Source',exact:true}).focus();await page.keyboard.press('Space');
       await expect(page.getByLabel('Document source')).toContainText('blocked.invalid');
       await expect(page.locator('iframe')).toHaveCount(0);await back();
@@ -985,7 +991,6 @@ test.describe('multi-format review viewers', () => {
     await read('evidence.tar.gz');await expect(page.getByText(/Container data/)).toBeVisible();await back();
     expect(fetched.every(u=>!u.includes('document_id=rollout'))).toBe(true);
     await expect(feedback).toHaveValue('Multi-format feedback');
-    const details=await(await request.get(`/api/projects/${tenant}/user-inputs/${jobID}`)).json();
     expect(details.form.documents.external.stored.key.jobId).not.toBe(jobID);
     for(const id of ['json','patch','png','archive','html','delayed','svg']){
       const url=`/api/projects/${tenant}/reviews/${jobID}/documents?request_id=${encodeURIComponent(details.form.request_id)}&document_id=${id}`;

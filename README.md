@@ -103,6 +103,15 @@ require complete inputs within 1 MiB and 20,000 lines. Raster previews allow up 
 returns the complete original bytes. Markdown images load only from unambiguous
 attachments in the current review.
 
+On the review page, opening another document adds a browser history entry.
+Back/Forward revisits documents while keeping unfinished responses and chosen
+uploads in the mounted review. Copying the URL includes `request_id` and
+`document_id`, so another authorized reader can open the same current document.
+Legacy links select the starting document. Missing attachments show a warning and
+fall back to that document; links to a superseded review require **Open current
+review** before showing its documents or response form. Reloading or leaving the
+review keeps the existing draft behavior.
+
 ## Phones and new goals
 
 Phone reviews show previews inline in the **Selected document** region. **Read**

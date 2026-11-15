@@ -2,7 +2,7 @@ import { useAssistantSource } from './AssistantContext';
 import { useCompact } from '../hooks/useCompact';
 import ReviewJobContext from './ReviewJobContext';
 import { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Card, Button, Space, Typography, message, Spin, Alert } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { inputActivityService, type UserInputDetails, type FormResponse, parseReviewV2 } from '@colony2/shared';
@@ -11,6 +11,7 @@ import InputFormRenderer from './InputFormRenderer';
 import { adaptInputFormConfig } from '../utils/formAdapter';
 import { reviewActionField } from '../utils/reviewForm';
 import ReviewV2 from './ReviewV2';
+import { resolveReviewDocumentLocation, reviewDocumentSearch, startingReviewDocument } from '../utils/reviewDocumentLocation';
 import CancelJobButton from './CancelJobButton';
 
 const { Title, Text } = Typography;
@@ -29,6 +30,9 @@ function InputRequestPage({ projectId }: InputDetailPageProps) {
   const compact = useCompact();
   const { jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const pageIdentity = JSON.stringify([projectId, jobId]);
+  const [loadedIdentity, setLoadedIdentity] = useState<string>();
   const [details, setDetails] = useState<UserInputDetails | null>(null);
   const reviews = details?.form.kind === 'review';
   useAssistantSource(reviews && jobId && details.form.request_id ? { kind: 'review', job_id: jobId, request_id: details.form.request_id } : undefined);
@@ -55,12 +59,37 @@ function InputRequestPage({ projectId }: InputDetailPageProps) {
     const key = JSON.stringify([projectId, jobId]);
     if (formRequest.current?.key !== key) formRequest.current = { key, promise: inputActivityService.getInputDetails(projectId, jobId, true) };
     formRequest.current.promise.then(data => {
-      if (active) setDetails(data);
+      if (active) { setDetails(data); setLoadedIdentity(key); }
     }).catch(() => {
-      if (active) setError('Failed to load request details. The request may no longer exist.');
+      if (active) { setLoadedIdentity(key); setError('Failed to load request details. The request may no longer exist.'); }
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [projectId, jobId]);
+
+  const reviewIdentity = JSON.stringify([projectId, jobId, details?.form.request_id]);
+  const selection = !loading && loadedIdentity === pageIdentity && reviews
+    ? resolveReviewDocumentLocation(location.search, details.form.request_id!, details.form.documents || {}, details.form.document_metadata, details.form.overview_document_id)
+    : undefined;
+  const [unavailableWarning, setUnavailableWarning] = useState<string>();
+  useEffect(() => { setUnavailableWarning(undefined); }, [reviewIdentity]);
+  useEffect(() => {
+    if (selection?.kind !== 'selected') return;
+    if (selection.unavailable) setUnavailableWarning(reviewIdentity);
+    if (selection.search !== location.search) {
+      navigate({ pathname: location.pathname, search: selection.search, hash: location.hash }, { replace: true });
+    }
+  }, [selection?.kind, selection?.kind === 'selected' ? selection.search : undefined, location.pathname, location.search, location.hash, navigate, reviewIdentity]);
+
+  const selectDocument = (id: string) => {
+    if (selection?.kind !== 'selected' || id === selection.documentId) return;
+    setUnavailableWarning(undefined);
+    navigate({ pathname: location.pathname, search: reviewDocumentSearch(location.search, details!.form.request_id!, id), hash: location.hash });
+  };
+  const openCurrentReview = () => {
+    setUnavailableWarning(undefined);
+    navigate({ pathname: location.pathname, search: reviewDocumentSearch(location.search, details!.form.request_id!,
+      startingReviewDocument(details!.form.documents || {}, details!.form.document_metadata, details!.form.overview_document_id)), hash: location.hash }, { replace: true });
+  };
 
   const handleSubmit = async (response: FormResponse) => {
     if (!jobId || submitBusy.current || cancelBusy.current) return;
@@ -91,7 +120,7 @@ function InputRequestPage({ projectId }: InputDetailPageProps) {
     navigate(`/project/${projectId}/reviews`);
   };
 
-  if (loading) {
+  if (loading || (jobId && loadedIdentity !== pageIdentity)) {
     return (
       <div style={{ padding: 24, textAlign: 'center' }}>
         <Spin size="large" />
@@ -172,11 +201,17 @@ function InputRequestPage({ projectId }: InputDetailPageProps) {
           <section aria-label="Review context" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{reviewPrompt}</section>
         </Card>)}
         </div>
-        {reviews ? <ReviewDocuments key={details.form.request_id} projectId={projectId} jobId={jobId}
+        {reviews && selection && selection.kind !== 'selected' ? <Alert showIcon type="warning"
+          message={selection.kind === 'invalid' ? 'Invalid review link' : 'This linked review is no longer current'}
+          description={selection.kind === 'invalid' ? 'The link contains repeated request or document parameters.' : 'The current review has a different request. Open it deliberately to read its documents and respond.'}
+          action={<Button onClick={openCurrentReview}>Open current review</Button>} /> : reviews ? <>
+        {(selection?.kind === 'selected' && selection.unavailable || unavailableWarning === reviewIdentity) && <Alert showIcon type="warning" message="The linked document is unavailable. Showing the starting document, if one is attached." />}
+        <ReviewDocuments key={reviewIdentity} projectId={projectId} jobId={jobId}
           documentMetadata={details.form.document_metadata} overviewDocumentId={details.form.overview_document_id}
+          selection={{ documentId: selection?.kind === 'selected' ? selection.documentId : undefined, onSelect: selectDocument }}
           requestId={details.form.request_id!} documents={details.form.documents || {}} response={
             <Card title="Your response"><InputFormRenderer key={JSON.stringify([projectId, jobId, details.form.request_id])} submissionError={error} form={form} reviewPromptShown={!!reviewPrompt} onSubmit={handleSubmit} onCancel={handleCancel} loading={submitting || cancelling} /></Card>
-          } /> : <Card title={form.title}>
+          } /></> : <Card title={form.title}>
           {error && <Alert type="error" showIcon message={error} closable onClose={() => setError(null)} style={{ marginBottom: 16 }} />}
           <InputFormRenderer key={JSON.stringify([projectId, jobId, details.form.request_id])} form={form} reviewPromptShown={!!reviewPrompt} onSubmit={handleSubmit} onCancel={handleCancel} loading={submitting || cancelling} />
         </Card>}
