@@ -3,6 +3,7 @@ import { Alert, Button, Card, Input, Radio, Space, Typography } from 'antd';
 import { SettingOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { changedReviewSettings, conversationArtifactURL, reviewV2ContributionError, reviewV2DirectionPolicy, createSubmissionId, inputActivityService, stringifyJobJSON, validateReviewScalar, type ReviewV2Request, type ReviewV2Turn, type UserInputDetails } from '@colony2/shared';
+import { reviewReturnSearch } from '../utils/reviewFilters';
 import { useReviewV2 } from '../hooks/useReviewV2';
 import ReviewDocuments from './ReviewDocuments';
 import ReviewV2Settings from './ReviewV2Settings';
@@ -30,7 +31,8 @@ export function ReviewV2Discussion({turns,request,attachmentURL,declarations}: {
 }
 export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;job:string;reviewId:string;initial?:UserInputDetails}) {
   const {view,error,busy,refresh,sending,accepted,failed}=useReviewV2(tenant,job,reviewId,initial);
-  const navigate=useNavigate(); const [,setSearch]=useSearchParams();
+  const navigate=useNavigate(); const [search,setSearch]=useSearchParams();
+  const reviewsPath=`/project/${encodeURIComponent(tenant)}/reviews${reviewReturnSearch(search)}`;
   const [settingsOpen,setSettingsOpen]=useState(false);
   const [drafts,setDrafts]=useState<Record<string,unknown>>({});
   const [draftNotice,setDraftNotice]=useState('');
@@ -83,7 +85,7 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
     }
     requestRef.current=view.request;
   },[view?.request]);
-  if(!view)return <div className="review-page review-v2"><Button onClick={()=>navigate(`/project/${tenant}/reviews`)}>Back to Reviews</Button>{error?<Alert type="error" message="Review unavailable" description={error} action={<Button loading={busy} onClick={()=>void refresh()}>Refresh</Button>}/>:<p role="status">Loading review…</p>}</div>;
+  if(!view)return <div className="review-page review-v2"><Button onClick={()=>navigate(reviewsPath)}>Back to Reviews</Button>{error?<Alert type="error" message="Review unavailable" description={error} action={<Button loading={busy} onClick={()=>void refresh()}>Refresh</Button>}/>:<p role="status">Loading review…</p>}</div>;
   const {request,phase}=view;
   const selected=request.directions.find(d=>d.id===direction);
   const policy=selected?reviewV2DirectionPolicy(request,selected):undefined;
@@ -125,7 +127,7 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
     {error&&<Alert type="warning" message={error}/>}
     {(submitError||draftConflict)&&<Alert type="error" message={submitError||draftConflict}/>}
     {draftNotice&&<Alert type="warning" message={draftNotice} closable onClose={()=>setDraftNotice('')}/>}
-    {phase==='other'&&<Button onClick={()=>{setSearch({});navigate(`/project/${tenant}/reviews`);}}>Open pending reviews</Button>}
+    {phase==='other'&&<Button onClick={()=>navigate(reviewsPath)}>Open pending reviews</Button>}
     {ready&&<>
       <Radio.Group aria-label="Review direction" value={direction} onChange={e=>{setDirection(e.target.value);setConfirming(false);setSubmitError('');}} className="review-v2-directions">
         {request.directions.map(d=>{const rules=reviewV2DirectionPolicy(request,d);return <Radio key={d.id} value={d.id}>{d.label} <small>{rules.mode==='forbidden'?'No feedback or attachments':rules.mode==='required'?'Feedback required':'Feedback optional'}{rules.mode!=='forbidden'&&!rules.allowAttachments?' · No attachments':''}</small></Radio>;})}
@@ -147,7 +149,7 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
   }:{identity:reviewId,contentIdentity:(id:string)=>stringifyJobJSON(documents[id]?.stored??documents[id])??id,url:()=>''};
   const notes=history?historicalTurnAttachments(history):undefined;
   return <div className="review-page review-v2">
-    <div className="review-v2-heading"><Button icon={<ArrowLeftOutlined/>} onClick={()=>navigate(`/project/${tenant}/reviews`)}>Back to Reviews</Button><a href={`/project/${tenant}/jobs/${job}/story`}>Job activity</a></div>
+    <div className="review-v2-heading"><Button icon={<ArrowLeftOutlined/>} onClick={()=>navigate(reviewsPath)}>Back to Reviews</Button><a href={`/project/${tenant}/jobs/${job}/story`}>Job activity</a></div>
     <Typography.Title level={2}>{request.title}</Typography.Title>
     <p className="review-v2-question">{request.question}</p>
     <div className="review-v2-layout"><div className="review-v2-reader"><ReviewDocuments projectId={tenant} jobId={job} requestId={reviewId} source={source} documents={documents} documentMetadata={request.document_metadata} overviewDocumentId={request.overview_document_id} response={response}/></div>

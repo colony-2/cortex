@@ -22,6 +22,7 @@ import NewGoalDialog from './NewGoalDialog';
 import CompactFilter from './CompactFilter';
 import { useCompact } from '../hooks/useCompact';
 import { useCells } from '../hooks/useCells';
+import { matchesSearchTerms, searchTerms } from '../utils/searchTerms';
 
 const { Text, Title } = Typography;
 type Props = { projectId: string; goalId?: string };
@@ -112,7 +113,7 @@ function JobsList({ projectId, goalId }: Props) {
   const noStatuses = !goalId && filters.status?.length === 0;
   const noCells = !goalId && filters.cell?.length === 0;
   const search = params.get('q') || '';
-  const searchTerm = search.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+  const terms = searchTerms(search);
   const sortOrder = (column: string): SortOrder => params.get('sort') === column
     && (params.get('order') === 'ascend' || params.get('order') === 'descend') ? params.get('order') as SortOrder : null;
   const expanded = params.getAll('expanded');
@@ -174,8 +175,8 @@ function JobsList({ projectId, goalId }: Props) {
   }, [jobs, goalId]);
   // Search complete prompts (including other attempts), even when the row uses
   // a title or an abbreviated prompt. Keep the entire matching goal together.
-  const rows: Row[] = noStatuses || noCells ? [] : groups.filter(group => !searchTerm || group.jobs.some(job =>
-    [job.prompt, job.title].some(text => text?.replace(/\s+/g, ' ').toLocaleLowerCase().includes(searchTerm)),
+  const rows: Row[] = noStatuses || noCells ? [] : groups.filter(group => group.jobs.some(job =>
+    [job.prompt, job.title].some(text => matchesSearchTerms(terms, text)),
   )).map(group => ({ key: group.key, group, job: latestActiveJob(group.jobs) }));
   const statusOptions = jobStatusOptions(jobs, filters.status || []);
   const cellOptions = registry.cells.map(cell => ({ value: cell.id, label: `${cell.name}${cell.state === 'RETIRED' ? ' (retired)' : ''}` }));
@@ -263,7 +264,7 @@ function JobsList({ projectId, goalId }: Props) {
       if (!visibleInspectionIds.includes(id) || revision !== refresh) inspectionRequests.current.delete(key);
     }
   }, [visibleInspectionKey, refresh]);
-  const emptyMessage = loading ? 'Loading goals…' : error ? 'Could not load goals.' : noStatuses ? 'No statuses selected' : noCells ? 'No cells selected' : searchTerm ? <><span>No goals match this search on this page</span>{nextPage && <div>No matches on this page. More results may be available.</div>}</> : nextPage ? 'No matches on this page. More results may be available.' : rootOnly ? 'No root goals found' : 'No goals found';
+  const emptyMessage = loading ? 'Loading goals…' : error ? 'Could not load goals.' : noStatuses ? 'No statuses selected' : noCells ? 'No cells selected' : terms.length ? <><span>No goals match this search on this page</span>{nextPage && <div>No matches on this page. More results may be available.</div>}</> : nextPage ? 'No matches on this page. More results may be available.' : rootOnly ? 'No root goals found' : 'No goals found';
   const changeScope = (roots: boolean) => {
     setSelectedIds([]); inspectionRequests.current.clear();
     changeQuery(query => {

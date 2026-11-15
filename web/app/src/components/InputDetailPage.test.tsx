@@ -42,13 +42,14 @@ describe('InputDetailPage - Single Question Flow', () => {
   afterEach(() => {
     inputActivityService.clearCaches(); // Clear caches between tests
     server.close();
+    server.resetHandlers();
     eventSourceMock.restore();
     vi.clearAllMocks();
   });
 
-  const renderComponent = () => {
+  const renderComponent = (query = '') => {
     return render(
-      <MemoryRouter initialEntries={[`/project/${projectId}/reviews/${jobId}`]}>
+      <MemoryRouter initialEntries={[`/project/${projectId}/reviews/${jobId}${query}`]}>
         <Routes>
           <Route
             path="/project/:projectId/reviews/:jobId"
@@ -75,6 +76,31 @@ describe('InputDetailPage - Single Question Flow', () => {
       http.get('http://localhost:8080/api/projects/:tenant/jobs/:job/children', () => HttpResponse.json({jobs:[]})));
     return details;
   };
+
+  it.each(['back', 'cancel', 'submit', 'review', 'cancel-job', 'error'])('preserves only Reviews URL fields on %s', async action => {
+    if (action === 'review' || action === 'cancel-job') {
+      setupReview();
+      server.use(http.post('http://localhost:8080/api/projects/:tenant/reviews/:job/respond', () => HttpResponse.json({})),
+        http.post('http://localhost:8080/api/projects/:tenant/jobs/:job/cancel', () => HttpResponse.json({})));
+    }
+    else setupMockInputs(projectId, [createMockPendingInput(jobId)], [createMockSingleQuestionDetails(jobId)]);
+    if (action === 'error') server.use(http.get('http://localhost:8080/api/projects/:tenant/user-inputs/:job', () => HttpResponse.error()));
+    const query = '?q=foo+bar&cellId=absent&sort=cell&order=descend&returnTo=https://bad&status=READY';
+    renderComponent(query);
+    if (action === 'error') await screen.findByRole('alert');
+    else await screen.findByRole('button', { name: /Back to Reviews/ });
+    if (action === 'submit') {
+      fireEvent.change(screen.getByRole('textbox', { name: 'How old are you?' }), { target: { value: '30' } });
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }));
+    } else if (action === 'review') {
+      fireEvent.click(await screen.findByRole('button', { name: 'Approve', exact: true }));
+      fireEvent.click(screen.getByRole('button', { name: 'OK', exact: true }));
+    } else if (action === 'cancel-job') {
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel job', exact: true }));
+      fireEvent.click(screen.getByRole('dialog').querySelector('.ant-modal-footer button.ant-btn-primary')!);
+    } else fireEvent.click(screen.getByRole('button', { name: action === 'cancel' ? /^Cancel$/ : /Back to Reviews/ }));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/reviews?q=foo+bar&cellId=absent&sort=cell&order=descend`));
+  });
 
   it('REV-011/012/013 retains drafts and attachments after failure and prevents overlapping submissions', async () => {
     setupReview();

@@ -1,0 +1,11 @@
+.reviews-controls { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.reviews-controls[hidden] { display: none; }
+.reviews-control { display: flex; flex-direction: column; gap: 6px; font-size: 14px; min-width: 0; }
+.reviews-search { flex: 1; min-width: 220px; }
+.reviews-control select { font: inherit; color: inherit; background: transparent; border: 1px solid #b8c0cc; border-radius: 6px; padding: 5px 10px; min-height: 32px; }
+.reviews-count { display: block; margin-top: 12px; }
+@media (max-width: 767px) {
+  .reviews-controls { flex-direction: column; align-items: stretch; margin-top: 12px; }
+  .reviews-search { min-width: 0; }
+  .reviews-control .ant-input-affix-wrapper, .reviews-control select { min-height: 44px; }
+}

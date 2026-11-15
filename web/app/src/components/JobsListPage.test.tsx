@@ -252,6 +252,36 @@ it.each(['', '?scope=roots'])('searches full prompts across attempts without fet
   expect(getJob).not.toHaveBeenCalled();
 });
 
+it.each(['', '?scope=roots&view=all&cellId=cell-platform&status=READY'])('matches all terms in one field of one loaded attempt in %s', async query => {
+  const jobs = [
+    { ...jobIdentity, job_id: 'new', goal_id: 'group', title: 'Current title', status: 'READY', store: 'ACTIVE', created_at: '2026-11-02' },
+    { ...jobIdentity, job_id: 'old', goal_id: 'group', prompt: 'food that i had at the bar', status: 'READY', store: 'ACTIVE', created_at: '2026-11-01' },
+    { ...jobIdentity, job_id: 'split-fields', title: 'Food', prompt: 'bar', status: 'READY', store: 'ACTIVE' },
+    { ...jobIdentity, job_id: 'foo-bar', status: 'READY', store: 'ACTIVE' },
+    { ...jobIdentity, job_id: 'attempt-food', goal_id: 'split-attempts', prompt: 'Food', status: 'READY', store: 'ACTIVE' },
+    { ...jobIdentity, job_id: 'attempt-bar', goal_id: 'split-attempts', prompt: 'bar', status: 'READY', store: 'ACTIVE' },
+  ];
+  const fetch = vi.fn(async () => new Response(JSON.stringify({ jobs })));
+  vi.stubGlobal('fetch', fetch);
+  render(<MemoryRouter initialEntries={[`/project/tenant/goals${query}`]}><JobsListPage projectId="tenant" /></MemoryRouter>);
+  await screen.findByRole('link', { name: 'Current title', exact: true });
+  const search = screen.getByRole('textbox', { name: 'Search goals' });
+  for (const value of ['foo bar', ' BAR   foo foo ']) {
+    fireEvent.change(search, { target: { value } });
+    expect(screen.getByRole('link', { name: 'Current title', exact: true })).toBeVisible();
+    expect(screen.getByText('2 attempts on this page')).toBeVisible();
+    expect(screen.queryByRole('checkbox', { name: 'Select job foo-bar', exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Select job split-fields', exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Select attempts for Food', exact: true })).not.toBeInTheDocument();
+  }
+  fireEvent.change(search, { target: { value: 'foo baz' } });
+  expect(screen.getByText('No goals match this search on this page')).toBeVisible();
+  fireEvent.change(search, { target: { value: '  ' } });
+  expect(screen.getByRole('checkbox', { name: 'Select job foo-bar', exact: true })).toBeVisible();
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(getJob).not.toHaveBeenCalled();
+});
+
 it('sorts goal, status, cell, and submission columns locally in both directions', async () => {
   const jobs = [
     { ...jobIdentity, job_id: 'z', title: 'Zebra', status: 'READY', store: 'ACTIVE', cell_name: 'alpha', submitted_at: '2026-10-29T08:00:00Z', created_at: '2026-10-30T00:00:00Z' },

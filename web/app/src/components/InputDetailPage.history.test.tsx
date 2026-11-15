@@ -64,7 +64,7 @@ it.each(['', '?document_id=a', '?request_id=r'])('H06-08 replaces partial link o
   expect(screen.getByRole('heading', { name: 'Previous queue' })).toBeVisible();
 });
 it('H09-11 preserves drafts, uploads and details through exact A/B/C history; no implicit submit', async () => {
-  const { router, go, container } = mount('?keep=x&keep=y');
+  const { router, go, container } = mount('?keep=x&keep=y&q=foo+bar&cellId=platform&sort=title&order=descend');
   await screen.findByRole('heading', { name: 'Body a' });
   fireEvent.click(screen.getByRole('button', { name: 'Reject', exact: true }));
   await userEvent.type(screen.getByLabelText('Reason'), 'Draft stays');
@@ -90,6 +90,7 @@ it('H09-11 preserves drafts, uploads and details through exact A/B/C history; no
   fireEvent.click(screen.getByRole('button', { name: 'OK', exact: true }));
   await waitFor(() => expect(submit).toHaveBeenCalledWith('tenant', 'job', 'r', expect.objectContaining({ fields: { decision: 'revise', feedback: 'Draft stays' }, attachments: { attachment: file } })));
   await screen.findByRole('heading', { name: 'Review queue' });
+  expect(router.state.location.search).toBe('?q=foo+bar&cellId=platform&sort=title&order=descend');
 });
 it.each(['?request_id=old&document_id=a', '?request_id=r&request_id=r&document_id=a', '?document_id=a&document_id=a'])('H12-14 withholds stale/invalid review and replaces only after recovery: %s', async search => {
   const { router, go } = mount(search);

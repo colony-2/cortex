@@ -61,8 +61,12 @@ history and artifacts remain available through All jobs and goal overview.
 Restoring jobs to the inbox is not currently supported. The selected view stays
 in the URL; switching views clears pagination and selected jobs.
 
-Search full prompts at the right of the Cancel/Archive row, including text beyond the shortened row
-label and prompts from other loaded attempts. Click the Goal, Status, Cell, or
+Search available titles and full prompts at the right of the Cancel/Archive row,
+including text beyond the shortened row label and text from other loaded attempts.
+Both Goals and Reviews split
+search on whitespace and require every term, in any order, within one field of
+one loaded attempt. Matching ignores case and includes partial words: `foo bar`
+matches `food that i had at the bar`. Click the Goal, Status, Cell, or
 Submitted column header to sort ascending or descending; click again to restore
 the original order. Search and sorting run in the browser on the current page.
 Search, sorting, and filters persist in the URL when opening a goal and returning.
@@ -171,8 +175,15 @@ downloaded from the story. This export is not an import or restore format.
 
 ## Document reviews
 
-The **Reviews** navigation item lists pending input forms marked `kind: review`.
-Reviews are excluded from **Pending Inputs**, and each section has its own count.
+The **Reviews** navigation item lists pending document reviews and ordinary input
+requests together. Filter by cells from the loaded queue, search stored titles,
+prompts or job IDs, and sort by request time, title or cell. Missing request times
+stay last in either direction. Search and controls use loaded data without extra
+requests; unavailable historical metadata and document contents are not searched.
+The visible/total count reflects filters; the navigation badge counts the full queue.
+Controls persist in the URL through reload, opening a request and returning or
+responding. Reset restores all cells, blank search and oldest first. On phones,
+expand **Filters and sorting** to use the controls.
 Open a review to switch between its documents, view Markdown rendered or as its
 exact source, and answer the recipe's questions. Original documents are read only;
 file-upload questions attach separate response documents (one file per question,

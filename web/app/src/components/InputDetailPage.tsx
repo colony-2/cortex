@@ -3,6 +3,7 @@ import { useCompact } from '../hooks/useCompact';
 import ReviewJobContext from './ReviewJobContext';
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { reviewReturnSearch } from '../utils/reviewFilters';
 import { Card, Button, Space, Typography, message, Spin, Alert } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { inputActivityService, type UserInputDetails, type FormResponse, parseReviewV2 } from '@colony2/shared';
@@ -33,6 +34,8 @@ function InputRequestPage({ projectId }: InputDetailPageProps) {
   const location = useLocation();
   const pageIdentity = JSON.stringify([projectId, jobId]);
   const [loadedIdentity, setLoadedIdentity] = useState<string>();
+  const [params] = useSearchParams();
+  const reviewsPath = `/project/${encodeURIComponent(projectId)}/reviews${reviewReturnSearch(params)}`;
   const [details, setDetails] = useState<UserInputDetails | null>(null);
   const reviews = details?.form.kind === 'review';
   useAssistantSource(reviews && jobId && details.form.request_id ? { kind: 'review', job_id: jobId, request_id: details.form.request_id } : undefined);
@@ -105,7 +108,7 @@ function InputRequestPage({ projectId }: InputDetailPageProps) {
         await inputActivityService.submitResponse(projectId, jobId, response);
       }
       message.success('Response submitted successfully');
-      navigate(`/project/${projectId}/reviews`);
+      navigate(reviewsPath);
     } catch (err) {
       console.error('Failed to submit response:', err);
       if (reviews) setError(err instanceof Error ? err.message : 'Failed to submit review.');
@@ -117,7 +120,7 @@ function InputRequestPage({ projectId }: InputDetailPageProps) {
   };
 
   const handleCancel = () => {
-    navigate(`/project/${projectId}/reviews`);
+    navigate(reviewsPath);
   };
 
   if (loading || (jobId && loadedIdentity !== pageIdentity)) {

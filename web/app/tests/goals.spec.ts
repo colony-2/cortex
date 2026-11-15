@@ -428,7 +428,19 @@ for (const cellName of ['self', 'platform']) {
   });
 }
 
-test.beforeEach(async ({ page }) => { await mockCells(page, ['platform', 'alpha', 'beta', 'gamma', 'self']); });
+test.beforeEach(async ({ page }) => {
+  await mockCells(page, ['platform', 'alpha', 'beta', 'gamma', 'self']);
+  await page.route('**/assistant/capabilities', route => route.fulfill({ json: { available: false } }));
+  await page.route('**/api/projects', route => route.fulfill({ json: [{ tenant_id: 'default' }] }));
+  await page.route('**/user-inputs/pending', route => route.fulfill({ json: [] }));
+  await page.addInitScript(() => {
+    (window as any).EventSource = class {
+      readyState = 1; onopen: any;
+      constructor() { setTimeout(() => this.onopen?.(), 0); }
+      close() {} addEventListener() {} removeEventListener() {}
+    };
+  });
+});
 
 for (const compact of [false, true]) for (const view of ['', '?view=all']) {
   test(`archives finished selections with accessible progress and recovery: compact=${compact} view=${view || 'inbox'}`, async ({ page, context, baseURL }) => {
@@ -518,8 +530,15 @@ for (const width of [1280, 375]) {
       const query = new URL(route.request().url()).searchParams; reads.push(query);
       return route.fulfill({ json: { jobs: query.get('goal') ? [child, direct] : query.get('rootOnly') === 'true' ? [direct] : [direct, child] } });
     });
-    await page.route('**/api/projects/scope-test/jobs/*', route => {
+    await page.route('**/api/projects/scope-test/jobs/**', route => {
       const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/conversation')) return route.fulfill({ json: {
+        tenant_id: 'scope-test', job_id: 'direct', entries: [], snapshot_token: 'fixture', snapshot_revision: 1,
+        observed_at: '2026-11-10T12:00:00Z', completeness: 'complete',
+        activity: { availability: 'available', value: direct },
+        final_documents: { availability: 'available', value: { job_id: 'direct', state: 'pending' } },
+      } });
+      if (path.endsWith('/input-artifacts')) return route.fulfill({ json: { artifacts: [] } });
       return route.fulfill({ json: path.endsWith('/story') ? { job_id: 'direct', status: 'active', root: { id: 'root', kind: 'recipe', title: 'Root story', status: 'running', path: [] } } : path.endsWith('/children') ? { jobs: [] } : direct });
     });
     await page.goto('/project/scope-test/goals');
@@ -631,3 +650,34 @@ for (const width of [1280, 320, 390]) {
     });
   });
 }
+
+for (const width of [1440, 390]) test(`Goals matches every term within a loaded attempt at ${width}px`, async ({ page, context, baseURL }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await context.addCookies([{ name: 'colony2:user:email', value: 'terms@example.com', url: baseURL! }]);
+  const jobs = [
+    { ...jobIdentity, job_id: 'new', goal_id: 'group', title: 'Current title', status: 'READY', store: 'ACTIVE', created_at: '2026-11-02' },
+    { ...jobIdentity, job_id: 'old', goal_id: 'group', prompt: 'food that i had at the bar', status: 'READY', store: 'ACTIVE', created_at: '2026-11-01' },
+    { ...jobIdentity, job_id: 'split', title: 'Food', prompt: 'bar', status: 'READY', store: 'ACTIVE' },
+    { ...jobIdentity, job_id: 'foo-bar', status: 'READY', store: 'ACTIVE' },
+  ];
+  const reads: string[] = [];
+  page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/')) reads.push(request.url()); });
+  await page.route('**/api/projects/terms/jobs?*', route => route.fulfill({ json: { jobs } }));
+  await page.goto('/project/terms/goals');
+  await expect(page.getByRole('link', { name: 'Current title', exact: true })).toBeVisible();
+  if (width < 768) await page.getByRole('button', { name: 'Filters and sorting', exact: true }).click();
+  const search = page.getByRole('textbox', { name: 'Search goals' });
+  const baseline = reads.length;
+  await search.fill('foo bar');
+  await expect(page.getByRole('link', { name: 'Current title', exact: true })).toBeVisible();
+  await expect(page.getByText('2 attempts on this page')).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: 'Select job split', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('checkbox', { name: 'Select job foo-bar', exact: true })).toHaveCount(0);
+  await search.fill('BAR foo foo');
+  await expect(page.getByRole('link', { name: 'Current title', exact: true })).toBeVisible();
+  await search.fill('foo baz');
+  await expect(page.getByText('No goals match this search on this page')).toBeVisible();
+  await search.fill('');
+  await expect(page.getByRole('checkbox', { name: 'Select job foo-bar', exact: true })).toBeVisible();
+  expect(reads).toHaveLength(baseline);
+});

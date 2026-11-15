@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { setupServer } from 'msw/node';
 import { InputActivityProvider, inputActivityService } from '@colony2/shared';
@@ -23,6 +23,7 @@ describe('PendingInputsListPage - Real-time SSE Updates', () => {
   beforeEach(() => {
     server.listen({ onUnhandledRequest: 'error' });
     resetMockInputStore();
+    window.history.replaceState({}, '', '/project/test-project-123/reviews');
     eventSourceMock = mockEventSource();
   });
 
@@ -42,6 +43,32 @@ describe('PendingInputsListPage - Real-time SSE Updates', () => {
       </BrowserRouter>
     );
   };
+
+  it('reapplies controls to Refresh and replacement occurrences without retaining old time', async () => {
+    window.history.replaceState({}, '', '/project/test-project-123/reviews?q=foo+bar&cellId=one&sort=requested&order=descend');
+    const initial = { ...createMockPendingInput('same'), title: 'Food bar', cell_id: 'one', cell_name: 'Old name', task_ordinal: 1, requested_at: '2026-11-01T12:00:00Z' };
+    setupMockInputs(projectId, [initial], []);
+    renderComponent();
+    const sse = await waitForSSEConnection(); sse.emitConnected();
+    await screen.findByText('Job ID: same');
+    expect(document.querySelector('time')).not.toBeNull();
+    const replacement = { ...initial, task_ordinal: 2, requested_at: undefined, cell_name: 'Renamed' };
+    const other = { ...createMockPendingInput('other'), title: 'Food bar', cell_id: 'two', cell_name: 'Other' };
+    act(() => sse.dispatchEvent(new MessageEvent('inputs_changed', { data: JSON.stringify({ inputs: [replacement, other] }) })));
+    expect(screen.getByText('Request time unavailable')).toBeVisible();
+    expect(document.querySelector('time')).toBeNull();
+    expect(screen.getByText('Cell: Renamed')).toBeVisible();
+    expect(screen.getByText('Showing 1 of 2 pending requests')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Cells: 1 selected' }));
+    expect(within(screen.getByRole('dialog')).getByRole('checkbox', { name: 'Renamed' })).toBeChecked();
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+    mockPendingInputsStore.set(projectId, [{ ...replacement, title: 'Does not match' }, other]);
+    fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+    await screen.findByText('No requests match these filters');
+    expect(screen.getByRole('textbox', { name: 'Search reviews' })).toHaveValue('foo bar');
+    expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('requested:descend');
+    expect(window.location.search).toContain('cellId=one');
+  });
 
   it('should update list when new input arrives via SSE', async () => {
     // Start with no inputs

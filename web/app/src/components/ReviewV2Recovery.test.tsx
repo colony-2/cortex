@@ -1,6 +1,6 @@
 import {act,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
-import {MemoryRouter} from 'react-router-dom';
+import {MemoryRouter, Route, Routes, useLocation} from 'react-router-dom';
 import {inputActivityService,type ReviewV2Output,type UserInputDetails} from '@colony2/shared';
 import {amendedReviewV2Fixture} from '../../../shared/src/test/reviewV2Fixture';
 import {useReviewV2} from '../hooks/useReviewV2';
@@ -90,4 +90,15 @@ it('keeps newer unsent edits when an earlier contribution is confirmed',async()=
  await waitFor(()=>expect(screen.getByLabelText('Question or requested change (optional)')).toHaveValue('A new question'));
  expect(screen.getByRole('button',{name:'Remove new.md (1)'})).toBeInTheDocument();
  expect(screen.queryByText(/Connection lost/)).not.toBeInTheDocument();
+});
+
+function QueueLocation(){const location=useLocation();return <p>{location.pathname+location.search}</p>;}
+it.each(['actionable','other','unavailable','sent','waiting','loading'] as const)('preserves only Reviews controls when returning from v2 %s',async phase=>{
+ if(phase==='loading')vi.mocked(useReviewV2).mockReturnValue({view:undefined,error:'',busy:true,refresh:vi.fn(),sending:vi.fn(),accepted:vi.fn(),failed:vi.fn()});
+ else view={...view,phase};
+ render(<MemoryRouter initialEntries={['/project/tenant/reviews/job?q=foo+bar&cellId=platform&sort=title&order=descend&request_id=native&document_id=plan&unrelated=drop']}>
+  <Routes><Route path="/project/tenant/reviews/job" element={<ReviewV2 tenant="tenant" job="job" reviewId="review-one"/>}/><Route path="/project/tenant/reviews" element={<QueueLocation/>}/></Routes>
+ </MemoryRouter>);
+ fireEvent.click(screen.getByRole('button',{name:phase==='other'?'Open pending reviews':/Back to Reviews/}));
+ expect(await screen.findByText('/project/tenant/reviews?q=foo+bar&cellId=platform&sort=title&order=descend')).toBeVisible();
 });
