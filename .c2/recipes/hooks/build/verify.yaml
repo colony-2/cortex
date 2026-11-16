@@ -316,8 +316,9 @@ sequence:
       working_directory: '${{ context.environment.op.worktree_path }}'
       shell: bash
       # The full suite is serial in CI and now contains over 250 cases.
-      # Give it time to finish and report assertions instead of killing it mid-run.
-      timeout: 60m
+      # A recorded 60-minute run reached production cases but was killed before
+      # completion. Include cold builds and retries without changing test limits.
+      timeout: 90m
       continue_on_error: false
       capture_diagnostics: always
       env: *verification-env

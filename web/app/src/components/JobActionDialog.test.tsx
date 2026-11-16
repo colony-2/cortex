@@ -63,14 +63,34 @@ it.each(['cancel', 'archive'] as const)('keeps original bulk %s mode when one fa
   expect(mutation).toHaveBeenLastCalledWith('tenant','two',undefined);
 });
 
-it('counts code points and prevents overlong confirmation, accepting 4,000 emoji', async () => {
-  render(<JobActionDialog projectId="tenant" jobIds={['one']} action="cancel" onClose={vi.fn()} onComplete={vi.fn()} />);
-  fireEvent.change(field(), { target: { value: '🧪'.repeat(4001) } });
-  expect(screen.getByText(/4,001 \/ 4,000/)).toBeVisible();
-  expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel job', exact: true })).toBeDisabled();
-  fireEvent.change(field(), { target: { value: '🧪'.repeat(4000) } });
-  await confirm('Cancel job');
-  await waitFor(() => expect(cancelJob).toHaveBeenCalledWith('tenant', 'one', '🧪'.repeat(4000)));
+it.each(['cancel', 'archive'] as const)('keeps oversized %s drafts editable and accepts corrected messages above 4,000 characters', async action => {
+  const mutation = action === 'cancel' ? cancelJob : archiveJob;
+  render(<JobActionDialog projectId="tenant" jobIds={['one']} job={ready} action={action} onClose={vi.fn()} onComplete={vi.fn()} />);
+  const oversized = '🧪'.repeat(16381);
+  fireEvent.change(field(), { target: { value: oversized } });
+  expect(field()).toHaveValue(oversized);
+  expect(field()).toBeEnabled();
+  expect(screen.getByText(/exceeds 64 KiB, including JSON encoding/)).toBeVisible();
+  const label = action === 'cancel' ? 'Cancel job' : 'Archive job';
+  expect(within(screen.getByRole('dialog')).getByRole('button', { name: label, exact: true })).toBeDisabled();
+  expect(mutation).not.toHaveBeenCalled();
+  const corrected = '🧪'.repeat(5000);
+  fireEvent.change(field(), { target: { value: corrected } });
+  expect(screen.queryByText(/exceeds 64 KiB/)).not.toBeInTheDocument();
+  await confirm(label);
+  await waitFor(() => expect(mutation).toHaveBeenCalledExactlyOnceWith('tenant', 'one', corrected));
+});
+
+it.each(['cancel', 'archive'] as const)('keeps the complete %s draft editable after a server size rejection', async action => {
+  const mutation = action === 'cancel' ? cancelJob : archiveJob;
+  vi.mocked(mutation).mockRejectedValueOnce(new APIError('This request exceeds 64 KiB, including JSON encoding. Shorten the message.', 413));
+  render(<JobActionDialog projectId="tenant" jobIds={['one']} job={ready} action={action} onClose={vi.fn()} onComplete={vi.fn()} />);
+  const text = '雪'.repeat(5000);
+  fireEvent.change(field(), { target: { value: text } });
+  await confirm(action === 'cancel' ? 'Cancel job' : 'Archive job');
+  await screen.findByText(/exceeds 64 KiB/);
+  expect(field()).toHaveValue(text);
+  expect(field()).toBeEnabled();
 });
 
 it('uses the explicit default for a blank single unfinished archive', async () => {

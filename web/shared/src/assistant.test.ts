@@ -71,3 +71,53 @@ it('CTX-012/018 preserves the observed execution and complete lifecycle envelope
  expect(JSON.parse(fetcher.mock.calls[2][1].body)).toEqual(operation);
  expect(Object.isFrozen(operation)).toBe(true);
 });
+
+// Expected lengths come from Go encoding/json with its default HTML escaping.
+it('matches raw UTF-8 and Go JSON string-content lengths at inclusive boundaries', async () => {
+ const { assistantDraftError, goJSONStringContentBytes } = await import('./assistant');
+ const v4 = { raw_utf8_bytes: 16384, go_json_string_content_bytes: 16384, http_body_bytes: 40960 };
+ for (const [text, bytes] of [['a',1],['雪',3],['🧪',4],['\n"\\\t\r\b\f',14],['\u0000\u001f',12],['<>&\u2028\u2029',30]] as const) {
+  expect(goJSONStringContentBytes(text)).toBe(bytes);
+  const n = Math.floor(16384 / bytes);
+  const exact = text.repeat(n) + 'a'.repeat(16384 - n * bytes);
+  expect(goJSONStringContentBytes(exact)).toBe(16384);
+  expect(assistantDraftError(exact, v4)).toBeUndefined();
+  expect(assistantDraftError(exact + 'a', v4)).toMatch(/exceeds/);
+ }
+ for (const limit of [100,16384,32768]) {
+  const historical = { raw_utf8_bytes:limit, http_body_bytes:40960 };
+  expect(assistantDraftError('a'.repeat(limit), historical)).toBeUndefined();
+  expect(assistantDraftError('a'.repeat(limit+1), historical)).toMatch(/UTF-8/);
+  expect(assistantDraftError('\n'.repeat(limit), historical)).toBeUndefined();
+ }
+ expect(assistantDraftError('a'.repeat(101),{...v4,raw_utf8_bytes:100})).toMatch(/100 UTF-8/);
+ expect(assistantDraftError('<'.repeat(17),{...v4,go_json_string_content_bytes:100})).toMatch(/100 bytes after service JSON/);
+ for (const budget of [undefined, {} as typeof v4, {...v4,raw_utf8_bytes:NaN}, {...v4,go_json_string_content_bytes:0}, {...v4,http_body_bytes:50000}]) {
+  expect(assistantDraftError('draft',budget)).toMatch(/Refresh/);
+ }
+ expect(assistantDraftError('draft',{raw_utf8_bytes:16384,http_body_bytes:40960},true)).toMatch(/Refresh/);
+ expect(assistantDraftError('\ud800',v4)).toMatch(/invalid Unicode/);
+});
+it('measures the complete projected assistant body that is transmitted', async () => {
+ const { assistantStartBody, assistantSubmissionBody, assistantBodyError } = await import('./assistant');
+ const fetcher = vi.fn().mockImplementation(() => Promise.resolve(new Response('{}')));
+ vi.stubGlobal('fetch', fetcher);
+ const start = freezeAssistantStart('雪\n<>&', {kind:'review',job_id:'job',request_id:'review'},'generation');
+ const submission = freezeAssistantSubmission('request','send','🧪\n');
+ for (const [body, send] of [[assistantStartBody(start),()=>startAssistantSession('a',start)], [assistantSubmissionBody(submission),()=>respondAssistantSession('a','s',submission)]] as const) {
+  const size = new TextEncoder().encode(JSON.stringify(body)).byteLength;
+  const budget = {raw_utf8_bytes:16384,http_body_bytes:size};
+  expect(assistantBodyError(body,budget)).toBeUndefined();
+  expect(assistantBodyError(body,{...budget,http_body_bytes:size-1})).toMatch(/including JSON encoding/);
+  await send();
+  expect(fetcher.mock.calls.at(-1)![1].body).toBe(JSON.stringify(body));
+ }
+});
+it('releases a draft only for explicit proven rejection metadata', async () => {
+ for (const [code, submission, expected] of [['invalid',undefined,undefined], ['limit',undefined,undefined], ['draft_rejected',undefined,undefined], ['draft_rejected','not_started','not_started']] as const) {
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(JSON.stringify({code,submission,error:'Shorten the message'}),{status:400})));
+  const error = await startAssistantSession('a',freezeAssistantStart('draft',{kind:'global'})).catch(error=>error);
+  expect(error.submission).toBe(expected);
+  expect(error.message.toLowerCase()).toContain(expected ? 'shorten' : 'assistant');
+ }
+});

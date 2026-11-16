@@ -73,7 +73,7 @@ func projectAssistantSession(in ca.Session, lifecycle string) (AssistantSession,
 	if lifecycle != "goal" && lifecycle != "legacy" || lifecycle == "goal" && (in.GoalID == "" || in.ID != in.GoalID) {
 		return AssistantSession{}, ErrAssistantUnavailable
 	}
-	out := AssistantSession{ID: in.ID, JobID: in.JobID, GoalID: in.GoalID, Lifecycle: lifecycle, Status: in.Status, Source: AssistantSource(in.Source), Replay: projectAssistantReplay(in.Replay)}
+	out := AssistantSession{TextBudget: assistantSessionBudget(in), ID: in.ID, JobID: in.JobID, GoalID: in.GoalID, Lifecycle: lifecycle, Status: in.Status, Source: AssistantSource(in.Source), Replay: projectAssistantReplay(in.Replay)}
 	if in.Current != nil && in.Current.Form.RequestId != nil {
 		out.CurrentRequestID = *in.Current.Form.RequestId
 	}

@@ -7,6 +7,7 @@ import {
   freezeAssistantStart, freezeAssistantSubmission, freezeAssistantLifecycle, mergeAssistantReplay, AssistantAPIError,
   type AssistantEntry, type AssistantSession, type AssistantSource, type AssistantStart,
   type AssistantSubmission, type AssistantLifecycleRequest,
+  assistantDraftError, assistantBodyError, assistantStartBody, assistantSubmissionBody,
 } from '@colony2/shared';
 import { useAssistantPoll } from '../hooks/useAssistantPoll';
 import './AssistantPanel.css';
@@ -62,6 +63,7 @@ export default function AssistantPanel({ tenantId, pageSource }: { tenantId: str
   const [lifecyclePending, setLifecyclePending] = useState<'close' | 'reopen'>();
   const lifecycle = useRef<{ action: 'close' | 'reopen'; input: AssistantLifecycleRequest }>();
   const execution = useRef('');
+  const pendingRequest = useRef<string>();
   const [error, setError] = useState('');
   const [staleReview, setStaleReview] = useState(false);
   const [history, setHistory] = useState<AssistantSession[]>([]);
@@ -139,6 +141,7 @@ export default function AssistantPanel({ tenantId, pageSource }: { tenantId: str
       submission.current = undefined; setUncertain(false); setDraft('');
     }
     if (value.current_request_id && value.current_request_id !== acceptedRequest.current) acceptedRequest.current = undefined;
+    pendingRequest.current = value.current_request_id === acceptedRequest.current ? undefined : value.current_request_id;
     setSession(value.current_request_id === acceptedRequest.current ? { ...value, current_request_id: undefined } : value);
     if (replaceReplay) {
       setEntries(value.replay?.entries ?? []);
@@ -220,6 +223,7 @@ export default function AssistantPanel({ tenantId, pageSource }: { tenantId: str
     setError(''); setUncertain(false); setInclude(false); setHistoryBusy(false); setStaleReview(false);
   };
   const send = async (requestedCommand: 'send' | 'finish' = 'send') => {
+    const retry = !!start.current || !!submission.current;
     const command = submission.current?.command ?? requestedCommand;
     if (unresolved || locked.current || lifecycle.current || session?.status.toLowerCase() === 'closing' || !available || (!draft.trim() && command === 'send')) return;
     if (session && (!session.current_request_id || (session.lifecycle === 'goal' && finalStatuses.has(session.status.toLowerCase())))) return;
@@ -234,13 +238,31 @@ export default function AssistantPanel({ tenantId, pageSource }: { tenantId: str
           if (!caps.available) throw new AssistantAPIError(503, 'unavailable');
           // Only a new operation reads capabilities. An uncertain retry must
           // retain its original generation, identity, source and destination.
-          start.current = freezeAssistantStart(draft, include && pageSource ? pageSource : { kind: 'global' }, caps.generation);
+          const problem = assistantDraftError(draft, caps.text_budget, true);
+          if (problem) { setError(problem); return; }
+          const candidate = freezeAssistantStart(draft, include && pageSource ? pageSource : { kind: 'global' }, caps.generation);
+          const bodyProblem = assistantBodyError(assistantStartBody(candidate), caps.text_budget!);
+          if (bodyProblem) { setError(bodyProblem); return; }
+          start.current = candidate;
         }
         const value = await startAssistantSession(tenantId, start.current);
         if (!attached(version)) return;
         acceptSession(value);
       } else {
-        const frozen = submission.current ??= freezeAssistantSubmission(session.current_request_id!, command, draft);
+        if (!submission.current) {
+          const current = await getAssistantSession(tenantId, session.id);
+          if (!attached(version) || execution.current !== observedExecution) return;
+          if (pendingRequest.current !== session.current_request_id || current.id !== session.id || current.job_id !== session.job_id || current.current_request_id !== session.current_request_id) {
+            setError('Conversation changed. Refresh before sending. Your draft is still editable.'); return;
+          }
+          const problem = assistantDraftError(command === 'send' ? draft : undefined, current.text_budget);
+          if (problem) { setError(problem); return; }
+          const candidate = freezeAssistantSubmission(session.current_request_id!, command, draft);
+          const bodyProblem = assistantBodyError(assistantSubmissionBody(candidate), current.text_budget!);
+          if (bodyProblem) { setError(bodyProblem); return; }
+          submission.current = candidate;
+        }
+        const frozen = submission.current;
         const receipt = await respondAssistantSession(tenantId, session.id, frozen);
         if (!attached(version) || execution.current !== observedExecution) return;
         if (receipt.request_id !== frozen.request_id || receipt.submission_id !== frozen.submission_id || !['accepted', 'duplicate'].includes(receipt.outcome)) {
@@ -249,6 +271,7 @@ export default function AssistantPanel({ tenantId, pageSource }: { tenantId: str
         // The consumed request must not become editable again during the brief
         // interval before the worker publishes its next prompt.
         acceptedRequest.current = receipt.request_id;
+        pendingRequest.current = undefined;
         // No optimistic turn is appended. The runtime replay publishes the text.
         setSession(old => old ? { ...old, current_request_id: undefined } : old);
         refresh();
@@ -256,6 +279,9 @@ export default function AssistantPanel({ tenantId, pageSource }: { tenantId: str
       if (attached(version)) { setDraft(''); setUncertain(false); start.current = undefined; submission.current = undefined; }
     } catch (failure) {
       if (!attached(version) || (observedExecution && execution.current !== observedExecution)) return;
+      if (failure instanceof AssistantAPIError && failure.code === 'draft_rejected' && failure.submission === 'not_started' && !retry) {
+        start.current = undefined; submission.current = undefined; setUncertain(false); setError(failure.message); return;
+      }
       setUncertain(!!start.current || !!submission.current); fail(failure);
       if (!session && start.current?.source.kind === 'review' && failure instanceof AssistantAPIError && failure.code === 'conflict') {
         setStaleReview(true); setUncertain(false);
@@ -372,7 +398,7 @@ export default function AssistantPanel({ tenantId, pageSource }: { tenantId: str
       {hasMore && <button disabled={busy} onClick={() => void moreReplay()}>Load earlier messages</button>}
       <form onSubmit={event => { event.preventDefault(); void send(); }}>
         <label htmlFor="assistant-message">Message</label>
-        <textarea ref={input} id="assistant-message" value={detached ? '' : draft} disabled={!available || unresolved || busy || !!lifecyclePending || inputUnavailable || uncertain || staleReview || (!!view && !view.current_request_id)} maxLength={32_768} onChange={event => setDraft(event.target.value)} />
+        <textarea ref={input} id="assistant-message" value={detached ? '' : draft} disabled={!available || unresolved || busy || !!lifecyclePending || inputUnavailable || uncertain || staleReview || (!!view && !view.current_request_id)} onChange={event => setDraft(event.target.value)} />
         <button type="submit" disabled={!available || unresolved || busy || !!lifecyclePending || inputUnavailable || staleReview || (!draft.trim() && !submission.current) || (!!view && !view.current_request_id)}>{uncertain ? (submission.current?.command === 'finish' ? 'Retry finish' : 'Retry same message') : 'Send message'}</button>
       </form>
       {view?.current_request_id && view.lifecycle !== 'goal' && <button disabled={busy || uncertain} onClick={() => void send('finish')}>Finish conversation</button>}

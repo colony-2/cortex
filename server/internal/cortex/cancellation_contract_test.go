@@ -3,6 +3,7 @@ package cortex
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,7 +33,7 @@ func TestCancellationArchiveContract(t *testing.T) {
 					t.Fatalf("lease: %v, %v", lease, err)
 				}
 			}
-			const reason = "Operator 🧪\nretained reason"
+			reason := strings.Repeat("Operator 🧪\nretained reason\n", 2000)
 			if err := rt.CancelJob(ctx, jobdb.CancelJobRequest{JobKey: key, Reason: reason}); err != nil {
 				t.Fatal(err)
 			}

@@ -65,3 +65,35 @@ func TestAssistantProjectionRequiresExplicitLifecycle(t *testing.T) {
 		t.Fatal("distinct session/job identity", goal, err)
 	}
 }
+
+func TestAssistantEffectiveTextBudgetProjection(t *testing.T) {
+	for _, protocol := range []string{ca.Protocol, ca.OrdinaryProtocol, ca.GoalProtocol} {
+		for _, limit := range []int{100, 16384, 32768} {
+			request := map[string]any{"protocol": protocol}
+			var raw any = request
+			s := ca.Session{ID: "s", JobID: "j", Limits: ca.Limits{Human: limit}, Current: &input.UserInputDetails{}}
+			s.Current.Form.Request = &raw
+			projected, e := projectAssistantSession(s, "legacy")
+			if e != nil || projected.TextBudget == nil {
+				t.Fatal("budget missing", e)
+			}
+			b := projected.TextBudget
+			if b.RawUTF8Bytes != limit || b.HTTPBodyBytes != assistantBodyLimit {
+				t.Fatal(b)
+			}
+			encoded := 0
+			if protocol == ca.GoalProtocol {
+				encoded = limit
+			}
+			if b.GoJSONStringContentBytes != encoded {
+				t.Fatal(b)
+			}
+		}
+	}
+	if assistantSessionBudget(ca.Session{Limits: ca.OrdinaryLimits()}) != nil {
+		t.Fatal("invented protocol for a nonpending request")
+	}
+	if assistantTextBudget(ca.OrdinaryLimits(), "unknown") != nil {
+		t.Fatal("invented protocol")
+	}
+}

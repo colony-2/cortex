@@ -208,3 +208,75 @@ func TestAssistantTrustedConfigBounds(t *testing.T) {
 		}
 	}
 }
+
+func TestAssistantTextBoundariesBeforeRetention(t *testing.T) {
+	ctx, s, a := servingAssistantFixture(t)
+	budget := s.cfg.Assistant.TextBudget
+	for _, seed := range []string{"a", "🧪", "雪", "\n", "\"\\", "<>&", "\u2028\u2029", "\x00\x1f"} {
+		encoded, _ := json.Marshal(seed)
+		n := (budget.GoJSONStringContentBytes - 1) / (len(encoded) - 2)
+		exact := "x" + strings.Repeat(seed, n) + strings.Repeat("a", budget.GoJSONStringContentBytes-1-n*(len(encoded)-2))
+		if err := validateAssistantText(exact, budget); err != nil {
+			t.Fatal("inclusive boundary", err)
+		}
+		request := servingStart(a, fmt.Sprintf("oversized-%x", seed))
+		request.Prompt = exact + "a"
+		before := len(a.operations)
+		_, err := a.Start(ctx, servingCaller, request)
+		var rejected *assistantDraftRejection
+		if !errors.As(err, &rejected) || len(a.operations) != before {
+			t.Fatal("invalid draft was retained", err)
+		}
+	}
+	request := servingStart(a, "exact")
+	request.Prompt = strings.Repeat("a", 16384)
+	accepted, err := a.Start(ctx, servingCaller, request)
+	if err != nil || accepted.JobID == "" {
+		t.Fatal("exact text budget did not submit", err)
+	}
+	// Retry must not be revalidated under new preferred limits.
+	s.cfg.Assistant.TextBudget = assistantTextBudget(ca.Limits{Human: 100}, ca.GoalProtocol)
+	again, err := a.Start(ctx, servingCaller, request)
+	if err != nil || again.JobID != accepted.JobID {
+		t.Fatal("retained retry changed with configuration", err)
+	}
+	request = servingStart(a, "lower")
+	request.Prompt = strings.Repeat("a", 101)
+	if _, err = a.Start(ctx, servingCaller, request); !errors.Is(err, ErrAssistantInvalid) {
+		t.Fatal(err)
+	}
+}
+
+func TestAssistantPreparationRejectionDoesNotSubmit(t *testing.T) {
+	ctx, _, a := servingAssistantFixture(t)
+	in := servingStart(a, "preparation-limit")
+	before, err := a.List(ctx, servingCaller, AssistantPage{Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = a.prepared(ctx, servingCaller, "start", in.RequestID, in.Generation, in, func() (ca.FrozenStart, error) { return ca.FrozenStart{}, ErrAssistantInvalid })
+	var rejected *assistantDraftRejection
+	if !errors.As(err, &rejected) {
+		t.Fatal("missing proven rejection", err)
+	}
+	after, err := a.List(ctx, servingCaller, AssistantPage{Limit: 20})
+	if err != nil || len(after.Sessions) != len(before.Sessions) {
+		t.Fatal("preparation rejection submitted", err)
+	}
+	op := a.operations[assistantOperationKey{servingCaller, "start", in.RequestID}]
+	if op == nil || op.frozen != nil {
+		t.Fatal("unexpected frozen operation")
+	}
+}
+
+func TestAssistantGoalFinishRemainsUnavailableWithoutPendingPrompt(t *testing.T) {
+	ctx, _, a := servingAssistantFixture(t)
+	s, e := a.Start(ctx, servingCaller, servingStart(a, "queued-goal"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, e = a.Respond(ctx, servingCaller, s.ID, AssistantSubmission{RequestID: "request", SubmissionID: "submission", Command: "finish"})
+	if !errors.Is(e, ErrAssistantInvalid) {
+		t.Fatal("goal finish policy changed", e)
+	}
+}

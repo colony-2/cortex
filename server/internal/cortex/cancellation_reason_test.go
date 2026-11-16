@@ -28,6 +28,10 @@ func TestCancellationReasonValidation(t *testing.T) {
 			ts := httptest.NewServer(srv)
 			defer ts.Close()
 			postJSON[jobdb.Cell](t, ts.URL+"/api/projects/a/cells", map[string]string{"name": "self", "repo": "github.com/acme/boo-self"})
+			engine := &failingCancellationEngine{Engine: srv.engine}
+			deletion := &failingArchiveRuntime{JobDeletionRuntime: srv.jobDeletion}
+			srv.engine = engine
+			srv.jobDeletion = deletion
 			cases := []struct {
 				body   string
 				status int
@@ -37,9 +41,41 @@ func TestCancellationReasonValidation(t *testing.T) {
 				{`{"reason":"   \n "}`, 204, defaultCancellationReason}, {`{"reason":"  雪🧪\n<script>text</script>  "}`, 204, "雪🧪\n<script>text</script>"},
 				{`{"reason":null}`, 400, ""}, {`{"reason":1}`, 400, ""}, {`{"reason":true}`, 400, ""}, {`{"reason":[]}`, 400, ""}, {`{"reason":{}}`, 400, ""},
 				{`{"reason":`, 400, ""}, {`{} {}`, 400, ""}, {`null`, 400, ""}, {`[]`, 400, ""},
-				{`{"reason":"` + strings.Repeat("🧪", 4000) + `"}`, 204, strings.Repeat("🧪", 4000)},
-				{`{"reason":"` + strings.Repeat("🧪", 4001) + `"}`, 400, ""},
+				{`{"reason":"` + strings.Repeat("🧪", 5000) + `"}`, 204, strings.Repeat("🧪", 5000)},
+
 				{`{"reason":"` + strings.Repeat("a", 65536) + `"}`, 413, ""},
+			}
+			// Build valid bodies by encoded length, including wrapper and padding.
+			for _, seed := range []string{"a", "🧪", "\n\"\\"} {
+				for _, size := range []int{65535, 65536, 65537} {
+					reason := strings.Repeat(seed, 5000)
+					body, _ := json.Marshal(map[string]string{"reason": reason})
+					reason += strings.Repeat("a", size-len(body))
+					body, _ = json.Marshal(map[string]string{"reason": reason})
+					if len(body) != size {
+						t.Fatal("invalid boundary fixture")
+					}
+					status := 204
+					if size > 65536 {
+						status = 413
+					}
+					cases = append(cases, struct {
+						body   string
+						status int
+						reason string
+					}{string(body), status, strings.TrimSpace(reason)})
+				}
+			}
+			for _, body := range []string{
+				`{"reason":"` + strings.Repeat(" ", 65524) + `"}`,
+				`{"reason":"ok","ignored":"` + strings.Repeat("x", 65536) + `"}`,
+				strings.Repeat(" ", 65536) + `{}`,
+			} {
+				cases = append(cases, struct {
+					body   string
+					status int
+					reason string
+				}{body, 413, ""})
 			}
 			for i, tc := range cases {
 				id := "case-" + strings.Repeat("x", i+1)
@@ -57,6 +93,7 @@ func TestCancellationReasonValidation(t *testing.T) {
 				}
 				req, _ := http.NewRequest(method, path, strings.NewReader(tc.body))
 				req.Header.Set("Content-Type", "application/json")
+				cancelCalls, hideCalls := engine.calls, deletion.calls
 				resp, err := http.DefaultClient.Do(req)
 				if err != nil {
 					t.Fatal(err)
@@ -70,6 +107,9 @@ func TestCancellationReasonValidation(t *testing.T) {
 					t.Fatal(err)
 				}
 				if tc.status != 204 {
+					if engine.calls != cancelCalls || deletion.calls != hideCalls {
+						t.Fatal("invalid request caused mutation")
+					}
 					if run.Job.Status != jobdb.JobStatusReady {
 						t.Fatalf("invalid request mutated job: %#v", run.Job)
 					}
@@ -80,7 +120,7 @@ func TestCancellationReasonValidation(t *testing.T) {
 					want = "job deleted"
 				}
 				if run.Job.CompletionDetail != want {
-					t.Fatalf("case %d persisted detail = %q, want %q", i, run.Job.CompletionDetail, want)
+					t.Fatalf("case %d persisted reason differs (got %d bytes, want %d)", i, len(run.Job.CompletionDetail), len(want))
 				}
 			}
 		})
@@ -146,7 +186,7 @@ func TestCancellationArchivePartialFailure(t *testing.T) {
 		t.Fatalf("failed cancellation deleted: %d, %d", status, deletion.calls)
 	}
 	engine.fail = false
-	if status, result := archive("accepted 🧪"); status != 500 || result.Code != "archive_failed_after_cancel" {
+	if status, result := archive(strings.Repeat("accepted 🧪\n", 2000)); status != 500 || result.Code != "archive_failed_after_cancel" {
 		t.Fatalf("partial result: %d %#v", status, result)
 	}
 	// This is a fresh HTTP request, with no browser state carrying the reason.
@@ -161,7 +201,7 @@ func TestCancellationArchivePartialFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if run.Job.CompletionDetail != "accepted 🧪" {
+	if run.Job.CompletionDetail != strings.TrimSpace(strings.Repeat("accepted 🧪\n", 2000)) {
 		t.Fatalf("accepted reason overwritten: %#v", run.Job)
 	}
 }

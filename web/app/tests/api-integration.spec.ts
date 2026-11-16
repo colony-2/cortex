@@ -9,7 +9,7 @@ import { jobIdentity, registerCell } from './helpers/cells';
 import { fixtureGitTransport } from './helpers/gitTransport';
 
 for (const width of [1440, 390]) {
-test(`confirms cancellation and active archive, immediately archives cancelled jobs at ${width}px`, async ({ page, request, context, baseURL }) => {
+test(`confirms cancellation and active archive, immediately archives cancelled jobs at ${width}px`, async ({ page, request, context, baseURL }, info) => {
   // This scenario covers cancellation, bulk archiving, navigation and retained messages.
   test.setTimeout(90_000);
   page.on('pageerror', error => console.error('Browser error:', error));
@@ -36,13 +36,31 @@ test(`confirms cancellation and active archive, immediately archives cancelled j
   await dialog.getByRole('button', { name: 'Keep jobs' }).click();
   expect(mutations).toEqual([]);
   await page.getByRole('button', { name: 'Cancel job', exact: true }).click();
-  const customReason = 'Operator 雪🧪\n<script>window.cancelTextExecuted = true</script>';
+  const customReason = 'Operator 雪🧪\n<script>window.cancelTextExecuted = true</script>\n' +
+    'I am cancelling because the deployment window moved. Preserve the investigation and logs for the next attempt.\n'.repeat(65);
+  const editor = dialog.getByLabel('Cancellation message (optional)');
+  // Quotes cross the encoded body budget with a smaller paste and fewer
+  // auto-sized rows, keeping this byte-validation journey fast in development.
+  const oversized = 'This explanation needs editing before it can be sent.\n' + '"'.repeat(32768);
+  expect(Buffer.byteLength(JSON.stringify({reason:oversized}), 'utf8')).toBeGreaterThan(65536);
+  await editor.fill(oversized);
+  await expect(editor).toHaveValue(oversized);
+  await expect(editor).toBeEditable();
+  await expect(dialog.getByText(/exceeds 64 KiB, including JSON encoding/)).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Cancel job', exact: true })).toBeDisabled();
+  expect(mutations).toEqual([]);
+  expect((await (await request.get(`${base}/detail-job`)).json()).status).toBe('READY');
+  await page.screenshot({path:info.outputPath(`cancellation-oversized-${width}.png`)});
   await dialog.getByLabel('Cancellation message (optional)').fill(`  ${customReason}  `);
+  await expect(dialog.getByText(/exceeds 64 KiB/)).toHaveCount(0);
+  await expect(dialog.getByRole('button', {name:'Cancel job',exact:true})).toBeEnabled();
+  await editor.evaluate((node:HTMLTextAreaElement)=>{node.setSelectionRange(0,0);node.scrollTop=0;});
+  await page.screenshot({path:info.outputPath(`cancellation-long-${width}.png`),animations:'disabled'});
   await dialog.getByRole('button', { name: 'Cancel job', exact: true }).click();
   await expect(dialog).not.toBeVisible();
-  expect((await (await request.get(`${base}/detail-job`)).json())).toMatchObject({status:'CANCELLED', completion_detail:customReason});
+  expect((await (await request.get(`${base}/detail-job`)).json())).toMatchObject({status:'CANCELLED', completion_detail:customReason.trim()});
   await page.reload();
-  expect((await (await request.get(`${base}/detail-job`)).json()).completion_detail).toBe(customReason);
+  expect((await (await request.get(`${base}/detail-job`)).json()).completion_detail).toBe(customReason.trim());
   expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).cancelTextExecuted)).toBeUndefined();
   await page.getByRole('link', { name: 'Goal overview', exact: true }).click();
   await page.getByRole('link', { name: 'Back to Goals', exact: true }).click();
@@ -105,13 +123,19 @@ test(`confirms cancellation and active archive, immediately archives cancelled j
   await visibility.selectOption('inbox');
   await page.getByRole('checkbox', { name:'Select job untouched', exact:true }).check();
   await page.getByRole('button', { name:'Archive selected' }).click();
-  await dialog.getByLabel('Cancellation message (optional)').fill('  Archive 雪🧪\nrequested by operator  ');
+  const archiveReason = 'Archive 雪🧪\n' + 'The replacement run will use a fresh environment. Keep this run’s history available for reference.\n'.repeat(65);
+  await dialog.getByLabel('Cancellation message (optional)').fill(oversized);
+  await expect(dialog.getByRole('button', {name:'Archive job',exact:true})).toBeDisabled();
+  await expect(dialog.getByLabel('Cancellation message (optional)')).toHaveValue(oversized);
+  await dialog.getByLabel('Cancellation message (optional)').fill(`  ${archiveReason}  `);
+  await expect(dialog.getByRole('button', {name:'Archive job',exact:true})).toBeEnabled();
+  await page.screenshot({path:info.outputPath(`archive-long-${width}.png`),animations:'disabled'});
   await dialog.getByRole('button', { name:'Archive job', exact:true }).click();
   await expect(dialog).not.toBeVisible();
   await expect(page.getByRole('checkbox', { name:'Select job untouched', exact:true })).toHaveCount(0);
   await page.reload();
   const saved = await (await request.get(`${base}/untouched`)).json();
-  expect(saved).toMatchObject({ status:'CANCELLED', completion_detail:'Archive 雪🧪\nrequested by operator' });
+  expect(saved).toMatchObject({ status:'CANCELLED', completion_detail:archiveReason.trim() });
   await visibility.selectOption('all');
   await expect(page.getByRole('checkbox', { name:'Select job untouched', exact:true })).toBeVisible();
   await page.getByRole('link', { name:'Job untouched: Cancelled', exact:true }).click();

@@ -266,3 +266,53 @@ test('CTX-REV-001 first browser Start after serving replacement freezes the curr
  await writeFile(info.outputPath('first-start-after-replacement.json'),JSON.stringify({old_generation:oldGeneration,current_generation:currentGeneration,request:input,status:response.status(),session:recorded,prior_start_attempts:0,panel_reloaded:false,history_reselected:false},null,2));
  await close(request,recorded);
 });
+
+test('keeps oversized assistant drafts editable and saves corrected Start and Respond text', async ({page,context,request,baseURL},info) => {
+ await context.addCookies([{name:'colony2:user:email',value:'fixture@example.test',url:baseURL!}]);
+ await page.setViewportSize({width:1365,height:1000});
+ await page.goto('/project/assistant-browser/jobs');
+ await page.getByRole('button',{name:'Open assistant'}).click();
+ const panel = page.getByRole('dialog',{name:'Contextual assistant'});
+ const editor = panel.getByRole('textbox',{name:'Message'});
+ await expect(editor).toBeEditable();
+ expect(await editor.getAttribute('maxlength')).toBeNull();
+ const mutations:string[]=[];
+ page.on('request',r=>{if(r.method()==='POST'&&r.url().includes('/assistant/'))mutations.push(r.url());});
+ const oversized='Keep the complete explanation in the editor so I can revise it.\n'.repeat(650);
+ const corrected='Please discuss the saved evidence and the next investigation step.\n'.repeat(75).trim();
+ let current:AssistantSession|undefined;
+ for(const action of ['Start','Respond']) {
+  const before=mutations.length;
+  await editor.fill(oversized);
+  await panel.getByRole('button',{name:'Send message'}).click();
+  await expect(panel.getByRole('alert')).toContainText('exceeds 16,384 UTF-8 bytes');
+  await expect(editor).toHaveValue(oversized); await expect(editor).toBeEditable();
+  expect(mutations).toHaveLength(before);
+  await editor.evaluate((node:HTMLTextAreaElement)=>{node.setSelectionRange(0,0);node.scrollTop=0;});
+  await page.screenshot({path:info.outputPath(`assistant-${action.toLowerCase()}-oversized.png`)});
+  if(current) expect((await get(request,current.id)).current_request_id).toBe(current.current_request_id);
+  const response=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith(action==='Start'?'/assistant/sessions':'/respond'));
+  await editor.fill(corrected);
+  await panel.getByRole('button',{name:'Send message'}).click();
+  const accepted=await response;expect(accepted.ok(),await accepted.text()).toBeTruthy();
+  if(action==='Start') current=await accepted.json() as AssistantSession;
+  current=await ready(request,current!.id);
+  await expect(panel.getByRole('status')).toContainText('Waiting for your message',{timeout:120000});
+  expect(current.replay.entries.filter(e=>e.role==='user'&&e.text===corrected)).toHaveLength(action==='Start'?1:2);
+  expect(current.replay.entries.some(e=>e.text===oversized)).toBe(false);
+  expect(mutations).toHaveLength(before+1);
+ }
+ // Bypass browser checks: the server must independently reject new oversize text.
+ for(const prompt of ['a'.repeat(16385),'<'.repeat(2731)]) {
+  const rejected=await post(request,`/sessions/${current!.id}/respond`,{request_id:current!.current_request_id,submission_id:randomUUID(),submitted_at:new Date().toISOString(),command:'send',prompt});
+  expect(rejected.status(),await rejected.text()).toBe(400);
+  expect(await rejected.json()).toMatchObject({code:'draft_rejected',submission:'not_started'});
+  expect((await get(request,current!.id)).current_request_id).toBe(current!.current_request_id);
+ }
+ const exact='a'.repeat(16384);
+ const accepted=await post(request,`/sessions/${current!.id}/respond`,{request_id:current!.current_request_id,submission_id:randomUUID(),submitted_at:new Date().toISOString(),command:'send',prompt:exact});
+ expect(accepted.ok(),await accepted.text()).toBeTruthy();
+ const recorded=await ready(request,current!.id);
+ expect(recorded.replay.entries.some(e=>e.role==='user'&&e.text===exact)).toBe(true);
+ await close(request,recorded);
+});

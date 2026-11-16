@@ -35,6 +35,7 @@ type AssistantCaller struct {
 	TenantID  string
 }
 type AssistantIntegration struct {
+	TextBudget       *AssistantTextBudget
 	Service          AssistantService
 	Generation       string
 	ResolvePrincipal func(context.Context, *http.Request) (AssistantPrincipal, error)
@@ -119,16 +120,17 @@ type AssistantReplay struct {
 	Watermark string           `json:"watermark"`
 }
 type AssistantSession struct {
-	GoalID           string              `json:"goal_id,omitempty"`
-	Lifecycle        string              `json:"lifecycle,omitempty"`
-	ID               string              `json:"id"`
-	JobID            string              `json:"job_id"`
-	Status           string              `json:"status"`
-	Source           AssistantSource     `json:"source"`
-	CapturedAt       *time.Time          `json:"captured_at,omitempty"`
-	Coverage         []AssistantCoverage `json:"coverage,omitempty"`
-	CurrentRequestID string              `json:"current_request_id,omitempty"`
-	Replay           AssistantReplay     `json:"replay"`
+	TextBudget       *AssistantTextBudget `json:"text_budget,omitempty"`
+	GoalID           string               `json:"goal_id,omitempty"`
+	Lifecycle        string               `json:"lifecycle,omitempty"`
+	ID               string               `json:"id"`
+	JobID            string               `json:"job_id"`
+	Status           string               `json:"status"`
+	Source           AssistantSource      `json:"source"`
+	CapturedAt       *time.Time           `json:"captured_at,omitempty"`
+	Coverage         []AssistantCoverage  `json:"coverage,omitempty"`
+	CurrentRequestID string               `json:"current_request_id,omitempty"`
+	Replay           AssistantReplay      `json:"replay"`
 }
 type AssistantSessions struct {
 	Sessions []AssistantSession `json:"sessions"`
@@ -224,13 +226,19 @@ func (s *Server) handleAssistant(w http.ResponseWriter, r *http.Request) {
 	routeName := mux.CurrentRoute(r).GetName()
 	if routeName == "/capabilities" {
 		writeJSON(w, http.StatusOK, struct {
-			Available  bool   `json:"available"`
-			Generation string `json:"generation,omitempty"`
+			Available  bool                 `json:"available"`
+			Generation string               `json:"generation,omitempty"`
+			TextBudget *AssistantTextBudget `json:"text_budget,omitempty"`
 		}{ready, func() string {
 			if ready {
 				return s.cfg.Assistant.Generation
 			}
 			return ""
+		}(), func() *AssistantTextBudget {
+			if ready {
+				return s.cfg.Assistant.TextBudget
+			}
+			return nil
 		}()})
 		return
 	}
@@ -418,7 +426,7 @@ func assistantDecode(w http.ResponseWriter, r *http.Request, v any) bool {
 	}
 	var tooLarge *http.MaxBytesError
 	if errors.As(err, &tooLarge) {
-		writeJSON(w, http.StatusRequestEntityTooLarge, errorResponse{Error: "Assistant request is too large", Code: "limit"})
+		writeAssistantDraftRejection(w, http.StatusRequestEntityTooLarge, "This request exceeds 40 KiB, including JSON encoding. Shorten the message. Your complete draft is still editable.")
 		return false
 	}
 	assistantError(w, ErrAssistantInvalid)
@@ -448,6 +456,11 @@ func (s *Server) assistantOrigin(r *http.Request) bool {
 	return false
 }
 func assistantError(w http.ResponseWriter, err error) {
+	var rejected *assistantDraftRejection
+	if errors.As(err, &rejected) {
+		writeAssistantDraftRejection(w, http.StatusBadRequest, rejected.message)
+		return
+	}
 	status, code, message := http.StatusServiceUnavailable, "unavailable", "Assistant is unavailable; refresh to recover accepted messages"
 	switch {
 	case errors.Is(err, ErrAssistantUnresolved):

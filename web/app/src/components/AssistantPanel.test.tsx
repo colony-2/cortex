@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   assistantCapabilities, getAssistantSession, startAssistantSession, respondAssistantSession, listAssistantSessions,
-  closeAssistantSession, reopenAssistantSession, AssistantAPIError, type AssistantSession,
+  closeAssistantSession, reopenAssistantSession, AssistantAPIError, type AssistantSession, type AssistantCapabilities,
 } from '@colony2/shared';
 import AssistantPanel from './AssistantPanel';
 import { useAssistantPoll } from '../hooks/useAssistantPoll';
@@ -10,14 +10,15 @@ vi.mock('@colony2/shared', async original => ({ ...await original<object>(),
   assistantCapabilities: vi.fn(), getAssistantSession: vi.fn(), startAssistantSession: vi.fn(),
   respondAssistantSession: vi.fn(), closeAssistantSession: vi.fn(), reopenAssistantSession: vi.fn(), listAssistantSessions: vi.fn(), replayAssistantSession: vi.fn(),
 }));
+const text_budget = { raw_utf8_bytes: 16384, go_json_string_content_bytes: 16384, http_body_bytes: 40960 };
 function session(overrides: Partial<AssistantSession> = {}): AssistantSession {
-  return { id: 'session-1', job_id: 'execution-1', status: 'running', source: { kind: 'global' },
+  return { text_budget, id: 'session-1', job_id: 'execution-1', status: 'running', source: { kind: 'global' },
     current_request_id: 'request-1', replay: { entries: [{ key: 'task-1', role: 'assistant', status: 'succeeded', text: 'Durable answer' }], watermark: 'w1', has_more: false, complete: true }, ...overrides };
 }
 function deferred<T>() { let resolve!: (value: T) => void; let reject!: (failure: unknown) => void; const promise = new Promise<T>((a,b) => { resolve=a; reject=b; }); return { promise, resolve, reject }; }
 beforeEach(() => {
   vi.resetAllMocks();
-  vi.mocked(assistantCapabilities).mockResolvedValue({ available: true });
+  vi.mocked(assistantCapabilities).mockResolvedValue({ available: true, text_budget });
   vi.mocked(startAssistantSession).mockResolvedValue(session());
   vi.mocked(getAssistantSession).mockResolvedValue(session());
   vi.mocked(listAssistantSessions).mockResolvedValue({ sessions: [] });
@@ -35,8 +36,8 @@ async function send(prompt = 'Discuss this') {
 
 describe('assistant panel', () => {
  it('CTX-REV-001 reads current capabilities before a new Start and admits only one pending attempt', async () => {
-  vi.mocked(assistantCapabilities).mockResolvedValue({ available: true, generation: 'mounted' });
-  const capabilities = deferred<{ available: boolean; generation: string }>();
+  vi.mocked(assistantCapabilities).mockResolvedValue({ available: true, text_budget, generation: 'mounted' });
+  const capabilities = deferred<AssistantCapabilities>();
   render(<AssistantPanel tenantId="a" pageSource={{ kind: 'story', job_id: 'story-1' }} />);
   await open();
   vi.mocked(assistantCapabilities).mockReturnValueOnce(capabilities.promise);
@@ -46,7 +47,7 @@ describe('assistant panel', () => {
   fireEvent.submit(screen.getByLabelText('Message').closest('form')!);
   expect(assistantCapabilities).toHaveBeenCalledTimes(2);
   expect(startAssistantSession).not.toHaveBeenCalled();
-  await act(async () => capabilities.resolve({ available: true, generation: 'replacement' }));
+  await act(async () => capabilities.resolve({ available: true, text_budget, generation: 'replacement' }));
   await screen.findByText('Durable answer');
   expect(startAssistantSession).toHaveBeenCalledTimes(1);
   expect(vi.mocked(startAssistantSession).mock.calls[0][1]).toMatchObject({
@@ -60,12 +61,12 @@ describe('assistant panel', () => {
   await open();
   if (action === 'reopen') await send();
   const calls = vi.mocked(startAssistantSession).mock.calls.length;
-  const capabilities = deferred<{ available: boolean; generation: string }>();
+  const capabilities = deferred<AssistantCapabilities>();
   vi.mocked(assistantCapabilities).mockReturnValueOnce(capabilities.promise);
   if (action === 'start') fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Private tenant A draft' } });
   fireEvent.click(screen.getByRole('button', { name: action === 'start' ? 'Send message' : 'Reopen conversation' }));
   view.rerender(<AssistantPanel tenantId="b" />);
-  await act(async () => capabilities.resolve({ available: true, generation: 'tenant-a-replacement' }));
+  await act(async () => capabilities.resolve({ available: true, text_budget, generation: 'tenant-a-replacement' }));
   expect(startAssistantSession).toHaveBeenCalledTimes(calls);
   expect(reopenAssistantSession).not.toHaveBeenCalled();
   expect(screen.getByLabelText('Message')).toHaveValue('');
@@ -77,7 +78,7 @@ describe('assistant panel', () => {
   await open();
   if (action === 'reopen') await send();
   const calls = vi.mocked(startAssistantSession).mock.calls.length;
-  vi.mocked(assistantCapabilities).mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ available: true, generation: 'current' });
+  vi.mocked(assistantCapabilities).mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ available: true, text_budget, generation: 'current' });
   if (action === 'start') fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Unattempted draft' } });
   const name = action === 'start' ? 'Send message' : 'Reopen conversation';
   fireEvent.click(screen.getByRole('button', { name }));
@@ -105,7 +106,7 @@ describe('assistant panel', () => {
   expect(buttons[buttons.length-1]).toHaveFocus();
  });
  it('CTX-012 freezes starts after an uncertain response without appending invented replies', async () => {
-  vi.mocked(assistantCapabilities).mockResolvedValue({ available: true, generation: 'original' });
+  vi.mocked(assistantCapabilities).mockResolvedValue({ available: true, text_budget, generation: 'original' });
   vi.mocked(startAssistantSession).mockRejectedValueOnce(new Error('lost reply')).mockResolvedValueOnce(session());
   render(<AssistantPanel tenantId="a" pageSource={{ kind: 'review', job_id: 'review', request_id: 'exact' }} />);
   await open();
@@ -116,7 +117,7 @@ describe('assistant panel', () => {
   expect(screen.queryByText('Durable answer')).not.toBeInTheDocument();
   expect(screen.getByRole('checkbox')).toBeDisabled();
   const capabilityCalls = vi.mocked(assistantCapabilities).mock.calls.length;
-  vi.mocked(assistantCapabilities).mockResolvedValue({ available: true, generation: 'replacement' });
+  vi.mocked(assistantCapabilities).mockResolvedValue({ available: true, text_budget, generation: 'replacement' });
   fireEvent.click(screen.getByRole('button', { name: 'Retry same message' }));
   await screen.findByText('Durable answer');
   const first = vi.mocked(startAssistantSession).mock.calls[0][1];
@@ -253,7 +254,7 @@ describe('assistant panel', () => {
   const oldRead = deferred<AssistantSession>();
   render(<AssistantPanel tenantId="a" />); await open(); await send();
   vi.mocked(respondAssistantSession).mockRejectedValue(new Error('lost response'));
-  vi.mocked(getAssistantSession).mockReturnValue(oldRead.promise);
+  vi.mocked(getAssistantSession).mockResolvedValueOnce(session()).mockReturnValue(oldRead.promise);
   fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Accepted but lost response' } });
   fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
   await screen.findByRole('alert');
@@ -387,7 +388,7 @@ it('CTX-015 ignores a send receipt from the previous execution after a refreshed
  const oldSend=deferred<{request_id:string;submission_id:string;outcome:string}>();
  const initial=session({id:'goal',goal_id:'goal',lifecycle:'goal'});
  vi.mocked(startAssistantSession).mockResolvedValue(initial);
- vi.mocked(getAssistantSession).mockReturnValueOnce(oldRead.promise);
+ vi.mocked(getAssistantSession).mockReturnValueOnce(oldRead.promise).mockResolvedValue(initial);
  vi.mocked(respondAssistantSession).mockReturnValue(oldSend.promise);
  render(<AssistantPanel tenantId="a" />);await open();await send();
  await waitFor(()=>expect(getAssistantSession).toHaveBeenCalled());
@@ -402,4 +403,71 @@ it('CTX-015 ignores a send receipt from the previous execution after a refreshed
  expect(screen.getByRole('link',{name:'View execution'})).toHaveAttribute('href',expect.stringContaining('execution-2'));
  expect(screen.getByLabelText('Message')).not.toBeDisabled();
  expect(screen.getByLabelText('Message')).toHaveValue('Unconfirmed old message');
+});
+
+it.each(['start','respond'] as const)('keeps an oversized %s draft whole and editable, then sends corrected text once', async action => {
+ render(<AssistantPanel tenantId="a" />); await open();
+ if (action === 'respond') await send();
+ const mutate = action === 'start' ? startAssistantSession : respondAssistantSession;
+ vi.mocked(mutate).mockClear();
+ if (action === 'respond') vi.mocked(respondAssistantSession).mockImplementation(async (_tenant,_id,incoming)=>({request_id:incoming.request_id,submission_id:incoming.submission_id,outcome:'accepted'}));
+ const editor = screen.getByLabelText('Message');
+ expect(editor).not.toHaveAttribute('maxlength');
+ const oversized = 'complete draft\n'.repeat(3000);
+ fireEvent.change(editor,{target:{value:oversized}});
+ fireEvent.click(screen.getByRole('button',{name:'Send message'}));
+ await screen.findByText(/exceeds 16,384 UTF-8 bytes/);
+ expect(editor).toHaveValue(oversized); expect(editor).toBeEnabled();
+ expect(mutate).not.toHaveBeenCalled();
+ const corrected = '雪'.repeat(5000);
+ fireEvent.change(editor,{target:{value:corrected}});
+ fireEvent.click(screen.getByRole('button',{name:'Send message'}));
+ await waitFor(()=>expect(mutate).toHaveBeenCalledTimes(1));
+ expect(vi.mocked(mutate).mock.calls[0].at(-1)).toMatchObject({prompt:corrected});
+});
+it.each(['start','respond'] as const)('keeps a %s draft editable when budget metadata is missing', async action => {
+ render(<AssistantPanel tenantId="a" />); await open();
+ if (action === 'respond') { await send(); vi.mocked(getAssistantSession).mockResolvedValue(session({text_budget:undefined})); }
+ else vi.mocked(assistantCapabilities).mockResolvedValue({available:true});
+ const mutate = action === 'start' ? startAssistantSession : respondAssistantSession;
+ vi.mocked(mutate).mockClear();
+ fireEvent.change(screen.getByLabelText('Message'),{target:{value:'retained draft'}});
+ fireEvent.click(screen.getByRole('button',{name:'Send message'}));
+ await screen.findByText(/Message limits are unavailable/);
+ expect(screen.getByLabelText('Message')).toHaveValue('retained draft'); expect(screen.getByLabelText('Message')).toBeEnabled();
+ expect(mutate).not.toHaveBeenCalled();
+});
+it.each(['start','respond'] as const)('releases a newly rejected %s draft for editing', async action => {
+ render(<AssistantPanel tenantId="a" />); await open();
+ if (action === 'respond') await send();
+ const rejection = new AssistantAPIError(400,'draft_rejected','not_started','Shorten this message. Your complete draft is still editable.');
+ if (action === 'start') vi.mocked(startAssistantSession).mockRejectedValueOnce(rejection);
+ else vi.mocked(respondAssistantSession).mockRejectedValueOnce(rejection);
+ fireEvent.change(screen.getByLabelText('Message'),{target:{value:'whole draft'}});
+ fireEvent.click(screen.getByRole('button',{name:'Send message'}));
+ await screen.findByText(/Shorten this message/);
+ expect(screen.getByLabelText('Message')).toHaveValue('whole draft'); expect(screen.getByLabelText('Message')).toBeEnabled();
+ expect(screen.queryByRole('button',{name:'Retry same message'})).not.toBeInTheDocument();
+});
+it('ignores a delayed reply budget for a different pending request', async () => {
+ render(<AssistantPanel tenantId="a" />); await open(); await send();
+ vi.mocked(getAssistantSession).mockResolvedValue(session({current_request_id:'new-request'}));
+ fireEvent.change(screen.getByLabelText('Message'),{target:{value:'whole draft'}});
+ fireEvent.click(screen.getByRole('button',{name:'Send message'}));
+ await screen.findByText(/Conversation changed. Refresh before sending/);
+ expect(screen.getByLabelText('Message')).toHaveValue('whole draft'); expect(screen.getByLabelText('Message')).toBeEnabled();
+ expect(respondAssistantSession).not.toHaveBeenCalled();
+});
+
+it('retains the exact uncertain Start after a later error claims rejection', async () => {
+ vi.mocked(startAssistantSession).mockRejectedValueOnce(new Error('lost response')).mockRejectedValueOnce(new AssistantAPIError(400,'draft_rejected','not_started','rejected'));
+ render(<AssistantPanel tenantId="a" />); await open();
+ fireEvent.change(screen.getByLabelText('Message'),{target:{value:'unchanged request'}});
+ fireEvent.click(screen.getByRole('button',{name:'Send message'}));
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Retry same message'})).toBeEnabled());
+ fireEvent.click(screen.getByRole('button',{name:'Retry same message'}));
+ await screen.findByText(/^rejected/);
+ expect(screen.getByLabelText('Message')).toHaveValue('unchanged request');
+ expect(screen.getByLabelText('Message')).toBeDisabled();
+ expect(vi.mocked(startAssistantSession).mock.calls[1][1]).toBe(vi.mocked(startAssistantSession).mock.calls[0][1]);
 });

@@ -321,3 +321,44 @@ func TestAssistantCloseNeedsLifecycleComposition(t *testing.T) {
 		t.Fatalf("uncomposed close: %d calls=%d", w.Code, f.calls)
 	}
 }
+
+func TestAssistantIndependentHTTPBudgets(t *testing.T) {
+	for _, route := range []string{"sessions", "sessions/s/respond"} {
+		for _, size := range []int{assistantBodyLimit - 1, assistantBodyLimit, assistantBodyLimit + 1} {
+			f := &assistantBoundaryFixture{}
+			_, handler := assistantBoundaryServer(f)
+			body := assistantStartJSON
+			if route != "sessions" {
+				body = assistantRespondJSON
+			}
+			body += strings.Repeat(" ", size-len(body))
+			if len(body) != size {
+				t.Fatal("bad body fixture")
+			}
+			response := assistantBoundaryRequest(handler, "POST", "/api/projects/a/assistant/"+route, body, "alice")
+			if size > assistantBodyLimit {
+				if response.Code != 413 || f.calls != 0 {
+					t.Fatal("oversize mutated service", response.Code, f.calls)
+				}
+			} else if response.Code != 200 || f.calls != 1 {
+				t.Fatal("inclusive HTTP budget", response.Code, f.calls)
+			}
+		}
+		for _, size := range []int{32768, 32769} {
+			f := &assistantBoundaryFixture{}
+			_, handler := assistantBoundaryServer(f)
+			body := strings.Replace(assistantStartJSON, "Discuss the evidence", strings.Repeat("a", size), 1)
+			if route != "sessions" {
+				body = strings.Replace(assistantRespondJSON, "Continue", strings.Repeat("a", size), 1)
+			}
+			response := assistantBoundaryRequest(handler, "POST", "/api/projects/a/assistant/"+route, body, "alice")
+			if size > 32768 {
+				if response.Code != 400 || f.calls != 0 {
+					t.Fatal("prompt guard mutated service", response.Code, f.calls)
+				}
+			} else if response.Code != 200 || f.calls != 1 {
+				t.Fatal("inclusive raw guard", response.Code, f.calls)
+			}
+		}
+	}
+}

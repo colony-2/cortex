@@ -324,8 +324,8 @@ describe('job story history', () => {
   });
 
   it('does not offer restarts without recorded scopes', async () => {
-    mount();
-    await screen.findByText('Development.Design.Task 3.2');
+    await act(async () => { mount(); });
+    expect(screen.getByText('Development.Design.Task 3.2')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Restart job' })).not.toBeInTheDocument();
   });
 

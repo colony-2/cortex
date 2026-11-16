@@ -247,3 +247,15 @@ it('CID-001 CID-003 CID-006 refreshes edited prompts and modes while returning t
  expect(vi.mocked(submitJob).mock.calls[2][1]).not.toHaveProperty('repo');
  expect(vi.mocked(submitJob).mock.calls.every(call => !('job_id' in call[1]))).toBe(true);
 });
+
+it('submits a long new-goal prompt intact without an editor maximum', async () => {
+ open();
+ await screen.findAllByText('platform · github.com/acme/platform');
+ const prompt = 'Keep the entire goal explanation, including café and 日本語.\n'.repeat(160).trim();
+ const editor = screen.getByLabelText('Prompt');
+ expect(editor).not.toHaveAttribute('maxlength');
+ fireEvent.change(editor,{target:{value:prompt}});
+ expect(editor).toHaveValue(prompt);
+ fireEvent.click(screen.getByRole('button',{name:'Create goal'}));
+ await waitFor(()=>expect(submitJob).toHaveBeenCalledWith('one',expect.objectContaining({inputs:{prompt,type:'build'}})));
+});

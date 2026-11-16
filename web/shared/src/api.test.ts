@@ -270,3 +270,31 @@ it('reads raw restart inspection values without rounding before comparison', asy
   vi.stubGlobal('fetch', vi.fn(async () => new Response(raw)));
   expect(stringifyJobJSON(await getRestartContext('tenant', 'job', 'scope'))).toBe(raw);
 });
+
+
+it.each(['cancelJob', 'archiveJob'] as const)('measures and sends the exact %s body at UTF-8 boundaries', async name => {
+  const api = await import('./api');
+  const fetch = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+  vi.stubGlobal('fetch', fetch);
+  for (const seed of ['a', '🧪', '\n"\\']) {
+    for (const size of [65535, 65536, 65537]) {
+      const base = seed.repeat(5000);
+      const text = base + 'a'.repeat(size - new TextEncoder().encode(api.serializeCancellationReason(base)).byteLength);
+      const body = api.serializeCancellationReason(text);
+      expect(new TextEncoder().encode(body).byteLength).toBe(size);
+      fetch.mockClear();
+      if (size > 65536) {
+        await expect(api[name]('tenant', 'job', text)).rejects.toThrow(/64 KiB/);
+        expect(fetch).not.toHaveBeenCalled();
+      } else {
+        await api[name]('tenant', 'job', text);
+        expect(fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body }));
+      }
+    }
+  }
+  fetch.mockClear();
+  await api[name]('tenant', 'job');
+  expect(fetch.mock.calls[0][1]).not.toHaveProperty('body');
+  fetch.mockResolvedValue({ ok: false, status: 413 });
+  await expect(api[name]('tenant', 'job', 'draft')).rejects.toThrow(/64 KiB/);
+});

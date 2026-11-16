@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Input, Modal, Space, Typography, message } from 'antd';
-import { APIError, cancelJob, archiveJob, getJob, DEFAULT_CANCELLATION_REASON } from '@colony2/shared/api';
+import { APIError, cancelJob, archiveJob, getJob, DEFAULT_CANCELLATION_REASON, cancellationSizeError } from '@colony2/shared/api';
 
 import type { RecipeJobSummary } from '@colony2/shared/types';
 import { isFinishedJob } from '../utils/jobStatus';
@@ -58,12 +58,13 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
   };
   useEffect(() => { if (single && action === 'archive' && !job?.status) void resolveStatus(); }, []);
   const showReason = single && needsReason && !resolving && !statusError;
-  const count = Array.from(reason.trim()).length;
+  const normalizedReason = reason.trim() || DEFAULT_CANCELLATION_REASON;
+  const sizeError = showReason ? cancellationSizeError(normalizedReason) : undefined;
   const verb = action === 'cancel' ? 'Cancel' : 'Archive';
   const label = `${verb} ${pending.length === 1 ? 'job' : `${pending.length} jobs`}`;
 
   const submit = async () => {
-    if (disabled || submitting.current || !pending.length || resolving || statusError || (showReason && count > 4000)) return;
+    if (disabled || submitting.current || !pending.length || resolving || statusError || !!sizeError) return;
     submitting.current = true;
     setBusy(true);
     onBusyChange?.(true);
@@ -75,7 +76,7 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
       for (let offset = 0; offset < pending.length; offset += 5) {
         const ids = pending.slice(offset, offset + 5);
         const results = await Promise.allSettled(ids.map(id =>
-          (action === 'cancel' ? cancelJob : archiveJob)(projectId, id, showReason ? reason.trim() || DEFAULT_CANCELLATION_REASON : undefined)));
+          (action === 'cancel' ? cancelJob : archiveJob)(projectId, id, showReason ? normalizedReason : undefined)));
         if (!mounted.current) return;
         results.forEach((result, index) => {
           if (result.status === 'fulfilled') succeeded.push(ids[index]);
@@ -113,7 +114,7 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
 
   return <Modal open zIndex={1100} title={failures.length ? `${verb} failed jobs` : `${label}?`} okText={label} cancelText={failures.length ? "Close" : "Keep jobs"}
     onOk={submit} onCancel={onClose} closable={!busy} maskClosable={!busy} keyboard={!busy}
-    okButtonProps={{ danger: true, loading: busy, disabled: disabled || busy || resolving || !!statusError || (showReason && count > 4000) || !pending.length, 'aria-label': label }}
+    okButtonProps={{ danger: true, loading: busy, disabled: disabled || busy || resolving || !!statusError || !!sizeError || !pending.length, 'aria-label': label }}
     cancelButtonProps={{ disabled: busy }}>
     <Space direction="vertical" style={{ width: '100%' }}>
       <Typography.Paragraph>
@@ -127,8 +128,9 @@ export default function JobActionDialog({ projectId, jobIds, action, onClose, on
       {showReason && <div>
         <label htmlFor="cancellation-reason">Cancellation message (optional)</label>
         <Input.TextArea id="cancellation-reason" value={reason} onChange={event => setReason(event.target.value)} disabled={busy || (action === 'archive' && accepted)} autoSize={{ minRows: 3, maxRows: 8 }} />
-        <Typography.Paragraph type="secondary">Saved with the cancellation. Leave blank to use the default message. {count.toLocaleString()} / 4,000</Typography.Paragraph>
+        <Typography.Paragraph type="secondary">Saved with the cancellation. Leave blank to use the default message.</Typography.Paragraph>
       </div>}
+      {sizeError && <Alert type="error" message={sizeError} />}
       {single && action === 'archive' && accepted && <Alert type="info" message="Cancellation has already been accepted. Its saved message is retained; only archiving remains." />}
       <ul style={{ maxHeight: 200, overflow: 'auto', overflowWrap: 'anywhere' }}>
         {pending.map(id => <li key={id}>{id}</li>)}

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"strings"
 	"sync"
@@ -85,12 +86,13 @@ func (s *Server) composeAssistant(cfg AssistantRuntimeConfig, ctl *workerworkflo
 			}})
 		},
 	}
-	client, err := ca.New(host, ca.Config{Protocol: ca.GoalProtocol, Root: cfg.Root, Recipe: assistantGoalRecipe, RecipeCommit: assistantRecipeCommit, CursorKey: cfg.CursorKey, Bindings: &cfg.Bindings, LegacyReleases: cfg.LegacyReleases})
+	limits := ca.OrdinaryLimits()
+	client, err := ca.New(host, ca.Config{Limits: limits, Protocol: ca.GoalProtocol, Root: cfg.Root, Recipe: assistantGoalRecipe, RecipeCommit: assistantRecipeCommit, CursorKey: cfg.CursorKey, Bindings: &cfg.Bindings, LegacyReleases: cfg.LegacyReleases})
 	if err != nil {
 		return assistantFacadeError(err)
 	}
 	a.client = client
-	s.cfg.Assistant = &AssistantIntegration{Service: a, Ready: func(context.Context) bool { return cfg.ExecutionReady }, Generation: a.generation,
+	s.cfg.Assistant = &AssistantIntegration{Service: a, TextBudget: assistantTextBudget(limits, ca.GoalProtocol), Ready: func(context.Context) bool { return cfg.ExecutionReady }, Generation: a.generation,
 		AuthorizeTenant: func(_ context.Context, _ AssistantPrincipal, tenant string) error {
 			if tenant != s.cfg.DefaultTenantID {
 				return ErrAssistantDenied
@@ -161,6 +163,12 @@ func (a *assistantFacadeService) prepared(ctx context.Context, c AssistantCaller
 			a.mu.Unlock()
 			return AssistantSession{}, ErrAssistantUnresolved
 		}
+		if in, ok := envelope.(AssistantStart); ok {
+			if err := validateAssistantText(in.Prompt, a.server.cfg.Assistant.TextBudget); err != nil {
+				a.mu.Unlock()
+				return AssistantSession{}, err
+			}
+		}
 		if len(a.operations) >= assistantRetainedOperations || a.reserved+assistantOperationBytes > assistantRetainedBytes {
 			a.mu.Unlock()
 			return AssistantSession{}, ErrAssistantUnavailable
@@ -175,12 +183,17 @@ func (a *assistantFacadeService) prepared(ctx context.Context, c AssistantCaller
 	if op.frozen == nil {
 		frozen, e := prepare()
 		if e != nil {
+			// PrepareStartFrozen never submits. Do not attach this classification
+			// to SubmitFrozenStart errors, including limit-shaped errors.
+			if errors.Is(e, ErrAssistantInvalid) {
+				return AssistantSession{}, rejectAssistantDraft("The conversation could not be prepared before submission. Refresh or shorten the message", e)
+			}
 			return AssistantSession{}, e
 		}
 		// Do not re-encode nested JSON: retain the complete opaque wrapper as returned.
 		size := len(frozen.Payload) + len(frozen.MAC) + len(op.envelope) + 4096 // bounded map/key/wrapper overhead
 		if size > assistantOperationBytes {
-			return AssistantSession{}, ErrAssistantUnavailable
+			return AssistantSession{}, rejectAssistantDraft("The prepared conversation exceeds the retained request budget. Shorten the message", ErrAssistantUnavailable)
 		}
 		op.frozen = &frozen
 		a.mu.Lock()
@@ -224,13 +237,24 @@ func (a *assistantFacadeService) Replay(ctx context.Context, c AssistantCaller, 
 	return projectAssistantReplay(v), assistantFacadeError(e)
 }
 func (a *assistantFacadeService) Respond(ctx context.Context, c AssistantCaller, id string, in AssistantSubmission) (AssistantReceipt, error) {
+	current, e := a.client.Get(ctx, facadeCaller(c), id)
+	if e != nil {
+		return AssistantReceipt{}, assistantFacadeError(e)
+	}
 	if in.Command != "send" {
-		session, e := a.Get(ctx, c, id)
+		projected, e := a.project(ctx, c, current, nil)
 		if e != nil {
 			return AssistantReceipt{}, e
 		}
-		if session.Lifecycle == "goal" {
+		if projected.Lifecycle == "goal" {
 			return AssistantReceipt{}, ErrAssistantInvalid
+		}
+	}
+	// A consumed request goes directly to facade receipt reconciliation. Never
+	// apply new-message checks to an uncertain retry of an accepted response.
+	if in.Command == "send" && current.Current != nil && current.Current.Form.RequestId != nil && *current.Current.Form.RequestId == in.RequestID {
+		if e := validateAssistantText(in.Prompt, assistantSessionBudget(current)); e != nil {
+			return AssistantReceipt{}, e
 		}
 	}
 	v, e := a.client.Respond(ctx, facadeCaller(c), id, input.StructuredSubmission{RequestID: in.RequestID, SubmissionID: in.SubmissionID, Response: ca.Command{Command: in.Command, Prompt: in.Prompt}})

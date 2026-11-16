@@ -102,3 +102,17 @@ it.each(['actionable','other','unavailable','sent','waiting','loading'] as const
  fireEvent.click(screen.getByRole('button',{name:phase==='other'?'Open pending reviews':/Back to Reviews/}));
  expect(await screen.findByText('/project/tenant/reviews?q=foo+bar&cellId=platform&sort=title&order=descend')).toBeVisible();
 });
+
+it('submits long feedback intact and preserves it after an uncertain failure',async()=>{
+ render(component());
+ fireEvent.click(screen.getByRole('radio',{name:/Ask a question/}));
+ const editor=screen.getByLabelText('Question or requested change (required)');
+ const feedback='Please clarify the remaining evidence and the requested change. 日本語\n'.repeat(100);
+ expect(editor).not.toHaveAttribute('maxlength');
+ fireEvent.change(editor,{target:{value:feedback}});
+ fireEvent.click(screen.getByRole('button',{name:'Continue',exact:true}));
+ fireEvent.click(screen.getByRole('button',{name:'Confirm Ask a question'}));
+ await screen.findByText(/Connection lost/);
+ expect(editor).toHaveValue(feedback);
+ expect(vi.mocked(inputActivityService.submitReviewV2).mock.calls[0][3].feedback).toBe(feedback);
+});

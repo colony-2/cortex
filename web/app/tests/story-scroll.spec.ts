@@ -112,6 +112,8 @@ test.describe('touch', () => {
 });
 test('JS-SC-008,009,010,011,013,014,015 navigation and resize', async ({ page }, info) => {
   await page.setViewportSize({ width: 390, height: 844 }); await page.emulateMedia({ reducedMotion: 'reduce' }); await open(page);
+  // Scheduled polling is covered below; isolate navigation/resize-triggered reads.
+  await page.getByRole('switch', { name: 'Auto-refresh', exact: true }).uncheck();
   const row = page.getByRole('region', { name: 'Execution story tree' }).getByText('row-10', { exact: true }); await row.scrollIntoViewIfNeeded();
   const before = await page.evaluate(() => scrollY); await row.click();
   expect(await page.evaluate(() => scrollY)).toBe(before);

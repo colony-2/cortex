@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { mockCells } from './helpers/cells';
 
+const text_budget = { raw_utf8_bytes: 16384, go_json_string_content_bytes: 16384, http_body_bytes: 40960 };
+
 // These tests exercise the real panel in Chromium with explicit HTTP fixtures.
 // CTX-023 uses a separate retained-runtime host and cannot be established here.
 for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: 'mobile', width: 390, height: 844 }]) {
@@ -14,7 +16,7 @@ for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: '
    await mockCells(page, ['platform']);
    await page.route(/\/api\/projects\/[^/]+\/jobs(\?.*)?$/, route => route.fulfill({ json: { jobs: [] } }));
    await page.route(/\/api\/projects\/[^/]+\/user-inputs\/pending$/, route => route.fulfill({ json: [] }));
-   await page.route('**/assistant/capabilities', route => route.fulfill({ json: { available: true } }));
+   await page.route('**/assistant/capabilities', route => route.fulfill({ json: { available: true, text_budget } }));
   });
   test('CTX-020 contains keyboard focus, restores focus and keeps the mounted draft', async ({ page }, testInfo) => {
    await page.goto('/project/assistant-browser/jobs');
@@ -70,7 +72,7 @@ test('CTX-014 keeps captured evidence through SPA navigation and clears it on te
   const url = new URL(route.request().url());
   const endpoint = url.pathname;
   if (endpoint === '/api/projects') return route.fulfill({ json: [{ tenant_id: 'a' }] });
-  if (endpoint.endsWith('/assistant/capabilities')) return route.fulfill({ json: { available: true } });
+  if (endpoint.endsWith('/assistant/capabilities')) return route.fulfill({ json: { available: true, text_budget } });
   if (endpoint.endsWith('/assistant/sessions') && route.request().method() === 'POST') {
    const input = route.request().postDataJSON(); starts.push(input);
    return route.fulfill({ json: { id: `session-${starts.length}`, job_id: 'second-story', status: 'completed', source: input.source,

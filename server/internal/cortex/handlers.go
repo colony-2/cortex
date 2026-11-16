@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/colony-2/c2j/pkg/cellref"
 	"github.com/colony-2/c2j/pkg/jobref"
@@ -379,10 +378,6 @@ func cancellationReason(w http.ResponseWriter, r *http.Request) (string, bool, b
 		}
 	}
 	reason = strings.TrimSpace(reason)
-	if utf8.RuneCountInString(reason) > 4000 {
-		writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("reason must be at most 4,000 Unicode code points"))
-		return "", false, false
-	}
 	if reason == "" {
 		reason = defaultCancellationReason
 	}

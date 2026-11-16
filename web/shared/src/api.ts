@@ -140,10 +140,21 @@ export async function getRestartContext(projectId: string, jobId: string, bounda
 }
 
 export const DEFAULT_CANCELLATION_REASON = 'Cancelled from Cortex';
+export const CANCELLATION_BODY_BYTES = 64 * 1024;
+export const CANCELLATION_SIZE_ERROR = 'This request exceeds 64 KiB, including JSON encoding. Shorten the message. Your complete draft is still editable.';
+export function serializeCancellationReason(reason: string): string { return JSON.stringify({ reason }); }
+export function cancellationSizeError(reason: string): string | undefined {
+  return new TextEncoder().encode(serializeCancellationReason(reason)).byteLength > CANCELLATION_BODY_BYTES ? CANCELLATION_SIZE_ERROR : undefined;
+}
 function reasonBody(reason?: string): RequestInit {
-  return reason === undefined ? {} : {
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }),
-  };
+  if (reason === undefined) return {};
+  const body = serializeCancellationReason(reason);
+  if (new TextEncoder().encode(body).byteLength > CANCELLATION_BODY_BYTES) throw new APIError(CANCELLATION_SIZE_ERROR, 413);
+  return { headers: { 'Content-Type': 'application/json' }, body };
+}
+async function handleCancellationResponse(response: Response, action: string): Promise<void> {
+  if (response.status === 413) throw new APIError(CANCELLATION_SIZE_ERROR, 413);
+  await handleResponse(response, action);
 }
 
 export async function cancelJob(projectId: string, jobId: string, reason?: string): Promise<void> {
@@ -151,7 +162,7 @@ export async function cancelJob(projectId: string, jobId: string, reason?: strin
     `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/cancel`,
     { method: 'POST', ...reasonBody(reason) },
   );
-  await handleResponse(response, 'Cancel job');
+  await handleCancellationResponse(response, 'Cancel job');
 }
 
 // The existing deletion API hides jobs and cancels unfinished work; it retains history.
@@ -160,7 +171,7 @@ export async function archiveJob(projectId: string, jobId: string, reason?: stri
     `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}`,
     { method: 'DELETE', ...reasonBody(reason) },
   );
-  await handleResponse(response, 'Archive job');
+  await handleCancellationResponse(response, 'Archive job');
 }
 
 export async function submitJob(projectId: string, input: SubmitRecipeJobRequest, files?: readonly File[]): Promise<SubmittedJob> {
