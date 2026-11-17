@@ -592,3 +592,16 @@ it('keeps retained content across refreshed URLs while controlled navigation can
   expect(screen.queryByRole('heading', { name: 'Obsolete retained original' })).toBeNull();
   expect(select).not.toHaveBeenCalled();
 });
+
+
+it('V01 uses controlled v2 visibility without duplicate controls and retains the mounted preview', async () => {
+  const fetcher=vi.fn(async()=>new Response('# Kept preview'));vi.stubGlobal('fetch',fetcher);
+  const view=(visible:boolean)=><ReviewDocuments projectId="t" jobId="j" requestId="r" documents={documents}
+    layout={{navigationVisible:visible,stacked:false,navigationId:'controlled-documents',separator:visible?<div role="separator"/>:null}}/>;
+  const {rerender}=baseRender(view(true));
+  const heading=await screen.findByRole('heading',{name:'Kept preview'});
+  expect(screen.queryByRole('button',{name:'Hide documents'})).toBeNull();
+  expect(screen.getByRole('navigation',{name:'Review documents'}).closest('.review-navigation-track')).toHaveAttribute('id','controlled-documents');
+  rerender(view(false));expect(screen.queryByRole('navigation',{name:'Review documents'})).toBeNull();expect(screen.queryByRole('separator')).toBeNull();
+  rerender(view(true));expect(screen.getByRole('navigation',{name:'Review documents'})).toBeVisible();expect(screen.getByRole('heading',{name:'Kept preview'})).toBe(heading);expect(fetcher).toHaveBeenCalledOnce();
+});

@@ -1,12 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Input, Typography, type InputRef } from 'antd';
-import { SettingOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { useEffect, useLayoutEffect, useRef, useState, useId } from 'react';
+import { Alert, Button, Input, Tooltip, Typography, type InputRef } from 'antd';
+import { SettingOutlined, ArrowLeftOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { changedReviewSettings, conversationArtifactURL, reviewV2ContributionError, reviewV2DirectionPolicy, createSubmissionId, inputActivityService, stringifyJobJSON, validateReviewScalar, type ReviewV2Request, type ReviewV2Turn, type UserInputDetails } from '@colony2/shared';
 import { reviewV2AnswerPending } from '../utils/reviewV2State';
 import { reviewReturnSearch } from '../utils/reviewFilters';
 import { useReviewV2 } from '../hooks/useReviewV2';
 import ReviewDocuments from './ReviewDocuments';
+import ReviewQuestion from './ReviewQuestion';
+import ReviewPaneSeparator from './ReviewPaneSeparator';
+import { automaticDocuments, reviewPaneDefaults, reviewV2Layout, type ReviewSide, type ReviewWidths } from '../utils/reviewV2Layout';
 import ReviewV2Settings from './ReviewV2Settings';
 import { historicalDocuments, historicalTurnAttachments } from './historicalDocuments';
 import { useAssistantSource } from './AssistantContext';
@@ -15,11 +18,25 @@ import ReviewV2Context from './ReviewV2Context';
 import { useReviewResponsePane } from '../hooks/useReviewResponsePane';
 import { resolveReviewDocumentLocation, reviewDocumentSearch } from '../utils/reviewDocumentLocation';
 
-export function ReviewV2Discussion({turns,request,attachmentURL,declarations,pending=false}: {turns:ReviewV2Turn[];request:ReviewV2Request;declarations?:Record<string,ReviewV2Request>;pending?:boolean;attachmentURL?:(turn:number,index:number)=>string}) {
+export function ReviewV2Discussion({turns,request,attachmentURL,declarations,pending=false,id,hidden=false,layoutReady=true}: {id?:string;hidden?:boolean;layoutReady?:boolean;turns:ReviewV2Turn[];request:ReviewV2Request;declarations?:Record<string,ReviewV2Request>;pending?:boolean;attachmentURL?:(turn:number,index:number)=>string}) {
   const [visible,setVisible]=useState(20);
-  return <section aria-label="Discussion" data-review={request.review_id} className="review-v2-discussion">
+  const root=useRef<HTMLElement>(null);
+  const readingPosition=useRef<number>();
+  const expansion=useRef<{height:number;top:number}>();
+  useLayoutEffect(()=>{
+    if(hidden||!layoutReady||!root.current)return;
+    root.current.scrollTop=readingPosition.current??root.current.scrollHeight;
+  },[hidden,layoutReady]);
+  useLayoutEffect(()=>{
+    if(expansion.current&&root.current){
+      root.current.scrollTop=expansion.current.top+root.current.scrollHeight-expansion.current.height;
+      readingPosition.current=root.current.scrollTop;
+      expansion.current=undefined;
+    }
+  },[visible]);
+  return <section ref={root} id={id} hidden={hidden} onScroll={()=>{if(root.current&&!hidden)readingPosition.current=root.current.scrollTop;}} aria-label="Discussion" data-review={request.review_id} className="review-v2-discussion">
     <Typography.Title level={4}>Discussion</Typography.Title>
-    {turns.length>visible&&<Button onClick={()=>setVisible(n=>n+20)}>Show earlier turns ({turns.length-visible})</Button>}
+    {turns.length>visible&&<Button onClick={()=>{if(root.current)expansion.current={height:root.current.scrollHeight,top:root.current.scrollTop};setVisible(n=>n+20);}}>Show earlier turns ({turns.length-visible})</Button>}
     {turns.slice(-visible).map((turn,index)=>{
       const actual=turns.length>visible?turns.length-visible+index:index;
       const frozen=turn.role==='human'&&typeof turn.receipt?.request_id==='string'?declarations?.[turn.receipt.request_id]:undefined;
@@ -31,7 +48,8 @@ export function ReviewV2Discussion({turns,request,attachmentURL,declarations,pen
       </article>;
     })}
     {pending&&<p role="status" className="review-v2-pending">Response pending</p>}
-    {!turns.length&&<p>No questions yet. You can ask about the material before choosing a direction.</p>}
+    {request.question.trim()&&<ReviewQuestion question={request.question}/>}
+    {!turns.length&&!request.question.trim()&&<p>No questions yet. You can ask about the material before choosing a direction.</p>}
   </section>;
 }
 export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;job:string;reviewId:string;initial?:UserInputDetails}) {
@@ -47,7 +65,33 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
   const [composerOpen,setComposerOpen]=useState(false);
   const pane=useRef<HTMLDivElement>(null);
   const workspace=useRef<HTMLDivElement>(null);
-  const [wideNavigation,setWideNavigation]=useState(false);
+  const [workspaceSize,setWorkspaceSize]=useState({width:0,narrow:false});
+  const [documentsPreference,setDocumentsPreference]=useState<boolean>();
+  const [discussionVisible,setDiscussionVisible]=useState(true);
+  const [preferredWidths,setPreferredWidths]=useState(reviewPaneDefaults);
+  const visibilityPreferences=useRef({documents:documentsPreference,discussion:discussionVisible});
+  visibilityPreferences.current={documents:documentsPreference,discussion:discussionVisible};
+  const [draggedWidths,setDraggedWidths]=useState<{workspace:typeof workspaceSize;documents:boolean;discussion:boolean;widths:ReviewWidths}>();
+  const documentsVisible=documentsPreference??automaticDocuments(workspaceSize.width,discussionVisible);
+  // A drag holds the other side at its effective width, even after shrink has
+  // clamped it. A new workspace measurement restores allocation from preferences.
+  const allocated=draggedWidths?.workspace===workspaceSize&&draggedWidths.documents===documentsVisible&&draggedWidths.discussion===discussionVisible?draggedWidths.widths:preferredWidths;
+  const layout=reviewV2Layout(workspaceSize.width,workspaceSize.narrow,documentsVisible,discussionVisible,allocated);
+  const paneId=useId();
+  const documentsId=`${paneId}-documents`,discussionId=`${paneId}-discussion`;
+  const documentsToggle=useRef<HTMLButtonElement>(null),discussionToggle=useRef<HTMLButtonElement>(null);
+  const togglePane=(side:ReviewSide)=>{
+    const visible=side==='documents'?documentsVisible:discussionVisible;
+    const content=document.getElementById(side==='documents'?documentsId:discussionId);
+    if(visible&&(content?.contains(document.activeElement)||document.activeElement?.getAttribute('aria-controls')===content?.id)){
+      (side==='documents'?documentsToggle:discussionToggle).current?.focus();
+    }
+    if(side==='documents')setDocumentsPreference(!visible);else setDiscussionVisible(!visible);
+  };
+  const separator=(side:ReviewSide)=><ReviewPaneSeparator side={side} controls={side==='documents'?documentsId:discussionId} width={layout[side]} maximum={layout.maximum[side]} onResize={width=>{
+    setPreferredWidths(previous=>({...previous,[side]:width}));
+    setDraggedWidths({workspace:workspaceSize,documents:documentsVisible,discussion:discussionVisible,widths:{documents:layout.documents,discussion:layout.discussion,[side]:width}});
+  }}/>;
   const feedbackInput=useRef<InputRef>(null);
   const actionButtons=useRef(new Map<string,HTMLButtonElement|HTMLAnchorElement>());
   const [unavailableDocument,setUnavailableDocument]=useState(false);
@@ -94,13 +138,15 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
   useEffect(()=>{
     if(!workspace.current)return;
     const element=workspace.current;
-    // Read the dimensions used by CSS from the stable outer workspace. Showing
-    // navigation must not change the width that decides whether it fits.
+    // Only the stable outer workspace controls defaults and clamping.
     const measure=()=>{
-      const style=getComputedStyle(element);
-      const required=['--review-v2-navigation-width','--review-v2-reading-width','--review-v2-discussion-width','--review-v2-reading-gap','--review-v2-column-gap']
-        .reduce((total,property)=>total+parseFloat(style.getPropertyValue(property)),0);
-      setWideNavigation(element.getBoundingClientRect().width>=required);
+      const width=element.getBoundingClientRect().width,narrow=window.matchMedia('(max-width: 1000px)').matches;
+      const preferences=visibilityPreferences.current;
+      if(!(preferences.documents??automaticDocuments(width,preferences.discussion))){
+        const navigation=document.getElementById(documentsId);
+        if(navigation?.contains(document.activeElement)||document.activeElement?.getAttribute('aria-controls')===documentsId)documentsToggle.current?.focus();
+      }
+      setWorkspaceSize(previous=>previous.width===width&&previous.narrow===narrow?previous:{width,narrow});
     };
     const observer=typeof ResizeObserver==='undefined'?undefined:new ResizeObserver(measure);
     observer?.observe(element);window.addEventListener('resize',measure);measure();
@@ -208,11 +254,15 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
     <div className="review-v2-heading"><Button icon={<ArrowLeftOutlined/>} onClick={()=>navigate(reviewsPath)}>Back to Reviews</Button><a href={`/project/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(job)}/story`}>Job activity</a></div>
     <ReviewV2Context tenant={tenant} job={job} metadata={view.job}/>
     <Typography.Title level={2}>{request.title}</Typography.Title>
-    <p className="review-v2-question">{request.question}</p>
     {unavailableDocument&&<Alert type="warning" message="The linked document is unavailable. Showing the starting document."/>}
     {!validSelection?<Alert type="warning" message={selection?.kind==='invalid'?'This review link is malformed':'This linked review is unavailable'} action={<Button onClick={()=>navigate({pathname:location.pathname,search:reviewDocumentSearch(location.search,reviewId,undefined,'review_id'),hash:location.hash})}>Open selected review</Button>}/>:<>
-    <div ref={workspace} className="review-v2-layout"><div className="review-v2-reader"><ReviewDocuments projectId={tenant} jobId={job} requestId={reviewId} source={source} documents={documents} documentMetadata={request.document_metadata} overviewDocumentId={request.overview_document_id} navigationDefault={wideNavigation} stackNavigation={!wideNavigation} selection={{documentId:selection?.kind==='selected'?selection.documentId:undefined,onSelect:id=>navigate({pathname:location.pathname,search:reviewDocumentSearch(location.search,reviewId,id,'review_id'),hash:location.hash})}}/></div>
-      <ReviewV2Discussion pending={!error&&reviewV2AnswerPending(view)} turns={view.conversation} request={request} declarations={view.declarations} attachmentURL={(turn,index)=>{
+    <div className="review-v2-workspace-toolbar" aria-label="Review panes">
+      <Tooltip title={documentsVisible?'Hide documents':'Show documents'}><Button ref={documentsToggle} aria-label={documentsVisible?'Hide documents':'Show documents'} aria-expanded={documentsVisible} aria-controls={documentsId} icon={documentsVisible?<MenuFoldOutlined/>:<MenuUnfoldOutlined/>} onClick={()=>togglePane('documents')}/></Tooltip>
+      <Tooltip title={discussionVisible?'Hide discussion':'Show discussion'}><Button ref={discussionToggle} aria-label={discussionVisible?'Hide discussion':'Show discussion'} aria-expanded={discussionVisible} aria-controls={discussionId} icon={discussionVisible?<MenuFoldOutlined style={{transform:'scaleX(-1)'}}/>:<MenuUnfoldOutlined style={{transform:'scaleX(-1)'}}/>} onClick={()=>togglePane('discussion')}/></Tooltip>
+    </div>
+    <div ref={workspace} className={`review-v2-layout${layout.stacked?' stacked':''}`} style={{gridTemplateColumns:layout.stacked?'minmax(0,1fr)':`${documentsVisible?`${layout.documents}px 8px `:''}minmax(0,1fr)${discussionVisible?` 8px ${layout.discussion}px`:''}`}}><div className="review-v2-reader"><ReviewDocuments projectId={tenant} jobId={job} requestId={reviewId} source={source} documents={documents} documentMetadata={request.document_metadata} overviewDocumentId={request.overview_document_id} layout={{navigationVisible:documentsVisible,stacked:layout.stacked,navigationId:documentsId,separator:documentsVisible&&!layout.stacked?separator('documents'):null}} selection={{documentId:selection?.kind==='selected'?selection.documentId:undefined,onSelect:id=>navigate({pathname:location.pathname,search:reviewDocumentSearch(location.search,reviewId,id,'review_id'),hash:location.hash})}}/></div>
+      {discussionVisible&&!layout.stacked&&separator('discussion')}
+      <ReviewV2Discussion layoutReady={workspaceSize.width>0} id={discussionId} hidden={!discussionVisible} pending={!error&&reviewV2AnswerPending(view)} turns={view.conversation} request={request} declarations={view.declarations} attachmentURL={(turn,index)=>{
         const match=notes?.[`${turn}/${index}`];return match&&history?conversationArtifactURL(tenant,job,history.entry_id,match.member,history.snapshot_token):'';
       }}/>
     </div>

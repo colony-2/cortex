@@ -3,13 +3,25 @@
 .review-v2-context {margin-top:16px;color:#596579}
 .review-v2-context ol {display:flex;flex-wrap:wrap;gap:6px 12px;list-style:none;padding:0;margin:8px 0}
 .review-v2-context li:not(:last-child)::after {content:'›';margin-left:12px}
-.review-v2-layout {--review-v2-navigation-width:240px;--review-v2-reading-width:720px;--review-v2-discussion-width:320px;--review-v2-reading-gap:20px;--review-v2-column-gap:24px;display:grid;grid-template-columns:minmax(0,1fr) var(--review-v2-discussion-width);gap:var(--review-v2-column-gap);align-items:start}
-.review-v2-reader {min-width:0}
-.review-v2 .review-reading-layout {gap:var(--review-v2-reading-gap)}
-.review-v2 .review-reading-layout.with-navigation {grid-template-columns:var(--review-v2-navigation-width) minmax(0,1fr)}
-.review-v2 .review-reading-track {width:100%;max-width:900px;justify-self:center}
-.review-v2-discussion {padding:20px;background:#f5f7fa;border:1px solid #dce3ed;border-radius:12px;max-height:calc(100dvh - var(--review-action-height,100px) - 40px);overflow:auto;position:sticky;top:16px}
-.review-v2-turn {padding:16px;margin:12px 0;background:#fff;border:1px solid #e3e7ef;border-radius:10px;white-space:normal}
+.review-v2-workspace-toolbar {display:flex;justify-content:space-between;margin:8px 0}
+.review-v2-layout {display:grid;gap:0;align-items:start;min-width:0}
+.review-v2 .review-v2-reader,.review-v2 .review-v2-document-tracks {display:contents}
+.review-v2 .review-reading-track {width:100%;max-width:none;min-width:0}
+.review-v2 .review-navigation-track {min-width:0}
+.review-v2 .review-document-catalog .ant-card-body {padding:12px}
+.review-v2-separator {align-self:stretch;min-height:80px;position:relative;cursor:col-resize;touch-action:none;user-select:none;outline-offset:-2px}
+.review-v2-separator::before {content:'';position:absolute;top:0;bottom:0;left:3px;width:1px;background:#dce3ed}
+.review-v2-separator:hover::before,.review-v2-separator:focus-visible::before,.review-v2-separator.dragging::before {background:#1677ff;width:2px}
+.review-v2-layout:has(.dragging),.review-v2-layout:has(.dragging) * {cursor:col-resize!important;user-select:none!important}
+.review-v2-layout.stacked {row-gap:16px}
+.review-v2-layout.stacked .review-v2-discussion {position:static;max-height:none}
+.review-v2-question-markdown {min-width:0}
+.review-v2-question-markdown pre {overflow:auto;max-width:100%;white-space:pre;padding:8px;background:#f5f7fa}
+.review-v2-question-markdown table {display:block;max-width:100%;overflow:auto;border-collapse:collapse;overflow-wrap:normal}
+.review-v2-question-markdown th,.review-v2-question-markdown td {min-width:6rem;border:1px solid #dce3ed;padding:4px 8px}
+.review-v2-question-markdown ul,.review-v2-question-markdown ol {padding-left:24px}
+.review-v2-discussion {min-width:0;padding:20px;background:#f5f7fa;border:1px solid #dce3ed;border-radius:12px;max-height:calc(100dvh - var(--review-action-height,100px) - 40px);overflow:auto;position:sticky;top:16px}
+.review-v2-turn {min-width:0;padding:16px;margin:12px 0;background:#fff;border:1px solid #e3e7ef;border-radius:10px;white-space:normal}
 .review-v2-turn.human {border-left:3px solid #1677ff}
 .review-v2-turn.agent {border-left:3px solid #72899f}
 .review-v2-turn p {margin:8px 0}
@@ -23,5 +35,5 @@
 .review-v2-upload input {max-width:100%}
 .review-v2-setting {margin:20px 0;padding-bottom:12px;border-bottom:1px solid #e5e7eb}
 .review-v2-setting p {margin:8px 0}
-@media(max-width:1000px){.review-v2-layout{grid-template-columns:minmax(0,1fr);gap:16px}.review-v2-discussion{position:static;max-height:none}}
+
 @media(max-width:800px){.review-v2{padding:12px}.review-v2-heading{flex-wrap:wrap}.review-v2-response{padding-inline:12px}}
