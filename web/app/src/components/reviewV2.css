@@ -1,17 +1,27 @@
 .review-v2 {padding:24px; max-width:1800px; margin:auto; overflow-wrap:anywhere}
 .review-v2-heading,.review-v2-response-title {display:flex;align-items:center;justify-content:space-between;gap:12px}
-.review-v2-layout {display:grid;grid-template-columns:minmax(0, 1.8fr) minmax(280px, 1fr);gap:24px;align-items:start}
+.review-v2-context {margin-top:16px;color:#596579}
+.review-v2-context ol {display:flex;flex-wrap:wrap;gap:6px 12px;list-style:none;padding:0;margin:8px 0}
+.review-v2-context li:not(:last-child)::after {content:'›';margin-left:12px}
+.review-v2-layout {--review-v2-navigation-width:240px;--review-v2-reading-width:720px;--review-v2-discussion-width:320px;--review-v2-reading-gap:20px;--review-v2-column-gap:24px;display:grid;grid-template-columns:minmax(0,1fr) var(--review-v2-discussion-width);gap:var(--review-v2-column-gap);align-items:start}
 .review-v2-reader {min-width:0}
-.review-v2-discussion {padding:20px;background:#f5f7fa;border:1px solid #dce3ed;border-radius:12px;max-height:80vh;overflow:auto;position:sticky;top:16px}
+.review-v2 .review-reading-layout {gap:var(--review-v2-reading-gap)}
+.review-v2 .review-reading-layout.with-navigation {grid-template-columns:var(--review-v2-navigation-width) minmax(0,1fr)}
+.review-v2 .review-reading-track {width:100%;max-width:900px;justify-self:center}
+.review-v2-discussion {padding:20px;background:#f5f7fa;border:1px solid #dce3ed;border-radius:12px;max-height:calc(100dvh - var(--review-action-height,100px) - 40px);overflow:auto;position:sticky;top:16px}
 .review-v2-turn {padding:16px;margin:12px 0;background:#fff;border:1px solid #e3e7ef;border-radius:10px;white-space:normal}
 .review-v2-turn.human {border-left:3px solid #1677ff}
 .review-v2-turn.agent {border-left:3px solid #72899f}
 .review-v2-turn p {margin:8px 0}
-.review-v2-response {margin-top:16px}
-.review-v2-response .ant-card-body {display:flex;flex-direction:column;gap:14px}
-.review-v2-directions {display:flex;flex-direction:column;gap:12px}
-.review-v2-directions small {display:block;margin-left:24px;color:#596579}
+.review-v2-pending {padding:12px;border:1px dashed #72899f;border-radius:8px;color:#415c75}
+.review-v2-response-inner {max-width:1752px;margin:auto;display:flex;flex-direction:column;gap:8px}
+.review-v2-response-title {min-height:32px}
+.review-v2-directions:not([hidden]) {display:flex;flex-wrap:wrap;gap:8px}
+.review-v2-directions button {white-space:normal;height:auto;min-height:36px;max-width:100%}
+.review-v2-composer:not([hidden]) {display:flex;flex-direction:column;gap:8px}
 .review-v2-upload {display:flex;flex-direction:column;gap:8px}
+.review-v2-upload input {max-width:100%}
 .review-v2-setting {margin:20px 0;padding-bottom:12px;border-bottom:1px solid #e5e7eb}
 .review-v2-setting p {margin:8px 0}
-@media(max-width:800px){.review-v2{padding:12px}.review-v2-layout{grid-template-columns:minmax(0,1fr);gap:16px}.review-v2-discussion{position:static;max-height:none}.review-v2 .review-reading-layout{display:block}.review-v2-heading{flex-wrap:wrap}}
+@media(max-width:1000px){.review-v2-layout{grid-template-columns:minmax(0,1fr);gap:16px}.review-v2-discussion{position:static;max-height:none}}
+@media(max-width:800px){.review-v2{padding:12px}.review-v2-heading{flex-wrap:wrap}.review-v2-response{padding-inline:12px}}

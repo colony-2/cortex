@@ -70,7 +70,13 @@ Generate one closed response-schema branch per direction, requiring all four con
 
 After accepting a question, the recipe appends a human turn with `role`, `direction`, exact `text`, resolved `attachments`, optional accepted `settings`, and native `receipt`. It then appends an agent turn with `role: agent`, actual answer `text` and `attachments`. The next input carries the authoritative full conversation and frozen original documents, with the same logical review ID and a fresh native request ID. A question does not itself authorize corrections or acceptance.
 
-Cortex keeps the selected review in the URL's `review_id` query, retains the reader across turns, and recovers saved contributions from retained input history during gaps or reloads. Only a matching current native occurrence permits submission. A gap says “Waiting for the next turn”; it does not claim active generation or success. Terminal status stops waiting. Another logical review remains separate. Read failures preserve saved material and disable uncertain actions.
+Cortex keeps the logical review in `review_id` and the selected original attachment in `document_id`. Document changes add browser history; Back and Forward preserve mounted feedback, files, settings, and composer state. Plain links and removed-document fallbacks replace the current entry. Only a matching current native occurrence permits submission.
+
+The page head shows the current cell and recorded runtime ancestor branch, using titles or prompt snippets. The document list opens automatically when navigation, readable content, and discussion fit the available workspace; Show/Hide overrides that choice until you leave the review.
+
+The response pane stays at the visible viewport bottom. A forbidden-feedback action submits on its explicit button click. Optional and required actions open a composer with an explicit Send button. Back retains drafts; incompatible drafts stay visible and block submission until you remove them or choose a compatible action. Settings edits remain visible with their applicability. Frozen legacy optional actions still open a composer.
+
+An accepted continuing contribution shows “Response pending” after the unanswered human turn in the discussion. An actual successor answer replaces it. Sending, unavailable state, accepted exits, cancellation, and terminal status remain distinct. Another logical review remains separate. Read failures preserve saved material and disable uncertain actions.
 
 A successful response is only acceptance of that contribution. It does not prove publication or job success. An ambiguous submission triggers reconciliation, never an automatic repost. Submission IDs provide correlation, not an exactly-once guarantee.
 

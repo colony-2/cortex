@@ -25,9 +25,9 @@ export function startingReviewDocument(documents: Record<string, unknown>, metad
   return ids.find(id => metadata[id]?.role === 'primary') ?? ids.sort(compareDocumentIds)[0];
 }
 
-export function reviewDocumentSearch(search: string, requestId: string, documentId?: string): string {
+export function reviewDocumentSearch(search: string, requestId: string, documentId?: string, identityKey: 'request_id' | 'review_id' = 'request_id'): string {
   const params = new URLSearchParams(search);
-  params.set('request_id', requestId);
+  params.set(identityKey, requestId);
   if (documentId === undefined) params.delete('document_id');
   else params.set('document_id', documentId);
   return `?${params.toString()}`;
@@ -39,14 +39,14 @@ export type ReviewDocumentLocation =
 
 // Call only after the current request's details have loaded. Request identity must
 // be checked before membership, even when another request has the same document ID.
-export function resolveReviewDocumentLocation(search: string, requestId: string, documents: Record<string, unknown>, metadata: Record<string, ReviewDocumentMetadata> = {}, overview?: string): ReviewDocumentLocation {
+export function resolveReviewDocumentLocation(search: string, requestId: string, documents: Record<string, unknown>, metadata: Record<string, ReviewDocumentMetadata> = {}, overview?: string, identityKey: 'request_id' | 'review_id' = 'request_id'): ReviewDocumentLocation {
   const params = new URLSearchParams(search);
-  if (params.getAll('request_id').length > 1 || params.getAll('document_id').length > 1) return { kind: 'invalid' };
-  if (params.has('request_id') && params.get('request_id') !== requestId) return { kind: 'stale' };
+  if (params.getAll(identityKey).length > 1 || params.getAll('document_id').length > 1) return { kind: 'invalid' };
+  if (params.has(identityKey) && params.get(identityKey) !== requestId) return { kind: 'stale' };
   const requested = params.get('document_id');
   const unavailable = requested !== null && !Object.prototype.hasOwnProperty.call(documents, requested);
   const documentId = requested !== null && !unavailable ? requested : startingReviewDocument(documents, metadata, overview);
   // Valid, explicit pairs are left byte-for-byte intact.
-  const canonical = params.has('request_id') && (documentId === undefined ? !params.has('document_id') : requested === documentId);
-  return { kind: 'selected', documentId, unavailable, search: canonical ? search : reviewDocumentSearch(search, requestId, documentId) };
+  const canonical = params.has(identityKey) && (documentId === undefined ? !params.has('document_id') : requested === documentId);
+  return { kind: 'selected', documentId, unavailable, search: canonical ? search : reviewDocumentSearch(search, requestId, documentId, identityKey) };
 }

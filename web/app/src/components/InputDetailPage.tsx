@@ -2,7 +2,7 @@ import { useAssistantSource } from './AssistantContext';
 import { useCompact } from '../hooks/useCompact';
 import ReviewJobContext from './ReviewJobContext';
 import { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, useLocation, Navigate } from 'react-router-dom';
 import { reviewReturnSearch } from '../utils/reviewFilters';
 import { Card, Button, Space, Typography, message, Spin, Alert } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
@@ -25,7 +25,7 @@ export default function InputDetailPage({ projectId }: InputDetailPageProps) {
   const [search] = useSearchParams();
   const {jobId} = useParams<{jobId:string}>();
   const selected=search.get('review_id');
-  return selected && jobId ? <ReviewV2 key={JSON.stringify([projectId,jobId,selected])} tenant={projectId} job={jobId} reviewId={selected}/> : <InputRequestPage projectId={projectId}/>;
+  return selected !== null && jobId ? <ReviewV2 key={JSON.stringify([projectId,jobId,selected])} tenant={projectId} job={jobId} reviewId={selected}/> : <InputRequestPage projectId={projectId}/>;
 }
 function InputRequestPage({ projectId }: InputDetailPageProps) {
   const compact = useCompact();
@@ -152,7 +152,8 @@ function InputRequestPage({ projectId }: InputDetailPageProps) {
     try {
       const request = parseReviewV2(details.form.request);
       if(!details.form.request_id || !details.form.request_schema || !details.form.response_schema)throw new Error('Missing native structured request contract');
-      return <ReviewV2 tenant={projectId} job={jobId} reviewId={request.review_id} initial={details}/>;
+      const next = new URLSearchParams(location.search); next.set('review_id', request.review_id);
+      return <Navigate replace to={{pathname:location.pathname,search:'?'+next,hash:location.hash}}/>;
     } catch(e) {return <Alert type="error" message="Incompatible review request" description={e instanceof Error ? e.message : String(e)}/>;}
   }
   const form = adaptInputFormConfig(details.form, jobId);

@@ -55,3 +55,10 @@ export function reconcileReviewV2(selected: string, current: UserInputDetails | 
   }
   return {...base,phase:'unavailable',message:'No matching current request or recorded acceptance is available. Refresh to reconcile this review.'};
 }
+
+export function reviewV2AnswerPending(view: ReviewV2View): boolean {
+  const last=view.conversation[view.conversation.length-1];
+  const receipt=view.output?.receipt;
+  return view.phase==='waiting' && !!view.job && !view.job.cancel_requested && !!receipt?.request_id && !!receipt?.submission_id
+    && last?.role==='human' && last.receipt?.request_id===receipt.request_id && last.receipt?.submission_id===receipt.submission_id;
+}

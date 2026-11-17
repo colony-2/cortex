@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, Input, Radio, Space, Typography } from 'antd';
+import { Alert, Button, Input, Typography, type InputRef } from 'antd';
 import { SettingOutlined, ArrowLeftOutlined } from '@ant-design/icons';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { changedReviewSettings, conversationArtifactURL, reviewV2ContributionError, reviewV2DirectionPolicy, createSubmissionId, inputActivityService, stringifyJobJSON, validateReviewScalar, type ReviewV2Request, type ReviewV2Turn, type UserInputDetails } from '@colony2/shared';
+import { reviewV2AnswerPending } from '../utils/reviewV2State';
 import { reviewReturnSearch } from '../utils/reviewFilters';
 import { useReviewV2 } from '../hooks/useReviewV2';
 import ReviewDocuments from './ReviewDocuments';
@@ -10,8 +11,11 @@ import ReviewV2Settings from './ReviewV2Settings';
 import { historicalDocuments, historicalTurnAttachments } from './historicalDocuments';
 import { useAssistantSource } from './AssistantContext';
 import './reviewV2.css';
+import ReviewV2Context from './ReviewV2Context';
+import { useReviewResponsePane } from '../hooks/useReviewResponsePane';
+import { resolveReviewDocumentLocation, reviewDocumentSearch } from '../utils/reviewDocumentLocation';
 
-export function ReviewV2Discussion({turns,request,attachmentURL,declarations}: {turns:ReviewV2Turn[];request:ReviewV2Request;declarations?:Record<string,ReviewV2Request>;attachmentURL?:(turn:number,index:number)=>string}) {
+export function ReviewV2Discussion({turns,request,attachmentURL,declarations,pending=false}: {turns:ReviewV2Turn[];request:ReviewV2Request;declarations?:Record<string,ReviewV2Request>;pending?:boolean;attachmentURL?:(turn:number,index:number)=>string}) {
   const [visible,setVisible]=useState(20);
   return <section aria-label="Discussion" data-review={request.review_id} className="review-v2-discussion">
     <Typography.Title level={4}>Discussion</Typography.Title>
@@ -26,12 +30,13 @@ export function ReviewV2Discussion({turns,request,attachmentURL,declarations}: {
         {turn.attachments.map((ref,i)=>{const url=attachmentURL?.(actual,i);return <p key={i}>{url?<a href={url} download>Download {(ref.name||ref.stored.key.name).split('/').pop()}</a>:<span>{(ref.name||ref.stored.key.name).split('/').pop()} (retained download unavailable)</span>}</p>;})}
       </article>;
     })}
+    {pending&&<p role="status" className="review-v2-pending">Response pending</p>}
     {!turns.length&&<p>No questions yet. You can ask about the material before choosing a direction.</p>}
   </section>;
 }
 export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;job:string;reviewId:string;initial?:UserInputDetails}) {
   const {view,error,busy,refresh,sending,accepted,failed}=useReviewV2(tenant,job,reviewId,initial);
-  const navigate=useNavigate(); const [search,setSearch]=useSearchParams();
+  const navigate=useNavigate(); const [search]=useSearchParams(); const location=useLocation();
   const reviewsPath=`/project/${encodeURIComponent(tenant)}/reviews${reviewReturnSearch(search)}`;
   const [settingsOpen,setSettingsOpen]=useState(false);
   const [drafts,setDrafts]=useState<Record<string,unknown>>({});
@@ -39,7 +44,13 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
   const [direction,setDirection]=useState<string>();
   const [feedback,setFeedback]=useState('');
   const [files,setFiles]=useState<File[]>([]);
-  const [confirming,setConfirming]=useState(false);
+  const [composerOpen,setComposerOpen]=useState(false);
+  const pane=useRef<HTMLDivElement>(null);
+  const workspace=useRef<HTMLDivElement>(null);
+  const [wideNavigation,setWideNavigation]=useState(false);
+  const feedbackInput=useRef<InputRef>(null);
+  const actionButtons=useRef(new Map<string,HTMLButtonElement|HTMLAnchorElement>());
+  const [unavailableDocument,setUnavailableDocument]=useState(false);
   const [submitError,setSubmitError]=useState('');
   const submitBusy=useRef(false);
   const requestRef=useRef<ReviewV2Request>();
@@ -49,6 +60,8 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
   const fileInput=useRef<HTMLInputElement>(null);
   const current=view?.phase==='actionable'?view.current:undefined;
   useAssistantSource(current?.form.request_id?{kind:'review',job_id:job,request_id:current.form.request_id}:undefined);
+  const latestDraft=useRef({feedback,files});
+  latestDraft.current={feedback,files};
   const confirmContribution=(receipt?:Record<string,unknown>)=>{
     const pending=pendingContribution.current;
     if(!pending||receipt?.request_id!==pending.requestId||receipt.submission_id!==pending.submissionId)return;
@@ -59,17 +72,43 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
     setFiles(previous=>previous.filter(file=>!pending.files.includes(file)));
     if(fileInput.current&&Array.from(fileInput.current.files??[]).every(file=>pending.files.includes(file)))fileInput.current.value='';
     setDrafts(previous=>Object.fromEntries(Object.entries(previous).filter(([id,value])=>!Object.prototype.hasOwnProperty.call(pending.settings,id)||value!==pending.settings[id])));
-    setDirection(previous=>previous===pending.direction?undefined:previous);
-    setConfirming(false);setSubmitError('');
+    const newer=latestDraft.current.feedback!==pending.feedback||latestDraft.current.files.some(file=>!pending.files.includes(file));
+    if(!newer){setDirection(previous=>previous===pending.direction?undefined:previous);setComposerOpen(false);}
+    setSubmitError('');
   };
   useEffect(()=>{
     confirmContribution(view?.output?.receipt);
     for(const turn of view?.conversation??[])if(turn.role==='human')confirmContribution(turn.receipt);
   },[view]);
-  useEffect(()=>{setSearch(p=>{if(p.get('review_id')===reviewId)return p; const next=new URLSearchParams(p);next.set('review_id',reviewId);return next;},{replace:true});},[reviewId,setSearch]);
+  const documentHistory=view?.documentHistory;
+  const catalog=view&&documentHistory?historicalDocuments({...documentHistory,raw_form:{presentation:{type:'review/v2'},request:view.request}}):undefined;
+  const requestDocuments=catalog?.documents??view?.request.documents;
+  const selection=view&&requestDocuments?resolveReviewDocumentLocation(location.search,reviewId,requestDocuments,view.request.document_metadata,view.request.overview_document_id,'review_id'):undefined;
+  useEffect(()=>{
+    if(selection?.kind!=='selected')return;
+    if(selection.unavailable)setUnavailableDocument(true);
+    if(selection.search!==location.search)navigate({pathname:location.pathname,search:selection.search,hash:location.hash},{replace:true});
+  },[selection?.kind,selection?.kind==='selected'?selection.search:undefined,location,navigate]);
+  const validSelection=selection?.kind==='selected';
+  useReviewResponsePane(pane,!!view&&validSelection);
+  useEffect(()=>{
+    if(!workspace.current)return;
+    const element=workspace.current;
+    // Read the dimensions used by CSS from the stable outer workspace. Showing
+    // navigation must not change the width that decides whether it fits.
+    const measure=()=>{
+      const style=getComputedStyle(element);
+      const required=['--review-v2-navigation-width','--review-v2-reading-width','--review-v2-discussion-width','--review-v2-reading-gap','--review-v2-column-gap']
+        .reduce((total,property)=>total+parseFloat(style.getPropertyValue(property)),0);
+      setWideNavigation(element.getBoundingClientRect().width>=required);
+    };
+    const observer=typeof ResizeObserver==='undefined'?undefined:new ResizeObserver(measure);
+    observer?.observe(element);window.addEventListener('resize',measure);measure();
+    return ()=>{observer?.disconnect();window.removeEventListener('resize',measure);};
+  },[!!view,validSelection]);
+  useEffect(()=>{if(composerOpen)feedbackInput.current?.focus();},[composerOpen,direction]);
   useEffect(()=>{
     if(!view||requestRef.current===view.request)return;
-    setConfirming(false);
     if(requestRef.current){
       const notices:string[]=[];
       setDrafts(previous=>{
@@ -92,36 +131,46 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
   const allowUploads=policy?.allowAttachments??request.directions.some(d=>reviewV2DirectionPolicy(request,d).allowAttachments);
   const contributionError=selected?reviewV2ContributionError(request,selected,feedback,files.length):undefined;
   const draftConflict=(policy?.mode==='forbidden'&&feedback!=='')||(!allowUploads&&files.length>0)?contributionError:undefined;
-  const documentHistory=view.documentHistory;
-  const catalog=documentHistory?historicalDocuments({...documentHistory,raw_form:{presentation:{type:'review/v2'},request}}):undefined;
   const documents=catalog?.documents??request.documents;
-  const ready=phase==='actionable'&&!submitBusy.current;
-  let changed:Record<string,any>={};let settingsError='';
-  try{changed=changedReviewSettings(request,direction??'',drafts);}catch(e){settingsError=e instanceof Error?e.message:String(e);}
-  const check=()=>{
+  const ready=phase==='actionable';
+  const check=(id:string)=>{
+    const selected=request.directions.find(d=>d.id===id);
+    const contributionError=selected?reviewV2ContributionError(request,selected,feedback,files.length):undefined;
+    let settingsError='';try{changedReviewSettings(request,id,drafts);}catch(e){settingsError=e instanceof Error?e.message:String(e);}
     if(!selected){setSubmitError('Choose a direction.');return false;}
     if(contributionError){setSubmitError(contributionError);return false;}
     if(settingsError){setSubmitError(settingsError);return false;}
     return true;
   };
-  const submit=async()=>{
-    if(!current?.form.request_id||submitBusy.current||!check())return;
+  const submit=async(id:string)=>{
+    if(!current?.form.request_id||submitBusy.current||!check(id))return;
+    const changed=changedReviewSettings(request,id,drafts);
     submitBusy.current=true;setSubmitError('');sending();
     let contribution:typeof pendingContribution.current;
     try{
       if(submissionAttempt.current?.requestId!==current.form.request_id)submissionAttempt.current={requestId:current.form.request_id,submissionId:createSubmissionId()};
-      contribution={...submissionAttempt.current,direction:direction!,feedback,files,settings:changed};
+      contribution={...submissionAttempt.current,direction:id,feedback,files,settings:changed};
       pendingContribution.current=contribution;
-      const output=await inputActivityService.submitReviewV2(tenant,job,current.form.request_id,{direction:direction!,feedback,attachments:[],settings:changed},files,submissionAttempt.current.submissionId);
+      const output=await inputActivityService.submitReviewV2(tenant,job,current.form.request_id,{direction:id,feedback,attachments:[],settings:changed},files,submissionAttempt.current.submissionId);
       // The server receipt is the acceptance evidence. An invalid response stays ambiguous.
       if(output.receipt?.request_id!==contribution.requestId||output.receipt.submission_id!==contribution.submissionId)throw new Error('Submission receipt is unavailable. Refresh to reconcile acceptance.');
       confirmContribution(output.receipt);accepted(request,output);
-    }catch(e){failed();if(!contribution||pendingContribution.current===contribution)setSubmitError(`${e instanceof Error?e.message:String(e)} Check the refreshed request before retrying.`);setConfirming(false);await refresh();}
+    }catch(e){failed();if(!contribution||pendingContribution.current===contribution)setSubmitError(`${e instanceof Error?e.message:String(e)} Check the refreshed request before retrying.`);await refresh();}
     finally{submitBusy.current=false;}
   };
-  const status=phase==='waiting'?'Waiting for the next turn':phase==='sending'?'Sending response…':phase==='sent'?'Response sent':phase==='terminal'?view.message:phase==='other'?view.message:phase==='unavailable'?'Review state unavailable':undefined;
-  const response=<Card className="review-v2-response">
-    <div className="review-v2-response-title"><Typography.Title level={4}>Your response</Typography.Title>{!!request.settings?.length&&<Button ref={gear} icon={<SettingOutlined/>} aria-label="Review settings" disabled={!ready} onClick={()=>setSettingsOpen(true)}/>}</div>
+  const status=phase==='waiting'?'Response accepted':phase==='sending'?'Sending response…':phase==='sent'?'Response sent':phase==='terminal'?view.message:phase==='other'?view.message:phase==='unavailable'?'Review state unavailable':undefined;
+  const choose=(id:string)=>{
+    if(!ready||!current||submitBusy.current)return;
+    setDirection(id);setSubmitError('');
+    const action=request.directions.find(d=>d.id===id)!;
+    if(reviewV2DirectionPolicy(request,action).mode==='forbidden'){
+      if(check(id)){setComposerOpen(false);void submit(id);}
+      else setComposerOpen(true);
+    }else setComposerOpen(true);
+  };
+  const response=<div ref={pane} className="review-actions review-v2-response" aria-label="Your response">
+    <div className="review-v2-response-inner">
+    <div className="review-v2-response-title"><strong>Your response</strong>{!!request.settings?.length&&<Button ref={gear} icon={<SettingOutlined/>} aria-label="Review settings" disabled={!ready} onClick={()=>setSettingsOpen(true)}/>}</div>
     <div role="status" aria-live="polite">{status}<span className="sr-only">{phase==='actionable'&&view.conversation[view.conversation.length-1]?.role==='agent'?'New answer available in the discussion.':''}</span></div>
     {view.message&&phase==='unavailable'&&<p>{view.message}</p>}
     {error&&<Alert type="warning" message={error}/>}
@@ -129,17 +178,24 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
     {draftNotice&&<Alert type="warning" message={draftNotice} closable onClose={()=>setDraftNotice('')}/>}
     {phase==='other'&&<Button onClick={()=>navigate(reviewsPath)}>Open pending reviews</Button>}
     {ready&&<>
-      <Radio.Group aria-label="Review direction" value={direction} onChange={e=>{setDirection(e.target.value);setConfirming(false);setSubmitError('');}} className="review-v2-directions">
-        {request.directions.map(d=>{const rules=reviewV2DirectionPolicy(request,d);return <Radio key={d.id} value={d.id}>{d.label} <small>{rules.mode==='forbidden'?'No feedback or attachments':rules.mode==='required'?'Feedback required':'Feedback optional'}{rules.mode!=='forbidden'&&!rules.allowAttachments?' · No attachments':''}</small></Radio>;})}
-      </Radio.Group>
+      <div hidden={composerOpen&&policy?.mode!=='forbidden'} className="review-v2-directions" aria-label="Review actions">{request.directions.map(d=><Button key={d.id} ref={element=>{if(element)actionButtons.current.set(d.id,element);else actionButtons.current.delete(d.id);}} type={direction===d.id?'primary':'default'} onClick={()=>choose(d.id)}>{d.label}</Button>)}</div>
+      {Object.entries(drafts).filter(([id,value])=>request.settings?.find(s=>s.id===id)?.value!==value).map(([id,value])=>{
+        const setting=request.settings?.find(s=>s.id===id);
+        return <div key={id}>{setting?.label??id}: <code>{JSON.stringify(value)}</code> · {direction&&setting?.applies_to.includes(direction)?'Will be sent with this action':`Retained locally; applies to ${setting?.applies_to.map(id=>request.directions.find(d=>d.id===id)?.label??id).join(', ')}`}</div>;
+      })}
+      {!composerOpen&&(feedback!==''||files.length>0)&&<p>Unsent feedback draft retained. Choose a feedback action to edit it.</p>}
+      <section hidden={!composerOpen} aria-label="Response composer" className="review-v2-composer">
+      <strong>{selected?.label}</strong>
       <label htmlFor="review-v2-feedback">{request.feedback.label}{policy?.mode==='forbidden'?' (not allowed)':policy?.mode==='required'?' (required)':' (optional)'}</label>
-      <Input.TextArea id="review-v2-feedback" value={feedback} readOnly={policy?.mode==='forbidden'} onChange={e=>{setFeedback(e.target.value);setConfirming(false);setSubmitError('');}} autoSize={{minRows:3,maxRows:10}}/>
-      {feedback!==''&&<Button onClick={()=>{setFeedback('');setConfirming(false);setSubmitError('');}}>Remove feedback draft</Button>}
-      {(allowUploads||files.length>0)&&<div className="review-v2-upload">{allowUploads&&<><label htmlFor="review-v2-files">Attach notes</label><input ref={fileInput} id="review-v2-files" type="file" multiple onChange={e=>{setFiles(Array.from(e.target.files??[]));setConfirming(false);setSubmitError('');}}/></>}{files.map((file,i)=><div key={i}><span>{file.name} ({file.size} bytes)</span> <Button aria-label={`Remove ${file.name} (${i+1})`} onClick={()=>{setFiles(previous=>previous.filter((_,index)=>index!==i));if(fileInput.current)fileInput.current.value='';setConfirming(false);setSubmitError('');}}>Remove</Button></div>)}</div>}
-      {confirming?<section aria-label="Confirm response"><p>Send <strong>{selected?.label}</strong>?</p>{Object.entries(changed).map(([id,v])=><p key={id}>{request.settings?.find(s=>s.id===id)?.label??id}: <code>{JSON.stringify(v)}</code></p>)}<Space><Button onClick={()=>setConfirming(false)}>Back</Button><Button type="primary" onClick={()=>void submit()}>Confirm {selected?.label}</Button></Space></section>:<Button type="primary" onClick={()=>{if(check()){setConfirming(true);setSubmitError('');}}}>Continue</Button>}
+      <Input.TextArea ref={feedbackInput} id="review-v2-feedback" value={feedback} readOnly={policy?.mode==='forbidden'} onChange={e=>{setFeedback(e.target.value);setSubmitError('');}} autoSize={{minRows:2,maxRows:5}}/>
+      {feedback!==''&&<Button onClick={()=>{setFeedback('');setSubmitError('');}}>Remove feedback draft</Button>}
+      {(allowUploads||files.length>0)&&<div className="review-v2-upload">{allowUploads&&<><label htmlFor="review-v2-files">Attach notes</label><input ref={fileInput} id="review-v2-files" type="file" multiple onChange={e=>{setFiles(Array.from(e.target.files??[]));setSubmitError('');}}/></>}{files.map((file,i)=><div key={i}><span>{file.name} ({file.size} bytes)</span> <Button aria-label={`Remove ${file.name} (${i+1})`} onClick={()=>{setFiles(previous=>previous.filter((_,index)=>index!==i));if(fileInput.current)fileInput.current.value='';setSubmitError('');}}>Remove</Button></div>)}</div>}
+      <div className="review-v2-directions"><Button onClick={()=>{setComposerOpen(false);if(direction)actionButtons.current.get(direction)?.focus();}}>Back</Button>{policy?.mode!=='forbidden'&&<Button type="primary" onClick={()=>direction&&void submit(direction)}>Send · {selected?.label}</Button>}</div>
+      </section>
     </>}
     {!ready&&<Button loading={busy} disabled={phase==='sending'} onClick={()=>void refresh()}>Refresh</Button>}
-  </Card>;
+    </div>
+  </div>;
   const history=view.history;
   const source=documentHistory&&catalog?{
     identity:reviewId,
@@ -149,14 +205,18 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
   }:{identity:reviewId,contentIdentity:(id:string)=>stringifyJobJSON(documents[id]?.stored??documents[id])??id,url:()=>''};
   const notes=history?historicalTurnAttachments(history):undefined;
   return <div className="review-page review-v2">
-    <div className="review-v2-heading"><Button icon={<ArrowLeftOutlined/>} onClick={()=>navigate(reviewsPath)}>Back to Reviews</Button><a href={`/project/${tenant}/jobs/${job}/story`}>Job activity</a></div>
+    <div className="review-v2-heading"><Button icon={<ArrowLeftOutlined/>} onClick={()=>navigate(reviewsPath)}>Back to Reviews</Button><a href={`/project/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(job)}/story`}>Job activity</a></div>
+    <ReviewV2Context tenant={tenant} job={job} metadata={view.job}/>
     <Typography.Title level={2}>{request.title}</Typography.Title>
     <p className="review-v2-question">{request.question}</p>
-    <div className="review-v2-layout"><div className="review-v2-reader"><ReviewDocuments projectId={tenant} jobId={job} requestId={reviewId} source={source} documents={documents} documentMetadata={request.document_metadata} overviewDocumentId={request.overview_document_id} response={response}/></div>
-      <ReviewV2Discussion turns={view.conversation} request={request} declarations={view.declarations} attachmentURL={(turn,index)=>{
+    {unavailableDocument&&<Alert type="warning" message="The linked document is unavailable. Showing the starting document."/>}
+    {!validSelection?<Alert type="warning" message={selection?.kind==='invalid'?'This review link is malformed':'This linked review is unavailable'} action={<Button onClick={()=>navigate({pathname:location.pathname,search:reviewDocumentSearch(location.search,reviewId,undefined,'review_id'),hash:location.hash})}>Open selected review</Button>}/>:<>
+    <div ref={workspace} className="review-v2-layout"><div className="review-v2-reader"><ReviewDocuments projectId={tenant} jobId={job} requestId={reviewId} source={source} documents={documents} documentMetadata={request.document_metadata} overviewDocumentId={request.overview_document_id} navigationDefault={wideNavigation} stackNavigation={!wideNavigation} selection={{documentId:selection?.kind==='selected'?selection.documentId:undefined,onSelect:id=>navigate({pathname:location.pathname,search:reviewDocumentSearch(location.search,reviewId,id,'review_id'),hash:location.hash})}}/></div>
+      <ReviewV2Discussion pending={!error&&reviewV2AnswerPending(view)} turns={view.conversation} request={request} declarations={view.declarations} attachmentURL={(turn,index)=>{
         const match=notes?.[`${turn}/${index}`];return match&&history?conversationArtifactURL(tenant,job,history.entry_id,match.member,history.snapshot_token):'';
       }}/>
     </div>
-    <ReviewV2Settings request={request} drafts={drafts} setDraft={(id,value)=>{setDrafts(p=>({...p,[id]:value}));setConfirming(false);}} open={settingsOpen} direction={direction} onClose={()=>{setSettingsOpen(false);gear.current?.focus();}}/>
+    {response}</>}
+    <ReviewV2Settings request={request} drafts={drafts} setDraft={(id,value)=>{setDrafts(p=>({...p,[id]:value}));}} open={settingsOpen} direction={direction} onClose={()=>{setSettingsOpen(false);gear.current?.focus();}}/>
   </div>;
 }

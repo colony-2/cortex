@@ -10,14 +10,16 @@ import { loadDocument, type DocumentData } from './review/document';
 
 export interface DocumentSource { identity: string; contentIdentity?: (id: string) => string; url: (id: string) => string; onError?: (error: unknown) => void }
 export type ReaderDocument = { name?: string; stored?: ReviewDocument['stored']; sizeBytes?: number };
-interface Props { source?: DocumentSource; projectId: string; jobId: string; requestId: string; documents: Record<string, ReaderDocument>; documentMetadata?: Record<string, ReviewDocumentMetadata>; overviewDocumentId?: string; response?: ReactNode; selection?: { documentId: string | undefined; onSelect: (id: string) => void } }
+interface Props { navigationDefault?: boolean; stackNavigation?: boolean; source?: DocumentSource; projectId: string; jobId: string; requestId: string; documents: Record<string, ReaderDocument>; documentMetadata?: Record<string, ReviewDocumentMetadata>; overviewDocumentId?: string; response?: ReactNode; selection?: { documentId: string | undefined; onSelect: (id: string) => void } }
 export default function ReviewDocuments(props: Props) {
   // A fresh review identity owns all preview state; response drafts live above this component.
   return <ReviewReader key={JSON.stringify([props.projectId, props.jobId, props.requestId, props.source?.identity])} {...props} />;
 }
-function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata = {}, overviewDocumentId, source, response, selection: controlled }: Props) {
-  const compact = useCompact();
-  const [showNavigation, setShowNavigation] = useState(false);
+function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata = {}, overviewDocumentId, source, response, navigationDefault=false, stackNavigation=false, selection: controlled }: Props) {
+  const small = useCompact();
+  const compact = small || stackNavigation;
+  const [navigationPreference, setShowNavigation] = useState<boolean>();
+  const showNavigation = navigationPreference ?? navigationDefault;
   const ids = orderedReviewDocumentIds(documents, documentMetadata);
   const attached = (id?: string): id is string => id !== undefined && Object.prototype.hasOwnProperty.call(documents, id);
   const initial = startingReviewDocument(documents, documentMetadata, overviewDocumentId);
@@ -128,7 +130,7 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
     }} />;
   const details = selected !== undefined ? <div className="review-selected-details">{summary(selected)}{sources(selected)}<Button disabled={!url} href={url || undefined} download={name}>Download</Button></div> : null;
   return <>
-    <Button aria-expanded={showNavigation} onClick={() => setShowNavigation(value => !value)}>{showNavigation ? 'Hide documents' : 'Show documents'}</Button>
+    <Button aria-expanded={showNavigation} onClick={() => setShowNavigation(!showNavigation)}>{showNavigation ? 'Hide documents' : 'Show documents'}</Button>
     <div className={`review-reading-layout ${showNavigation && !compact ? 'with-navigation' : ''}`}>
       <div className="review-navigation-track" hidden={!showNavigation}>
         <Card ref={catalog} tabIndex={-1} className="review-document-catalog" title={`Documents (${ids.length})`}>

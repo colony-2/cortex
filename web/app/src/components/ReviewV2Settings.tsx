@@ -4,7 +4,7 @@ export default function ReviewV2Settings({request, drafts, setDraft, open, onClo
   request:ReviewV2Request; drafts:Record<string,unknown>;setDraft:(id:string,value:unknown)=>void;open:boolean;onClose:()=>void;direction?:string;
 }) {
   return <Modal title="Review settings" open={open} onCancel={onClose} styles={{body:{maxHeight:'65dvh',overflowY:'auto'}}} footer={<Button onClick={onClose}>Done</Button>}>
-    <p>Edits are sent when you confirm a direction.</p>
+    <p>Edits are sent when you send a response.</p>
     {(request.settings??[]).map(s=>{
       const value=Object.prototype.hasOwnProperty.call(drafts,s.id)?drafts[s.id]:s.value;
       const error=validateReviewScalar(value,s.schema);

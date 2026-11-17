@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {reviewV2Fixture} from '../../../shared/src/test/reviewV2Fixture';
-import {reconcileReviewV2,reviewV2FromForm} from './reviewV2State';
+import {reconcileReviewV2,reviewV2FromForm,reviewV2AnswerPending} from './reviewV2State';
 import type {HistoryDetail,RecipeJob,ReviewV2Output,UserInputDetails} from '@colony2/shared';
 const request=reviewV2Fixture();
 const current=(id='native-one',r=request):UserInputDetails=>({jobId:'job',status:'pending',startTime:'now',form:{request_id:id,presentation:{type:'review/v2'},request:r,response_schema:{oneOf:[]},request_schema:{type:'object'}}});
@@ -38,4 +38,29 @@ describe('review/v2 reconciliation',()=>{
  it.each(['cancelled','failed_app','failed_system','failed_timeout','success'])('stops at actual terminal outcome %s',completion=>{const view=reconcileReviewV2('review-one',undefined,history(),job('COMPLETED',{completion_status:completion}));expect(view.phase).toBe('terminal');expect(view.current).toBeUndefined();});
  it('cancellation requests and retrying failures remain nonterminal',()=>{const view=reconcileReviewV2('review-one',undefined,history(),job('READY',{cancel_requested:true,completion_status:'failed_app'}));expect(view.phase).toBe('waiting');});
  it('fails closed for missing selection and preserves saved content without inventing closure',()=>{expect(()=>reconcileReviewV2('missing',current(),history(),job())).toThrow();const old=reconcileReviewV2('review-one',undefined,history(),job());const view=reconcileReviewV2('review-one',undefined,undefined,job(),undefined,old);expect(view.phase).toBe('unavailable');expect(view.request).toBe(old.request);});
+});
+
+it('P02–04 pending answers require accepted continuing receipts in the selected discussion',()=>{
+ const waiting=reconcileReviewV2('review-one',undefined,history(),job());
+ expect(reviewV2AnswerPending(waiting)).toBe(true);
+ expect(waiting.conversation).toHaveLength(1);
+ const recovered=reconcileReviewV2('review-one',undefined,history(),job(),undefined,waiting);
+ expect(recovered.conversation).toHaveLength(1);expect(reviewV2AnswerPending(recovered)).toBe(true);
+ for(const phase of ['actionable','sending','sent','other','terminal','unavailable'] as const)expect(reviewV2AnswerPending({...waiting,phase})).toBe(false);
+ expect(reviewV2AnswerPending({...waiting,job:undefined})).toBe(false);
+ expect(reviewV2AnswerPending({...waiting,conversation:[...waiting.conversation,{role:'agent',text:'Answer',attachments:[]}]})).toBe(false);
+ expect(reviewV2AnswerPending({...waiting,output:{...output(),receipt:{request_id:'other',submission_id:'other'}}})).toBe(false);
+ for(const direction of ['go','fix']){
+  const h=history();h.raw_accepted_output=output(direction);
+  expect(reviewV2AnswerPending(reconcileReviewV2('review-one',undefined,h,job()))).toBe(false);
+ }
+});
+
+it('P02/P03 only matching accepted continuing contributions can await an answer',()=>{
+ const waiting=reconcileReviewV2('review-one',undefined,history(),job());expect(reviewV2AnswerPending(waiting)).toBe(true);
+ for(const phase of ['sending','actionable','unavailable','other','sent','terminal'] as const)expect(reviewV2AnswerPending({...waiting,phase})).toBe(false);
+ expect(reviewV2AnswerPending({...waiting,job:undefined})).toBe(false);
+ expect(reviewV2AnswerPending({...waiting,job:job('ACTIVE',{cancel_requested:true})})).toBe(false);
+ expect(reviewV2AnswerPending({...waiting,output:{...waiting.output!,receipt:{request_id:'wrong',submission_id:'wrong'}}})).toBe(false);
+ expect(reviewV2AnswerPending({...waiting,conversation:[...waiting.conversation,{role:'agent',text:'Actual answer',attachments:[]}]})).toBe(false);
 });

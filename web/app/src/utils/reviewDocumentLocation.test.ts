@@ -43,3 +43,14 @@ describe('review document URLs', () => {
     expect(resolve('?document_id=', 'r', { '': {} })).toMatchObject({ documentId: '', unavailable: false });
   });
 });
+
+it('N01–04 binds v2 documents to logical review identity before membership and preserves exact keys',()=>{
+ const review='review/雪 &+%',key='b/雪 &+%';
+ const search=write('?filter=a&filter=b&request_id=old',review,key,'review_id');
+ expect(resolve(search,review,docs,{},undefined,'review_id')).toMatchObject({kind:'selected',documentId:key,search});
+ expect(new URLSearchParams(search).getAll('filter')).toEqual(['a','b']);
+ expect(resolve('?review_id=other&document_id=a',review,docs,{},undefined,'review_id')).toEqual({kind:'stale'});
+ for(const invalid of ['?review_id=r&review_id=r','?document_id=a&document_id=a'])expect(resolve(invalid,review,docs,{},undefined,'review_id')).toEqual({kind:'invalid'});
+ expect(resolve('?document_id=removed',review,docs,{},'é','review_id')).toMatchObject({kind:'selected',unavailable:true,documentId:'é'});
+ expect(resolve('?document_id=removed',review,{}, {},undefined,'review_id')).toMatchObject({kind:'selected',unavailable:true,documentId:undefined});
+});

@@ -1,0 +1,30 @@
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
+import type { RecipeJob } from '@colony2/shared';
+import { useReviewAncestors } from '../hooks/useReviewAncestors';
+import { useReviewJobMetadata } from '../hooks/useReviewJobMetadata';
+import ReviewV2Context from './ReviewV2Context';
+vi.mock('../hooks/useReviewAncestors',()=>({useReviewAncestors:vi.fn()}));
+vi.mock('../hooks/useReviewJobMetadata',()=>({useReviewJobMetadata:vi.fn()}));
+afterEach(()=>vi.clearAllMocks());
+it('C01/C02 shows cell and oldest-first linked titles with normalized Unicode prompt fallbacks as literal text',()=>{
+ const nodes=[{job_id:'a',title:'<script>title</script>',prompt:'ignored'},{job_id:'b',prompt:'  '+ '🌳'.repeat(80)+'\n  words'},{job_id:'c',prompt:' \n '},{job_id:'job',title:'Current'}].map(n=>({tenant_id:'t',job_type:'build',status:'ACTIVE',...n}));
+ vi.mocked(useReviewAncestors).mockReturnValue({nodes,loading:false,error:undefined,retry:vi.fn()});
+ vi.mocked(useReviewJobMetadata).mockReturnValue({metadata:new Map(),refresh:vi.fn()});
+ render(<MemoryRouter><ReviewV2Context tenant="t" job="job" metadata={{cell_name:'cortex'} as RecipeJob}/></MemoryRouter>);
+ expect(screen.getByText('cortex')).toBeVisible();
+ const links=within(screen.getByRole('navigation',{name:'Job ancestors'})).getAllByRole('link');
+ expect(links.map(l=>l.textContent)).toEqual(['<script>title</script>','🌳'.repeat(75)+'...','Untitled job','Current']);
+ expect(links[0]).toHaveAttribute('href','/project/t/jobs/a/story');expect(links[3]).toHaveAttribute('aria-current','page');
+ expect(document.querySelector('script')).toBeNull();
+});
+it('C04 context failures remain explicit and independently retryable',()=>{
+ const retry=vi.fn(),refresh=vi.fn();
+ vi.mocked(useReviewAncestors).mockReturnValue({nodes:[],loading:false,error:'Forbidden',retry});
+ vi.mocked(useReviewJobMetadata).mockReturnValue({metadata:new Map(),refresh});
+ render(<MemoryRouter><ReviewV2Context tenant="t" job="job"/></MemoryRouter>);
+ expect(screen.getByText('Cell unavailable')).toBeVisible();expect(screen.getByText(/Ancestor branch incomplete/)).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'Retry ancestors'}));expect(retry).toHaveBeenCalledOnce();
+ fireEvent.click(screen.getByRole('button',{name:'Retry cell context'}));expect(refresh).toHaveBeenCalledOnce();
+});
