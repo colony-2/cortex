@@ -298,3 +298,25 @@ it.each(['cancelJob', 'archiveJob'] as const)('measures and sends the exact %s b
   fetch.mockResolvedValue({ ok: false, status: 413 });
   await expect(api[name]('tenant', 'job', 'draft')).rejects.toThrow(/64 KiB/);
 });
+
+it('reads exactly one dependency page with literal identities, opaque cursor and abort signal',async()=>{
+ const {getTreeWaits}=await import('./api');
+ const page={consumer:{tenant_id:'t/雪',job_id:'j/#'},waits:[],issues:[],observed_at:'2026-11-17T00:00:00Z'};
+ const fetch=vi.fn(async()=>new Response(JSON.stringify(page)));vi.stubGlobal('fetch',fetch);
+ const signal=new AbortController().signal;
+ expect(await getTreeWaits('t/雪','j/#','a+/=',signal)).toEqual(page);
+ expect(fetch).toHaveBeenCalledTimes(1);
+ expect(fetch.mock.calls[0][0]).toContain('/projects/t%2F%E9%9B%AA/jobs/j%2F%23/tree-waits?');
+ const url=new URL(fetch.mock.calls[0][0]);expect(url.searchParams.get('pageToken')).toBe('a+/=');
+ expect((fetch.mock.calls as any)[0][1].signal).toBe(signal);
+});
+it.each([
+ {}, {consumer:{tenant_id:'wrong',job_id:'job'}}, {waits:null}, {issues:null},
+ {consumer_snapshot:undefined}, {next_page_token:42}, {observed_at:'invalid'},
+ {consumer_snapshot:{state:'available',observed_at:'2026-11-17T00:00:00Z',legacy_wait_for:[42]}},
+])('incompatible dependency response %# is unavailable rather than empty',async change=>{
+ const {getTreeWaits,APIError}=await import('./api');
+ const page={consumer:{tenant_id:'t',job_id:'job'},waits:[],issues:[],observed_at:'2026-11-17T00:00:00Z',consumer_snapshot:{state:'available',observed_at:'2026-11-17T00:00:00Z',status:'READY'}};
+ vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify(Object.keys(change).length?{...page,...change}:{}))));
+ await expect(getTreeWaits('t','job')).rejects.toBeInstanceOf(APIError);
+});

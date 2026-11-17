@@ -1,10 +1,10 @@
 import { StrictMode } from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { expect, it, vi } from 'vitest';
 import { getTreeNode, getTreeChildren } from '@colony2/shared';
 import { TreeWorkspace } from './TreePage';
-vi.mock('@colony2/shared', () => ({getTreeNode:vi.fn(), getTreeChildren:vi.fn()}));
+vi.mock('@colony2/shared', () => ({getTreeNode:vi.fn(), getTreeChildren:vi.fn(), getTreeWaits:vi.fn(async(tenant,job)=>({consumer:{tenant_id:tenant,job_id:job},waits:[],issues:[],observed_at:'2026-11-17T00:00:00Z',consumer_snapshot:{state:'available',observed_at:'2026-11-17T00:00:00Z',status:'READY'}}))}));
 it('DAG-05,06,07 retains presentation while paused, and isolates keyed tenant/job identities under effect replay', async () => {
  const signals: AbortSignal[]=[];
  vi.mocked(getTreeNode).mockImplementation(async (tenant,id,signal) => {
@@ -266,4 +266,27 @@ it('keeps failed cancellation retries tied to the captured job and message', asy
  fireEvent.click(screen.getByRole('button',{name:'Refresh tree'}));
  await screen.findByText('Discovery finished:',{exact:false});
  expect(screen.getByRole('complementary')).toHaveTextContent('Cancellation requested');
+});
+
+it('shows independent job/goal references, exact conditions, reference selection and refresh without altering runtime discovery',async()=>{
+ const {getTreeWaits}=await import('@colony2/shared');
+ const observed='2026-11-17T00:00:00Z';let resolved=false;
+ vi.mocked(getTreeNode).mockResolvedValue({node:{tenant_id:'t',job_id:'consumer',job_type:'generic',status:'PENDING_JOBS'},observed_at:observed});
+ vi.mocked(getTreeChildren).mockResolvedValue({nodes:[],observed_at:observed});
+ vi.mocked(getTreeWaits).mockImplementation(async()=>({consumer:{tenant_id:'t',job_id:'consumer'},waits:resolved?[]:[{jobKey:{tenantId:'t',jobId:'consumer'},waitId:'w',state:'PENDING',dependencies:[{target:{jobId:'independent'},condition:'complete',state:'PENDING'},{target:{goalId:'literal-goal'},condition:'success',state:'PENDING'}]}],issues:[],observed_at:observed,consumer_snapshot:{state:'available',observed_at:observed,status:'PENDING_JOBS'}}));
+ render(<MemoryRouter><TreeWorkspace tenant="t" entry="consumer" /></MemoryRouter>);
+ const target=await screen.findByRole('button',{name:'Job wait target · independent'});
+ expect(document.querySelectorAll('.tree-card')).toHaveLength(1);expect(document.querySelectorAll('path[data-parent]')).toHaveLength(0);
+ expect(document.querySelectorAll('path[data-wait-target]')).toHaveLength(2);
+ fireEvent.click(target);
+ const pane=screen.getByRole('complementary',{name:'Selected wait target'});
+ expect(pane).toHaveTextContent('complete');expect(pane).toHaveTextContent('Waiting job: consumer');
+ expect(within(pane).getAllByRole('link',{name:'Open job DAG'})[0]).toHaveAttribute('href','/project/t/jobs/independent/tree');
+ expect(within(pane).getByRole('link',{name:'Open goal'})).toHaveAttribute('href','/project/t/goals/literal-goal');
+ expect(within(pane).queryByRole('button',{name:'Cancel job'})).toBeNull();
+ const reads=vi.mocked(getTreeNode).mock.calls.length;
+ resolved=true;fireEvent.click(within(pane).getByRole('button',{name:'Refresh waits'}));
+ await waitFor(()=>expect(screen.queryByRole('button',{name:'Job wait target · independent'})).toBeNull());
+ expect(screen.getByRole('complementary',{name:'Selected job details'})).toHaveTextContent('do not explain the waiting status');
+ expect(vi.mocked(getTreeNode).mock.calls.length).toBe(reads);
 });

@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
-import { jobIdentity } from './helpers/cells';
+import { jobIdentity, mockCells } from './helpers/cells';
 const at='2026-11-09T00:00:00Z';
 const nodes=[
  {tenant_id:'demo',job_id:'root',job_type:'recipe',cell:'cortex',status:'ACTIVE',title:'Plan the DAG improvements',created_at:'2026-11-12T08:58:00Z'},
@@ -17,6 +17,7 @@ test.beforeEach(async({page})=>{
  await page.route('**/api/**',async route=>{
   const u=new URL(route.request().url());
   if(u.pathname==='/api/projects')return route.fulfill({json:[{tenant_id:'demo'}]});
+  if(u.pathname.endsWith('/tree-waits')) {const id=u.pathname.split('/').at(-2)!;return route.fulfill({json:{consumer:{tenant_id:'demo',job_id:id},waits:[],issues:[],observed_at:at,consumer_snapshot:{state:'available',observed_at:at,status:'READY'}}});}
   const match=u.pathname.match(/\/jobs\/([^/]+)\/(tree-node|tree-children)$/);
   if(match){const id=decodeURIComponent(match[1]);if(match[2]==='tree-node'){const node=nodes.find(n=>n.job_id===id);return route.fulfill(missing||!node?{status:404,json:{error:'unavailable'}}:{json:{node,observed_at:at}});}
    if(large&&id==='root')return route.fulfill({json:{nodes:Array.from({length:1001},(_,i)=>({tenant_id:'demo',job_id:'wide-'+i,parent_job_id:'root',job_type:'generic',status:'READY'})),observed_at:at,next_page_token:'unconsumed'}});
@@ -418,7 +419,10 @@ for (const route of ['tree','story?tab=dag']) for (const width of [1440,390]) {
   await expect(goal).toHaveAttribute('href','/project/demo/goals/goal');
   await expect(execution).toHaveAttribute('href','/project/demo/jobs/entry/story');
   expect(await details.locator('dl').evaluate(dl=>!!(dl.compareDocumentPosition(document.querySelector('.tree-detail-actions')!)&Node.DOCUMENT_POSITION_PRECEDING))).toBe(true);
-  const boxes=await Promise.all([details,actions,cancel,goal,execution].map(e=>e.boundingBox()));
+  const measured=[details,actions,cancel,goal,execution];
+  // Async discovery can briefly replace the pane; measure a complete visible frame.
+  await expect.poll(async()=>Promise.all(measured.map(e=>e.boundingBox()))).not.toContain(null);
+  const boxes=await Promise.all(measured.map(e=>e.boundingBox()));
   const [pane,group,...controls]=boxes;
   expect(Math.abs(group!.x+group!.width-(pane!.x+pane!.width-17))).toBeLessThanOrEqual(1);
   expect(group!.y-pane!.y).toBeLessThanOrEqual(18);
@@ -518,3 +522,192 @@ for (const route of ['tree','story?tab=dag']) for (const width of [1440,390]) {
   await card.locator('.tree-card-select').click();await expect(details).toContainText('Cancelled');
  });
 }
+
+const waitAt='2026-11-17T00:00:00Z';
+const waitJob=(id:string,condition='complete')=>({target:{jobId:id},condition,state:'PENDING'});
+const waitGoal=(id:string)=>({target:{goalId:id},condition:'success',state:'PENDING'});
+function waitsPage(id:string,dependencies:any[],token='') {
+ return {consumer:{tenant_id:'demo',job_id:id},waits:dependencies.length?[{jobKey:{tenantId:'demo',jobId:id},waitId:'prerequisites',state:'PENDING',dependencies}]:[],issues:[],observed_at:waitAt,next_page_token:token,consumer_snapshot:{state:'available',observed_at:waitAt,status:id==='entry'?'PENDING_JOBS':'READY'}};
+}
+async function waitFixture(page:Page,dual=false) {
+ await mockCells(page,['platform']);
+ await page.route('**/api/projects/demo/jobs/goal-attempt-one',r=>r.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'goal-attempt-one',goal_id:'literal-goal',status:'READY',prompt:'Literal goal attempt',job_type:'generic',store:'ACTIVE',created_at:waitAt}}));
+ const consumer={...nodes[2],parent_job_id:undefined,status:'PENDING_JOBS',title:'Publish the reviewed change'};
+ const blocker={...nodes[1],job_id:'independent-blocker',parent_job_id:dual?'entry':undefined,status:'ACTIVE',title:'Prepare the shared dependency',archived_at:undefined,store:'ACTIVE'};
+ await page.route('**/jobs/*/tree-node',r=>{
+  const id=new URL(r.request().url()).pathname.split('/').at(-2);
+  const node=id==='entry'?consumer:id===blocker.job_id?blocker:undefined;
+  return r.fulfill(node?{json:{node,observed_at:waitAt}}:{status:404,json:{error:'Unavailable'}});
+ });
+ await page.route('**/jobs/*/tree-children?*',r=>{
+  const id=new URL(r.request().url()).pathname.split('/').at(-2);
+  return r.fulfill({json:{nodes:dual&&id==='entry'?[blocker]:[],observed_at:waitAt}});
+ });
+ await page.route('**/jobs/*/tree-waits?*',r=>{
+  const id=new URL(r.request().url()).pathname.split('/').at(-2)!;
+  return r.fulfill({json:waitsPage(id,id==='entry'?[waitJob(blocker.job_id),waitGoal('literal-goal')]:[])});
+ });
+ await page.route('**/jobs?*',r=>{
+  const goal=new URL(r.request().url()).searchParams.get('goal');
+  return r.fulfill({json:{jobs:goal==='literal-goal'?[{...jobIdentity,tenant_id:'demo',job_id:'goal-attempt-one',goal_id:'literal-goal',status:'READY',prompt:'Literal goal attempt',job_type:'generic',store:'ACTIVE',created_at:waitAt}]:[]}});
+ });
+ return {consumer,blocker};
+}
+for(const width of [1280,390,320]) for(const route of ['tree','story?tab=dag']) {
+ test(`WAIT independent job and literal goal, keyboard selection and target navigation ${width} ${route}`,async({page})=>{
+  await page.setViewportSize({width,height:1000});await waitFixture(page);
+  let targetWaitReads=0;page.on('request',r=>{if(r.url().includes('/independent-blocker/tree-waits'))targetWaitReads++;});
+  await page.goto('/project/demo/jobs/entry/'+route);
+  await expect(page.getByText('Wait coverage complete',{exact:false})).toBeVisible();
+  await expect(page.locator('.tree-card')).toHaveCount(1);await expect(page.locator('path[data-parent]')).toHaveCount(0);
+  await expect(page.locator('.tree-wait-reference')).toHaveCount(2);await expect(page.locator('path[data-wait-target]')).toHaveCount(2);
+  await expect(page.locator('.tree-wait-connections')).toContainText('Waits for · complete');
+  await checkWaitGeometry(page);
+  const target=page.getByRole('button',{name:'Job wait target · independent-blocker',exact:true});
+  await target.focus();await page.keyboard.press('Enter');await expect(target).toBeFocused();
+  expect(await target.evaluate(e=>getComputedStyle(e).outlineStyle)).toBe('solid');
+  const pane=page.getByRole('complementary',{name:'Selected wait target'});
+  await expect(pane).toContainText('Waiting job: entry');await expect(pane.getByRole('button',{name:'Cancel job',exact:true})).toHaveCount(0);
+  expect(targetWaitReads).toBe(0); // Selecting a reference is not recursive discovery.
+  await pane.getByRole('button',{name:'Back to waiting job',exact:true}).click();
+  const waits=page.getByRole('region',{name:'Waits for',exact:true});
+  const select=waits.locator('li').first().getByRole('button',{name:'Select target'});
+  await select.focus();await page.keyboard.press('Enter');await expect(select).toBeFocused();
+  await page.getByRole('button',{name:'Fit',exact:true}).click();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+  if(width<768) {
+   const graph=await page.getByLabel('Execution diagram').boundingBox(),detail=await pane.boundingBox();expect(detail!.y).toBeGreaterThanOrEqual(graph!.y+graph!.height);
+   for(const control of await waits.locator('button,a').all()) {const box=await control.boundingBox();if(box)expect(box.height).toBeGreaterThanOrEqual(44);}
+  }
+  await page.getByRole('button',{name:'Reveal wait targets'}).focus();await page.keyboard.press('Enter');await expect(target).toBeInViewport();
+  await capture(page,`waits-${width}-${route.startsWith('story')?'embedded':'standalone'}`);
+  const open= pane.getByRole('link',{name:'Open job DAG',exact:true}).first();
+  await expect(open).toHaveAttribute('href','/project/demo/jobs/independent-blocker/tree');
+  await open.focus();await page.keyboard.press('Enter');await expect(page).toHaveURL('/project/demo/jobs/independent-blocker/tree');
+  await expect(page.locator('.tree-card[data-job-id="independent-blocker"]')).toContainText('Prepare the shared dependency');
+  await expect(page.getByRole('link',{name:'Back to waiting job DAG'})).toBeVisible();expect(targetWaitReads).toBe(1);
+  await page.goBack();await expect(page).toHaveURL('/project/demo/jobs/entry/'+route);
+  await page.getByRole('button',{name:'Goal wait target · literal-goal',exact:true}).focus();await page.keyboard.press('Enter');
+  await page.getByRole('button',{name:'Fit',exact:true}).click();await capture(page,`waits-goal-${width}-${route.startsWith('story')?'embedded':'standalone'}`);
+  const goal=page.getByRole('complementary',{name:'Selected wait target'}).getByRole('link',{name:'Open goal',exact:true}).first();
+  await expect(goal).toHaveAttribute('href','/project/demo/goals/literal-goal');await goal.focus();await page.keyboard.press('Enter');
+  await expect(page).toHaveURL('/project/demo/goals/literal-goal');await expect(page.getByRole('region',{name:'Goal overview',exact:true})).toContainText('Literal goal attempt');
+ });
+}
+test('WAIT dual runtime/wait role, collapsed reveal, self cycle and child selection retain ancestry',async({page})=>{
+ await page.setViewportSize({width:1280,height:1000});await waitFixture(page,true);
+ await page.goto('/project/demo/jobs/entry/tree');await expect(page.locator('.tree-wait-reference')).toHaveCount(1);
+ const child=page.locator('.tree-card[data-job-id="independent-blocker"]');await expect(child).toContainText('Wait target');
+ await expect(page.locator('path[data-parent="entry"][data-child="independent-blocker"]')).toHaveCount(1);
+ await expect(page.locator('path[data-wait-target]')).toHaveCount(2);
+ await page.getByRole('button',{name:'Toggle branch Publish the reviewed change'}).click();await expect(child).toBeAttached();
+ await page.getByRole('button',{name:'Fit',exact:true}).click();await checkWaitGeometry(page);await capture(page,'waits-dual-role-product');
+ await child.locator('.tree-card-select').focus();await page.keyboard.press('Enter');
+ await expect(page.locator('.tree-wait-reference')).toHaveCount(0);await expect(child).toHaveCount(0); // saved collapse is restored
+ await page.getByRole('button',{name:'Find opened job'}).click();
+ await page.route('**/jobs/entry/tree-waits?*',r=>r.fulfill({json:waitsPage('entry',[waitJob('entry')])}));
+ await page.getByRole('button',{name:'Refresh waits'}).click();
+ await expect(page.locator('.tree-wait-reference')).toHaveCount(0);await expect(page.locator('path[data-wait-target]')).toHaveCount(1);
+ await expect(page.locator('.tree-card')).toHaveCount(2);await checkWaitGeometry(page);await capture(page,'waits-self-cycle-product');
+});
+test('WAIT partial paging, failed refresh, changed/resolved records and unavailable destination',async({page})=>{
+ await waitFixture(page);let mode='partial',reads=0;
+ await page.route('**/jobs/entry/tree-waits?*',r=>{
+  reads++;const token=new URL(r.request().url()).searchParams.get('pageToken');
+  if(mode==='error' || mode==='page-error' && token)return r.fulfill({status:403,json:{error:'Private backend detail'}});
+  if(mode==='resolved')return r.fulfill({json:waitsPage('entry',[])});
+  if(mode==='changed')return r.fulfill({json:waitsPage('entry',[waitJob('missing-blocker')])});
+  const result=waitsPage('entry',token?[waitGoal('literal-goal')]:[waitJob('independent-blocker')],token?'':'next');if(token)result.waits[0].waitId='second-wait';return r.fulfill({json:result});
+ });
+ await page.goto('/project/demo/jobs/entry/tree');
+ const waits=page.getByRole('region',{name:'Waits for',exact:true});await expect(waits).toContainText('Partial wait coverage');expect(reads).toBe(1);
+ await capture(page,'waits-partial-product');
+ mode='page-error';await waits.getByRole('button',{name:'Load more waits'}).focus();await page.keyboard.press('Enter');
+ await expect(waits).toContainText('Wait page unavailable');await expect(page.locator('.tree-wait-reference')).toHaveCount(1);
+ mode='partial';await waits.getByRole('button',{name:'Retry page'}).focus();await page.keyboard.press('Enter');
+ await expect(page.locator('.tree-wait-reference')).toHaveCount(2);expect(reads).toBe(3);
+ mode='error';await waits.getByRole('button',{name:'Refresh waits'}).focus();await page.keyboard.press('Enter');
+ await expect(waits).toContainText('Previous observation');await expect(waits).toContainText('information unavailable');
+ await expect(page.locator('.tree-wait-connections')).toHaveClass(/tree-waits-previous/);await page.getByRole('button',{name:'Fit',exact:true}).click();await capture(page,'waits-previous-product');
+ mode='changed';await waits.getByRole('button',{name:'Retry waits'}).focus();await page.keyboard.press('Enter');
+ await expect(page.getByRole('button',{name:'Job wait target · missing-blocker'})).toBeAttached();
+ await expect(page.getByRole('button',{name:'Goal wait target · literal-goal'})).toHaveCount(0);
+ await waits.getByRole('link',{name:'Open job DAG'}).focus();await page.keyboard.press('Enter');
+ await expect(page).toHaveURL('/project/demo/jobs/missing-blocker/tree');await expect(page.getByRole('alert')).toContainText('Entry job unavailable');
+ await expect(page.getByText('Recorded submission family',{exact:false})).toContainText('missing-blocker');
+ await page.getByRole('link',{name:'Back to waiting job DAG'}).click();
+ mode='resolved';await page.getByRole('button',{name:'Refresh waits'}).click();
+ await expect(waits).toContainText('do not explain the waiting status');await expect(page.locator('.tree-wait-reference')).toHaveCount(0);
+ await expect(waits).not.toContainText('Previous observation');
+ mode='changed';await page.getByRole('button',{name:'Refresh tree'}).click();
+ await expect(page.getByRole('button',{name:'Job wait target · missing-blocker'})).toBeAttached();
+});
+test('WAIT empty continuation, unavailable reads, dense target caps and keyboard graph exchange',async({page})=>{
+ await page.setViewportSize({width:320,height:1000});await waitFixture(page);
+ let mode='empty';
+ await page.route('**/jobs/entry/tree-waits?*',r=>{
+  if(mode==='error')return r.fulfill({status:503,json:{error:'Unavailable'}});
+  if(mode==='dense')return r.fulfill({json:waitsPage('entry',Array.from({length:120},(_,i)=>waitJob('long-independent-target-'+i)))});
+  return r.fulfill({json:waitsPage('entry',[],'more')});
+ });
+ await page.goto('/project/demo/jobs/entry/tree');const waits=page.getByRole('region',{name:'Waits for',exact:true});
+ await expect(waits).toContainText('Partial wait coverage');await expect(waits).not.toContainText('No unresolved');
+ mode='error';await waits.getByRole('button',{name:'Refresh waits'}).click();await expect(waits).toContainText('information unavailable');await capture(page,'waits-unavailable-320-product');
+ mode='dense';await waits.getByRole('button',{name:'Retry waits'}).click();await expect(page.locator('.tree-wait-reference')).toHaveCount(50);await expect(waits.locator('li')).toHaveCount(100);
+ const row=waits.locator('li').filter({hasText:'long-independent-target-99'});await row.getByRole('button',{name:'Show in graph'}).focus();await page.keyboard.press('Enter');
+ await expect(page.getByRole('button',{name:'Job wait target · long-independent-target-99',exact:true})).toBeAttached();await expect(page.locator('.tree-wait-reference')).toHaveCount(50);
+ await expect(row.getByRole('button',{name:'Reveal in graph'})).toBeFocused();
+ await waits.getByRole('button',{name:'Show more loaded targets'}).focus();await page.keyboard.press('Enter');await expect(waits.locator('li')).toHaveCount(120);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+});
+
+async function checkWaitGeometry(page:Page) {
+ const intersections=await page.evaluate(()=>{
+  const cards=[...document.querySelectorAll<HTMLElement>('.tree-card,.tree-wait-reference')].map(e=>e.getBoundingClientRect());
+  const errors:string[]=[];
+  for(const path of document.querySelectorAll<SVGPathElement>('path[data-wait-target]')) {
+   const matrix=path.getScreenCTM()!;
+   for(let distance=0;distance<=path.getTotalLength();distance+=2) {
+    const p=path.getPointAtLength(distance).matrixTransform(matrix);
+    if(cards.some(b=>p.x>b.left+3&&p.x<b.right-3&&p.y>b.top+3&&p.y<b.bottom-3)){errors.push(path.dataset.waitTarget!);break;}
+   }
+  }
+  return errors;
+ });
+ expect(intersections).toEqual([]);
+}
+
+test('WAIT loading and resolved-reference focus remain usable on a phone',async({page})=>{
+ await page.setViewportSize({width:390,height:1000});await waitFixture(page);
+ let release!:()=>void, generation=0;
+ const gates=[new Promise<void>(resolve=>release=resolve)];
+ let resolveNext!:()=>void;gates.push(new Promise<void>(resolve=>resolveNext=resolve));
+ await page.route('**/jobs/entry/tree-waits?*',async r=>{
+  const current=generation++;await gates[current];
+  await r.fulfill({json:waitsPage('entry',current?[]:[waitJob('independent-blocker')])}).catch(()=>{});
+ });
+ await page.goto('/project/demo/jobs/entry/tree');
+ await expect(page.getByRole('region',{name:'Waits for'})).toContainText('Loading pending dependencies');
+ await capture(page,'waits-loading-phone');release();
+ const target=page.getByRole('button',{name:'Job wait target · independent-blocker',exact:true});
+ await target.focus();await page.keyboard.press('Enter');
+ await page.getByRole('button',{name:'Refresh waits'}).click();await expect(page.getByRole('region',{name:'Waits for'})).toContainText('Previous observation');
+ await target.focus();resolveNext();
+ await expect(page.getByRole('heading',{name:'Selected job',exact:true})).toBeFocused();
+ await expect(page.locator('.tree-wait-reference')).toHaveCount(0);
+ await expect(page.getByRole('region',{name:'Waits for'})).toContainText('do not explain the waiting status');
+});
+test('WAIT tab departure resumes one interrupted read and rejects a late dependency observation',async({page})=>{
+ await waitFixture(page);let release!:()=>void,reads=0;
+ const gate=new Promise<void>(resolve=>release=resolve);
+ await page.route('**/jobs/entry/tree-waits?*',async r=>{
+  const current=++reads;if(current===1)await gate;
+  await r.fulfill({json:waitsPage('entry',current===1?[waitJob('obsolete-target')]:[waitGoal('literal-goal')])}).catch(()=>{});
+ });
+ await page.goto('/project/demo/jobs/entry/story?tab=dag');await expect.poll(()=>reads).toBe(1);
+ await page.getByRole('tab',{name:'Trace',exact:true}).click();
+ await page.getByRole('tab',{name:'DAG',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Goal wait target · literal-goal',exact:true})).toBeAttached();
+ expect(reads).toBe(2);release();
+ await expect(page.getByRole('button',{name:'Job wait target · obsolete-target',exact:true})).toHaveCount(0);
+});

@@ -211,3 +211,23 @@ export interface JobLeaseEventPage {
   events: JobLeaseEvent[];
   nextPageToken?: string;
 }
+
+/** Direct authoritative waits, independent of runtime ancestry. */
+export interface TreeDependencyWait {
+  jobKey: { tenantId: string; jobId: string };
+  waitId: string;
+  state: string;
+  deadline?: string;
+  dependencies: { target: { jobId?: string; goalId?: string }; condition: string; state: string; blockedReason?: string }[];
+}
+export interface TreeWaitSnapshot {
+  state: 'available' | 'unavailable'; observed_at: string; status?: string; legacy_wait_for?: string[];
+}
+export interface TreeWaitsResponse {
+  consumer: { tenant_id: string; job_id: string };
+  waits: TreeDependencyWait[];
+  observed_at: string;
+  next_page_token?: string;
+  issues: string[];
+  consumer_snapshot?: TreeWaitSnapshot;
+}

@@ -105,12 +105,13 @@ func TestTreeSQLiteHTTPIntegration(t *testing.T) {
 				t.Fatal(err)
 			}
 			deadline := time.Now().Add(time.Hour)
-			if err := parentA.Reschedule(ctx, jobdb.RescheduleExecutionRequest{NextRoute: jobdb.Route{JobType: "recipe"}, DependencyWait: &jobdb.DependencyWait{WaitID: "dependencies-only", Deadline: &deadline, Dependencies: []jobdb.Dependency{{Target: jobdb.DependencyTarget{JobID: "dependency-only"}, Condition: jobdb.JobPrereqComplete}}}}); err != nil {
+			if err := parentA.Reschedule(ctx, jobdb.RescheduleExecutionRequest{NextRoute: jobdb.Route{JobType: "recipe"}, DependencyWait: &jobdb.DependencyWait{WaitID: "dependencies-only", Deadline: &deadline, Dependencies: []jobdb.Dependency{{Target: jobdb.DependencyTarget{JobID: "dependency-only"}, Condition: jobdb.JobPrereqComplete}, {Target: jobdb.DependencyTarget{GoalID: active.GoalID}, Condition: jobdb.JobPrereqSuccess}}}}); err != nil {
 				t.Fatal(err)
 			}
 
-			app := &Server{engine: childrenRuntimeEngine{runtime: runtime, translatedGoal: active.GoalID}}
+			app := &Server{engine: treeIntegrationEngine{childrenRuntimeEngine: childrenRuntimeEngine{runtime: runtime, translatedGoal: active.GoalID}, source: runtime}}
 			router := mux.NewRouter()
+			router.HandleFunc("/projects/{projectId}/jobs/{jobId}/tree-waits", app.handleTreeWaits)
 			router.HandleFunc("/projects/{projectId}/jobs/{jobId}/tree-node", app.handleTreeNode)
 			router.HandleFunc("/projects/{projectId}/jobs/{jobId}/tree-children", app.handleTreeChildren)
 			httpServer := httptest.NewServer(testjobdb.Handler(router))
@@ -132,6 +133,19 @@ func TestTreeSQLiteHTTPIntegration(t *testing.T) {
 					t.Fatal(err)
 				}
 				return body.Node
+			}
+
+			response, err := http.Get(httpServer.URL + "/projects/a/jobs/same/tree-waits")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var waits treeWaitsResponse
+			if err := json.NewDecoder(response.Body).Decode(&waits); err != nil {
+				t.Fatal(err)
+			}
+			response.Body.Close()
+			if response.StatusCode != 200 || len(waits.Waits) != 1 || len(waits.Waits[0].Dependencies) != 2 || waits.Waits[0].Dependencies[0].Target.JobID != "dependency-only" || waits.Waits[0].Dependencies[1].Target.GoalID != active.GoalID || waits.Snapshot.State != "available" || lookup("dependency-only").ParentJobID != "" {
+				t.Fatalf("wait projection: %+v", waits)
 			}
 			entry := lookup("grandchild")
 			middle := lookup(entry.ParentJobID)
@@ -214,9 +228,36 @@ func TestTreeSQLiteHTTPIntegration(t *testing.T) {
 					break
 				}
 			}
+
+			completePrimaryFixture(t, runtime, "a", "dependency-only", "success")
+			response, err = http.Get(httpServer.URL + "/projects/a/jobs/same/tree-waits")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := json.NewDecoder(response.Body).Decode(&waits); err != nil {
+				t.Fatal(err)
+			}
+			response.Body.Close()
+			if len(waits.Waits) != 1 || waits.Waits[0].Dependencies[0].State != jobdb.DependencySatisfied || waits.Waits[0].Dependencies[1].State != jobdb.DependencyPending {
+				t.Fatalf("refreshed waits: %+v", waits)
+			}
 			if len(found) != 4 || !found["active"] || !found["completed"] || !found["failed"] || !found["hidden"] {
 				t.Fatalf("unexpected children: %v", found)
 			}
 		})
 	}
+}
+
+// Scoped read adapter keeps the existing ancestry fixture and raw generic snapshot.
+type treeIntegrationEngine struct {
+	childrenRuntimeEngine
+	source jobdb.WorkflowRuntime
+}
+
+func (e treeIntegrationEngine) GetJob(ctx context.Context, key jobdb.JobKey) (jobdb.JobInfo, error) {
+	return e.source.GetJob(ctx, key)
+}
+
+func (e treeIntegrationEngine) ListDependencyWaits(ctx context.Context, q jobdb.ListDependencyWaitsRequest) (jobdb.ListDependencyWaitsResponse, error) {
+	return e.source.(treeWaitReader).ListDependencyWaits(ctx, q)
 }

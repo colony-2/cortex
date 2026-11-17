@@ -273,3 +273,23 @@ export function inboxValueUrl(projectId: string, jobId: string, selector: InboxV
     task_ordinal: String(selector.taskOrdinal), task_attempt: String(selector.taskAttempt), binding: selector.binding});
   return `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/inbox/value?${query}`;
 }
+
+/** One bounded page; targets are references and are never hydrated here. */
+export async function getTreeWaits(tenant: string, job: string, token = '', signal?: AbortSignal): Promise<import('./types').TreeWaitsResponse> {
+  const query = new URLSearchParams({ pageToken: token });
+  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(job)}/tree-waits?${query}`, { signal });
+  await handleResponse(response, 'Load pending dependencies');
+  const page = await response.json();
+  const snapshot = page?.consumer_snapshot;
+  if (!page || page.consumer?.tenant_id !== tenant || page.consumer?.job_id !== job || !Array.isArray(page.waits)
+    || typeof page.observed_at !== 'string' || !Number.isFinite(Date.parse(page.observed_at))
+    || !Array.isArray(page.issues) || page.issues.some((v: unknown) => typeof v !== 'string')
+    || (page.next_page_token !== undefined && typeof page.next_page_token !== 'string')
+    || (!token && (!snapshot || !['available','unavailable'].includes(snapshot.state)))
+    || (snapshot?.state === 'available' && (typeof snapshot.status !== 'string' || !snapshot.status.trim()))
+    || (snapshot && (typeof snapshot.observed_at !== 'string' || !Number.isFinite(Date.parse(snapshot.observed_at))
+      || (snapshot.legacy_wait_for !== undefined && (!Array.isArray(snapshot.legacy_wait_for) || snapshot.legacy_wait_for.some((v: unknown) => typeof v !== 'string')))))) {
+    throw new APIError('Incompatible pending dependency response', 502, 'incompatible_response');
+  }
+  return page;
+}
