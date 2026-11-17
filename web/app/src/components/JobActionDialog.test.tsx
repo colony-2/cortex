@@ -5,6 +5,8 @@ import type { RecipeJob } from '@colony2/shared/types';
 import JobActionDialog from './JobActionDialog';
 import CancelJobButton from './CancelJobButton';
 import { jobIdentity } from '../test/cellFixtures';
+import { StrictMode } from 'react';
+import { message } from 'antd';
 
 vi.mock('@colony2/shared/api', async original => ({
   ...await original<typeof import('@colony2/shared/api')>(),
@@ -148,4 +150,27 @@ it('retains an already requested cancellation while keeping stale completion det
   render(<JobActionDialog {...props} job={{...ready,completion_status:'cancelled'}} />);
   expect(field()).toBeEnabled();
   expect(screen.queryByText(/only archiving remains/)).not.toBeInTheDocument();
+});
+
+it.each([true, false])('AR-016 submits archive once during StrictMode replay or repeated clicks (immediate: %s)', async immediate => {
+  let resolve!: () => void;
+  vi.mocked(archiveJob).mockReturnValue(new Promise<void>(done => { resolve = done; }));
+  const completed = vi.fn();
+  const close = vi.fn();
+  const success = vi.spyOn(message, 'success');
+  try {
+    render(<StrictMode><JobActionDialog projectId="tenant" jobIds={['one']} job={{ ...ready, status: 'COMPLETED', completion_status: 'success' }}
+      action="archive" immediate={immediate} onClose={close} onComplete={completed} /></StrictMode>);
+    if (!immediate) {
+      const submit = within(screen.getByRole('dialog')).getByRole('button', { name: 'Archive job', exact: true });
+      fireEvent.click(submit);
+      fireEvent.click(submit);
+    }
+    expect(archiveJob).toHaveBeenCalledTimes(1);
+    expect(completed).not.toHaveBeenCalled();
+    await act(async () => resolve());
+    expect(success).toHaveBeenCalledExactlyOnceWith('Archived 1 job');
+    expect(completed).toHaveBeenCalledExactlyOnceWith(['one']);
+    expect(close).toHaveBeenCalledTimes(1);
+  } finally { success.mockRestore(); }
 });

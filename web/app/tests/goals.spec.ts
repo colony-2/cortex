@@ -1,6 +1,87 @@
-import { jobIdentity, mockCells, cellFixture } from './helpers/cells';
+import { jobIdentity, mockCells, cellFixture, registerCell } from './helpers/cells';
 import { test, expect } from '@playwright/test';
 import { setCellFilter, setStatusFilter } from './helpers/goalList';
+import { randomUUID } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+
+for (const width of [1440, 390]) {
+  test(`AR-018,019 story archive returns to Goals with one toast and retained history at ${width}px`, async ({ page, request, context, baseURL }, testInfo) => {
+    test.skip(testInfo.project.name !== 'goals-runtime', 'Requires the disposable SQLite runtime in the goals-runtime project');
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width, height: 1000 });
+    const tenant = `story-archive-${randomUUID()}`;
+    await registerCell(request, tenant);
+    const base = `/api/projects/${tenant}/jobs`;
+    const submitted = await request.post(base, { data: { cell: 'platform', job_id: 'original-attempt', recipe: 'smoke', inputs: { prompt: 'Review the release dashboard' } } });
+    expect(submitted.status(), await submitted.text()).toBe(201);
+    const source = await submitted.json();
+    const backend = `http://127.0.0.1:18082/v1/tenants/${tenant}/jobs/original-attempt`;
+    const acquired = await request.post(`${backend}/lease`, { data: { workerId: 'archive-browser-fixture', routes: [{ jobType: 'recipe' }], leaseDuration: '1m' } });
+    expect(acquired.ok(), await acquired.text()).toBeTruthy();
+    const { lease } = await acquired.json();
+    const complete = await request.post(`${backend}/leases/${lease.leaseId}/complete`, {
+      headers: { 'X-JobDB-Lease-Token': lease.leaseToken },
+      data: { status: 'failed_app', chapter: { ordinal: 1, taskType: 'recipe', createdAt: new Date().toISOString(),
+        body: { kind: 'jobAttemptOutcome', outcome: { kind: 'appError', error: { code: 'review_required', message: 'A further attempt is needed' } } }, artifacts: [] } },
+    });
+    expect(complete.status(), await complete.text()).toBe(204);
+    const restart = await request.post(`${base}/original-attempt/restart`, { data: { request_id: randomUUID(), chapter_ordinal: 0, goal: { mode: 'continue' } } });
+    expect(restart.status(), await restart.text()).toBe(201);
+    const sibling = await restart.json();
+    expect(sibling.goal_id).toBe(source.goal_id);
+    await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    const mutations: string[] = [];
+    page.on('request', req => { if (req.method() === 'DELETE') mutations.push(new URL(req.url()).pathname); });
+    const capture = async (name: string) => {
+      if (!process.env.CORTEX_ARCHIVE_SCREENSHOTS) return;
+      mkdirSync(process.env.CORTEX_ARCHIVE_SCREENSHOTS, { recursive: true });
+      await page.screenshot({ path: join(process.env.CORTEX_ARCHIVE_SCREENSHOTS, `${name}-${width}.png`), fullPage: true, animations: 'disabled' });
+    };
+
+    // Finished source: immediate archive, with the saved All jobs destination.
+    const savedList = `/project/${tenant}/goals?executionState=cells-v1&view=all&expanded=${encodeURIComponent(`goal:${source.goal_id}`)}`;
+    await page.goto(savedList);
+    await page.getByRole('region', { name: 'Attempts', exact: true }).locator('a[href$="/jobs/original-attempt/story"]').first().click();
+    await expect(page.getByRole('heading', { name: 'Job Story', exact: true })).toBeVisible();
+    if (width === 1440) await capture('story-before-archive');
+    await page.getByRole('button', { name: 'Archive', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Goals', exact: true })).toBeVisible();
+    await expect(page).toHaveURL(savedList);
+    const toast = page.locator('.ant-message-notice-content').filter({ hasText: 'Archived 1 job' });
+    await expect(toast).toHaveCount(1);
+    await expect(toast).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Job Story', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('checkbox', { name: 'Select job original-attempt', exact: true })).toBeVisible();
+    await capture('goals-archived-toast');
+    await page.getByLabel('Job visibility', { exact: true }).selectOption('inbox');
+    await expect(page.getByRole('checkbox', { name: 'Select job original-attempt', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('checkbox', { name: `Select job ${sibling.job_id}`, exact: true })).toBeVisible();
+    const inbox = await (await request.get(`${base}?status=all`)).json();
+    expect(inbox.jobs.map((job: { job_id: string }) => job.job_id)).toEqual([sibling.job_id]);
+    const retained = await (await request.get(`${base}?status=all&includeHidden=true`)).json();
+    expect(retained.jobs.map((job: { job_id: string }) => job.job_id).sort()).toEqual(['original-attempt', sibling.job_id].sort());
+    expect(mutations).toEqual([`${base}/original-attempt`]);
+
+    // Unfinished sibling: keep existing confirmation, then return to Inbox.
+    await expect(toast).toHaveCount(0);
+    await page.getByRole('link', { name: `Job ${sibling.job_id}: Ready`, exact: true }).click();
+    await page.getByRole('button', { name: 'Archive', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByLabel('Cancellation message (optional)')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Archive job', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Goals', exact: true })).toBeVisible();
+    await expect(toast).toHaveCount(1);
+    await expect(toast).toBeVisible();
+    await expect(page.getByRole('checkbox', { name: /^Select job / })).toHaveCount(0);
+    await expect(page.getByText('No goals found', { exact: true })).toBeVisible();
+    if (width === 390) await capture('goals-confirmed-archive-toast');
+    expect(mutations).toEqual([`${base}/original-attempt`, `${base}/${sibling.job_id}`]);
+    expect(errors).toEqual([]);
+  });
+}
 
 test('renders 200 compact rows, expands a full message, and follows empty page cursors without detail requests', async ({ page, context, baseURL }) => {
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);

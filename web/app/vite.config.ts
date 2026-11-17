@@ -41,8 +41,9 @@ export default defineConfig({
     include: ['@ant-design/icons', 'antd']
   },
   test: {
-    // Bound jsdom/Ant Design rendering concurrency on shared workers.
-    maxWorkers: 2,
+    // Run render-heavy jsdom/Ant Design suites serially on shared workers so
+    // concurrent rendering does not exhaust individual tests' timeout budgets.
+    maxWorkers: 1,
     env: { VITE_CORTEX_API_BASE: 'http://localhost:8080/api' },
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],

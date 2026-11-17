@@ -562,8 +562,8 @@ for (const width of [1440, 390]) test(`JS-001,002,026–028 safe full prompt and
   await page.screenshot({path:info.outputPath(`prompt-actions-${width}.png`),fullPage:true,animations:'disabled'});
 });
 
-test('JS-010,015,020–023,036,037 Archive retries and header Restart submits before Trace', async ({page}, info) => {
-  let deletes=0, storyReads=0, restarts=0;
+test('JS-015,020–023 AR-010,011 Archive retries retain cancellation and return to Goals', async ({page}, info) => {
+  let deletes=0, storyReads=0;
   const payloads:unknown[]=[];
   await page.route('**/api/projects/demo/jobs/job',async route=>{
     if(route.request().method()==='DELETE'){
@@ -573,22 +573,40 @@ test('JS-010,015,020–023,036,037 Archive retries and header Restart submits be
     return route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',title:'Action retry fixture',prompt:'Inspect history after archive.',status:'RUNNING',store:deletes>1?'ARCHIVED':'ACTIVE'}});
   });
   await page.route('**/api/projects/demo/jobs/job/story',route=>{storyReads++;return route.fulfill({json:{job_id:'job',status:'completed',restart_scopes:[{scope_id:'recorded',chapter_ordinal:3,title:'Recorded restart'}],root:null}});});
+  await page.route('**/api/projects/demo/jobs?*',route=>route.fulfill({json:{jobs:[]}}));
+  await page.goto('/project/demo/jobs/job/story');
+  const archive=page.getByRole('button',{name:'Archive',exact:true}); await archive.click();
+  const dialog=page.getByRole('dialog'); await dialog.getByLabel('Cancellation message (optional)').fill('Retain my cancellation');
+  await dialog.getByRole('button',{name:'Archive job',exact:true}).click();
+  await expect(dialog.getByText(/only archiving remains/)).toBeVisible();
+  await expect(dialog.getByLabel('Cancellation message (optional)')).toBeDisabled();
+  await expect(page).toHaveURL(/\/jobs\/job\/story$/);
+  await expect(page.getByText('Archived 1 job',{exact:true})).toHaveCount(0);
+  await page.screenshot({path:info.outputPath('archive-retry.png'),animations:'disabled'});
+  await dialog.getByRole('button',{name:'Archive job',exact:true}).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL('/project/demo/goals?executionState=cells-v1');
+  await expect(page.getByRole('heading',{name:'Goals',exact:true})).toBeVisible();
+  const toast=page.locator('.ant-message-notice-content').filter({hasText:'Archived 1 job'});
+  await expect(toast).toHaveCount(1);
+  await expect(toast).toBeVisible();
+  await expect(archive).toHaveCount(0);
+  expect(payloads).toEqual([{reason:'Retain my cancellation'},{reason:'Retain my cancellation'}]);
+  expect(storyReads).toBe(0);
+});
+
+test('JS-010,036,037 header Restart submits before Trace and retries the saved request', async ({page}, info) => {
+  let storyReads=0, restarts=0;
+  const payloads:unknown[]=[];
+  await page.route('**/api/projects/demo/jobs/job',route=>route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',title:'Restart fixture',prompt:'Restart before loading Trace.',status:'RUNNING',store:'ACTIVE'}}));
+  await page.route('**/api/projects/demo/jobs/job/story',route=>{storyReads++;return route.fulfill({json:{job_id:'job',status:'completed',restart_scopes:[{scope_id:'recorded',chapter_ordinal:3,title:'Recorded restart'}],root:null}});});
   await page.route('**/api/projects/demo/jobs/job/restart',route=>{
     restarts++;payloads.push(route.request().postDataJSON());
     return restarts===1?route.fulfill({status:503,body:'Temporary restart failure'}):route.fulfill({json:{job_id:'restarted'}});
   });
   await page.goto('/project/demo/jobs/job/story');
-  const archive=page.getByRole('button',{name:'Archive',exact:true}); await archive.click();
-  let dialog=page.getByRole('dialog'); await dialog.getByLabel('Cancellation message (optional)').fill('Retain my cancellation');
-  await dialog.getByRole('button',{name:'Archive job',exact:true}).click();
-  await expect(dialog.getByText(/only archiving remains/)).toBeVisible();
-  await expect(dialog.getByLabel('Cancellation message (optional)')).toBeDisabled();
-  await page.screenshot({path:info.outputPath('archive-retry.png'),animations:'disabled'});
-  await dialog.getByRole('button',{name:'Archive job',exact:true}).click();
-  await expect(dialog).toHaveCount(0); await expect(archive).toBeFocused();
-  expect(payloads).toEqual([{reason:'Retain my cancellation'},{reason:'Retain my cancellation'}]);
-  expect(storyReads).toBe(0); await expect(page).toHaveURL(/\/jobs\/job\/story$/);
-  const restart=page.getByRole('button',{name:'Restart',exact:true}); await restart.click(); dialog=page.getByRole('dialog');
+  expect(storyReads).toBe(0);
+  const restart=page.getByRole('button',{name:'Restart',exact:true}); await restart.click(); const dialog=page.getByRole('dialog');
   await expect(dialog.getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
   await expect(page.locator('#execution-story-tree')).toHaveCount(0);
   await dialog.getByRole('combobox',{name:'Restart point'}).click(); await page.getByText(/Recorded restart · Chapter 3/).click();
@@ -603,8 +621,8 @@ test('JS-010,015,020–023,036,037 Archive retries and header Restart submits be
   expect(restarts).toBe(1);
   await dialog.getByRole('button',{name:'Retry saved request',exact:true}).click();
   await expect(page).toHaveURL(/\/jobs\/restarted\/story/);
-  expect(payloads[2]).toEqual(payloads[3]);
-  expect(payloads[2]).toMatchObject({scope_id:'recorded',goal:{mode:'new'},request_id:expect.any(String)});
+  expect(payloads[0]).toEqual(payloads[1]);
+  expect(payloads[0]).toMatchObject({scope_id:'recorded',goal:{mode:'new'},request_id:expect.any(String)});
   expect(storyReads).toBe(1);
 });
 

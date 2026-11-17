@@ -1473,7 +1473,12 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
       {archiveTarget && <JobActionDialog projectId={projectId} jobIds={[jobId]} action="archive"
         job={archiveTarget.job} immediate={archiveTarget.immediate}
         onClose={() => { if (alive.current) setArchiveTarget(undefined); }}
-        onComplete={async () => { if (alive.current) await Promise.all([load(), refreshPendingInputs()]); }} />}
+        onComplete={() => {
+          if (!alive.current) return;
+          navigate(returnTo);
+          // Activity refresh is independent of the successful archive and return.
+          void refreshPendingInputs().catch(() => {});
+        }} />}
       <Modal
         title="Restart Job"
         open={restartOpen}

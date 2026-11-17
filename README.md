@@ -58,6 +58,8 @@ The **Inbox / All jobs** selector controls visibility independently of execution
 status. Inbox is the default and includes finished jobs until they are archived.
 **Archive selected** removes jobs from the inbox and cancels unfinished work;
 history and artifacts remain available through All jobs and goal overview.
+Archiving from a job story returns to its Goals list with an “Archived 1 job”
+confirmation, preserving the saved list view and filters after success.
 Restoring jobs to the inbox is not currently supported. The selected view stays
 in the URL; switching views clears pagination and selected jobs.
 

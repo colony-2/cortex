@@ -4,9 +4,10 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import JobStoryPage from './JobStoryPage';
+import JobsListPage from './JobsListPage';
 import * as storyTree from '../utils/storyTree';
-import { jobIdentity } from '../test/cellFixtures';
-import { getJob, getJobInputArtifacts, listJobChildren, cancelJob, listJobs } from '@colony2/shared/api';
+import { jobIdentity, registryCell } from '../test/cellFixtures';
+import { getJob, getJobInputArtifacts, listJobChildren, cancelJob, listJobs, listCells, getCell } from '@colony2/shared/api';
 import type { RecipeJob } from '@colony2/shared/types';
 import DownloadChaptersButton from './DownloadChaptersButton';
 import { inputActivityService, getConversation, getFinalDocuments, getTreeNode, getTreeChildren } from '@colony2/shared';
@@ -37,6 +38,7 @@ vi.mock('@colony2/shared/api', async (importOriginal) => ({
   cancelJob: vi.fn(),
   getJobInputArtifacts: vi.fn().mockResolvedValue({ artifacts: [] }),
   listJobs: vi.fn().mockResolvedValue({ jobs: [] }),
+  listCells: vi.fn(), getCell: vi.fn(),
   getJobLeaseEvents: vi.fn().mockResolvedValue({ events: [] }),
   listJobChildren: vi.fn().mockResolvedValue({ jobs: [] }),
 }));
@@ -81,7 +83,9 @@ beforeEach(() => {
   scrollIntoView.mockClear();
   sessionStorage.clear();
   inputState.pendingInputs = [];
-  inputState.refresh.mockClear();
+  inputState.refresh.mockReset().mockResolvedValue(undefined);
+  vi.mocked(listCells).mockResolvedValue({ cells: [registryCell()] });
+  vi.mocked(getCell).mockResolvedValue(registryCell());
   vi.mocked(getFinalDocuments).mockReset().mockResolvedValue({job_id:'job',manifest_id:'empty',state:'empty',documents:[]});
   vi.mocked(getConversation).mockReset().mockRejectedValue(new Error('History unavailable'));
   vi.mocked(getJobInputArtifacts).mockReset().mockResolvedValue({ artifacts: [] });
@@ -1762,9 +1766,145 @@ describe('JS shared story actions', () => {
   });
 });
 
-it('JS-020,022,023 Archive retains accepted cancellation and refreshes metadata on retry without leaving the job', async () => {
+function ArchiveLocation() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return <><output data-testid="archive-location">{location.pathname + location.search}</output>
+    <button onClick={() => navigate('/project/tenant/goals?view=all')}>Leave story</button></>;
+}
+function mountArchive(search = '', state?: Record<string, unknown>) {
+  const requests = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+  vi.stubGlobal('fetch', requests);
+  render(<MemoryRouter initialEntries={[{ pathname: '/project/tenant/jobs/job/story', search, state }]}>
+    <ArchiveLocation />
+    <Routes>
+      <Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId="tenant" />} />
+      <Route path="/project/:projectId/goals" element={<JobsListPage projectId="tenant" />} />
+      <Route path="/project/:projectId/jobs" element={<JobsListPage projectId="tenant" />} />
+    </Routes>
+  </MemoryRouter>);
+  return requests;
+}
+async function startArchive() {
+  await screen.findByRole('region', { name: 'Job prompt' });
+  fireEvent.click(screen.getByRole('button', { name: 'Archive', exact: true }));
+}
+async function expectArchived(destination = '/project/tenant/goals?executionState=cells-v1') {
+  await screen.findByRole('heading', { name: 'Goals', exact: true });
+  expect(screen.getByTestId('archive-location').textContent).toBe(destination);
+  expect(screen.queryByRole('heading', { name: 'Job Story', exact: true })).toBeNull();
+  await waitFor(() => expect(screen.getAllByText('Archived 1 job')).toHaveLength(1));
+}
+
+it('AR-001,003,005 archives only the selected job and waits for success before returning with one toast', async () => {
+  vi.mocked(getJob).mockResolvedValue(metadata({ completion_status: 'success' }));
+  const pending = deferred<Response>();
+  const requests = mountArchive();
+  requests.mockReturnValue(pending.promise);
+  await startArchive();
+  await screen.findByText('Archiving jobs…');
+  expect(screen.getByTestId('archive-location')).toHaveTextContent('/project/tenant/jobs/job/story');
+  expect(screen.queryByText('Archived 1 job')).toBeNull();
+  expect(requests).toHaveBeenCalledTimes(1);
+  expect(requests).toHaveBeenCalledWith(expect.stringMatching(/\/projects\/tenant\/jobs\/job$/), expect.objectContaining({ method: 'DELETE' }));
+  const metadataReads = vi.mocked(getJob).mock.calls.length;
+  await act(async () => pending.resolve(new Response(null, { status: 204 })));
+  await expectArchived();
+  expect(getJob).toHaveBeenCalledTimes(metadataReads);
+  expect(inputState.refresh).toHaveBeenCalledTimes(1);
+  expect(listJobs).toHaveBeenCalledWith('tenant', expect.objectContaining({ includeHidden: false }));
+});
+
+it('AR-004 keeps unfinished jobs when confirmation is dismissed', async () => {
+  vi.mocked(getJob).mockResolvedValue(metadata({ status: 'RUNNING', store: 'ACTIVE' }));
+  const requests = mountArchive();
+  await startArchive();
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Keep jobs' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(requests).not.toHaveBeenCalled();
+  expect(screen.getByTestId('archive-location')).toHaveTextContent('/project/tenant/jobs/job/story');
+  expect(screen.queryByText('Archived 1 job')).toBeNull();
+});
+
+const savedListQuery = '?executionState=cells-v1&status=success&cellId=cell-platform&view=all&q=release&sort=created&order=descend&pageToken=next&expanded=goal%3Agoal&detail=requirements';
+it.each([
+  { goalsReturnTo: '/project/tenant/goals' + savedListQuery },
+  { returnTo: '/project/tenant/jobs' + savedListQuery },
+])('AR-006 restores the saved list destination $goalsReturnTo $returnTo', async state => {
+  vi.mocked(getJob).mockResolvedValue(metadata({ completion_status: 'success' }));
+  mountArchive('', state);
+  await startArchive();
+  await expectArchived(state.goalsReturnTo || state.returnTo);
+});
+
+it.each([undefined, '/project/other/goals', 'https://example.com/project/tenant/goals', '/project/tenant/goals/goal', '/project/tenant/jobs/job/tree', '/project/tenant/goals/../admin', 42])('AR-007,008 falls back to tenant Goals for return destination %s', async goalsReturnTo => {
+  vi.mocked(getJob).mockResolvedValue(metadata({ completion_status: 'success' }));
+  mountArchive('?status=success&cellId=cell-platform&view=all&q=release&sort=created&order=descend&expanded=goal%3Agoal&detail=requirements&pageToken=next&tab=conversation&nodeId=old&taskOrdinal=7&requestId=old', { goalsReturnTo });
+  await startArchive();
+  const destination = '/project/tenant/goals?executionState=cells-v1&status=success&cellId=cell-platform&view=all&q=release&sort=created&order=descend&expanded=goal%3Agoal&detail=requirements&pageToken=next';
+  await expectArchived(destination);
+});
+
+it.each(['network', 404, 501, 503])('AR-009 retains the story and retry after archive failure %s', async failure => {
+  vi.mocked(getJob).mockResolvedValue(metadata({ completion_status: 'success' }));
+  const requests = mountArchive();
+  if (failure === 'network') requests.mockRejectedValueOnce(new Error('Archive unavailable'));
+  else requests.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Archive unavailable' }), { status: failure as number }));
+  await startArchive();
+  await screen.findByText('1 job operation failed');
+  expect(screen.getByText('Archive unavailable', { exact: false })).toBeVisible();
+  expect(screen.getByTestId('archive-location')).toHaveTextContent('/project/tenant/jobs/job/story');
+  expect(screen.queryByText('Archived 1 job')).toBeNull();
+  const retry = within(screen.getByRole('dialog')).getByRole('button', { name: 'Archive job', exact: true });
+  await waitFor(() => expect(retry).not.toHaveClass('ant-btn-loading'));
+  fireEvent.click(retry);
+  await expectArchived();
+  expect(requests).toHaveBeenCalledTimes(2);
+});
+
+it.each(['pending', 'rejected'])('AR-012 returns without reloading archived metadata when activity refresh is %s', async outcome => {
+  vi.mocked(getJob).mockResolvedValue(metadata({ completion_status: 'success' }));
+  const refresh = deferred<void>();
+  inputState.refresh.mockReturnValue(refresh.promise);
+  mountArchive();
+  await startArchive();
+  const metadataReads = vi.mocked(getJob).mock.calls.length;
+  await expectArchived();
+  expect(inputState.refresh).toHaveBeenCalledTimes(1);
+  await act(async () => outcome === 'rejected' ? refresh.reject(new Error('activity unavailable')) : refresh.resolve());
+  expect(getJob).toHaveBeenCalledTimes(metadataReads);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.queryByText(/activity unavailable/)).toBeNull();
+});
+
+it.each(['success', 'failure'])('AR-014 ignores late archive %s after leaving the story', async outcome => {
+  vi.mocked(getJob).mockResolvedValue(metadata({ completion_status: 'success', goal_id: 'goal' }));
+  const pending = deferred<Response>();
+  const requests = mountArchive('', { goalsReturnTo: '/project/tenant/goals?view=all' });
+  requests.mockReturnValue(pending.promise);
+  await startArchive();
+  fireEvent.click(screen.getByRole('button', { name: 'Leave story', exact: true }));
+  await screen.findByRole('heading', { name: 'Goals', exact: true });
+  await act(async () => outcome === 'success' ? pending.resolve(new Response(null, { status: 204 })) : pending.reject(new Error('obsolete archive')));
+  expect(screen.getByTestId('archive-location').textContent).toBe('/project/tenant/goals?view=all');
+  expect(inputState.refresh).not.toHaveBeenCalled();
+  expect(screen.queryByText('Archived 1 job')).toBeNull();
+  expect(screen.queryByText(/obsolete archive/)).toBeNull();
+});
+
+it('AR-015 shows destination loading failure separately from archive success', async () => {
+  vi.mocked(getJob).mockResolvedValue(metadata({ completion_status: 'success' }));
+  vi.mocked(listJobs).mockRejectedValueOnce(new Error('Goals unavailable'));
+  const requests = mountArchive();
+  await startArchive();
+  await expectArchived();
+  expect(await screen.findByText('Goals unavailable')).toBeVisible();
+  expect(requests).toHaveBeenCalledTimes(1);
+});
+
+it('AR-002,010,011 retains accepted cancellation on failure and returns to Goals after archive retry', async () => {
   vi.mocked(getJob).mockImplementation(async (tenant,id)=>metadata({job_id:id,tenant_id:tenant,status:'RUNNING',store:'ACTIVE'}));
-  const requests=mount(''); await screen.findByRole('region',{name:'Job prompt'});
+  const requests=mountArchive(); await screen.findByRole('region',{name:'Job prompt'});
   requests.mockResolvedValueOnce(new Response(JSON.stringify({error:'Archive unavailable after cancellation',code:'archive_failed_after_cancel'}),{status:503}))
     .mockResolvedValue(new Response(null,{status:204}));
   fireEvent.click(screen.getByRole('button',{name:'Archive',exact:true}));
@@ -1773,16 +1913,20 @@ it('JS-020,022,023 Archive retains accepted cancellation and refreshes metadata 
   fireEvent.click(within(dialog).getByRole('button',{name:'Archive job',exact:true}));
   await screen.findByText(/only archiving remains/);
   expect(within(dialog).getByLabelText('Cancellation message (optional)')).toBeDisabled();
+  expect(screen.getByTestId('archive-location')).toHaveTextContent('/project/tenant/jobs/job/story');
+  expect(screen.queryByText('Archived 1 job')).toBeNull();
   const before=vi.mocked(getJob).mock.calls.length;
-  fireEvent.click(within(dialog).getByRole('button',{name:'Archive job',exact:true}));
-  await waitFor(()=>expect(getJob).toHaveBeenCalledTimes(before+1));
+  const retry = within(dialog).getByRole('button',{name:'Archive job',exact:true});
+  await waitFor(() => expect(retry).not.toHaveClass('ant-btn-loading'));
+  fireEvent.click(retry);
+  await expectArchived();
+  expect(getJob).toHaveBeenCalledTimes(before);
   const mutations=requests.mock.calls.filter(([,init])=>init?.method==='DELETE');
   expect(mutations).toHaveLength(2);
   expect(inputState.refresh).toHaveBeenCalledTimes(1);
   expect(mutations.map(([url])=>url)).toEqual([expect.stringContaining('/projects/tenant/jobs/job'),expect.stringContaining('/projects/tenant/jobs/job')]);
   expect(mutations.map(([,init])=>JSON.parse(init.body))).toEqual([{reason:'Keep this message'},{reason:'Keep this message'}]);
   expect(requests.mock.calls.filter(([url])=>String(url).endsWith('/story'))).toHaveLength(0);
-  expect(screen.getByRole('tab',{name:'Conversation'})).toHaveAttribute('aria-selected','true');
 });
 it.each(['restart','archive'].flatMap(action=>['job','tenant'].flatMap(change=>['success','failure'].map(outcome=>({action,change,outcome})))))('JS-009 ignores late $action $outcome after $change change', async ({action,change,outcome}) => {
   const pending=deferred<Response>();
@@ -1809,6 +1953,9 @@ it.each(['restart','archive'].flatMap(action=>['job','tenant'].flatMap(change=>[
   expect(getJob).toHaveBeenCalledTimes(before);
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(requests.mock.calls.filter(([,init])=>init?.method).map(([url])=>url)).toEqual([expect.stringContaining('/projects/tenant/jobs/job')]);
+  expect(screen.queryByText('Archived 1 job')).toBeNull();
+  expect(screen.queryByText('obsolete operation')).toBeNull();
+  expect(inputState.refresh).not.toHaveBeenCalled();
 });
 
 
@@ -1836,7 +1983,7 @@ it('JS-008 preserves a pending Trace read when only Restart remains', async () =
 });
 it.each([['success',true],['failed_app',true],['failed_system',true],['failed_timeout',false],['cancelled',true]] as const)('JS-020 header Archive preserves immediate policy for %s',async(completion_status,immediate)=>{
   vi.mocked(getJob).mockResolvedValue(metadata({completion_status}));
-  const requests=mount('');await screen.findByRole('region',{name:'Job prompt'});
+  const requests=mountArchive();await screen.findByRole('region',{name:'Job prompt'});
   requests.mockResolvedValue(new Response(null,{status:204}));
   fireEvent.click(screen.getByRole('button',{name:'Archive',exact:true}));
   if(immediate)await waitFor(()=>expect(requests.mock.calls.filter(([,init])=>init?.method==='DELETE')).toHaveLength(1));
