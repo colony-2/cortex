@@ -740,12 +740,6 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         const payload = { ...(restartScopeID ? { scope_id: restartScopeID } : { chapter_ordinal: restartChapterOrdinal }), goal: { mode: restartGoalMode }, ...(generatedPatch ? { patch: generatedPatch } : {}) };
         const serialized = stringifyJobJSON(payload)!;
         if (savedRestart?.payload === serialized) throw new Error('Use Retry saved request to resend this unchanged submission.');
-        if (restartGoalMode === 'continue') {
-          const confirmationGeneration = metadataGeneration.current + 1;
-          const detail = await loadMetadata();
-          if (!alive.current) return;
-          if (confirmationGeneration !== metadataGeneration.current || !confirmsRecoveryCompletion(detail)) throw new Error('Source completion is not confirmed. Refresh, wait for completion, or start a new goal.');
-        }
         if (!alive.current) return;
         const saved = { payload: serialized, request: { ...payload, request_id: newId() } };
         sessionStorage.setItem(storageKey, stringifyJobJSON(saved)!);
@@ -1490,12 +1484,13 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         afterClose={() => restartOpener.current?.isConnected && restartOpener.current.focus()}
         width={900}
         okText="Restart"
-        okButtonProps={{ 'aria-label': 'Restart', loading: restartSubmitting, disabled: restartSubmitting || cancellationBusy || !restartable || !!patchError || loading || !!error || (restartGoalMode === 'continue' && !sourceFinished) }}
+        okButtonProps={{ 'aria-label': 'Restart', loading: restartSubmitting, disabled: restartSubmitting || cancellationBusy || !restartable || !!patchError || loading || !!error }}
         onOk={() => void submitRestart()}
       >
         <Space direction="vertical" style={{ width: '100%', marginBottom: 16 }}>
-          <Alert type={sourceFinished ? 'success' : 'info'} message={sourceFinished ? 'Source completion confirmed' : metadata?.status === 'failed' ? 'Source completion unavailable' : metadata?.status === 'loading' ? 'Checking source completion…' : 'Wait for source completion before continuing this goal'}
-            description={metadata?.error || (sourceFinished ? 'Completion permits a fresh request; admission is checked by the restart service.' : 'Wait and Refresh, cancel this source explicitly, or start a new goal.')} />
+          <Alert type="info" showIcon message="The restart service checks whether this request is allowed."
+            description="Restarting does not cancel the source job." />
+          {metadata?.status === 'failed' && <Alert type="info" message="Source details unavailable" description={metadata.error} />}
           {cancellationResult && <Alert type="info" message={cancellationResult} description={sourceFinished ? 'Source completion is now confirmed.' : 'Cancellation remains pending until fresh job detail confirms completion.'} />}
           {cancellationError && <Alert type="error" message="Source cancellation failed" description={cancellationError} />}
           {restartError && <Alert type="error" message="Restart failed" description={restartError} />}

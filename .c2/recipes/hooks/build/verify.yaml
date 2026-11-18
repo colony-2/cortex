@@ -309,6 +309,21 @@ sequence:
         for format in jpg gif webp avif bmp; do
           ffmpeg -v error -f lavfi -i color=c=blue:s=2x2 -frames:v 1 -y "$fixture_dir/sample.$format"
         done
+  - id: restart-browser-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.recovery.config.ts recovery-stage1.spec.ts
   - id: browser-tests
     op: command_execution
     const: true

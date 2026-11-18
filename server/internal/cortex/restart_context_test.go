@@ -88,11 +88,30 @@ func TestRestartContextHTTP(t *testing.T) {
 type replayForwardService struct {
 	storyService
 	calls []story.RestartRecipeJobRequest
+	err   error
 }
 
 func (s *replayForwardService) RestartRecipeJob(_ context.Context, req story.RestartRecipeJobRequest) (*story.RestartRecipeJobResponse, error) {
 	s.calls = append(s.calls, req)
-	return &story.RestartRecipeJobResponse{TenantID: req.ProjectID, JobID: "accepted-successor", GoalID: "returned-primary"}, nil
+	return &story.RestartRecipeJobResponse{TenantID: req.ProjectID, JobID: "accepted-successor", GoalID: "returned-primary"}, s.err
+}
+
+func TestRestartRunningSourceServiceConflict(t *testing.T) {
+	source := compactJobs(1)
+	source[0].JobKey.JobId = "source"
+	source[0].Status = jobdb.JobStatusActive
+	engine := &compactListEngine{pages: map[string]jobdb.ListJobsResponse{"": {Jobs: source}}}
+	service := &replayForwardService{err: errors.Join(jobdb.ErrGoalConflict, errors.New("goal is closed; choose a new goal"))}
+	server := &Server{engine: engine, story: service}
+	w := httptest.NewRecorder()
+	req := mux.SetURLVars(httptest.NewRequest("POST", "/restart", strings.NewReader(`{"request_id":"fresh","scope_id":"point","goal":{"mode":"continue"}}`)), map[string]string{"projectId": "tenant", "jobId": "source"})
+	server.requireJob(server.handleRestartJob)(w, req)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "goal is closed; choose a new goal") {
+		t.Fatalf("service conflict lost: %d %s", w.Code, w.Body)
+	}
+	if len(service.calls) != 1 || service.calls[0].RequestID != "fresh" || len(engine.requests) != 1 {
+		t.Fatalf("request did not reach service through exact visibility check: %+v, %+v", service.calls, engine.requests)
+	}
 }
 
 func TestSavedReplayForwardingWithoutAdmissionPreflights(t *testing.T) {

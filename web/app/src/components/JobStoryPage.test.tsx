@@ -210,8 +210,8 @@ describe('job story history', () => {
     fireEvent.click(within(screen.getByRole('tree')).getByText('Task 1.3'));
     expect(screen.getByRole('tab', { name: 'Attempt 3' })).toHaveAttribute('aria-selected', 'true');
   });
-  it('shows a short scoped operation name and keeps source and restart in Overview', async () => {
-    vi.mocked(getJob).mockResolvedValue(metadata());
+  it('shows a short scoped operation name and submits a running source from chapter Overview', async () => {
+    vi.mocked(getJob).mockResolvedValue(metadata({status:'ACTIVE',store:'ACTIVE'}));
     const source = 'git+https://github.com/colony-2/c2ops.git//codex@abc123';
     const scopeID = 'root/scope:"op:codex"#1';
     const fetchMock = mount('?tab=execution', { ...story, restart_scopes: [
@@ -2006,6 +2006,8 @@ async function recoveryDialog() {
   const selector=await within(dialog).findByRole('combobox',{name:'Restart point'});
   fireEvent.mouseDown(selector);
   fireEvent.click(await screen.findByText(/Recovery boundary · Chapter/));
+  const autoRefresh=screen.queryByRole('switch',{name:'Auto-refresh'});
+  if(autoRefresh) fireEvent.click(autoRefresh);
   return {requests,dialog,postCalls:()=>requests.mock.calls.filter(([,init])=>init?.method==='POST')};
 }
 async function recoveryPatch(dialog:HTMLElement) {
@@ -2018,16 +2020,97 @@ async function recoveryPatch(dialog:HTMLElement) {
 
 describe('C1 source recovery',()=>{
   beforeEach(()=>{vi.mocked(getJob).mockResolvedValue(metadata());vi.mocked(cancelJob).mockResolvedValue(undefined);});
-  it.each(['ACTIVE','CANCELLED','READY'])('C1-R02 R03 R10 blocks fresh %s with stale outcome but allows a fork without cancellation',async status=>{
+  it.each(['ACTIVE','CANCELLED','READY'])('R01 running %s with a stale outcome submits a continuation without cancellation',async status=>{
     vi.mocked(getJob).mockResolvedValue(metadata({status,store:'ACTIVE',completion_status:'success',cancel_requested:true}));
     const {dialog,postCalls}=await recoveryDialog();
-    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
+    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
     expect(within(dialog).getByRole('button',{name:'Cancel source'})).toBeEnabled();
-    fireEvent.click(within(dialog).getByRole('button',{name:'Start a new goal',exact:true}));
     fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
     await within(dialog).findByText('admission unavailable: diagnostic only',{exact:false});
-    expect(JSON.parse(postCalls()[0][1]!.body as string).goal.mode).toBe('new');
+    expect(JSON.parse(postCalls()[0][1]!.body as string).goal.mode).toBe('continue');
     expect(cancelJob).not.toHaveBeenCalled();
+  });
+  it('R04 R11 accepted running continuation clears saved identity, closes and navigates once',async()=>{
+    vi.mocked(getJob).mockResolvedValue(metadata({status:'ACTIVE',store:'ACTIVE'}));
+    const {dialog,requests,postCalls}=await recoveryDialog();
+    const pending=deferred<Response>();requests.mockReturnValueOnce(pending.promise);
+    const restart=within(dialog).getByRole('button',{name:'Restart',exact:true});
+    fireEvent.click(restart);fireEvent.click(restart);
+    expect(postCalls()).toHaveLength(1);
+    expect(within(dialog).getByRole('button',{name:'Cancel source'})).toBeDisabled();
+    expect(within(dialog).getByRole('combobox',{name:'Restart point'})).toBeDisabled();
+    expect(within(dialog).getByRole('combobox',{name:'Restart goal'})).toBeDisabled();
+    expect(sessionStorage.getItem('json-patch-v2:cortex:restart:tenant:job')).not.toBeNull();
+    await act(async()=>pending.resolve(new Response(JSON.stringify({job_id:'accepted-successor'}))));
+    await waitFor(()=>expect(sessionStorage.getItem('json-patch-v2:cortex:restart:tenant:job')).toBeNull());
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // A keyed page remount loads the returned source identity.
+    await waitFor(()=>expect(getJob).toHaveBeenLastCalledWith('tenant','accepted-successor'));
+    expect(cancelJob).not.toHaveBeenCalled();
+  });
+  it('R08 R11 pending cancellation permits restart after its in-flight lock ends',async()=>{
+    vi.mocked(getJob).mockResolvedValue(metadata({status:'ACTIVE',store:'ACTIVE',cancel_requested:true}));
+    const pending=deferred<void>();vi.mocked(cancelJob).mockReturnValue(pending.promise);
+    const {dialog,postCalls}=await recoveryDialog();
+    fireEvent.click(within(dialog).getByRole('button',{name:'Cancel source'}));
+    const confirmation=(await screen.findByText('Cancel job?')).closest('[role=dialog]') as HTMLElement;
+    fireEvent.click(within(confirmation).getByRole('button',{name:'Cancel job',exact:true}));
+    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
+    expect(within(dialog).getByRole('button',{name:'Refresh source'})).toBeDisabled();
+    await act(async()=>pending.resolve());
+    await within(dialog).findByText('Cancellation requested for this source');
+    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
+    fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
+    await within(dialog).findByText('Restart failed');
+    expect(postCalls()).toHaveLength(1);
+    expect(JSON.parse(postCalls()[0][1]!.body as string).goal.mode).toBe('continue');
+    expect(cancelJob).toHaveBeenCalledTimes(1);
+  });
+  it('R05 R06 retains running-source conflict draft and saved identity without changing the goal',async()=>{
+    vi.mocked(getJob).mockResolvedValue(metadata({status:'ACTIVE',store:'ACTIVE'}));
+    const {dialog,postCalls}=await recoveryDialog();
+    await recoveryPatch(dialog);
+    fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
+    await within(dialog).findByText('admission unavailable: diagnostic only',{exact:false});
+    expect(postCalls()).toHaveLength(1);
+    expect(JSON.parse(postCalls()[0][1]!.body as string)).toMatchObject({scope_id:'recorded',goal:{mode:'continue'},patch:[{op:'replace',path:'/context/git/author',value:'retained draft'}]});
+    expect(within(dialog).getByPlaceholderText('e.g. "james@example.com"')).toHaveValue('retained draft');
+    expect(within(dialog).getByText('Continue this goal')).toBeVisible();
+    expect(JSON.parse(sessionStorage.getItem('json-patch-v2:cortex:restart:tenant:job')!).request).toEqual(JSON.parse(postCalls()[0][1]!.body as string));
+    expect(cancelJob).not.toHaveBeenCalled();
+  });
+  it.each(['lost response','service failure'])('R06 running-source %s retains draft and saved request without automatic retry',async failure=>{
+    vi.mocked(getJob).mockResolvedValue(metadata({status:'ACTIVE',store:'ACTIVE'}));
+    const {dialog,requests,postCalls}=await recoveryDialog();
+    await recoveryPatch(dialog);
+    if(failure==='lost response') requests.mockRejectedValueOnce(new TypeError('response lost'));
+    else requests.mockResolvedValueOnce({ok:false,status:503,statusText:'Unavailable',text:async()=> 'service unavailable'});
+    fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
+    await within(dialog).findByText('Restart failed');
+    expect(postCalls()).toHaveLength(1);
+    expect(within(dialog).getByPlaceholderText('e.g. "james@example.com"')).toHaveValue('retained draft');
+    expect(within(dialog).getByRole('button',{name:'Retry saved request'})).toBeEnabled();
+    expect(sessionStorage.getItem('json-patch-v2:cortex:restart:tenant:job')).not.toBeNull();
+  });
+  it('R10 loading and failed restart-point retrieval prevent fresh submission',async()=>{
+    const requests=mount('');
+    const pending=deferred<Response>();requests.mockReturnValueOnce(pending.promise);
+    fireEvent.click(screen.getByRole('button',{name:'Restart',exact:true}));
+    const dialog=screen.getByRole('dialog');
+    const restart=within(dialog).getByRole('button',{name:'Restart',exact:true});
+    expect(restart).toBeDisabled();fireEvent.click(restart);
+    await act(async()=>pending.reject(new Error('points unavailable')));
+    await within(dialog).findByText('Failed to load job story');
+    expect(restart).toBeDisabled();fireEvent.click(restart);
+    expect(requests.mock.calls.filter(([,init])=>init?.method==='POST')).toHaveLength(0);
+  });
+  it('R10 invalid generated patch blocks a fresh request',async()=>{
+    const {dialog,postCalls}=await recoveryDialog();
+    await recoveryPatch(dialog);
+    fireEvent.change(within(dialog).getByPlaceholderText('e.g. git.author'),{target:{value:'workspace'}});
+    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
+    expect(postCalls()).toHaveLength(0);
   });
   it('C1-R04 R05 R07 R11 R12 R15 keeps boundary, patch and saved request through explicit pending cancellation and conflict',async()=>{
     vi.mocked(getJob).mockResolvedValue(metadata({status:'ACTIVE',store:'ACTIVE'}));
@@ -2052,7 +2135,7 @@ describe('C1 source recovery',()=>{
     expect(sessionStorage.getItem('json-patch-v2:cortex:restart:tenant:job')).toBe(saved);
     vi.mocked(getJob).mockResolvedValue(metadata({status:'COMPLETED',store:'ACTIVE',completion_status:undefined}));
     fireEvent.click(within(dialog).getByRole('button',{name:'Refresh source'}));
-    await within(dialog).findByText('Source completion confirmed');
+    await waitFor(()=>expect(within(dialog).queryByRole('button',{name:'Cancel source'})).toBeNull());
     fireEvent.click(within(dialog).getByRole('button',{name:'Retry saved request'}));
     await waitFor(()=>expect(postCalls()).toHaveLength(2));
     expect(postCalls()[0][1]!.body).toBe(postCalls()[1][1]!.body);
@@ -2069,31 +2152,38 @@ describe('C1 source recovery',()=>{
     fireEvent.click(within((await screen.findByText('Cancel job?')).closest('[role=dialog]') as HTMLElement).getByRole('button',{name:'Cancel job',exact:true}));
     await within(dialog).findByText('Source cancellation failed');
     fireEvent.click(within((await screen.findByText('Cancel failed jobs')).closest('[role=dialog]') as HTMLElement).getAllByRole('button',{name:'Close',exact:true}).at(-1)!);
-    await within(dialog).findByText('Source completion confirmed');
+    await waitFor(()=>expect(within(dialog).queryByRole('button',{name:'Cancel source'})).toBeNull());
     expect(within(dialog).getByPlaceholderText('e.g. "james@example.com"')).toHaveValue('retained draft');
     expect(within(dialog).getByRole('button',{name:'Start a new goal',exact:true})).toBeEnabled();
     expect(postCalls()).toHaveLength(0);
   });
-  it.each(['running','denied','unavailable','mismatched','missing'])('C1-R08 freshly rejects %s evidence before POST',async state=>{
+  it.each(['loading','denied','unavailable','mismatched','missing'])('R02 R03 allows %s source detail without submission preflights',async state=>{
     const {dialog,postCalls}=await recoveryDialog();
-    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
-    if(state==='running') vi.mocked(getJob).mockResolvedValue(metadata({status:'ACTIVE',store:'ACTIVE'}));
+    if(state==='loading') vi.mocked(getJob).mockReturnValue(new Promise(()=>{}));
     else if(state==='missing') vi.mocked(getJob).mockResolvedValue(metadata({job_id:undefined}));
     else if(state==='mismatched') vi.mocked(getJob).mockResolvedValue(metadata({job_id:'neighbor'}));
     else vi.mocked(getJob).mockRejectedValue(new Error(state));
+    fireEvent.click(within(dialog).getByRole('button',{name:'Refresh source'}));
+    if(state!=='loading') await within(dialog).findByText('Source details unavailable');
     const before=vi.mocked(getJob).mock.calls.length;
+    const goalReads=vi.mocked(listJobs).mock.calls.length, childReads=vi.mocked(listJobChildren).mock.calls.length;
+    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
     fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
     await within(dialog).findByText('Restart failed');
-    expect(getJob).toHaveBeenCalledTimes(before+1);
-    expect(postCalls()).toHaveLength(0);
-    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
+    expect(getJob).toHaveBeenCalledTimes(before);
+    expect(postCalls()).toHaveLength(1);
+    expect(JSON.parse(postCalls()[0][1]!.body as string)).toMatchObject({goal:{mode:'continue'}});
+    expect(listJobs).toHaveBeenCalledTimes(goalReads);
+    expect(listJobChildren).toHaveBeenCalledTimes(childReads);
   });
-  it('C1-R07 R08 natural completion is reread immediately before fresh same-goal POST',async()=>{
+  it('R03 R12 completed observations add no submission read and keep neutral guidance',async()=>{
     const {dialog,postCalls}=await recoveryDialog();
+    expect(within(dialog).getByText('The restart service checks whether this request is allowed.')).toBeVisible();
+    expect(within(dialog).getByText('Restarting does not cancel the source job.')).toBeVisible();
     const before=vi.mocked(getJob).mock.calls.length;
     fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
     await within(dialog).findByText('Restart failed');
-    expect(getJob).toHaveBeenCalledTimes(before+1);
+    expect(getJob).toHaveBeenCalledTimes(before);
     expect(JSON.parse(postCalls()[0][1]!.body as string)).toMatchObject({goal:{mode:'continue'}});
     expect(cancelJob).not.toHaveBeenCalled();
   });
@@ -2102,7 +2192,7 @@ describe('C1 source recovery',()=>{
     sessionStorage.setItem('json-patch-v2:cortex:restart:tenant:job',JSON.stringify({payload:'old payload',request}));
     vi.mocked(getJob).mockRejectedValue(new Error('403 completion denied'));
     const {dialog,postCalls}=await recoveryDialog();
-    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
+    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
     fireEvent.click(within(dialog).getByRole('button',{name:'Start a new goal',exact:true}));
     const reads=vi.mocked(getJob).mock.calls.length;
     fireEvent.click(within(dialog).getByRole('button',{name:'Retry saved request'}));
@@ -2112,30 +2202,33 @@ describe('C1 source recovery',()=>{
     expect(listJobs).not.toHaveBeenCalled();
     expect(screen.queryByRole('link',{name:'Goal overview'})).toBeNull();
   });
-  it.each(['job','tenant'])('C1-R09 ignores late fresh confirmation after %s navigation',async change=>{
-    const pending=deferred<RecipeJob>();
-    const {dialog,postCalls}=await recoveryDialog();
-    vi.mocked(getJob).mockReturnValueOnce(pending.promise);
+  it.each(['job','tenant'].flatMap(change=>['success','failure'].map(outcome=>({change,outcome}))))('R19 ignores late restart $outcome after $change navigation',async({change,outcome})=>{
+    const {dialog,requests,postCalls}=await recoveryDialog();
+    const pending=deferred<Response>();
+    requests.mockReturnValueOnce(pending.promise);
     fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
+    expect(postCalls()).toHaveLength(1);
     cleanup();
     vi.mocked(getJob).mockResolvedValue(metadata({tenant_id:change==='tenant'?'other':'tenant',job_id:change==='job'?'other':'job',status:'ACTIVE',store:'ACTIVE'}));
     render(<MemoryRouter initialEntries={[`/project/${change==='tenant'?'other':'tenant'}/jobs/${change==='job'?'other':'job'}/story`]}><Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId={change==='tenant'?'other':'tenant'} />} /></Routes></MemoryRouter>);
-    await act(async()=>pending.resolve(metadata()));
-    expect(postCalls()).toHaveLength(0);
+    await act(async()=>outcome==='success'?pending.resolve(new Response(JSON.stringify({job_id:'obsolete-successor'}))):pending.reject(new Error('obsolete restart')));
     expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByText('obsolete restart')).toBeNull();
+    expect(sessionStorage.getItem('json-patch-v2:cortex:restart:tenant:job')).not.toBeNull();
   });
 });
 
-it('C1-R08 rejects a confirmation superseded by a newer read',async()=>{
+it('R19 late ordinary source refresh cannot affect a newly selected job',async()=>{
   vi.mocked(getJob).mockResolvedValue(metadata());
   const {dialog,postCalls}=await recoveryDialog();
   const old=deferred<RecipeJob>();vi.mocked(getJob).mockReturnValueOnce(old.promise);
-  fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
-  vi.mocked(getJob).mockResolvedValue(metadata());
-  fireEvent.click(screen.getByRole('button',{name:/Refresh$/}));
+  fireEvent.click(within(dialog).getByRole('button',{name:'Refresh source'}));
+  cleanup();
+  vi.mocked(getJob).mockResolvedValue(metadata({job_id:'other',status:'ACTIVE',store:'ACTIVE'}));
+  render(<MemoryRouter initialEntries={['/project/tenant/jobs/other/story']}><Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId="tenant" />} /></Routes></MemoryRouter>);
   await act(async()=>old.resolve(metadata()));
   expect(postCalls()).toHaveLength(0);
-  expect(within(dialog).getByText('Restart failed')).toBeVisible();
+  expect(screen.queryByRole('dialog')).toBeNull();
 });
 it.each(['job','tenant'].flatMap(change=>['success','failure'].map(outcome=>({change,outcome}))))('C1-R09 ignores late cancellation $outcome after $change change',async({change,outcome})=>{
  vi.mocked(getJob).mockResolvedValue(metadata({status:'ACTIVE',store:'ACTIVE'}));

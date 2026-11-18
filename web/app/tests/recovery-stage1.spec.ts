@@ -4,7 +4,7 @@ import path from 'node:path';
 import { jobIdentity } from './helpers/cells';
 
 const source={...jobIdentity,tenant_id:'recovery',job_id:'source',goal_id:'chosen-primary',other_goal_ids:['former-A','former-B'],title:'Recover release validation',prompt:'Resume validation with the retained context patch.',job_type:'recipe',recipe:'build',status:'ACTIVE',store:'ACTIVE',completion_status:'failed_app',created_at:'2026-11-12T00:00:00Z',parent:{tenant_id:'recorded-tenant',job_id:'recorded-parent',goal_id:'former-A'}};
-const story={job_id:'source',status:'failed',restart_scopes:[{scope_id:'retained-boundary',chapter_ordinal:12,title:'Validation boundary'}],root:{id:'root',kind:'recipe',title:'Validation',status:'failed',path:[],attempt:1,children:[]}};
+const story={job_id:'source',status:'failed',restart_scopes:[{scope_id:'retained-boundary',chapter_ordinal:12,title:'Validation boundary'}],root:{id:'root',kind:'recipe',title:'Validation',status:'failed',path:[],attempt:1,restart_scope_id:'retained-boundary',restart_chapter_ordinal:12,children:[]}};
 async function fixture(page:Page){
  let detail={...source};let detailError=0;let cancellationError=0;let restartFailure='conflict';const posts:string[]=[];const cancellations:string[]=[];const reads:string[]=[];
  await page.context().addCookies([{name:'colony2:user:email',value:'fixture@example.com',url:'http://127.0.0.1:15175'}]);
@@ -36,7 +36,7 @@ async function capture(page:Page,name:string){
  const directory=process.env.CORTEX_REVIEW_ARTIFACTS;
  if(!directory)return;
  mkdirSync(directory,{recursive:true});
- if(!name.endsWith('phone')) { await page.setViewportSize({width:1440,height:1800});await page.locator('.ant-modal-body').evaluateAll(elements=>elements.forEach(element=>{element.scrollTop=0;})); }
+ if(!name.endsWith('phone')) { await page.setViewportSize({width:1440,height:2200});await page.locator('.ant-modal-body').evaluateAll(elements=>elements.forEach(element=>{element.scrollTop=0;})); }
  // A visible dialog may still have zero opacity during its opening animation.
  // Capture the settled application state, including nested cancellation dialogs.
  await page.evaluate(async()=>{
@@ -46,7 +46,8 @@ async function capture(page:Page,name:string){
  });
  await page.screenshot({path:path.join(directory,name+'.png'),fullPage:true,animations:'disabled'});
 }
-async function open(page:Page){
+async function open(page:Page, sourceAvailable=true){
+ if(sourceAvailable) await page.getByRole('switch',{name:'Auto-refresh'}).uncheck();
  await page.getByRole('button',{name:'Restart',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Restart Job'});
  await dialog.getByRole('combobox',{name:'Restart point'}).click();
@@ -61,70 +62,97 @@ async function patch(dialog:ReturnType<Page['getByRole']>){
  await dialog.getByPlaceholder('e.g. "james@example.com"').fill('retained browser draft');
 }
 
-test('C1-R01–R15 V02 V03 explicit cancellation, retained patch, terminal confirmation, conflict and saved replay',async({page})=>{
+test('R17 R18 running continuation reaches the service, retains conflict draft and replays unchanged after reload',async({page})=>{
  const f=await fixture(page);await page.setViewportSize({width:1280,height:1100});
  await page.goto('/project/recovery/jobs/source/story');
  const dialog=await open(page);await patch(dialog);
- await expect(dialog.getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
- await expect(dialog.getByRole('button',{name:'Start a new goal',exact:true})).toBeEnabled();
- await capture(page,'01-live-gating');
+ await expect(dialog.getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
+ await expect(dialog.getByText('The restart service checks whether this request is allowed.')).toBeVisible();
+ await capture(page,'01-running-restart-enabled');
+ const reads=f.reads.length;
+ await dialog.getByRole('button',{name:'Restart',exact:true}).click();
+ await expect(dialog.getByText('Restart failed',{exact:true})).toBeVisible();
+ expect(f.reads.length).toBe(reads);expect(f.posts).toHaveLength(1);
+ expect(JSON.parse(f.posts[0]).goal.mode).toBe('continue');
+ expect(f.cancellations).toEqual([]);
+ await expect(dialog.getByText(/Controlled admission conflict/)).toBeVisible();
+ await expect(dialog.getByText('Validation boundary · Chapter 12 · -',{exact:true})).toBeVisible();
+ await expect(dialog.getByText('Continue this goal',{exact:true})).toBeVisible();
+ await expect(dialog.getByPlaceholder('e.g. "james@example.com"')).toHaveValue('retained browser draft');
+ await capture(page,'02-running-conflict-retained-draft');
+ // Explicit cancellation stays independent, and a pending cancellation adds no veto.
  await dialog.getByRole('button',{name:'Cancel source',exact:true}).click();
  const confirmation=page.getByRole('dialog',{name:'Cancel job?'});
- await expect(confirmation.getByText('source',{exact:true})).toBeVisible();
- expect(f.cancellations).toEqual([]);expect(f.posts).toEqual([]);
- await capture(page,'02-cancel-confirmation');
  await confirmation.getByRole('button',{name:'Cancel job',exact:true}).click();
  await expect(confirmation).toBeHidden();
  await expect(dialog.getByText('Cancellation requested for this source')).toBeVisible();
- await expect(dialog.getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
- await expect(dialog.getByPlaceholder('e.g. "james@example.com"')).toHaveValue('retained browser draft');
- expect(f.cancellations).toEqual(['/api/projects/recovery/jobs/source/cancel']);expect(f.posts).toEqual([]);
- await capture(page,'03-pending-retained-patch');
- f.terminal();await dialog.getByRole('button',{name:'Refresh source'}).click();
- await expect(dialog.getByText('Source completion confirmed',{exact:true})).toBeVisible();
  await expect(dialog.getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
- await capture(page,'04-terminal-confirmation');
- const reads=f.reads.length;await dialog.getByRole('button',{name:'Restart',exact:true}).click();
- await expect(dialog.getByText('Restart failed',{exact:true})).toBeVisible();
- expect(f.reads.length).toBe(reads+1);expect(f.posts).toHaveLength(1);
- await expect(dialog.getByText(/Controlled admission conflict/)).toBeVisible();
- await expect(dialog.getByRole('link',{name:'View goal'})).toHaveAttribute('href','/project/recovery/goals/chosen-primary');
- await expect(dialog.getByPlaceholder('e.g. "james@example.com"')).toHaveValue('retained browser draft');
- await capture(page,'05-conflict-exact-retry');
+ await expect(dialog.getByText(/Cancellation remains pending/)).toBeVisible();
  const saved=f.posts[0];f.detailError(503);
- await page.reload();const reloaded=await open(page);
- await expect(reloaded.getByText('Source completion unavailable')).toBeVisible();
+ await page.reload();const reloaded=await open(page,false);
+ await expect(reloaded.getByText('Source details unavailable')).toBeVisible();
+ await expect(reloaded.getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
  await expect(reloaded.getByRole('button',{name:'Retry saved request'})).toBeEnabled();
- await capture(page,'06-reloaded-saved-retry');
+ await reloaded.getByRole('button',{name:'Start a new goal',exact:true}).click();
+ await patch(reloaded);
+ await reloaded.getByPlaceholder('e.g. "james@example.com"').fill('different editor draft');
  const replayReads=f.reads.length;f.restart('success');
  await reloaded.getByRole('button',{name:'Retry saved request'}).click();
  await expect(page).toHaveURL(/jobs\/accepted-successor\/story/);
  expect(f.posts).toHaveLength(2);expect(f.posts[1]).toBe(saved);
- // New page detail reads are independent; replay itself added no source read.
  expect(f.reads.length).toBe(replayReads);
+ expect(f.cancellations).toEqual(['/api/projects/recovery/jobs/source/cancel']);
+ expect(await page.evaluate(()=>sessionStorage.getItem('json-patch-v2:cortex:restart:recovery:source'))).toBeNull();
 });
 
-test('C1-R06 R12 V03 denial and unavailable detail retain the patch and new-goal alternative',async({page})=>{
+for (const entry of ['header','chapter'] as const) {
+test(`R18 accepted fresh running-source continuation from ${entry} navigates without cancellation`,async({page})=>{
+ const f=await fixture(page);f.restart('success');
+ await page.goto('/project/recovery/jobs/source/story');
+ let dialog;
+ if(entry==='header') dialog=await open(page);
+ else {
+  await page.getByRole('switch',{name:'Auto-refresh'}).uncheck();
+  await page.getByRole('tab',{name:'Trace',exact:true}).click();
+  await page.getByRole('tree').getByText('Validation',{exact:true}).click();
+  await page.getByRole('button',{name:'Restart job',exact:true}).click();
+  dialog=page.getByRole('dialog',{name:'Restart Job'});
+  await expect(dialog.getByText('Validation boundary · Chapter 12 · -',{exact:true})).toBeVisible();
+  await expect(dialog.getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
+  await capture(page,'03-chapter-running-restart-enabled');
+ }
+ const reads=f.reads.length;
+ await dialog.getByRole('button',{name:'Restart',exact:true}).click();
+ await expect(page).toHaveURL(/jobs\/accepted-successor\/story/);
+ await expect(dialog).toBeHidden();
+ expect(f.posts).toHaveLength(1);
+ expect(JSON.parse(f.posts[0])).toMatchObject({scope_id:'retained-boundary',goal:{mode:'continue'}});
+ expect(f.reads.length).toBe(reads);expect(f.cancellations).toEqual([]);
+ expect(await page.evaluate(()=>sessionStorage.getItem('json-patch-v2:cortex:restart:recovery:source'))).toBeNull();
+});
+
+}
+
+test('R06 R09 denied details permit explicit new goal and lost responses retain the draft',async({page})=>{
  const f=await fixture(page);await page.setViewportSize({width:1280,height:1100});
  await page.goto('/project/recovery/jobs/source/story');const dialog=await open(page);await patch(dialog);
  f.cancelError(403);await dialog.getByRole('button',{name:'Cancel source'}).click();
  const confirmation=page.getByRole('dialog',{name:'Cancel job?'});await confirmation.getByRole('button',{name:'Cancel job',exact:true}).click();
  const failed=page.getByRole('dialog',{name:'Cancel failed jobs'});
  await expect(failed.getByText(/Controlled cancellation denial/)).toBeVisible();
- await capture(page,'07-cancellation-denied');await failed.getByRole('button',{name:'Close',exact:true}).last().click();
+ await failed.getByRole('button',{name:'Close',exact:true}).last().click();
  await expect(dialog.getByPlaceholder('e.g. "james@example.com"')).toHaveValue('retained browser draft');
  f.detailError(403);await dialog.getByRole('button',{name:'Refresh source'}).click();
- await expect(dialog.getByText('Source completion unavailable')).toBeVisible();
- await capture(page,'08-detail-denied');
+ await expect(dialog.getByText('Source details unavailable')).toBeVisible();
+ await expect(dialog.getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
  f.detailError(503);await dialog.getByRole('button',{name:'Refresh source'}).click();
  await expect(dialog.getByText(/Controlled detail unavailable/)).toBeVisible();
- await expect(dialog.getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
- await capture(page,'09-detail-unavailable');
+ await expect(dialog.getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
  await dialog.getByRole('button',{name:'Start a new goal',exact:true}).click();f.restart('lost');
  await dialog.getByRole('button',{name:'Restart',exact:true}).click();
  await expect(dialog.getByText('Restart failed',{exact:true})).toBeVisible();
  await expect(dialog.getByRole('button',{name:'Retry saved request'})).toBeEnabled();
- await capture(page,'10-lost-fork-response');expect(JSON.parse(f.posts[0]).goal.mode).toBe('new');expect(f.cancellations).toHaveLength(1);
+ expect(JSON.parse(f.posts[0]).goal.mode).toBe('new');expect(f.cancellations).toHaveLength(1);
 });
 
 test('C1-M01 M05 M06 M08 X02 X03 V03 primary navigation, recorded identity and literal displaced goals',async({page})=>{

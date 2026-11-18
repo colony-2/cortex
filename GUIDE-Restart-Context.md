@@ -8,18 +8,18 @@ the selected history prefix.
 
 ## Recovery from the browser
 
-People can recover a source without creating a competing live attempt. **Cancel source**
-opens the existing confirmation for that exact job; cancellation never starts a restart
-or cancels a sibling. Keep the restart dialog open while waiting, then use **Refresh
-source**. Cancellation remains pending until exact job detail reports archived storage
-or completed scheduler state. An active CANCELLED label, old outcome or failed read
-cannot confirm completion. Naturally completed sources need no cancellation.
+You can submit **Continue this goal** while the source is running or its details
+are unavailable. The restart service decides whether to accept the request. Restarting
+does not cancel the source and may create another live attempt in the same goal.
+**Start a new goal** also preserves the source and its siblings. Restart errors stay
+beside the retained boundary and patch.
 
-A fresh **Continue this goal** submission reads the exact source again immediately
-before sending. Completion permits the request; the restart service still decides
-admission. **Start a new goal** preserves the source and its siblings. Restart errors
-stay beside the retained boundary and patch. Cancellation success and restart failure
-are reported separately; diagnostic text never establishes a blocker or goal closure.
+**Cancel source** opens the existing confirmation for that exact job; cancellation
+never starts a restart or cancels a sibling. **Refresh source** updates its displayed
+details. Cancellation remains pending until exact job detail reports archived storage
+or completed scheduler state. You can submit a restart while cancellation remains
+pending, once the cancellation request itself has finished. Cancellation success and
+restart failure are reported separately; diagnostic text never establishes goal closure.
 
 **Retry saved request** resends the saved ID, boundary, goal mode and patch unchanged,
 including after reload or a lost response. It needs no new completion, open-goal or

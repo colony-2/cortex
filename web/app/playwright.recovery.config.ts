@@ -1,5 +1,8 @@
 import {defineConfig} from '@playwright/test';
 import config from './playwright.relationships.config';
+import { configureInstalledFonts } from './tests/helpers/fontconfig';
+
+configureInstalledFonts(config.use?.launchOptions?.executablePath);
 
 // HTTP fixtures exercise implemented browser flows; Go checks cover real runtime reads.
 export default defineConfig({
