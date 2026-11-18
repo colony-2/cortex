@@ -324,7 +324,10 @@ test('DAGUI-019,024 ancestor retry keeps honest unavailable timing and recovers 
  const entry=page.locator('.tree-card[data-job-id="entry"]');
  await expect(entry).toContainText('Submitted Unavailable');await expect(entry).toContainText('Age 18m 32s');
  await capture(page,'partial-ancestry');
- blocked=false;await page.getByRole('button',{name:'Resume discovery'}).click();
+ // Partial coverage can render before the current traversal has finished.
+ // Keep the fixture unavailable until the manual retry can actually start.
+ const resume=page.getByRole('button',{name:'Resume discovery'});
+ await expect(resume).toBeEnabled();blocked=false;await resume.click();
  await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();await expect(entry).toContainText('Submitted +2m 10s');
 });
 test('DAGUI-027 bounded long Unicode and multiline text, missing optional fields, unavailable timing',async({page})=>{

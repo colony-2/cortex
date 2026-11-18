@@ -68,8 +68,10 @@ sequence:
      docs/alias.md: {kind: stored, stored: {key: {jobId: producer, taskOrdinal: %d, name: original.md, sizeBytes: 24}}}
      docs/value.json: {kind: value, format: json, value: {large: 9007199254740993, n: null}}
      docs/text.txt: {kind: value, format: text, value: 'literal text'}
+outputs:
+ ordinary: '${{ context.artifacts["start/foo"] }}'
 `, inboxTestOp, source.TaskOrdinal)
-	start, err := jobdb.NewTaskData(workflowctl.StartJob{TenantId: "tenant", RecipeName: "inbox", Cell: "test", CellRepo: "example.test/test"}, jobdb.NewArtifactFromBytes("inbox"+starter.RecipeArtifactSuffix, []byte(recipe)))
+	start, err := jobdb.NewTaskData(workflowctl.StartJob{TenantId: "tenant", RecipeName: "inbox", Cell: "test", CellRepo: "example.test/test"}, jobdb.NewArtifactFromBytes("inbox"+starter.RecipeArtifactSuffix, []byte(recipe)), jobdb.NewArtifactFromBytes("start/foo", []byte("literal start prefix")))
 	require.NoError(t, err)
 	handle, err := engine.SubmitJob(ctx, jobdb.SubmitJob{TenantId: "tenant", JobID: "receiver", JobType: "recipe", Data: start, Cell: "test", CellRepo: "example.test/test"})
 	require.NoError(t, err)
@@ -111,6 +113,10 @@ sequence:
 	require.Equal(t, "available", selected.Inbox.Status)
 	require.Len(t, selected.Inbox.Entries, 3)
 	require.Contains(t, response.Body.String(), `"kept":"output"`)
+	require.Contains(t, response.Body.String(), `"name":"start/foo"`)
+	literal := read("/tenant/receiver/tasks/0/artifacts/start/foo")
+	require.Equal(t, 200, literal.Code, literal.Body.String())
+	require.Equal(t, "literal start prefix", literal.Body.String())
 	require.NotContains(t, response.Body.String(), `"value":{"large"`)
 	require.Equal(t, source, *selected.Inbox.Entries[0].SourceKey)
 	content := read(fmt.Sprintf("/tenant/producer/tasks/%d/artifacts/original.md", source.TaskOrdinal))

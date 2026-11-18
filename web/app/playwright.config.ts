@@ -82,6 +82,14 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:18083' },
     },
     {
+      // Produce pending history with the previous pin, answer through Cortex,
+      // then continue/restart with the new worker from the current module graph.
+      name: 'previous-worker',
+      testMatch: 'recipe-input.spec.ts',
+      grep: /answers recipe input and resumes|preserves feedback and attachment|rejects late answers/,
+      use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:18083' },
+    },
+    {
       name: 'goals-runtime',
       testMatch: 'goals.spec.ts', grep: /AR-018,019/,
       use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:18083' },
@@ -96,7 +104,7 @@ export default defineConfig({
       cwd: '../..',
     },
     {
-      command: 'make build test-worker && exec ./build/cortex serve --addr 127.0.0.1:18083 --working-dir web/app/tests/fixtures/cell',
+      command: 'make build test-worker previous-worker && exec ./build/cortex serve --addr 127.0.0.1:18083 --working-dir web/app/tests/fixtures/cell',
       url: 'http://127.0.0.1:18083/api/health',
       env: { ...accountUIBuildEnvironment, C2J_JOBDB: '', JOBDB_URL: '', CORTEX_TENANT_ID: '' },
       reuseExistingServer: false,

@@ -1,4 +1,4 @@
-.PHONY: build test test-e2e test-worker typecheck fmt server-build web-build web-embed cortex clean
+.PHONY: build test test-e2e test-worker previous-worker typecheck fmt server-build web-build web-embed cortex clean
 
 GO := bash scripts/go.sh
 
@@ -37,6 +37,9 @@ test-e2e:
 # Use the c2j version pinned by server/go.mod, never a globally installed worker.
 test-worker:
 	$(GO) build -o build/c2j-test-worker github.com/colony-2/c2j/cmd/c2j
+
+previous-worker:
+	bash scripts/build-previous-worker.sh
 
 clean:
 	rm -rf build

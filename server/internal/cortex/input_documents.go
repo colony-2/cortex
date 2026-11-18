@@ -39,7 +39,11 @@ func documentInventory(job string, chapters []jobdb.Chapter) ([]inputDocument, e
 	rows := make([]inputDocument, 0, len(direct))
 	for _, a := range direct {
 		key := jobdb.ArtifactKey{JobId: a.JobID, TaskOrdinal: a.TaskOrdinal, Name: a.Name, SizeBytes: a.SizeBytes}
-		rows = append(rows, inputDocument{ID: fmt.Sprintf("attachment:%d:%s", a.TaskOrdinal, a.Name), Name: a.Name, Sources: []string{"Attachment"}, Kind: "stored", JobID: a.JobID, TaskOrdinal: &a.TaskOrdinal, SizeBytes: a.SizeBytes, StoredKey: &key})
+		id := fmt.Sprintf("attachment:%d:%s", a.TaskOrdinal, a.Name)
+		if a.contribution != nil {
+			id = fmt.Sprintf("contribution:%d:%s:%d:%s", *a.contribution, a.JobID, a.TaskOrdinal, a.Name)
+		}
+		rows = append(rows, inputDocument{ID: id, Name: a.Name, Sources: []string{"Attachment"}, Kind: "stored", JobID: a.JobID, TaskOrdinal: &a.TaskOrdinal, SizeBytes: a.SizeBytes, StoredKey: &key})
 	}
 	var data []byte
 	for _, ch := range chapters {
@@ -55,6 +59,8 @@ func documentInventory(job string, chapters []jobdb.Chapter) ([]inputDocument, e
 	if len(data) == 0 {
 		return rows, nil
 	}
+	// JobStart.Input is the ordinary creator payload even for grouped jobs.
+	// AdditionalInput chapters are contributions, not replacement submissions.
 	var submission workflowctl.StartJob
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()

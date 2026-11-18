@@ -6,18 +6,18 @@ skills:
       skill_path: skills/c2j-operations
       scope: project
       path: .agents/skills/c2j-operations
-      digest: sha256:6e3cfb938b84c02836a67260661b4c4d69fddf563c968fb2e12624352cc1f5cf
+      digest: sha256:4d9e594a71f652f98f8fc12c6274be5298bf6ba2ec5a40a97ee3522087d44836
     - name: c2j-recipes
       source: c2j
       ref: bundled
       skill_path: skills/c2j-recipes
       scope: project
       path: .agents/skills/c2j-recipes
-      digest: sha256:a38199a69338ea6f69563cafa383b9d6942024f788307a74acc2dbd305f50b24
+      digest: sha256:b8b8382315ce4a76059df3658f7a46a439a8f2b0b808e8fba63a280b90197ce7
     - name: c2ops-extension-ops
       source: c2j
       ref: bundled
       skill_path: skills/c2ops-extension-ops
       scope: project
       path: .agents/skills/c2ops-extension-ops
-      digest: sha256:8e6d1700f09e3f08da60e77e4f359167db2db976898048175342047c009ed03b
+      digest: sha256:fe5221b1ac22932b8b154882bb3607b9871e2318ab17028f0b52852dbc4fc3e6

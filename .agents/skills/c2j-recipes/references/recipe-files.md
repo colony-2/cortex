@@ -42,7 +42,7 @@ release `version` is independent. Common types are:
 V2 objects support `properties` and boolean-or-schema `additionalProperties`
 (default true); arrays support `items`. Nested declarations use the same
 `required` and `default_value` fields. Each include keeps its own schema version.
-See [schema versions](../../../../GUIDE-Recipe-Schema-Versions.md) for migration,
+See [schema versions](https://github.com/colony-2/c2j/blob/a34601101b53c1ef7bef2bea46acbddd537597e3/GUIDE-Recipe-Schema-Versions.md) for migration,
 default semantics, and replay behavior.
 
 Use `required: true` for required values and `default_value` for defaults:
@@ -57,7 +57,7 @@ input_schema:
     default_value: 10
 ```
 
-Submitted data may not contain keys absent from `input_schema`.
+Submitted data may not contain keys absent from `input_schema`. The schema validates submitted values; bind values needed by the executable container in root `inputs` (for example `message: "${{ inputs.message }}"`). Declaring a schema field alone does not forward it into the body.
 
 ## Nodes
 
@@ -118,3 +118,23 @@ inputs:
 ```
 
 Known built-in ops validate input shape at parse/compile time unless a value is templated. Selector-backed extension ops are resolved at runtime.
+
+## Python environments
+
+For script libraries, use `execution_needs.python` on a recipe or node:
+
+```yaml
+execution_needs:
+  python:
+    requires-python: ">=3.10"
+    dependencies: ["Pillow==12.0.0"]
+```
+
+The block is literal standard Python metadata; uv parses version specifiers,
+extras and markers. The closest block replaces the entire inherited environment.
+Use `dependencies: []` for an isolated interpreter without libraries. Repository
+defaults live in `.c2/config.yaml` under `execution.python`; extension manifests
+use top-level `python`. Preparation and any source builds finish before execution.
+Warm tasks reuse the installed environment without invoking uv. `python` and
+`python3` select this environment; `uv:` still means an isolated CLI tool.
+See [execution tools](../../../EXECUTION_TOOLS.md#python-script-environments).

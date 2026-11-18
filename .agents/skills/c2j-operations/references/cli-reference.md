@@ -18,6 +18,8 @@ c2j run with-lease
 c2j ready
 c2j list
 c2j list children
+c2j job dag JOB
+c2j job clear-crash-concern JOB
 c2j delete
 c2j test
 ```
@@ -108,7 +110,7 @@ Key flags:
 
 The recipe-selection flags are mutually exclusive. `--json` and `--run` are mutually exclusive. `--recipe` and `--recipe-file` are hidden, deprecated aliases on `submit`.
 
-Normal selection resolves the name `build` at execution time in the target cell's repository/ref (`.c2/recipes/build.yaml`). Only a missing recipe falls back to `git+https://github.com/colony-2/recipes.git//build.yaml@main`. `--cell` never uses the submitting project's recipes. Named recipes use committed content; explicit advanced files embed local edits. All CLI-submitted recipes must declare `prompt` in `input_schema`.
+Normal selection resolves `git+https://github.com/colony-2/recipes.git//build.yaml@main` directly, skipping target-cell lookup. Use `--advanced-recipe build` for the target cell's `.c2/recipes/build.yaml`, with the shared fallback only when missing. `--cell` selects the target, not the submitting project's recipes. Named recipes use committed content; explicit advanced files embed local edits. All CLI-submitted recipes must declare `prompt` in `input_schema`.
 
 Build submissions automatically include `inputs.type` (`"build"`) alongside `inputs.prompt`, including explicit selection of that name. The build recipe must declare a string `type` in `input_schema`. A supplied type must be `"build"`; it does not select a recipe. Custom names, explicit Git selectors, and local files preserve their own input contracts without automatic type injection.
 
@@ -156,6 +158,24 @@ c2j list --self --embed --json
 
 Filter with `--status`, `--job-type`, `--job-id`, `--waiting-for`, `--created-after`, `--created-before`, `--page-size`, `--page-token`, and `--all` where exposed by the command.
 
+## `c2j job clear-crash-concern`
+
+Reset the existing job's consecutive expired-lease counter after resolving the
+worker problem:
+
+```bash
+c2j job clear-crash-concern JOB --reason 'worker issue fixed'
+c2j job clear-crash-concern JOB --embed --json
+```
+
+`reset-crash-concern` is an alias. Supports `--jobdb`, `--embed`, `--reason`,
+`--worker-id` (default `c2j-cli`), and `--json`. Uses operator credentials, not
+the task inspection helper. The remote JobDB server must support this operation.
+History and scheduling constraints are preserved, and no lease is acquired.
+Live leases and completed, cancelled, or hidden jobs return a conflict. Workers
+resume normally when eligible. An already-clear inactive job is a successful
+no-op. `c2j run` cannot bypass crash concern; `c2j restart` creates a new job.
+
 ## `c2j delete`
 
 Delete jobs through one server-side bulk request:
@@ -183,7 +203,46 @@ cascade. A compatible JobDB deletion API/backend is required.
 Compile, validate, and run scenario suites.
 
 ```bash
-c2j test --file ./recipes/tests/my.scenario.md --recipe-file ./recipes/my-recipe.yaml
+c2j test run --file ./recipes/tests/my.scenario.md --recipe-file ./recipes/my-recipe.yaml
 ```
 
-Use `--json` or `--jsonl-events` when consuming results programmatically.
+Use `c2j test validate --json` for structured validation summaries, or `c2j test run --jsonl-events events.jsonl` for execution events.
+
+For persisted records, cumulative exports and restart selection, read [inspection and recovery](inspection-and-recovery.md).
+
+## `c2j job dag`
+
+```bash
+c2j job dag self --json
+c2j job dag JOB --subtree --max-nodes 100 --max-depth 8 --timeout 10s
+c2j job dag JOB --json --output family.json
+```
+
+Shows the recorded submission family, following runtime parents then descendants
+across cells and job types in one tenant. Edges mean parent submitted child;
+waits, shared goals and metadata parents create no edges. The default includes
+siblings and cousins; `--subtree` skips ancestry. Hidden and archived records are
+requested under JobDB read permissions. Text shows one line per job: a status
+symbol, title and full ID aligned on the right, with the selected job marked.
+Separate scheduler status, completion outcome and cancellation-request fields
+appear only in JSON.
+
+Bounds default to 1,000 nodes, 64 descendant levels and 30s; flags must be
+positive. Fixed caps are 64 ancestor hops, 200 child pages and 300 requests.
+Depth starts at the highest retained ancestor. Both formats describe incomplete
+branches, limits and anomalies: text warns only when the tree is incomplete or
+inconsistent. JSON retains full diagnostic detail; observation start/end times
+are JSON-only.
+
+Exit 0: requested observed listings exhausted. Exit 2: usable partial output
+written; inspect `coverage`. Exit 1: input, entry/protocol or output failure.
+JSON version 1 includes full identities, submission edges, root confirmation,
+limits, counts and ancestry/child coverage. Subtree ancestry is `not_requested`,
+with no global root claim. A failed or unqueried branch is never an empty leaf.
+
+`--output` writes the selected format to a new file, or stdout with `-`.
+Existing files remain untouched; valid partial files survive exit 2. DAG JSON is
+not subject to the other inspection commands' terminal byte limit.
+Inside tasks, use `self` and the authenticated helper; `--jobdb` cannot bypass it.
+Upgrade the worker and CLI together when family inspection is unsupported.
+See `GUIDE-Job-Inspection.md` in the c2j repository for coverage semantics. No Cortex connection or execution-history reads are required.

@@ -45,6 +45,8 @@ const test = base.extend<{
     const jobID = `recipe-${randomUUID()}`;
     const repo = mkdtempSync(join(tmpdir(), 'cortex-input-'));
     const workerPath = resolve('../../build/c2j-test-worker');
+    const initialWorkerPath = testInfo.project.name === 'previous-worker'
+      ? resolve('../../build/c2j-previous-worker') : workerPath;
     let worker: ChildProcess | undefined;
     let workerTimer: ReturnType<typeof setTimeout> | undefined;
     let workerStopped = true;
@@ -55,10 +57,10 @@ const test = base.extend<{
     page.on('pageerror', error => errors.push(error.message));
 
     const workerEnv = fixtureGitTransport(repo);
-    const startWorker = (targetJobID = jobID) => {
+    const startWorker = (targetJobID = jobID, executable = workerPath) => {
       workerStopped = false;
       const launch = () => {
-        worker = spawn(workerPath, [
+        worker = spawn(executable, [
           'run', 'one', '--job-id', targetJobID, '--input-mode', 'ops',
           '--poll-interval', '100ms', '--jobdb', `http://127.0.0.1:18082/${tenant}`,
         ], {
@@ -129,7 +131,7 @@ const test = base.extend<{
         data: { job_id: jobID, recipe, cell: 'platform', repo: 'github.com/cortex-test/platform', ...(review ? { inputs: { prompt: reviewGoalPrompt } } : {}) },
       });
       expect(submitted.status(), await submitted.text()).toBe(201);
-      startWorker();
+      startWorker(jobID, initialWorkerPath);
 
       // Check the backend separately so a broken persisted form reports its
       // HTTP error instead of looking like a browser/SSE visibility timeout.

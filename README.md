@@ -326,8 +326,16 @@ pnpm typecheck:web
 pnpm test:web
 pnpm test:e2e         # Browser tests against development and embedded production UI
 pnpm --filter @colony2/app test:e2e --project=production recipe-input.spec.ts
+pnpm --filter @colony2/app test:e2e --project=previous-worker recipe-input.spec.ts
 node --test npm/cortex/test/*.test.cjs
 ```
+
+Compatibility tests build the previous c2j worker (`b9d8dae96cb3`) with its
+previous JobDB pin in a temporary module, leaving the application module graph
+unchanged. The Go suite checks retained success, retry, hook and restart history.
+The `previous-worker` browser project produces pending inputs with that worker,
+then answers through Cortex and continues with the current worker. Both workers
+are built automatically; `make test-worker previous-worker` builds them directly.
 
 The c2 execution tools in [`.c2/config.yaml`](.c2/config.yaml) declare Go, Bash,
 Make, Node.js, pnpm, Playwright, Chromium, and FFmpeg. Nix supplies Chromium's

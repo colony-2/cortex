@@ -38,7 +38,7 @@ func TestInputArtifactsExternalSubmissionHTTP(t *testing.T) {
 	inventory := getJSON[struct {
 		Artifacts []inputArtifact `json:"artifacts"`
 	}](t, base+"/jobs/native/input-artifacts")
-	if !reflect.DeepEqual(inventory.Artifacts, []inputArtifact{{"native", 0, name, int64(len(content))}}) {
+	if !reflect.DeepEqual(inventory.Artifacts, []inputArtifact{{JobID: "native", TaskOrdinal: 0, Name: name, SizeBytes: int64(len(content))}}) {
 		t.Fatalf("external inventory: %#v", inventory)
 	}
 	response, err := http.Get(base + "/jobs/native/tasks/0/artifacts/" + url.PathEscape(name))
@@ -57,7 +57,7 @@ func TestInputArtifactsSelection(t *testing.T) {
 		start := jobdb.Chapter{Ordinal: 7, Body: body, Artifacts: []jobdb.StoredArtifact{{Name: "docs/雪 ?#.md", Size: 120}}}
 		chapters := []jobdb.Chapter{{Ordinal: 1, Body: jobdb.RestartExtraChapter{}, Artifacts: start.Artifacts}, start, {Ordinal: 8, Body: jobdb.ExecutionChapter{}, Artifacts: start.Artifacts}}
 		got, err := inputArtifacts("job", chapters)
-		if err != nil || !reflect.DeepEqual(got, []inputArtifact{{"job", 7, "docs/雪 ?#.md", 120}}) {
+		if err != nil || !reflect.DeepEqual(got, []inputArtifact{{JobID: "job", TaskOrdinal: 7, Name: "docs/雪 ?#.md", SizeBytes: 120}}) {
 			t.Fatalf("%#v %v", got, err)
 		}
 		if _, err = inputArtifacts("job", append(chapters, start)); err == nil {
@@ -113,7 +113,7 @@ func TestInputArtifactsHTTPMetadata(t *testing.T) {
 		var result struct {
 			Artifacts []inputArtifact `json:"artifacts"`
 		}
-		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || w.Code != 200 || !reflect.DeepEqual(result.Artifacts, []inputArtifact{{"job", 17, "nested/雪 ?#.txt", 42}}) {
+		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || w.Code != 200 || !reflect.DeepEqual(result.Artifacts, []inputArtifact{{JobID: "job", TaskOrdinal: 17, Name: "nested/雪 ?#.txt", SizeBytes: 42}}) {
 			t.Fatalf("%d %s", w.Code, w.Body.String())
 		}
 	}
