@@ -762,3 +762,96 @@ for (const width of [1440, 390]) test(`Goals matches every term within a loaded 
   await expect(page.getByRole('checkbox', { name: 'Select job foo-bar', exact: true })).toBeVisible();
   expect(reads).toHaveLength(baseline);
 });
+
+for (const width of [1440, 390]) for (const alias of ['goals', 'jobs']) {
+  test(`GS18–22 stable chained sorting on ${alias} at ${width}px`, async ({ page, context, baseURL }, testInfo) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width, height: 1000 });
+    await context.addCookies([{ name: 'colony2:user:email', value: 'sorting@example.com', url: baseURL! }]);
+    await mockCells(page, ['alpha', 'beta']);
+    const jobs = [['A-old', 'alpha', '08'], ['B-new', 'beta', '11'], ['B-old', 'beta', '09'], ['A-new', 'alpha', '10']].map(([id, cell, hour]) => ({
+      ...jobIdentity, job_id: id, goal_id: id, title: id, cell_id: `cell-${cell}`, cell_name: cell,
+      status: 'READY', store: 'ACTIVE', created_at: `2026-11-01T${hour}:00:00Z`,
+    }));
+    let reads = 0;
+    await page.route('**/api/projects/stable-sorting/jobs?*', route => {
+      reads++;
+      const goal = new URL(route.request().url()).searchParams.get('goal');
+      return route.fulfill({ json: { jobs: goal ? jobs.filter(job => job.goal_id === goal) : jobs } });
+    });
+    await page.route('**/api/projects/stable-sorting/jobs/*', route => route.fulfill({ json: jobs.find(job => route.request().url().endsWith(job.job_id)) || jobs[0] }));
+    await page.goto(`/project/stable-sorting/${alias}`);
+    const names = page.locator('a.goal-prompt');
+    const original = ['A-old', 'B-new', 'B-old', 'A-new'];
+    await expect(names).toHaveText(original);
+    const mobile = width < 768;
+    const controls = page.getByRole('button', { name: /^Filters and sorting/ });
+    if (mobile) await controls.click();
+    const header = (name: string) => page.getByRole('columnheader', { name: new RegExp(`^${name}`) });
+    if (mobile) {
+      await page.getByLabel('Sort goals', { exact: true }).selectOption('submitted');
+      await page.getByLabel('Sort direction', { exact: true }).selectOption('descend');
+    } else { await header('Submitted').click(); await header('Submitted').click(); }
+    await expect(names).toHaveText(['B-new', 'A-new', 'B-old', 'A-old']);
+    if (mobile) {
+      await page.getByLabel('Sort goals', { exact: true }).selectOption('cell');
+      await page.getByLabel('Sort direction', { exact: true }).selectOption('ascend');
+    } else await header('Cell').click();
+    await expect(names).toHaveText(['A-new', 'A-old', 'B-new', 'B-old']);
+    const active = new URL(page.url()).searchParams;
+    expect(active.getAll('sort')).toEqual(['cell']); expect(active.getAll('order')).toEqual(['ascend']);
+    expect([...active.keys()].some(key => /prior|rank|history/i.test(key))).toBe(false);
+    if (!mobile) {
+      await expect(header('Cell')).toHaveAttribute('aria-sort', 'ascending');
+      await expect(page.locator('th[aria-sort]')).toHaveCount(1);
+      await expect(page.getByRole('columnheader')).toHaveText(['', 'Cell', 'Goal', 'Status', 'Submitted', 'Links']);
+    } else {
+      await expect(page.getByLabel('Sort goals', { exact: true })).toHaveValue('cell');
+      await expect(page.getByLabel('Sort direction', { exact: true })).toHaveValue('ascend');
+    }
+    expect(reads).toBe(1);
+    if (alias === 'goals') {
+      await page.getByRole('heading', { name: 'Goals', exact: true }).hover();
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
+      await page.screenshot({ path: testInfo.outputPath(`stable-cell-ascending-${width}.png`), fullPage: true, animations: 'disabled' });
+    }
+    // Responsive layout changes preserve the exact identities and order.
+    await page.setViewportSize({ width: mobile ? 1440 : 390, height: 1000 });
+    await expect(names).toHaveText(['A-new', 'A-old', 'B-new', 'B-old']);
+    await page.setViewportSize({ width, height: 1000 });
+    if (mobile) await page.getByLabel('Sort direction', { exact: true }).selectOption('descend');
+    else await header('Cell').click();
+    await expect(names).toHaveText(['B-new', 'B-old', 'A-new', 'A-old']);
+    // Clearing sort restores fetched order, and the next sort starts from it.
+    if (mobile) await page.getByLabel('Sort goals', { exact: true }).selectOption('');
+    else await header('Cell').click();
+    await expect(names).toHaveText(original);
+    expect(new URL(page.url()).searchParams.has('sort')).toBe(false);
+    if (mobile) {
+      await page.getByLabel('Sort goals', { exact: true }).selectOption('cell');
+      await page.getByLabel('Sort direction', { exact: true }).selectOption('descend');
+    } else { await header('Cell').click(); await header('Cell').click(); }
+    await expect(names).toHaveText(['B-new', 'B-old', 'A-old', 'A-new']);
+    expect(reads).toBe(1);
+    // Reload restores only the active sort. Its ties start in fetched order.
+    await page.reload();
+    await expect(names).toHaveText(['B-new', 'B-old', 'A-old', 'A-new']);
+    if (mobile) await controls.click();
+    // Establish a different tie order, leave, then return to the saved URL.
+    if (mobile) {
+      await page.getByLabel('Sort goals', { exact: true }).selectOption('submitted');
+      await page.getByLabel('Sort goals', { exact: true }).selectOption('cell');
+      await page.getByLabel('Sort direction', { exact: true }).selectOption('ascend');
+    } else { await header('Submitted').click(); await header('Submitted').click(); await header('Cell').click(); }
+    await expect(names).toHaveText(['A-new', 'A-old', 'B-new', 'B-old']);
+    const titleLink = page.getByRole('link', { name: 'A-new', exact: true });
+    const row = mobile ? page.locator('.goal-card').filter({ has: titleLink }) : titleLink.locator('xpath=ancestor::tr');
+    if (mobile) await row.getByRole('button', { name: 'Expand goal details' }).click();
+    const savedURL = page.url();
+    await row.getByRole('link', { name: 'Goal overview', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Goal overview', exact: true })).toBeVisible();
+    await page.getByRole('link', { name: 'Back to Goals', exact: true }).click();
+    await expect(page).toHaveURL(savedURL);
+    await expect(names).toHaveText(['A-old', 'A-new', 'B-new', 'B-old']);
+  });
+}

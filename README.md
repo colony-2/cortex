@@ -70,7 +70,9 @@ search on whitespace and require every term, in any order, within one field of
 one loaded attempt. Matching ignores case and includes partial words: `foo bar`
 matches `food that i had at the bar`. Click the Goal, Status, Cell, or
 Submitted column header to sort ascending or descending; click again to restore
-the original order. Search and sorting run in the browser on the current page.
+the original order. Each new sort keeps the preceding row order for equal values,
+so Submitted descending then Cell ascending keeps newer goals first within each cell.
+Only the latest column remains active. Search and sorting run in the browser on the current page.
 Search, sorting, and filters persist in the URL when opening a goal and returning.
 
 The jobs API accepts repeated `displayStatus` parameters for these states, for

@@ -1119,3 +1119,164 @@ it('retains an existing CRASH_CONCERN URL and labels its selected filter Job kee
  expect(dropdown.getByRole('checkbox',{name:'Select Job keeps failing',exact:true})).toBeChecked();
  expect(dropdown.queryByText('Worker unresponsive')).toBeNull();
 });
+
+// Stable sorting regressions use goal identities, independent of title or attempt.
+function stableSortJobs(): RecipeJob[] {
+  return [['A-old', 'alpha', '08'], ['B-new', 'beta', '11'], ['B-old', 'beta', '09'], ['A-new', 'alpha', '10']].map(([id, cell, hour]) => ({
+    ...jobIdentity, job_id: id, goal_id: id, title: id, cell_id: `cell-${cell}`, cell_name: cell,
+    status: 'READY', store: 'ACTIVE', created_at: `2026-11-01T${hour}:00:00Z`,
+  } as RecipeJob));
+}
+function stableRowKeys() {
+  return [...document.querySelectorAll('.ant-table-tbody > .ant-table-row')].map(row => row.getAttribute('data-row-key'));
+}
+const goalKeys = (...ids: string[]) => ids.map(id => `goal:${id}`);
+function clickSort(column: string) { fireEvent.click(screen.getByRole('columnheader', { name: new RegExp(`^${column}`) })); }
+function ResultSetControls() {
+  const navigate = useNavigate(); const location = useLocation();
+  return <>{['pageToken', 'scope', 'view', 'status', 'cellId'].map(key => <button key={key} onClick={() => {
+    const query = new URLSearchParams(location.search);
+    query.set('executionState', 'cells-v1');
+    query.set(key, { pageToken: 'next', scope: 'roots', view: 'all', status: 'READY', cellId: 'cell-alpha' }[key]!);
+    navigate(`${location.pathname}?${query}`);
+  }}>Change {key}</button>)}</>;
+}
+async function mountStableSort(options: { jobs?: RecipeJob[]; strict?: boolean; projectId?: string; query?: string } = {}) {
+  let jobs = options.jobs || stableSortJobs();
+  const fetch = vi.fn(async () => new Response(JSON.stringify({ jobs })));
+  vi.stubGlobal('fetch', fetch);
+  const contents = (projectId = options.projectId || 'tenant') => <MemoryRouter initialEntries={[`/project/tenant/goals?executionState=cells-v1${options.query || ''}`]}>
+    <Navigation /><Location /><ResultSetControls /><JobsListPage projectId={projectId} />
+  </MemoryRouter>;
+  const wrap = (projectId?: string) => options.strict ? <StrictMode>{contents(projectId)}</StrictMode> : contents(projectId);
+  const rendered = render(wrap());
+  await waitFor(() => expect(stableRowKeys()).toHaveLength(new Set(jobs.map(job => job.goal_id || job.job_id)).size));
+  return { fetch, replace: (next: RecipeJob[]) => { jobs = next; }, rerender: (projectId?: string) => rendered.rerender(wrap(projectId)) };
+}
+function timeThenCell() { clickSort('Submitted'); clickSort('Submitted'); clickSort('Cell'); }
+
+it('GS04/05/14/17/23 keeps prior ties through column/direction changes, history and StrictMode interactions', async () => {
+  const { fetch, rerender } = await mountStableSort({ strict: true });
+  timeThenCell();
+  expect(stableRowKeys()).toEqual(goalKeys('A-new', 'A-old', 'B-new', 'B-old'));
+  expect(screen.getByRole('columnheader', { name: /^Submitted/ })).not.toHaveAttribute('aria-sort');
+  clickSort('Cell');
+  expect(stableRowKeys()).toEqual(goalKeys('B-new', 'B-old', 'A-new', 'A-old'));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select job A-new' }));
+  fireEvent.click(screen.getAllByRole('button', { name: 'Expand goal details' })[0]);
+  rerender();
+  expect(stableRowKeys()).toEqual(goalKeys('B-new', 'B-old', 'A-new', 'A-old'));
+  expect(fetch).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
+  expect(stableRowKeys()).toEqual(goalKeys('A-new', 'A-old', 'B-new', 'B-old'));
+  fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
+  expect(stableRowKeys()).toEqual(goalKeys('B-new', 'A-new', 'B-old', 'A-old'));
+  fireEvent.click(screen.getByRole('button', { name: 'Browser forward' }));
+  expect(stableRowKeys()).toEqual(goalKeys('A-new', 'A-old', 'B-new', 'B-old'));
+  clickSort('Cell'); clickSort('Cell');
+  expect(stableRowKeys()).toEqual(goalKeys('A-old', 'B-new', 'B-old', 'A-new'));
+  clickSort('Cell');
+  expect(stableRowKeys()).toEqual(goalKeys('A-old', 'A-new', 'B-new', 'B-old'));
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it.each(['Cell', 'Goal', 'Status', 'Submitted'])('GS06 keeps equal %s values in preceding order in both directions', async column => {
+  const jobs = stableSortJobs().map(job => ({ ...job,
+    ...(column === 'Cell' ? { cell_name: 'alpha' } : {}),
+    ...(column === 'Goal' ? { title: 'Equal title' } : {}),
+    ...(column === 'Submitted' ? { created_at: '2026-11-01T00:00:00Z' } : {}),
+  }));
+  await mountStableSort({ jobs });
+  const seed = column === 'Submitted' ? 'Goal' : 'Submitted';
+  clickSort(seed); clickSort(seed);
+  const preceding = stableRowKeys();
+  expect(preceding).not.toEqual(goalKeys('A-old', 'B-new', 'B-old', 'A-new'));
+  clickSort(column); expect(stableRowKeys()).toEqual(preceding);
+  clickSort(column); expect(stableRowKeys()).toEqual(preceding);
+});
+
+it('GS23 applies a history-restored column to current ties rather than restoring historical ranks', async () => {
+  const { fetch } = await mountStableSort();
+  clickSort('Cell');
+  expect(stableRowKeys()).toEqual(goalKeys('A-old', 'A-new', 'B-new', 'B-old'));
+  clickSort('Submitted'); clickSort('Submitted');
+  expect(stableRowKeys()).toEqual(goalKeys('B-new', 'A-new', 'B-old', 'A-old'));
+  // Walk back through Submitted ascending, then restore Cell ascending.
+  fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
+  expect(stableRowKeys()).toEqual(goalKeys('A-old', 'A-new', 'B-old', 'B-new'));
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it('GS07/08/09/13 refreshes by goal identity, discards the former comparator and applies changed active values', async () => {
+  const { fetch, replace } = await mountStableSort();
+  timeThenCell();
+  const jobs = stableSortJobs();
+  const changed = jobs.map(job => ({ ...job, created_at: job.job_id === 'A-old' ? '2026-11-04T00:00:00Z' : job.created_at }));
+  // A-new now has a different representative attempt, but the same goal identity.
+  changed[3] = { ...changed[3], job_id: 'replacement', created_at: '2026-11-03T00:00:00Z' };
+  replace([changed[2], changed[0], changed[1], changed[3], { ...jobs[0], job_id: 'newcomer', goal_id: 'newcomer' }]);
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh', exact: true }));
+  await screen.findByRole('checkbox', { name: 'Select job replacement' });
+  expect(stableRowKeys()).toEqual(goalKeys('A-new', 'A-old', 'newcomer', 'B-new', 'B-old'));
+  // A changed active value must move, despite its old rank.
+  replace([{ ...changed[0], cell_name: 'zeta' }, changed[1], changed[2], changed[3]]);
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh', exact: true }));
+  await waitFor(() => expect(stableRowKeys()).toEqual(goalKeys('A-new', 'B-new', 'B-old', 'A-old')));
+  expect(fetch).toHaveBeenCalledTimes(3);
+});
+
+it('GS11 preserves missing/invalid timestamp fallbacks and full title/prompt comparisons', async () => {
+  const jobs = stableSortJobs();
+  jobs[0].created_at = ''; jobs[1].created_at = 'invalid';
+  jobs[2].submitted_at = '2026-11-04T00:00:00Z';
+  jobs[3].title = undefined; jobs[3].prompt = 'Z prompt fallback';
+  await mountStableSort({ jobs });
+  clickSort('Goal'); clickSort('Goal');
+  clickSort('Submitted');
+  expect(stableRowKeys()).toEqual(goalKeys('B-new', 'A-old', 'A-new', 'B-old'));
+  clickSort('Submitted');
+  expect(stableRowKeys()).toEqual(goalKeys('B-old', 'A-new', 'B-new', 'A-old'));
+});
+
+it('GS12 sorts the entire page while search hides rows, including zero matches', async () => {
+  const { fetch } = await mountStableSort();
+  clickSort('Submitted'); clickSort('Submitted');
+  const search = screen.getByRole('textbox', { name: 'Search goals' });
+  fireEvent.change(search, { target: { value: 'A-' } });
+  expect(stableRowKeys()).toEqual(goalKeys('A-new', 'A-old'));
+  clickSort('Cell');
+  fireEvent.change(search, { target: { value: 'no matches' } });
+  expect(stableRowKeys()).toEqual([]);
+  clickSort('Cell');
+  fireEvent.change(search, { target: { value: '' } });
+  expect(stableRowKeys()).toEqual(goalKeys('B-new', 'B-old', 'A-new', 'A-old'));
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it.each(['pageToken', 'scope', 'view', 'status', 'cellId', 'tenant'])('GS15 resets preceding ranks on %s changes while retaining active sort', async key => {
+  const { fetch, replace, rerender } = await mountStableSort();
+  timeThenCell();
+  replace(stableSortJobs());
+  if (key === 'tenant') rerender('other-tenant');
+  else fireEvent.click(screen.getByRole('button', { name: `Change ${key}`, exact: true }));
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(stableRowKeys()).toEqual(goalKeys('A-old', 'A-new', 'B-new', 'B-old')));
+  expect(screen.getByRole('columnheader', { name: /^Cell/ })).toHaveAttribute('aria-sort', 'ascending');
+});
+
+it('GS16 ignores a late old-page response and its tie positions', async () => {
+  await mountStableSort();
+  timeThenCell();
+  const pending: ((response: Response) => void)[] = [];
+  vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => pending.push(resolve))));
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Change pageToken', exact: true }));
+  await waitFor(() => expect(pending).toHaveLength(2));
+  await act(async () => pending[1](new Response(JSON.stringify({ jobs: stableSortJobs() }))));
+  expect(stableRowKeys()).toEqual(goalKeys('A-old', 'A-new', 'B-new', 'B-old'));
+  await act(async () => pending[0](new Response(JSON.stringify({ jobs: stableSortJobs().reverse() }))));
+  expect(stableRowKeys()).toEqual(goalKeys('A-old', 'A-new', 'B-new', 'B-old'));
+  clickSort('Cell');
+  expect(stableRowKeys()).toEqual(goalKeys('B-new', 'B-old', 'A-old', 'A-new'));
+});

@@ -1,5 +1,5 @@
 import { cellLabel } from '../utils/cellPresentation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, Button, Card, Checkbox, Empty, Input, Space, Spin, Table, Tooltip, Typography, theme } from 'antd';
 import { CopyOutlined, FilterFilled, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
@@ -23,11 +23,19 @@ import CompactFilter from './CompactFilter';
 import { useCompact } from '../hooks/useCompact';
 import { useCells } from '../hooks/useCells';
 import { matchesSearchTerms, searchTerms } from '../utils/searchTerms';
+import { orderGoalRows } from '../utils/goalRowOrder';
 
 const { Text, Title } = Typography;
 type Props = { projectId: string; goalId?: string };
 type JobGroup = { key: string; goalId?: string; jobs: RecipeJobSummary[] };
 type Row = { key: string; group: JobGroup; job: RecipeJobSummary };
+const fullPrompt = (group: JobGroup) => latestActiveJob(group.jobs).title || latestActiveJob(group.jobs).prompt || group.jobs.find(job => job.prompt?.trim())?.prompt;
+const rowComparisons = {
+  cell: (a: Row, b: Row) => cellLabel(a.job.cell_name).localeCompare(cellLabel(b.job.cell_name)),
+  prompt: (a: Row, b: Row) => (fullPrompt(a.group) || 'Untitled goal').localeCompare(fullPrompt(b.group) || 'Untitled goal'),
+  status: (a: Row, b: Row) => jobStatus(a.job).label.localeCompare(jobStatus(b.job).label),
+  submitted: (a: Row, b: Row) => jobTimestamp(a.job) - jobTimestamp(b.job),
+};
 function CopyJobId({ jobId }: { jobId: string }) {
   const [feedback, setFeedback] = useState<'success' | 'failure' | null>(null);
   const attempt = useRef(0);
@@ -78,7 +86,10 @@ function JobsList({ projectId, goalId }: Props) {
     : location.pathname + location.search;
   const navigationState = (id?: string) => ({ goalsReturnTo, goalId: id,
     ...(goalId ? { goalReturnTo: location.pathname + location.search } : {}) });
-  const [jobs, setJobs] = useState<RecipeJobSummary[]>([]);
+  // Keep rows attached to the result set that actually loaded them, including
+  // while a different page is still in flight.
+  const [loadedPage, setLoadedPage] = useState<{ jobs: RecipeJobSummary[]; resultSet?: string }>({ jobs: [] });
+  const { jobs } = loadedPage;
   const [nextPage, setNextPage] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -112,6 +123,7 @@ function JobsList({ projectId, goalId }: Props) {
   const includeHidden = !!goalId || filters.view === 'all';
   const noStatuses = !goalId && filters.status?.length === 0;
   const noCells = !goalId && filters.cell?.length === 0;
+  const resultSet = JSON.stringify([projectId, goalId, pageToken, statusesKey, cellsKey, includeHidden, rootOnly]);
   const search = params.get('q') || '';
   const terms = searchTerms(search);
   const sortOrder = (column: string): SortOrder => params.get('sort') === column
@@ -129,7 +141,7 @@ function JobsList({ projectId, goalId }: Props) {
     setLoading(true); setError(undefined);
     const scope = JSON.stringify([projectId, goalId, statusesKey, cellsKey, includeHidden, rootOnly]);
     if (loadedScope.current !== scope) {
-      setJobs([]); setNextPage(undefined); setSelectedIds([]);
+      setLoadedPage({ jobs: [] }); setNextPage(undefined); setSelectedIds([]);
       inspectionRequests.current.clear();
       loadedScope.current = scope;
     }
@@ -148,16 +160,16 @@ function JobsList({ projectId, goalId }: Props) {
         && emptyPrefix.current.refresh === refresh && emptyPrefix.current.next === pageToken);
       emptyPrefix.current = { scope, refresh, next: !retained.length && prefixKnown ? page.next_page_token : undefined };
       setGoalAbsenceKnown(!!goalId && !retained.length && prefixKnown && !page.next_page_token);
-      setJobs(retained); setNextPage(page.next_page_token);
+      setLoadedPage({ jobs: retained, resultSet }); setNextPage(page.next_page_token);
       setSelectedIds(previous => previous.filter(id => page.jobs.some(job => job.job_id === id)));
     })().catch(reason => {
       if (version === loadVersion.current) {
-        setJobs([]); setNextPage(undefined); setSelectedIds([]);
+        setLoadedPage({ jobs: [] }); setNextPage(undefined); setSelectedIds([]);
         setError(reason instanceof Error ? reason.message : 'Could not load goals');
       }
     }).finally(() => { if (version === loadVersion.current) setLoading(false); });
     return () => { loadVersion.current++; };
-  }, [projectId, goalId, pageToken, statusesKey, cellsKey, includeHidden, rootOnly, noStatuses, noCells, refresh]);
+  }, [projectId, goalId, pageToken, statusesKey, cellsKey, includeHidden, rootOnly, noStatuses, noCells, refresh, resultSet]);
 
   // The backend applies cell selection before pagination and goal grouping.
   const groups = useMemo(() => {
@@ -173,11 +185,22 @@ function JobsList({ projectId, goalId }: Props) {
     }
     return [...grouped.values()];
   }, [jobs, goalId]);
-  // Search complete prompts (including other attempts), even when the row uses
-  // a title or an abbreviated prompt. Keep the entire matching goal together.
-  const rows: Row[] = noStatuses || noCells ? [] : groups.filter(group => group.jobs.some(job =>
+  const allRows = useMemo<Row[]>(() => groups.map(group => ({ key: group.key, group, job: latestActiveJob(group.jobs) })), [groups]);
+  const activeColumn = Object.keys(rowComparisons).find(column => column === params.get('sort')) as keyof typeof rowComparisons | undefined;
+  const activeOrder = activeColumn ? sortOrder(activeColumn) : null;
+  const compare = activeColumn && activeOrder ? rowComparisons[activeColumn] : undefined;
+  const [ordered, setOrdered] = useState<{ resultSet?: string; rows: Row[]; positions: Map<string, number> }>({ rows: [], positions: new Map() });
+  // Capture complete-page ranks only for data/sort transitions. Search, layout,
+  // selection and expansion never become ordering operations. Commit before
+  // paint so both layouts always display the same transitioned order.
+  useLayoutEffect(() => {
+    setOrdered(previous => ({ resultSet: loadedPage.resultSet, ...orderGoalRows(allRows,
+      previous.resultSet === loadedPage.resultSet ? previous.positions : new Map(), compare, activeOrder || 'ascend') }));
+  }, [allRows, loadedPage.resultSet, compare, activeOrder]);
+  // Search complete prompts (including other attempts) after ordering the page.
+  const rows = noStatuses || noCells ? [] : ordered.rows.filter(({ group }) => group.jobs.some(job =>
     [job.prompt, job.title].some(text => matchesSearchTerms(terms, text)),
-  )).map(group => ({ key: group.key, group, job: latestActiveJob(group.jobs) }));
+  ));
   const statusOptions = jobStatusOptions(jobs, filters.status || []);
   const cellOptions = registry.cells.map(cell => ({ value: cell.id, label: `${cell.name}${cell.state === 'RETIRED' ? ' (retired)' : ''}` }));
   for (const id of filters.cell || []) if (!cellOptions.some(option => option.value === id)) cellOptions.push({ value: id, label: `Selected cell (${id})` });
@@ -188,7 +211,6 @@ function JobsList({ projectId, goalId }: Props) {
     filterIcon: <FilterFilled aria-label={label} style={{ color: selected === null ? token.colorTextDescription : token.colorPrimary }} tabIndex={0}
       onKeyDown={(event: React.KeyboardEvent<HTMLSpanElement>) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); event.currentTarget.click(); } }} />,
   });
-  const fullPrompt = (group: JobGroup) => latestActiveJob(group.jobs).title || latestActiveJob(group.jobs).prompt || group.jobs.find(job => job.prompt?.trim())?.prompt;
   const setSelection = (ids: string[], selected: boolean) => setSelectedIds(previous => selected
     ? [...new Set([...previous, ...ids])] : previous.filter(id => !ids.includes(id)));
   const onTableChange: TableProps<Row>['onChange'] = (_, columnFilters, sorter, extra) => {
@@ -218,9 +240,9 @@ function JobsList({ projectId, goalId }: Props) {
     }
   };
   const columns: ColumnsType<Row> = [
-    { title: 'Cell', key: 'cell', width: 140, sorter: (a, b) => cellLabel(a.job.cell_name).localeCompare(cellLabel(b.job.cell_name)), sortOrder: sortOrder('cell'),
+    { title: 'Cell', key: 'cell', width: 140, sorter: true, sortOrder: sortOrder('cell'),
       ...checkboxFilter('Filter cells', cellOptions, filters.cell), render: (_, { job }) => cellLabel(job.cell_name) },
-    { title: 'Goal', key: 'prompt', sorter: (a, b) => (fullPrompt(a.group) || 'Untitled goal').localeCompare(fullPrompt(b.group) || 'Untitled goal'), sortOrder: sortOrder('prompt'), render: (_, row) => { const { group, job } = row; return <Space direction="vertical" size={2}>
+    { title: 'Goal', key: 'prompt', sorter: true, sortOrder: sortOrder('prompt'), render: (_, row) => { const { group, job } = row; return <Space direction="vertical" size={2}>
       <Space align="start">
         <GoalExpander expanded={isExpanded(row)} onToggle={() => expand(!isExpanded(row), row)} />
       <div className="goal-title-with-copy"><Link className="goal-prompt compact-touch-link" to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)}>
@@ -234,10 +256,10 @@ function JobsList({ projectId, goalId }: Props) {
       <JobExecutionRequirements execution={job.execution} />
     </Space>; } },
     { title: 'Status', key: 'status', width: 180,
-      sorter: (a, b) => jobStatus(a.job).label.localeCompare(jobStatus(b.job).label), sortOrder: sortOrder('status'),
+      sorter: true, sortOrder: sortOrder('status'),
       ...checkboxFilter('Filter statuses', statusOptions, filters.status),
       render: (_, { job, group }) => <Link className="compact-touch-link" to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)} aria-label={`Job ${job.job_id}: ${jobStatus(job).label}`}><AttemptStatus job={job} /></Link> },
-    { title: 'Submitted', key: 'submitted', width: 185, sorter: (a, b) => jobTimestamp(a.job) - jobTimestamp(b.job), sortOrder: sortOrder('submitted'), render: (_, { job }) => jobTime(job.submitted_at || job.created_at) || '—' },
+    { title: 'Submitted', key: 'submitted', width: 185, sorter: true, sortOrder: sortOrder('submitted'), render: (_, { job }) => jobTime(job.submitted_at || job.created_at) || '—' },
     { title: 'Links', key: 'links', width: 180, render: (_, { job, group }) => <Space direction="vertical" size={2}>
       {group.goalId && <Link className="compact-touch-link" to={goalPath(projectId, group.goalId)} state={{ goalsReturnTo }}>Goal overview</Link>}
       {job.parent?.job_id && <Link className="compact-touch-link" to={jobPath(job.parent.tenant_id || projectId, job.parent.job_id)}>Parent</Link>}
@@ -272,12 +294,6 @@ function JobsList({ projectId, goalId }: Props) {
       for (const key of ['pageToken', 'expanded', 'inspect', 'detail']) query.delete(key);
     });
   };
-  const mobileSort = columns.find(column => column.key === params.get('sort'));
-  const mobileRows = [...rows];
-  if (mobileSort && typeof mobileSort.sorter === 'function' && sortOrder(String(mobileSort.key))) {
-    const compare = mobileSort.sorter;
-    mobileRows.sort((a, b) => compare(a, b, sortOrder(String(mobileSort.key))) * (sortOrder(String(mobileSort.key)) === 'descend' ? -1 : 1));
-  }
   const applyCompactFilter = (key: 'status' | 'cell', values: string[]) => {
     // Reuse the table's filter transition, including URL and selection semantics.
     onTableChange?.({}, {
@@ -348,7 +364,7 @@ function JobsList({ projectId, goalId }: Props) {
           </Space><p>Cell filtering applies across pages. Search and sorting apply to the current page.</p></div>
           {!!rows.length && <Checkbox disabled={loading} checked={rows.every(row => row.group.jobs.every(job => selectedIds.includes(job.job_id)))} indeterminate={!!selectedIds.length && !rows.every(row => row.group.jobs.every(job => selectedIds.includes(job.job_id)))} onChange={event => setSelection(rows.flatMap(row => row.group.jobs.map(job => job.job_id)), event.target.checked)}>Select all goals on this page</Checkbox>}
           <div className="compact-cards" aria-label="Goals">
-            {mobileRows.map((row, index) => <Card key={row.key} size="small" className="goal-card">
+            {rows.map((row, index) => <Card key={row.key} size="small" className="goal-card">
               <div className="goal-card-summary">
                 <Checkbox disabled={loading} checked={row.group.jobs.every(job => selectedIds.includes(job.job_id))} indeterminate={row.group.jobs.some(job => selectedIds.includes(job.job_id)) && !row.group.jobs.every(job => selectedIds.includes(job.job_id))} onChange={event => setSelection(row.group.jobs.map(job => job.job_id), event.target.checked)} aria-label={row.group.jobs.length === 1 ? `Select job ${row.job.job_id}` : `Select attempts for ${abbreviatePrompt(fullPrompt(row.group) || 'Untitled goal')}`} />
                 <div className="goal-title-with-copy"><Link className="goal-prompt compact-touch-link" to={`${jobPath(projectId, row.job.job_id)}${jobFilterSearch(params)}`} state={navigationState(row.group.goalId)}>
