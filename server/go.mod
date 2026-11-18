@@ -3,7 +3,7 @@ module github.com/colony-2/colony2/server
 go 1.26
 
 require (
-	github.com/colony-2/c2j v0.0.129-0.20261116221424-a83cca80a9c6
+	github.com/colony-2/c2j v0.0.129-0.20261118001543-b9d8dae96cb3
 	github.com/colony-2/cortex-assistant v0.0.0-20261112203308-0561937f92a8
 	github.com/colony-2/jobdb v0.0.89-0.20261117003434-d58b8d5c4e3b
 	github.com/google/uuid v1.6.0

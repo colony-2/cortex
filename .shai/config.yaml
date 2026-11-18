@@ -93,7 +93,13 @@ resources:
       - microsoft.com
       - go.dev
       - google.com
+      - cache.nixos.org
+      - cachix.org
     ports:
+      - host: 192.168.1.195
+        port: 9047
+      - host: 192.168.1.195
+        port: 8081
       - host: github.com
         port: 22
 apply:

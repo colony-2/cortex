@@ -44,8 +44,8 @@ github.com/cockroachdb/swiss v0.0.0-20260820225851-333444432258 h1:IJ+uNItEm0qx9
 github.com/cockroachdb/swiss v0.0.0-20260820225851-333444432258/go.mod h1:yBRu/cnL4ks9bgy4vAASdjIW+/xMlFwuHKqtmh3GZQg=
 github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 h1:zuQyyAKVxetITBuuhv3BI9cMrmStnpT18zmgmTxunpo=
 github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06/go.mod h1:7nc4anLGjupUW/PeY5qiNYsdNXj7zopG+eqsS7To5IQ=
-github.com/colony-2/c2j v0.0.129-0.20261116221424-a83cca80a9c6 h1:CIut8q6LTi7kpdOz9jtv94P8Y5atTw7neN5AppK6q20=
-github.com/colony-2/c2j v0.0.129-0.20261116221424-a83cca80a9c6/go.mod h1:b1Bx/37/Vd7GyR8ZdZykMNnNwHxR/XPwhR9fGzbBeF8=
+github.com/colony-2/c2j v0.0.129-0.20261118001543-b9d8dae96cb3 h1:jUAhLalI3zjIvIGsV0E1xMjUNO+sGw1OF1eZXMIjxR8=
+github.com/colony-2/c2j v0.0.129-0.20261118001543-b9d8dae96cb3/go.mod h1:b1Bx/37/Vd7GyR8ZdZykMNnNwHxR/XPwhR9fGzbBeF8=
 github.com/colony-2/cortex-assistant v0.0.0-20261112203308-0561937f92a8 h1:6R2F1m15IE3IW6vloKJiSCTHrI0dGWns2C4RD4WzTTU=
 github.com/colony-2/cortex-assistant v0.0.0-20261112203308-0561937f92a8/go.mod h1:Gq5BVPxEmaGGq0ay1Q0kaQKW1kSvXcUP1QyXXOo+C4M=
 github.com/colony-2/jobdb v0.0.89-0.20261117003434-d58b8d5c4e3b h1:nDzUYIdcNv5Xa6Ov37t7dfaoxIOrgP1br/VHGIMm2K0=
