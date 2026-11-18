@@ -188,6 +188,12 @@ The visible/total count reflects filters; the navigation badge counts the full q
 Controls persist in the URL through reload, opening a request and returning or
 responding. Reset restores all cells, blank search and oldest first. On phones,
 expand **Filters and sorting** to use the controls.
+
+A waiting job’s Conversation tab shows the review title, instructions, and document
+count for both `kind: review` and `review/v2` requests. **Open review** goes directly
+to its review page. Ordinary input requests use **Open form** and open inline in
+the story.
+
 Open a review to switch between its documents, view Markdown rendered or as its
 exact source, and answer the recipe's questions. Original documents are read only;
 file-upload questions attach separate response documents (one file per question,

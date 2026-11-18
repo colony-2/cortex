@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import JobStoryPage from './JobStoryPage';
+import { amendedReviewV2Fixture } from '../../../shared/src/test/reviewV2Fixture';
 import JobsListPage from './JobsListPage';
 import * as storyTree from '../utils/storyTree';
 import { jobIdentity, registryCell } from '../test/cellFixtures';
@@ -147,8 +148,11 @@ describe('job story history', () => {
   });
 
   it('uses descending job attempt tabs and preserves inspected failures across refresh', async () => {
-    const fetchMock = mount();
-    await screen.findByText('Development.Design.Task 3.2');
+    // Settle the mocked initial reads before checking the rendered tree.
+    // Its first commit can exceed the default polling wait on shared CI.
+    let fetchMock!: ReturnType<typeof mount>;
+    await act(async () => { fetchMock = mount(); });
+    expect(screen.getByText('Development.Design.Task 3.2')).toBeVisible();
     fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
     const mainTree = screen.getByRole('tree');
     expect(within(mainTree).queryByText(/Task 1/)).not.toBeInTheDocument();
@@ -1395,7 +1399,7 @@ describe('Conversation tab layout', () => {
     });
     try {
       mount('?input=1&taskOrdinal=10', { ...story, root: null });
-      expect(await screen.findByRole('link', { name: 'Open Review', exact: true })).toHaveAttribute('href', '/project/tenant/reviews/job');
+      expect(await screen.findByRole('link', { name: 'Open review', exact: true })).toHaveAttribute('href', '/project/tenant/reviews/job');
       expect(screen.getByRole('tab', { name: 'Conversation' })).toHaveAttribute('aria-selected', 'true');
       expect(screen.queryByRole('tree')).toBeNull();
       expect(read).toHaveBeenCalledWith('tenant', 'job');
@@ -2298,4 +2302,226 @@ it.each(['job','child'])('refreshes the story header and pending inputs only for
  await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
  expect(getJob).toHaveBeenCalledTimes(before+(selected==='job'?1:0));
  expect(inputState.refresh).toHaveBeenCalledTimes(inputsBefore+(selected==='job'?1:0));
+});
+
+describe('current request callout', () => {
+  const details = (form: import('@colony2/shared').InputFormConfig): import('@colony2/shared').UserInputDetails => ({
+    jobId: 'job', status: 'pending', startTime: '', task_ordinal: 10, form,
+  });
+  const review = { kind: 'review', request_id: 'first', title: 'Release design', fields: [
+    { id: 'decision', type: 'multiple_choice' as const, required: true, question: 'How should we proceed?', options: [{ value: 'approve' }] },
+  ], documents: {
+    design: { kind: 'stored' as const, stored: { key: { jobId: 'job', taskOrdinal: 1, name: 'design.md', sizeBytes: 1 } } },
+  } };
+  beforeEach(() => {
+    inputState.pendingInputs = [{ id: 'job', request_id: 'first' }];
+    vi.spyOn(inputActivityService, 'getInputDetails').mockResolvedValue(details(review));
+  });
+  afterEach(() => vi.mocked(inputActivityService.getInputDetails).mockRestore());
+  function requestHost(search = '', tenant = 'tenant', job = 'job') {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Execution unavailable')));
+    function Host() {
+      const params = useParams();
+      const location = useLocation();
+      return <><JobStoryPage projectId={params.projectId!} /><output data-testid="request-location">{location.pathname}{location.search}{JSON.stringify(location.state)}</output></>;
+    }
+    const view = () => <MemoryRouter initialEntries={[{ pathname: `/project/${tenant}/jobs/${job}/story`, search, state: { returnTo: '/project/tenant/jobs', keep: true } }]}>
+      <Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<Host />} />
+        <Route path="/project/:projectId/reviews/:jobId" element={<div>Review reader destination</div>} /></Routes>
+    </MemoryRouter>;
+    const mounted = render(view());
+    return () => mounted.rerender(view());
+  }
+  it('DR-01,02 shows review context before history with one direct action and no response controls', async () => {
+    requestHost();
+    const action = await screen.findByRole('link', { name: 'Open review', exact: true });
+    const callout = action.closest('.ant-alert')!;
+    expect(within(callout as HTMLElement).getByText('Review requested')).toBeVisible();
+    expect(callout).toHaveTextContent('Release design');
+    expect(callout).toHaveTextContent('How should we proceed?');
+    expect(callout).toHaveTextContent('1 document');
+    expect(callout.compareDocumentPosition(screen.getByRole('region', { name: 'Input history' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getAllByRole('link', { name: 'Open review' })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Submit', exact: true })).toBeNull();
+    expect(action).toHaveAttribute('href', '/project/tenant/reviews/job');
+    fireEvent.click(action);
+    expect(screen.getByText('Review reader destination')).toBeVisible();
+  });
+  it('DR-02 encodes tenant and job in the review route', async () => {
+    inputState.pendingInputs = [{ id: 'job /?#' }];
+    requestHost('', 'tenant%20%2F%3F%23', 'job%20%2F%3F%23');
+    expect(await screen.findByRole('link', { name: 'Open review' })).toHaveAttribute('href', '/project/tenant%20%2F%3F%23/reviews/job%20%2F%3F%23');
+  });
+  it.each(['', '?input=1'])('opens review/v2 directly with its request context: %s', async search => {
+    const request = amendedReviewV2Fixture();
+    vi.mocked(inputActivityService.getInputDetails).mockResolvedValue(details({
+      title: 'Outer request title', presentation: { type: 'review/v2' }, request,
+    }));
+    requestHost(search);
+    const action = await screen.findByRole('link', { name: 'Open review', exact: true });
+    const callout = action.closest('.ant-alert')!;
+    expect(callout).toHaveTextContent('Review requested');
+    expect(callout).toHaveTextContent(request.title);
+    expect(callout).toHaveTextContent(request.question);
+    expect(callout).toHaveTextContent('1 document');
+    expect(screen.queryByRole('button', { name: 'Open form' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Submit', exact: true })).toBeNull();
+    fireEvent.click(action);
+    expect(screen.getByText('Review reader destination')).toBeVisible();
+  });
+  it('leaves incompatible review/v2 validation to the review reader', async () => {
+    vi.mocked(inputActivityService.getInputDetails).mockResolvedValue(details({
+      title: 'Incompatible review', presentation: { type: 'review/v2' }, request: {},
+    }));
+    requestHost('?input=1');
+    fireEvent.click(await screen.findByRole('link', { name: 'Open review', exact: true }));
+    expect(screen.getByText('Review reader destination')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Submit', exact: true })).toBeNull();
+  });
+  it.each([undefined, 'form', 'Review'])('DR-03,04 opens ordinary kind %s inline, preserving query and navigation state', async kind => {
+    vi.mocked(inputActivityService.getInputDetails).mockResolvedValue(details({ kind, title: 'Review this value', fields: [{ id: 'answer', type: 'short_answer', question: 'Release note', required: true }] }));
+    requestHost('?filter=mine');
+    fireEvent.click(await screen.findByRole('button', { name: 'Open form' }));
+    expect(screen.getByText('Your input is needed')).toBeVisible();
+    expect(screen.getByLabelText('Release note')).toBeVisible();
+    expect(screen.getByTestId('request-location')).toHaveTextContent('filter=mine&input=1&tab=conversation&taskOrdinal=10');
+    expect(screen.getByTestId('request-location')).toHaveTextContent('"keep":true');
+    expect(screen.queryByRole('link', { name: 'Open review' })).toBeNull();
+  });
+  it('DR-05 legacy review input links retain one callout without redirect or intermediate card', async () => {
+    requestHost('?input=1');
+    await screen.findByRole('link', { name: 'Open review' });
+    expect(screen.getByTestId('request-location')).toHaveTextContent('/story?input=1');
+    expect(screen.queryByText('Review reader destination')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Submit' })).toBeNull();
+    expect(screen.getAllByText('Release design')).toHaveLength(1);
+  });
+  it('DR-05 legacy ordinary input links still show inline fields', async () => {
+    vi.mocked(inputActivityService.getInputDetails).mockResolvedValue(details({ question: 'Name the release' }));
+    requestHost('?input=1');
+    expect(await screen.findByLabelText('Name the release')).toBeVisible();
+  });
+  it.each(['requestId', 'occurrenceId'])('DR-06 does not load current details for explicit %s selections', async parameter => {
+    requestHost(`?${parameter}=missing&input=1`);
+    expect(await screen.findByText('Request unavailable', { selector: '.ant-alert-message' })).toBeVisible();
+    expect(inputActivityService.getInputDetails).not.toHaveBeenCalled();
+    expect(screen.queryByRole('link', { name: 'Open review' })).toBeNull();
+  });
+  it('DR-07 shows only loading while request kind is unknown', async () => {
+    const read = deferred<import('@colony2/shared').UserInputDetails>();
+    vi.mocked(inputActivityService.getInputDetails).mockReturnValue(read.promise);
+    requestHost('?input=1');
+    expect(screen.getByText('Loading request…')).toBeVisible();
+    expect(screen.queryByRole('link', { name: 'Open review' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open form' })).toBeNull();
+    await act(async () => read.resolve(details(review)));
+    expect(screen.getByRole('link', { name: 'Open review' })).toBeVisible();
+  });
+  it('DR-08,09 retries repeated failures without restoring stale actions', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(inputActivityService.getInputDetails).mockRejectedValueOnce(new Error('Unavailable')).mockRejectedValueOnce(new Error('Still unavailable')).mockResolvedValue(details(review));
+    requestHost();
+    await screen.findByText('Could not load this request');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
+    await screen.findByText('Still unavailable');
+    expect(screen.queryByRole('link', { name: 'Open review' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
+    expect(await screen.findByRole('link', { name: 'Open review' })).toBeVisible();
+    expect(screen.queryByText('Still unavailable')).toBeNull();
+    log.mockRestore();
+  });
+  it('DR-11 replaces review with form and form with review while continuously pending', async () => {
+    const update = requestHost();
+    await screen.findByRole('link', { name: 'Open review' });
+    const form = deferred<import('@colony2/shared').UserInputDetails>();
+    vi.mocked(inputActivityService.getInputDetails).mockReturnValueOnce(form.promise);
+    inputState.pendingInputs = [{ id: 'job', request_id: 'second' }];
+    update();
+    expect(screen.queryByText('Release design')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Open review' })).toBeNull();
+    expect(screen.getByText('Loading request…')).toBeVisible();
+    await act(async () => form.resolve(details({ question: 'Name the release', request_id: 'second' })));
+    expect(screen.getByRole('button', { name: 'Open form' })).toBeVisible();
+    inputState.pendingInputs = [{ id: 'job', request_id: 'third' }];
+    update();
+    expect(await screen.findByRole('link', { name: 'Open review' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Open form' })).toBeNull();
+  });
+  it.each(['success', 'failure'])('DR-11 ignores superseded same-job %s reads', async outcome => {
+    const stale = deferred<import('@colony2/shared').UserInputDetails>();
+    vi.mocked(inputActivityService.getInputDetails).mockReturnValueOnce(stale.promise);
+    const update = requestHost();
+    inputState.pendingInputs = [{ id: 'job', request_id: 'replacement' }];
+    update();
+    await screen.findByRole('link', { name: 'Open review' });
+    await act(async () => outcome === 'success' ? stale.resolve(details({ question: 'Obsolete question' })) : stale.reject(new Error('Obsolete failure')));
+    expect(screen.queryByText('Obsolete question')).toBeNull();
+    expect(screen.queryByText('Obsolete failure')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Open review' })).toBeVisible();
+  });
+  it.each([true, false])('DR-12 removes requests and ignores late responses (loaded: %s)', async loaded => {
+    const late = deferred<import('@colony2/shared').UserInputDetails>();
+    if (!loaded) vi.mocked(inputActivityService.getInputDetails).mockReturnValueOnce(late.promise);
+    const update = requestHost();
+    if (loaded) await screen.findByRole('link', { name: 'Open review' });
+    inputState.pendingInputs = [];
+    update();
+    await act(async () => late.resolve(details(review)));
+    expect(screen.queryByRole('link', { name: 'Open review' })).toBeNull();
+    expect(screen.queryByText('Release design')).toBeNull();
+    expect(screen.queryByText('Loading request…')).toBeNull();
+  });
+  it.each([
+    { form: { kind: 'review', title: '  ', question: 'Question title' }, title: 'Question title', instruction: 'Review the documents and respond.' },
+    { form: { kind: 'review', title: '  ', question: ' ' }, title: 'Review', instruction: 'Review the documents and respond.' },
+    { form: { kind: 'review', title: 'Design', question: 'Read the documents' }, title: 'Design', instruction: 'Read the documents' },
+    { form: { ...review, title: 'How should we proceed?' }, title: 'How should we proceed?', instruction: 'Review the documents and respond.' },
+    { form: { title: ' ', question: ' ' }, title: 'Input request', instruction: undefined },
+  ])('DR-13,14 uses nonblank title and distinct instruction fallbacks: $title / $instruction', async ({ form, title, instruction }) => {
+    vi.mocked(inputActivityService.getInputDetails).mockResolvedValue(details(form));
+    requestHost();
+    await screen.findByText(title, { selector: '.pending-request-title' });
+    if (instruction) expect(screen.getByText(instruction, { selector: '.pending-request-instructions' })).toBeVisible();
+  });
+  it.each([0, 1, 2])('DR-15 counts %s document entries without metadata', async count => {
+    const documents = Object.fromEntries(Array.from({ length: count }, (_, i) => [String(i), review.documents.design]));
+    vi.mocked(inputActivityService.getInputDetails).mockResolvedValue(details({ ...review, documents }));
+    requestHost();
+    await screen.findByRole('link', { name: 'Open review' });
+    if (count) expect(screen.getByText(`${count} ${count === 1 ? 'document' : 'documents'}`)).toBeVisible();
+    else expect(document.querySelector('.pending-request-count')).toBeNull();
+  });
+  it('DR-16 renders supplied markup literally', async () => {
+    const title = '<img src=x onerror=alert(1)>';
+    const instruction = '[unsafe](https://invalid.example) <script>bad()</script>';
+    vi.mocked(inputActivityService.getInputDetails).mockResolvedValue(details({ ...review, title, fields: [{ ...review.fields[0], question: instruction }] }));
+    requestHost();
+    expect(await screen.findByText(title)).toBeVisible();
+    expect(screen.getByText(instruction)).toBeVisible();
+    expect(document.querySelector('.pending-request-content img, .pending-request-content script, .pending-request-content a')).toBeNull();
+  });
+  it('DR-17 remains independent of execution and is hidden on other tabs', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    requestHost();
+    await screen.findByRole('link', { name: 'Open review' });
+    fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
+    expect(screen.queryByRole('link', { name: 'Open review' })).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'Conversation', exact: true }));
+    expect(screen.getByRole('link', { name: 'Open review' })).toBeVisible();
+    log.mockRestore();
+  });
+  it.each(['job', 'tenant'].flatMap(change => ['success', 'failure'].map(outcome => ({ change, outcome }))))('DR-10 clears request state across $change navigation and late $outcome', async ({ change, outcome }) => {
+    const stale = deferred<import('@colony2/shared').UserInputDetails>();
+    vi.mocked(inputActivityService.getInputDetails).mockReturnValueOnce(stale.promise);
+    let navigate!: ReturnType<typeof useNavigate>;
+    function Nav() { navigate = useNavigate(); return null; }
+    function Host() { return <JobStoryPage projectId={useParams().projectId!} />; }
+    render(<MemoryRouter initialEntries={['/project/tenant/jobs/job/story?input=1']}><Nav /><Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<Host />} /></Routes></MemoryRouter>);
+    act(() => navigate(change === 'job' ? '/project/tenant/jobs/new/story?input=1' : '/project/other/jobs/job/story?input=1'));
+    await screen.findByRole('link', { name: 'Open review' });
+    await act(async () => outcome === 'success' ? stale.resolve(details({ ...review, title: 'Obsolete title' })) : stale.reject(new Error('Obsolete failure')));
+    expect(screen.queryByText('Obsolete title')).toBeNull();
+    expect(screen.queryByText('Obsolete failure')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Open review' })).toHaveAttribute('href', change === 'job' ? '/project/tenant/reviews/new' : '/project/other/reviews/job');
+  });
 });

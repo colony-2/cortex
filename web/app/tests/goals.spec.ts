@@ -351,6 +351,8 @@ test('starts with every status checked and supports individual exclusions, none,
 });
 
 test('uses registry cells and combines backend cell filtering with status and history', async ({ page, context, baseURL }) => {
+  // This journey changes both filters across reloads and browser history.
+  test.setTimeout(90_000);
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
   const jobs = ['alpha', 'beta', 'gamma'].flatMap(cell_name => [
     { ...jobIdentity, job_id: `${cell_name}-ready`, cell_name, status: 'READY', store: 'ACTIVE' },

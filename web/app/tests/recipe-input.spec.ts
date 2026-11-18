@@ -13,8 +13,8 @@ import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 
 async function openPendingInput(page: Page) {
-  await page.getByRole('tab', { name: 'Trace', exact: true }).click();
-  await page.getByRole('tab', { name: 'Pending Input', exact: true }).click();
+  await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+  await page.getByRole('button', { name: 'Open form', exact: true }).click();
 }
 
 const longReviewFeedback = 'Please clarify the ownership boundary before approval.\n'.repeat(38)
@@ -247,27 +247,14 @@ for (const multiField of [false, true]) {
       // Kill the worker while the request is pending: the answer must survive
       // in JobDB and be picked up by a fresh worker, not an in-process promise.
       await stopWorker();
-      if (multiField) {
-        await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
-        await openPendingInput(page);
-      } else {
-        const inspections: string[] = [];
-        page.on('request', req => {
-          if (req.url().endsWith(`/user-inputs/${jobID}`) || req.url().endsWith(`/jobs/${jobID}`)) inspections.push(req.url());
-        });
-        await page.setViewportSize({ width: 390, height: 844 });
-        await page.getByRole('button', { name: 'Open navigation' }).click();
-        await page.getByRole('link', { name: 'Reviews', exact: true }).click();
-        await expect(page.getByText(`Job ID: ${jobID}`, { exact: true })).toBeVisible();
-        expect(inspections).toEqual([]);
-        await expect(page.getByRole('link', { name: 'Pending Inputs', exact: true })).toHaveCount(0);
-        await page.getByRole('button', { name: 'Open Review', exact: true }).click();
-        await expect(page).toHaveURL(new RegExp(`/reviews/${jobID}$`));
-      }
+      if (!multiField) await page.setViewportSize({ width: 390, height: 844 });
+      await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
+      await openPendingInput(page);
       const question = multiField ? 'Release note' : 'What should the recipe publish?';
       await expect(page.getByLabel(question)).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath('ordinary-form-inline.png'), fullPage: true });
       await page.reload();
-      if (multiField) await openPendingInput(page);
+      await openPendingInput(page);
       // Required-field validation must keep the real request pending.
       await page.getByRole('button', { name: 'Submit', exact: true }).click();
       await expect(page.getByText(`${question} is required`, { exact: true })).toBeVisible();
@@ -611,12 +598,55 @@ for (const clarification of [false, true]) {
       await stopWorker();
       const job = await (await request.get(`/api/projects/${tenant}/jobs/${jobID}`)).json();
       expect(job.prompt).toBe(reviewGoalPrompt);
+      const details = await (await request.get(`/api/projects/${tenant}/user-inputs/${jobID}`)).json();
+      await page.bringToFront();
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(`/project/${tenant}/jobs/${jobID}/story?filter=mine`);
+      const openReview = page.getByRole('link', { name: 'Open review', exact: true });
+      const callout = page.locator('.pending-request-callout');
+      await expect(openReview).toHaveCount(1);
+      await expect(callout).toContainText('Review requested');
+      await expect(callout).toContainText('Review the release');
+      await expect(callout).toContainText('2 documents');
+      const origin = page.url();
+      await page.screenshot({ path: testInfo.outputPath('review-story-desktop.png'), fullPage: true });
       await page.setViewportSize({ width: 390, height: 844 });
-      await page.getByRole('button', { name: 'Open navigation' }).click();
-      await page.getByRole('link', { name: 'Reviews', exact: true }).click();
-      await expect(page.getByText(abbreviatePrompt(job.title || job.prompt), { exact: true })).toBeVisible();
-      await expect(page.getByText(`Cell: ${job.cell_name}`, { exact: true })).toBeVisible();
-      await page.getByRole('button', { name: 'Open Review', exact: true }).click();
+      if (clarification) {
+        const more = callout.getByRole('button', { name: 'Show more', exact: true });
+        await expect(more).toHaveAttribute('aria-expanded', 'false');
+        await more.focus();
+        await page.keyboard.press('Enter');
+        const less = callout.getByRole('button', { name: 'Show less', exact: true });
+        await expect(less).toHaveAttribute('aria-expanded', 'true');
+        await expect(callout.locator('.pending-request-instructions')).toContainText('Uploaded edits require another revision');
+        await page.keyboard.press('Enter');
+        await expect(more).toHaveAttribute('aria-expanded', 'false');
+      } else await expect(callout.getByRole('button', { name: 'Show more' })).toHaveCount(0);
+      // Compact header updates can move the callout after a resize. Measure
+      // both elements in one frame and wait for the responsive layout.
+      await expect.poll(() => callout.evaluate(element => {
+        const content = element.querySelector('.pending-request-content')!.getBoundingClientRect();
+        const action = element.querySelector('.pending-request-action')!.getBoundingClientRect();
+        return { stacked: action.top >= content.bottom, touchSized: action.height >= 44 };
+      })).toEqual({ stacked: true, touchSized: true });
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+      await openReview.focus();
+      await expect(openReview).toBeFocused();
+      await expect(openReview).toHaveCSS('outline-style', 'solid');
+      await page.screenshot({ path: testInfo.outputPath('review-story-phone.png'), fullPage: true });
+      await page.keyboard.press('Enter');
+      await expect.poll(() => {
+        const url = new URL(page.url());
+        return { pathname: url.pathname, requestId: url.searchParams.get('request_id'), documentId: url.searchParams.get('document_id') };
+      }).toEqual({ pathname: `/project/${tenant}/reviews/${jobID}`, requestId: details.form.request_id, documentId: 'design' });
+      await expect(page.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath('direct-review-destination.png'), fullPage: true });
+      expect(await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).toHaveLength(1);
+      await page.goBack();
+      await expect(page).toHaveURL(origin);
+      await expect(openReview).toBeVisible();
+      expect(await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).toHaveLength(1);
+      await openReview.click();
       await page.getByText('Goal context', { exact: true }).click();
       await page.getByText('Review instructions', { exact: true }).click();
       const goalPrompt = page.getByRole('region', { name: 'Goal prompt', exact: true });
@@ -644,7 +674,6 @@ for (const clarification of [false, true]) {
       await expect(page.getByRole('heading', { name: 'Rollout', exact: true })).toBeVisible();
       await expect(page.getByRole('checkbox')).toBeDisabled();
 
-      const details = await (await request.get(`/api/projects/${tenant}/user-inputs/${jobID}`)).json();
       const stale = await page.request.post(`/api/projects/${tenant}/reviews/${jobID}/respond`, {
         data: { request_id: 'old-request', submission_id: randomUUID(), fields: { decision: 'approve' } },
       });
@@ -1109,8 +1138,23 @@ test.describe('review/v2 continuous discussion',()=>{
   test('holds the retained reader while accepted history is delayed or unavailable',async({page,recipeRun},testInfo)=>{
     const {tenant,jobID,stopWorker}=recipeRun;
     await stopWorker();
-    await page.goto(`/project/${tenant}/reviews/${jobID}`);
+    await page.goto(`/project/${tenant}/jobs/${jobID}/story`);
+    const callout=page.locator('.pending-request-callout');
+    await expect(callout).toContainText('Review requested');
+    await expect(callout).toContainText('Keep unsent drafts');
+    await expect(callout).toContainText('Approve this direction so detailed planning can begin?');
+    await expect(callout).toContainText('2 documents');
+    await expect(page.getByRole('button',{name:'Open form',exact:true})).toHaveCount(0);
+    await page.screenshot({path:testInfo.outputPath('review-v2-story-desktop.png'),fullPage:true});
+    await page.setViewportSize({width:390,height:844});
+    const open=callout.getByRole('link',{name:'Open review',exact:true});
+    await open.focus();
+    await page.screenshot({path:testInfo.outputPath('review-v2-story-phone.png'),fullPage:true});
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(new RegExp(`/reviews/${jobID}\\?review_id=`));
     await expect(page.getByText('Original material remains readable while questions are answered.',{exact:true})).toBeVisible();
+    await page.screenshot({path:testInfo.outputPath('review-v2-direct-reader-phone.png'),fullPage:true});
+    await page.setViewportSize({width:1440,height:900});
     await page.getByRole('button',{name:'Show documents',exact:true}).click();
     await page.getByRole('button',{name:'Recovery notes',exact:false}).first().click();
     const original=page.getByRole('heading',{name:'Recovery',exact:true});
@@ -1335,4 +1379,42 @@ test.describe('review/v2 acceptance races',()=>{
   await expect(page.getByText('Job cancelled.',{exact:true})).toBeVisible();
   await expect(page.getByText('Retain this question.',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Ask a question',exact:true})).toHaveCount(0);
  });
+});
+
+test.describe('story review callout layout', () => {
+  test.use({ recipeFixture: 'browser-review' });
+  test('wraps long literal titles and measures instruction disclosure at each width', async ({ page, recipeRun }, testInfo) => {
+    const { tenant, jobID, stopWorker } = recipeRun;
+    await stopWorker();
+    await page.bringToFront();
+    const title = 'Review-' + 'long-title'.repeat(35);
+    const instruction = 'Read the design and rollout documents before choosing a decision. '.repeat(14);
+    await page.route(`**/api/projects/${tenant}/user-inputs/${jobID}`, async route => {
+      const response = await route.fetch();
+      const body = await response.json();
+      await route.fulfill({ response, json: { ...body, form: { ...body.form, title, fields: body.form.fields.map((field: { id: string }) => field.id === 'decision' ? { ...field, question: instruction } : field) } } });
+    });
+    const documentReads: string[] = [];
+    page.on('request', req => { if (req.url().includes('/documents?')) documentReads.push(req.url()); });
+    await page.goto(`/project/${tenant}/jobs/${jobID}/story`);
+    const callout = page.locator('.pending-request-callout');
+    const more = callout.getByRole('button', { name: 'Show more', exact: true });
+    for (const width of [1440, 768, 390, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(callout).toContainText(title);
+      await expect(more).toBeVisible();
+      await expect(more).toHaveAttribute('aria-expanded', 'false');
+      expect(await callout.locator('.pending-request-instructions').evaluate(el => el.clientHeight)).toBeLessThanOrEqual(66);
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+      await more.focus();
+      await page.keyboard.press('Enter');
+      const less = callout.getByRole('button', { name: 'Show less', exact: true });
+      await expect(less).toHaveAttribute('aria-expanded', 'true');
+      expect(await callout.locator('.pending-request-instructions').evaluate(el => el.clientHeight)).toBeGreaterThan(66);
+      await page.keyboard.press('Enter');
+      await expect(more).toHaveAttribute('aria-expanded', 'false');
+    }
+    expect(documentReads).toEqual([]);
+    await callout.screenshot({ path: testInfo.outputPath('long-review-callout-phone.png') });
+  });
 });

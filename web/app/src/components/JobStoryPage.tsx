@@ -11,7 +11,7 @@ import { cellLabel } from '../utils/cellPresentation';
 import { resolveArtifactLink, type NavigationIntent } from './review/artifactLinks';
 import ArtifactContents from './ArtifactContents';
 import './JobStoryPage.css';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import {
   Alert,
@@ -39,7 +39,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import ReactJson from 'react-json-view';
-import { API_BASE, inputActivityService, type UserInputDetails, type FormResponse, useInputActivity } from '@colony2/shared';
+import { API_BASE, inputActivityService, type UserInputDetails, type FormResponse, useInputActivity, parseReviewV2 } from '@colony2/shared';
 import InputFormRenderer from './InputFormRenderer';
 import AttemptTabs from './AttemptTabs';
 import CancelJobButton from './CancelJobButton';
@@ -53,12 +53,35 @@ import { goalPath } from './JobWaitLinks';
 import { jobFilterSearch } from '../utils/jobFilters';
 import { buildStoryTree, storyAttempts, storyNodeName, type ArtifactKey as StoredArtifactKey, type StoryNode, type StoryKind, type StoryNodeRef } from '../utils/storyTree';
 import { adaptInputFormConfig } from '../utils/formAdapter';
+import { reviewActionField } from '../utils/reviewForm';
 import type { RestartScope } from '@colony2/shared';
 import RestartContextPreview from './RestartContextPreview';
 import { buildContextPatch, type PatchLine, type ScopePatchLine } from '../utils/restartPatch';
 import { stringifyJobJSON, parseJobJSON, type RestartContext } from '@colony2/shared';
 
 const { Title, Text } = Typography;
+
+function ReviewInstructions({ text }: { text: string }) {
+  const id = useId();
+  const paragraph = useRef<HTMLParagraphElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  useLayoutEffect(() => {
+    const element = paragraph.current;
+    if (!element) return;
+    const measure = () => setOverflows(element.scrollHeight > parseFloat(getComputedStyle(element).lineHeight) * 3 + 1);
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure);
+    observer?.observe(element);
+    window.addEventListener('resize', measure);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
+  }, [text]);
+  return <>
+    <p ref={paragraph} id={id} className={`pending-request-instructions${expanded ? ' expanded' : ''}`}>{text}</p>
+    {overflows && <button className="pending-request-disclosure" aria-expanded={expanded} aria-controls={id}
+      onClick={() => setExpanded(value => !value)}>{expanded ? 'Show less' : 'Show more'}</button>}
+  </>;
+}
 
 function newId(): string {
   try {
@@ -288,9 +311,11 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const [inspection, setInspection] = useState<{ key: string; snapshot?: RestartContext }>();
   const [applyPatch, setApplyPatch] = useState(false);
 
-  const [pendingInputDetails, setPendingInputDetails] = useState<UserInputDetails | null>(null);
-  const [pendingInputLoading, setPendingInputLoading] = useState(false);
-  const [pendingInputError, setPendingInputError] = useState<string | null>(null);
+  const [pendingInputRetry, setPendingInputRetry] = useState(0);
+  const [pendingRequest, setPendingRequest] = useState<{
+    key: string; observedInputs: typeof pendingInputs;
+    details?: UserInputDetails; error?: string;
+  }>();
   const [pendingInputSubmitting, setPendingInputSubmitting] = useState(false);
 
   const jobId = routeJobId || '';
@@ -348,6 +373,15 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const taskOrdinalParam = taskOrdinalParamRaw ? Number(taskOrdinalParamRaw) : null;
 
   const isPendingInput = useMemo(() => pendingInputs.some((p) => p.id === jobId), [pendingInputs, jobId]);
+  const shouldLoadDetails = !!jobId && requestId === null && (isPendingInput || wantInput);
+  const pendingRequestKey = JSON.stringify([projectId, jobId, requestId, shouldLoadDetails, pendingInputRetry]);
+  // Invalidate at render time as well as cancelling reads: a replacement must
+  // never display the previous request's content or action for even one render.
+  const currentRequest = shouldLoadDetails && pendingRequest?.key === pendingRequestKey
+    && pendingRequest.observedInputs === pendingInputs ? pendingRequest : undefined;
+  const pendingInputDetails = currentRequest?.details;
+  const pendingInputError = currentRequest?.error;
+  const pendingInputLoading = shouldLoadDetails && !pendingInputDetails && !pendingInputError;
 
   const pendingTaskOrdinal = useMemo(() => {
     const details: any = pendingInputDetails;
@@ -526,40 +560,28 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   }, [restartOpen, story]);
 
   useEffect(() => {
-    const shouldLoadDetails = !!jobId && requestId === null && (isPendingInput || wantInput);
-    if (!shouldLoadDetails) {
-      setPendingInputDetails(null);
-      setPendingInputError(null);
-      setPendingInputLoading(false);
-      return;
-    }
+    if (!shouldLoadDetails) return;
 
     let cancelled = false;
-    setPendingInputDetails(null);
-    setPendingInputLoading(true);
-    setPendingInputError(null);
+    setPendingRequest(undefined);
 
     inputActivityService
       .getInputDetails(projectId, jobId)
       .then((d) => {
         if (cancelled) return;
-        setPendingInputDetails(d);
+        setPendingRequest({ key: pendingRequestKey, observedInputs: pendingInputs, details: d });
       })
       .catch((e) => {
         if (cancelled) return;
         console.error('Failed to load pending input details', e);
-        setPendingInputError(e instanceof Error ? e.message : 'Failed to load pending input details');
-        setPendingInputDetails(null);
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setPendingInputLoading(false);
+        setPendingRequest({ key: pendingRequestKey, observedInputs: pendingInputs,
+          error: e instanceof Error && e.message.trim() ? e.message : 'Failed to load pending input details' });
       });
 
     return () => {
       cancelled = true;
     };
-  }, [projectId, jobId, isPendingInput, wantInput, pendingInputs, requestId]);
+  }, [projectId, jobId, shouldLoadDetails, pendingInputs, pendingRequestKey]);
 
   // Browser history changes the URL without reloading the job. Restore the
   // recorded execution selection while retaining the selected top-level tab.
@@ -807,6 +829,18 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   );
 
   const pendingInputForm = pendingInputDetails ? adaptInputFormConfig(pendingInputDetails.form, jobId) : null;
+  const isReviewV2 = pendingInputDetails?.form.presentation?.type === 'review/v2';
+  const pendingReviewV2 = useMemo(() => {
+    if (!isReviewV2) return undefined;
+    try { return parseReviewV2(pendingInputDetails?.form.request); }
+    catch { return undefined; } // The review reader explains incompatible declarations.
+  }, [isReviewV2, pendingInputDetails]);
+  const isReview = pendingInputDetails?.form.kind === 'review' || isReviewV2;
+  const requestTitle = [pendingReviewV2?.title, pendingInputDetails?.form.title, pendingInputDetails?.form.question]
+    .find(value => value?.trim())?.trim() || (isReview ? 'Review' : 'Input request');
+  const reviewInstructions = [pendingReviewV2?.question, pendingInputForm && reviewActionField(pendingInputForm)?.label, pendingInputDetails?.form.question]
+    .find(value => value?.trim() && value.trim() !== requestTitle)?.trim() || 'Review the documents and respond.';
+  const reviewDocumentCount = Object.keys(pendingReviewV2?.documents || pendingInputDetails?.form.documents || {}).length;
   const selectedIsPendingNode =
     focusTaskOrdinal !== null &&
     focusTaskOrdinal !== undefined &&
@@ -826,7 +860,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         return next;
       });
       setActiveDetailsTab('overview');
-      setPendingInputDetails(null);
+      setPendingRequest(undefined);
       await load();
     } catch (e) {
       console.error('Failed to submit input response', e);
@@ -899,48 +933,26 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
             img: ({ alt }) => <span>Image unavailable: {alt || 'unbound image'}</span>,
           }}>{prompt}</Markdown></div> : <p>No prompt recorded for this job.</p>}
         </section>}
-        <JobConversation onBack={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('occurrenceId'); next.delete('requestId'); return next; })} tenant={projectId} job={jobId} occurrence={searchParams.get('occurrenceId') ?? undefined}
-          autoRefresh={autoRefresh} refreshIntervalMs={refreshIntervalMs} requestId={searchParams.get('requestId') ?? undefined}
-          refreshKey={historyRefreshKey} onOpen={entry => setSearchParams(previous => {
-            const next = new URLSearchParams(previous); next.set('occurrenceId', entry); next.set('tab', 'conversation');
-            next.delete('requestId'); next.delete('input'); return next;
-          })} />
         {requestId === null && (pendingInputLoading ? (
-          <Alert
-            type="warning"
-            showIcon
-            message="Pending input"
-            description="Loading input prompt..."
-          />
+          <Alert type="warning" showIcon message="Loading request…" />
         ) : pendingInputError ? (
-          <Alert
-            type="warning"
-            showIcon
-            message="Pending input"
-            description={pendingInputError}
-          />
+          <Alert type="warning" showIcon message="Could not load this request" description={pendingInputError}
+            action={<Button onClick={() => setPendingInputRetry(value => value + 1)}>Retry</Button>} />
         ) : pendingInputDetails ? (
-          <Alert
-            type="warning"
-            showIcon
-            message="Pending input required"
-            description={
-              <div>
-                This job is waiting for input.
-                {focusTaskOrdinal !== null ? (
-                  <>
-                    {' '}Task ordinal: <Text code>{focusTaskOrdinal}</Text>.
-                  </>
-                ) : null}
+          <Alert type="warning" showIcon className="pending-request-callout"
+            message={isReview ? 'Review requested' : 'Your input is needed'}
+            description={<div className="pending-request-layout">
+              <div className="pending-request-content">
+                <div className="pending-request-title">{requestTitle}</div>
+                {isReview && <>
+                  <ReviewInstructions text={reviewInstructions} />
+                  {reviewDocumentCount > 0 && <div className="pending-request-count">{reviewDocumentCount} {reviewDocumentCount === 1 ? 'document' : 'documents'}</div>}
+                </>}
               </div>
-            }
-            action={
-              <Button
-                size="small"
-                type="primary"
-                onClick={() => {
-                  setSearchParams((prev) => {
-                    const next = new URLSearchParams(prev);
+              {isReview ? <Link className="pending-request-action pending-request-review-link" to={`/project/${encodeURIComponent(projectId)}/reviews/${encodeURIComponent(jobId)}`}>Open review</Link>
+                : <Button type="primary" className="pending-request-action" onClick={() => {
+                  setSearchParams(previous => {
+                    const next = new URLSearchParams(previous);
                     next.set('input', '1');
                     next.set('tab', 'conversation');
                     next.delete('requestId');
@@ -949,25 +961,23 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                     return next;
                   });
                   setActiveDetailsTab('pending_input');
-                }}
-              >
-                Open prompt
-              </Button>
-            }
+                }}>Open form</Button>}
+            </div>}
           />
         ) : null)}
-
-        {wantInput && requestId === null && pendingInputDetails && (pendingInputDetails.form.kind === 'review' ? (
-          <Card title={pendingInputDetails.form.title || 'Review'} size="small">
-            <Link to={`/project/${encodeURIComponent(projectId)}/reviews/${encodeURIComponent(jobId)}`}>Open Review</Link>
-          </Card>
-        ) : pendingInputForm ? (
+        <JobConversation onBack={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('occurrenceId'); next.delete('requestId'); return next; })} tenant={projectId} job={jobId} occurrence={searchParams.get('occurrenceId') ?? undefined}
+          autoRefresh={autoRefresh} refreshIntervalMs={refreshIntervalMs} requestId={searchParams.get('requestId') ?? undefined}
+          refreshKey={historyRefreshKey} onOpen={entry => setSearchParams(previous => {
+            const next = new URLSearchParams(previous); next.set('occurrenceId', entry); next.set('tab', 'conversation');
+            next.delete('requestId'); next.delete('input'); return next;
+          })} />
+        {wantInput && requestId === null && pendingInputForm && !isReview && (
           <Card title={pendingInputForm.title || 'Input request'} size="small">
             <InputFormRenderer form={pendingInputForm} onSubmit={submitPendingInput}
               onCancel={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('input'); return next; })}
               loading={pendingInputSubmitting} />
           </Card>
-        ) : null)}
+        )}
         {job && terminalStatus && (job.store === 'ARCHIVED' || isFinishedJob(job)) && <section aria-label="Job completion">
           <Title level={3}>Completion</Title>
         {failed && <Alert type="error" showIcon

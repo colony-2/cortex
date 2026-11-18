@@ -217,6 +217,22 @@ sequence:
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
         pnpm --filter @colony2/shared test
+  # Keep direct review navigation and ordinary inline forms visible in diagnostics.
+  - id: story-review-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        pnpm --filter @colony2/app test src/components/JobStoryPage.test.tsx
   - id: app-tests
     op: command_execution
     const: true
@@ -231,7 +247,7 @@ sequence:
         set -euo pipefail
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
-        pnpm --filter @colony2/app test
+        pnpm --filter @colony2/app test --exclude src/components/JobStoryPage.test.tsx
   - id: shared-build
     op: command_execution
     const: true

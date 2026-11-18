@@ -1,5 +1,6 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { message } from 'antd';
 import { APIError, archiveJob, cancelJob, getJob, DEFAULT_CANCELLATION_REASON } from '@colony2/shared/api';
 import type { RecipeJob } from '@colony2/shared/types';
 import JobActionDialog from './JobActionDialog';
@@ -14,6 +15,10 @@ vi.mock('@colony2/shared/api', async original => ({
 }));
 const ready = { ...jobIdentity, job_id: 'one', status: 'READY', store: 'ACTIVE' } as RecipeJob;
 beforeEach(() => { vi.mocked(cancelJob).mockReset().mockResolvedValue(); vi.mocked(archiveJob).mockReset().mockResolvedValue(); vi.mocked(getJob).mockReset().mockResolvedValue(ready); });
+afterEach(async () => {
+  // Static messages have their own React root outside the rendered dialog.
+  await act(async () => { cleanup(); message.destroy(); });
+});
 const field = () => screen.getByRole('textbox', { name: 'Cancellation message (optional)' });
 const confirm = async (name: string) => {
   const button = within(screen.getByRole('dialog')).getByRole('button', {name,exact:true});

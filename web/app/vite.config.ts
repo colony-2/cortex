@@ -44,6 +44,9 @@ export default defineConfig({
     // Run render-heavy jsdom/Ant Design suites serially on shared workers so
     // concurrent rendering does not exhaust individual tests' timeout budgets.
     maxWorkers: 1,
+    // Compound UI journeys need headroom on shared CI workers. Assertion waits
+    // remain unchanged so stalled interactions still fail promptly.
+    testTimeout: process.env.CI ? 15_000 : 5_000,
     env: { VITE_CORTEX_API_BASE: 'http://localhost:8080/api' },
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],

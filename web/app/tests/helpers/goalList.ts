@@ -18,8 +18,12 @@ async function setColumnFilter(page: Page, name: string, labels: string[] | null
   if (labels === null) {
     await dropdown.getByRole('checkbox', { name: 'Select all', exact: true }).check();
   } else {
+    // Establish a checked state before clearing. A freshly opened filter can
+    // briefly disable Reset while Ant Design restores its selected keys.
+    await dropdown.getByRole('checkbox', { name: 'Select all', exact: true }).check();
     const none = dropdown.getByRole('button', { name: 'Select none', exact: true });
-    if (await none.isEnabled()) await none.click();
+    await none.click();
+    await expect(none).toBeDisabled();
     for (const label of labels) await dropdown.getByText(label, { exact: true }).click();
   }
   await dropdown.getByRole('button', { name: 'Apply', exact: true }).click();

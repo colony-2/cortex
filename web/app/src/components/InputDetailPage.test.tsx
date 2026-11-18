@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { message } from 'antd';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, Link } from 'react-router-dom';
 import { setupServer } from 'msw/node';
@@ -39,7 +40,10 @@ describe('InputDetailPage - Single Question Flow', () => {
     mockNavigate.mockClear();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Static messages have a React root outside the rendered review page.
+    // Drain its unmount effects before jsdom and the input mocks are removed.
+    await act(async () => { cleanup(); message.destroy(); });
     inputActivityService.clearCaches(); // Clear caches between tests
     server.close();
     server.resetHandlers();
