@@ -271,12 +271,21 @@ test('B10/B14 clamping, stacking, successor continuity and navigation reset pres
  const saved={documents:await widthOf(page,'.review-navigation-track'),discussion:await widthOf(page,'.review-v2-discussion')};
  // An explicit choice survives every width and same-review successor.
  await page.getByRole('button',{name:'Hide documents',exact:true}).click();await ensureDocuments(page);
- await page.setViewportSize({width:1150,height:1000});await expect(page.locator('.review-v2-layout')).not.toHaveClass(/stacked/);await geometry(page);expect(await widthOf(page,'.review-v2-discussion')).toBeLessThan(saved.discussion);
+ await page.setViewportSize({width:1150,height:1000});
+ await expect.poll(() => widthOf(page,'.review-v2-discussion')).toBeLessThan(saved.discussion);
+ await expect(page.locator('.review-v2-layout')).not.toHaveClass(/stacked/);await geometry(page);
  const clampedDiscussion=await widthOf(page,'.review-v2-discussion'),clampedDocuments=await widthOf(page,'.review-navigation-track');
  await dragPane(page,'documents',-32);expect(await widthOf(page,'.review-v2-discussion')).toBe(clampedDiscussion);saved.documents=clampedDocuments-32;expect(await widthOf(page,'.review-navigation-track')).toBe(saved.documents);
  await page.setViewportSize({width:1050,height:1000});await expect(page.locator('.review-v2-layout')).toHaveClass(/stacked/);await expect(page.getByRole('separator')).toHaveCount(0);await expect(page.getByRole('navigation',{name:'Review documents'})).toBeVisible();await geometry(page);
  await page.setViewportSize({width:1920,height:1000});await expect(docsSeparator(page)).toHaveAttribute('aria-valuenow',String(saved.documents));await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow',String(saved.discussion));
- await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)').fill('Continue');await page.getByRole('button',{name:'Send · Ask a question'}).click();await expect(page.getByRole('button',{name:'Refresh',exact:true})).toBeVisible();await f.successor();await page.getByRole('button',{name:'Refresh',exact:true}).click();await expect(docsSeparator(page)).toHaveAttribute('aria-valuenow',String(saved.documents));await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow',String(saved.discussion));
+ await page.getByRole('button',{name:'Ask a question',exact:true}).click();
+ await page.getByLabel('Question or requested change (required)').fill('Continue');
+ await page.getByRole('button',{name:'Send · Ask a question'}).click();
+ await expect(discussionPane(page).getByRole('status')).toHaveText('Response pending');
+ await f.successor();
+ await expect(discussionPane(page).getByText('The documents and drafts stay available. I can proceed after your approval.',{exact:true})).toBeVisible();
+ await expect(docsSeparator(page)).toHaveAttribute('aria-valuenow',String(saved.documents));
+ await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow',String(saved.discussion));
  await page.getByRole('button',{name:'Hide discussion',exact:true}).click();await page.reload();await v2Selected(page,0);await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow','320');await expect(docsSeparator(page)).toHaveAttribute('aria-valuenow','240');
  await page.getByRole('button',{name:'Hide discussion',exact:true}).click();const target=page.url();await page.getByRole('button',{name:'Back to Reviews'}).click();await page.goto(target);await v2Selected(page,0);await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow','320');
 });

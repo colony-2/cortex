@@ -78,8 +78,7 @@ for (const collapsed of [false, true]) {
       const popupPromise = context.waitForEvent('page');
       await link.click({ modifiers: ['ControlOrMeta'] });
       const popup = await popupPromise;
-      await popup.waitForLoadState();
-      expect(popup.url()).toContain(`/project/navigation/${route}`);
+      await expect(popup).toHaveURL(url => url.pathname === `/project/navigation/${route}`);
       await popup.close();
     }
     await menu.getByRole('menuitem', { name: 'Goals', exact: true }).focus();

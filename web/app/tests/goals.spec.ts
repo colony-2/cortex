@@ -626,7 +626,8 @@ for (const width of [1280, 375]) {
     const selector = page.getByLabel('Goal scope', { exact: true });
     await expect(selector).toHaveValue('all');
     await expect(page.getByText('2 attempts on this page')).toBeVisible();
-    await selector.focus(); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
+    // Use the native select's type-ahead to choose “Root goals” on every platform.
+    await selector.press('r');
     await expect(selector).toHaveValue('roots');
     await expect(page).toHaveURL(/scope=roots/);
     await expect(page.getByText('2 attempts on this page')).toHaveCount(0);
