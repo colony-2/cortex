@@ -6,7 +6,10 @@ import { registryCell } from '../test/cellFixtures';
 import CreateCellDialog from './CreateCellDialog';
 import CellsList from './CellsList';
 import CellPage from './CellPage';
-vi.mock('@colony2/shared/api', () => ({ createCell: vi.fn(), getCell: vi.fn(), listCells: vi.fn() }));
+vi.mock('@colony2/shared/api', async importOriginal => ({
+  ...await importOriginal<typeof import('@colony2/shared/api')>(),
+  createCell: vi.fn(), getCell: vi.fn(), listCells: vi.fn(),
+}));
 beforeEach(() => {
   vi.mocked(createCell).mockReset(); vi.mocked(getCell).mockReset(); vi.mocked(listCells).mockReset();
 });

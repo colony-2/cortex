@@ -12,7 +12,17 @@ font_scratch="$(mktemp -d /tmp/cortex-verify-fonts.XXXXXXXX)"
 trap 'rm -rf "$font_scratch"' EXIT
 export FONTCONFIG_FILE="$font_scratch/fonts.conf"
 unset FONTCONFIG_PATH
-printf '<fontconfig><dir>%s/share/fonts</dir><cachedir>%s/cache</cachedir></fontconfig>\n' \
-  "$font_root" "$font_scratch" > "$FONTCONFIG_FILE"
+# A directory alone makes missing UI/monospace families fall back to the first
+# font in the closure (the math font). Resolve generic families deliberately.
+cat > "$FONTCONFIG_FILE" <<EOF
+<fontconfig>
+  <dir>$font_root/share/fonts</dir>
+  <cachedir>$font_scratch/cache</cachedir>
+  <alias><family>sans-serif</family><prefer><family>DejaVu Sans</family></prefer></alias>
+  <alias><family>system-ui</family><prefer><family>DejaVu Sans</family></prefer></alias>
+  <alias><family>serif</family><prefer><family>DejaVu Serif</family></prefer></alias>
+  <alias><family>monospace</family><prefer><family>DejaVu Sans Mono</family></prefer></alias>
+</fontconfig>
+EOF
 
 "$@"

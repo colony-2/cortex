@@ -438,6 +438,30 @@ html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-heig
 .review-reading-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
 .review-reading-layout.with-navigation { grid-template-columns: minmax(12rem, 18rem) minmax(0, 1fr); }
 .review-reading-track { min-width: 0; display: flex; flex-direction: column; gap: 24px; }
+.review-workspace { min-width: 0; }
+.review-workspace-response { margin-top: 24px; }
+.review-changes { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.changes-heading { justify-content: space-between; }
+.changes-hash { display: inline-block; max-width: 100%; overflow-wrap: anywhere; vertical-align: top; }
+.changes-identity { overflow-wrap: anywhere; }
+.changes-identity .ant-card-body > div { margin-top: 8px; }
+.changes-controls label { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.changes-controls .ant-select { width: 280px; max-width: 100%; }
+.changes-hint { margin: 0; color: #595959; }
+.changes-commit-list { border: 1px solid #d9d9d9; border-radius: 8px; max-height: 420px; overflow: auto; }
+.changes-commit-list > button { display: block; width: 100%; padding: 12px; border: 0; border-bottom: 1px solid #eee; background: white; color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.changes-commit-list > button > span { display: flex; justify-content: space-between; gap: 12px; overflow-wrap: anywhere; }
+.changes-commit-list > button > span + span { color: #595959; margin-top: 4px; font-size: 13px; }
+.changes-commit-list > button[aria-pressed=true] { background: #e6f4ff; box-shadow: inset 3px 0 #1677ff; }
+.changes-commit-list > button:focus-visible { outline: 2px solid #1677ff; outline-offset: -2px; }
+.changes-comparison { overflow-wrap: anywhere; margin-bottom: 12px; }
+.changes-comparison code { word-break: break-all; }
+@media (max-width: 767px) {
+  .changes-controls, .changes-controls .ant-space-item, .changes-controls label { width: 100%; }
+  .changes-controls .ant-select { flex: 1; width: 0; }
+  .changes-commit-list > button { min-height: 64px; }
+  .changes-commit-list > button > span { flex-wrap: wrap; gap: 4px; }
+}
 .review-navigation-track { min-width: 0; }
 .review-navigation-track[hidden] { display: none; }
 .review-navigation-track .review-document-catalog { height: 100%; }

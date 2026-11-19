@@ -7,7 +7,7 @@ import { reviewReturnSearch } from '../utils/reviewFilters';
 import { Card, Button, Space, Typography, message, Spin, Alert } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { inputActivityService, type UserInputDetails, type FormResponse, parseReviewV2 } from '@colony2/shared';
-import ReviewDocuments from './ReviewDocuments';
+import ReviewWorkspace from './ReviewWorkspace';
 import InputFormRenderer from './InputFormRenderer';
 import { adaptInputFormConfig } from '../utils/formAdapter';
 import { reviewActionField } from '../utils/reviewForm';
@@ -210,7 +210,7 @@ function InputRequestPage({ projectId }: InputDetailPageProps) {
           description={selection.kind === 'invalid' ? 'The link contains repeated request or document parameters.' : 'The current review has a different request. Open it deliberately to read its documents and respond.'}
           action={<Button onClick={openCurrentReview}>Open current review</Button>} /> : reviews ? <>
         {(selection?.kind === 'selected' && selection.unavailable || unavailableWarning === reviewIdentity) && <Alert showIcon type="warning" message="The linked document is unavailable. Showing the starting document, if one is attached." />}
-        <ReviewDocuments key={reviewIdentity} projectId={projectId} jobId={jobId}
+        <ReviewWorkspace key={reviewIdentity} projectId={projectId} jobId={jobId}
           documentMetadata={details.form.document_metadata} overviewDocumentId={details.form.overview_document_id}
           selection={{ documentId: selection?.kind === 'selected' ? selection.documentId : undefined, onSelect: selectDocument }}
           requestId={details.form.request_id!} documents={details.form.documents || {}} response={

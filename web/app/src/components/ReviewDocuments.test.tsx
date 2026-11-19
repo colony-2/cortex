@@ -605,3 +605,35 @@ it('V01 uses controlled v2 visibility without duplicate controls and retains the
   rerender(view(false));expect(screen.queryByRole('navigation',{name:'Review documents'})).toBeNull();expect(screen.queryByRole('separator')).toBeNull();
   rerender(view(true));expect(screen.getByRole('navigation',{name:'Review documents'})).toBeVisible();expect(screen.getByRole('heading',{name:'Kept preview'})).toBe(heading);expect(fetcher).toHaveBeenCalledOnce();
 });
+
+describe('v2 reader tabs', () => {
+  it('opens documents from the catalog and controlled history while preserving each panel', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('# Original material'))));
+    const onSelect = vi.fn();
+    const props = { projectId: 'tenant', jobId: 'job', requestId: 'logical', documents,
+      changes: <input aria-label="Selected changes" defaultValue="commits 2 through 4" />,
+      layout: { navigationVisible: true, stacked: false, navigationId: 'catalog', separator: null },
+      selection: { documentId: 'design', onSelect } };
+    const { rerender } = baseRender(<ReviewDocuments {...props} />);
+    await screen.findByRole('heading', { name: 'Original material' });
+    fireEvent.click(screen.getByRole('tab', { name: 'Changes', exact: true }));
+    const changes = screen.getByLabelText('Selected changes');
+    fireEvent.change(changes, { target: { value: 'commits 3 through 4' } });
+    fireEvent.click(screen.getByRole('navigation', { name: 'Review documents' }).querySelector('button')!);
+    expect(screen.getByRole('tab', { name: 'Documents', exact: true })).toHaveAttribute('aria-selected', 'true');
+    expect(onSelect).not.toHaveBeenCalled(); // Already selected; still reveal its panel.
+    fireEvent.click(screen.getByRole('tab', { name: 'Changes', exact: true }));
+    expect(screen.getByLabelText('Selected changes')).toBe(changes);
+    expect(changes).toHaveValue('commits 3 through 4');
+    rerender(<ReviewDocuments {...props} documents={{ ...documents, notes: { ...documents.design, name: 'notes.md' } }} selection={{ documentId: 'notes', onSelect }} />);
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Documents', exact: true })).toHaveAttribute('aria-selected', 'true'));
+    fireEvent.click(screen.getByRole('tab', { name: 'Changes', exact: true }));
+    expect(changes).toHaveValue('commits 3 through 4');
+  });
+  it('provides Changes when a v2 review has no documents', () => {
+    baseRender(<ReviewDocuments projectId="tenant" jobId="job" requestId="logical" documents={{}} changes={<p>No commits since base.</p>} />);
+    expect(screen.getByText('No documents attached')).toBeVisible();
+    fireEvent.click(screen.getByRole('tab', { name: 'Changes', exact: true }));
+    expect(screen.getByText('No commits since base.')).toBeVisible();
+  });
+});

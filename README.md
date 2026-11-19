@@ -273,6 +273,33 @@ select a tenant in the header, use `/?tenantId=42`, or open a tenant route such 
 `/project/42/jobs`. The email screen records an identity cookie; it does not
 provide server-side authentication.
 
+### Reviewing commits
+
+The review v2 reader opens on Documents, beside the document catalog and
+discussion. Its Changes tab shows the job's latest recorded main
+workspace, its repository, base/head and source, and the complete oldest-first
+commit sequence since the base. Click a commit to inspect its changes; Shift-click
+or Shift+Arrow selects an inclusive range. From / Through controls also support
+touch. All changes compares base to head. Use the existing Unified, Side by side,
+Source and file-navigation controls, or download the complete patch. Tabs preserve
+the response draft, attachments and document display state.
+
+Refresh changes loads the latest recorded workspace; advancement rejects old
+selections. This is committed, persisted code, not a live checkout or a statement
+about an earlier check or approval. An in-range merge explicitly disables commit
+and range selection; an available All diff remains labeled as an endpoint net
+comparison. Empty history, reverted net changes and unavailable objects have
+separate states. No recipe opt-in or extra Git artifact is required.
+
+The reader reuses retained c2j bundles in bounded temporary repositories. The
+server needs Git on PATH and writable temporary storage. Repository access is
+offline by default, including no local-checkout fallback. Missing prerequisites
+produce `missing_closure` with object hashes. Embedded deployments may deliberately
+configure `cortex.Config.Changes` (`jobinspect.ChangesConfig`) with a trusted
+repository policy; browser parameters cannot enable repository access. The
+standard command retains the offline default. Ambient Git credentials do not
+authorize a fetch.
+
 ## Build from source
 
 Install Git, Make, Node.js 22 or newer, pnpm 10, and Go with automatic toolchain
@@ -401,6 +428,19 @@ the Playwright report in `web/app/playwright-report`.
 The timeout regression also runs against the real worker. It verifies that an
 unanswered input expires, clears pending prompts in both browser tabs, and rejects
 late submissions.
+
+The Changes acceptance suite uses the embedded production UI and real writer
+bundles recorded in native recipe jobs over HTTP/SQLite. Producing checkouts are
+deleted before reads. It compares All/single/range downloads with independent Git
+oracles, exercises v2 and legacy reviews, desktop/phone selection and workspace
+advancement, and keeps
+normal review submissions and receipts working. Run it separately on port 18086:
+
+```sh
+pnpm --filter @colony2/app exec playwright test --config playwright.changes.config.ts
+```
+
+Set `CORTEX_REVIEW_CAPTURE_DIR` to retain individual UI screenshots from that run.
 
 ## Releases
 

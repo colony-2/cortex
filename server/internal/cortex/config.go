@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/colony-2/c2j/pkg/input"
+	"github.com/colony-2/c2j/pkg/jobinspect"
 	"github.com/colony-2/jobdb/pkg/jobdb"
 	jobworkflow "github.com/colony-2/jobdb/pkg/workflow"
 )
@@ -27,6 +28,8 @@ type Config struct {
 	Logger           *slog.Logger
 	Assistant        *AssistantIntegration
 	AssistantRuntime *AssistantRuntimeConfig
+	// Trusted application policy; zero configuration keeps Changes offline.
+	Changes jobinspect.ChangesConfig
 }
 
 type Server struct {
@@ -36,6 +39,7 @@ type Server struct {
 	jobDeletion   jobdb.JobDeletionRuntime
 	chapters      chapterReader
 	leaseEvents   jobdb.LeaseEventReader
+	changes       func(string) (jobinspect.ChangesAPI, error)
 	router        http.Handler
 	story         storyService
 	inputs        inputRuntime

@@ -8,13 +8,13 @@ export default function DocumentOptions({ storedBytes, children }: { storedBytes
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const close = () => { setOpen(false); trigger.current?.focus(); };
-  return <div className="review-document-options"><Popover trigger="click" open={open} overlayClassName="review-options-popover" onOpenChange={visible => { setOpen(visible); if (!visible) trigger.current?.focus(); }}
+  return <div className="review-document-options"><Popover trigger="click" open={open} overlayClassName="review-options-popover" onOpenChange={setOpen}
     afterOpenChange={visible => {
       if (visible) { panel.current?.focus(); return; }
       // Restore dismissal focus without interrupting a control the reviewer
       // has already opened while the popover was finishing its animation.
       const active = document.activeElement;
-      if (active !== trigger.current && !panel.current?.contains(active) && active?.closest('button, input, select, textarea, a, [role="combobox"], [role="option"]')) return;
+      if (active !== trigger.current && !panel.current?.contains(active) && active?.closest('button, input, select, textarea, a, [role="combobox"], [role="option"], [role="tab"]')) return;
       trigger.current?.focus();
     }}
     content={<div id={panelId} ref={panel} tabIndex={-1} role="dialog" aria-label="Document options" onKeyDown={event => {

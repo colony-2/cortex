@@ -34,6 +34,7 @@ func NewRemoteServer(cfg Config) (*Server, error) {
 		server.jobDeletion = runtime
 		server.chapters = runtime
 		server.leaseEvents = runtime
+		server.configureChanges(runtime)
 		server.configuration = runtime
 		server.secretAdmin = &remoteSecretAdmin{base: strings.TrimRight(cfg.JobDBURL, "/"), client: client}
 	}
@@ -53,6 +54,7 @@ func NewUITestServer(cfg Config) (*Server, error) {
 		server.jobDeletion = runtime
 		server.chapters = runtime
 		server.leaseEvents = runtime
+		server.configureChanges(runtime)
 		server.configuration = runtime
 	}
 	return server, err

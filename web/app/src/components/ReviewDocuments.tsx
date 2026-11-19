@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Alert, Button, Card, Empty, Select, Spin, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Empty, Select, Spin, Tabs, Tag, Typography } from 'antd';
 import { useCompact } from '../hooks/useCompact';
 import { inputActivityService, type ReviewDocument, type ReviewDocumentMetadata } from '@colony2/shared';
 import { orderedReviewDocumentIds, startingReviewDocument } from '../utils/reviewDocumentLocation';
@@ -11,12 +11,13 @@ import { loadDocument, type DocumentData } from './review/document';
 export interface DocumentSource { identity: string; contentIdentity?: (id: string) => string; url: (id: string) => string; onError?: (error: unknown) => void }
 export type ReaderDocument = { name?: string; stored?: ReviewDocument['stored']; sizeBytes?: number };
 export interface ReviewDocumentLayout { navigationVisible: boolean; stacked: boolean; navigationId: string; separator: ReactNode }
-interface Props { layout?: ReviewDocumentLayout; navigationDefault?: boolean; stackNavigation?: boolean; source?: DocumentSource; projectId: string; jobId: string; requestId: string; documents: Record<string, ReaderDocument>; documentMetadata?: Record<string, ReviewDocumentMetadata>; overviewDocumentId?: string; response?: ReactNode; selection?: { documentId: string | undefined; onSelect: (id: string) => void } }
+interface Props { changes?: ReactNode; layout?: ReviewDocumentLayout; navigationDefault?: boolean; stackNavigation?: boolean; source?: DocumentSource; projectId: string; jobId: string; requestId: string; documents: Record<string, ReaderDocument>; documentMetadata?: Record<string, ReviewDocumentMetadata>; overviewDocumentId?: string; response?: ReactNode; selection?: { documentId: string | undefined; onSelect: (id: string) => void } }
 export default function ReviewDocuments(props: Props) {
   // A fresh review identity owns all preview state; response drafts live above this component.
   return <ReviewReader key={JSON.stringify([props.projectId, props.jobId, props.requestId, props.source?.identity])} {...props} />;
 }
-function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata = {}, overviewDocumentId, source, response, navigationDefault=false, stackNavigation=false, layout, selection: controlled }: Props) {
+function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata = {}, overviewDocumentId, source, response, navigationDefault=false, stackNavigation=false, layout, changes, selection: controlled }: Props) {
+  const [readerTab, setReaderTab] = useState('documents');
   const small = useCompact();
   const compact = layout ? layout.stacked : small || stackNavigation;
   const [navigationPreference, setShowNavigation] = useState<boolean>();
@@ -53,6 +54,7 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
         setNavigationIntent(undefined);
         reveal.current = true;
       }
+      setReaderTab('documents');
       previousSelection.current = selected;
       pendingSelection.current = undefined;
     }
@@ -86,6 +88,7 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
   const title = (id: string) => documentMetadata[id]?.title?.trim() ? documentMetadata[id].title! : filename(id);
   const openDocument = (id: string, focus = false, fragment?: string) => {
     if (!attached(id)) return false;
+    setReaderTab('documents');
     if (controlled) {
       if (id !== selected) { pendingSelection.current = id; controlled.onSelect(id); }
     } else {
@@ -130,6 +133,12 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
       return { key: id, name: d.name || path(id), url: documentURL(id), onError: source?.onError };
     }} />;
   const details = selected !== undefined ? <div className="review-selected-details">{summary(selected)}{sources(selected)}<Button disabled={!url} href={url || undefined} download={name}>Download</Button></div> : null;
+  const documentPanel = <Card><section ref={previewRoot} className="review-document-content" aria-label="Selected document">
+    {selected === undefined ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents attached" /> : <>
+      {(!content || contentIdentity !== contentKey || error) && <DocumentOptions key={url} storedBytes={doc?.sizeBytes ?? doc?.stored?.key.sizeBytes} />}
+      {preview}{details}
+    </>}
+  </section></Card>;
   return <>
     {!layout && <Button aria-expanded={showNavigation} onClick={() => setShowNavigation(!showNavigation)}>{showNavigation ? 'Hide documents' : 'Show documents'}</Button>}
     <div className={`review-reading-layout ${layout ? 'review-v2-document-tracks' : ''} ${showNavigation && !compact ? 'with-navigation' : ''}`}>
@@ -144,12 +153,10 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
       </div>
       {layout?.separator}
       <div className="review-reading-track">
-        <Card><section ref={previewRoot} className="review-document-content" aria-label="Selected document">
-          {selected === undefined ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents attached" /> : <>
-            {(!content || contentIdentity !== contentKey || error) && <DocumentOptions key={url} storedBytes={doc?.sizeBytes ?? doc?.stored?.key.sizeBytes} />}
-            {preview}{details}
-          </>}
-        </section></Card>
+        {changes ? <Tabs className="review-reader-tabs" activeKey={readerTab} onChange={setReaderTab} items={[
+          { key: 'documents', label: 'Documents', children: documentPanel },
+          { key: 'changes', label: 'Changes', children: changes },
+        ]} /> : documentPanel}
         {response}
       </div>
     </div>
