@@ -4,6 +4,7 @@ export const jobDetailTabs = [
   ['conversation', 'Conversation'],
   ['relationships', 'Relationships'],
   ['input-artifacts', 'Input artifacts'],
+  ['env', 'Env'],
   ['dag', 'DAG'],
   ['leases', 'Lease timeline'],
   ['execution', 'Trace'],

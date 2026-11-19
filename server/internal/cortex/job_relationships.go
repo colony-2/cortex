@@ -49,5 +49,5 @@ func (s *Server) handleJobChildren(w http.ResponseWriter, r *http.Request) {
 			response.Jobs = append(response.Jobs, job)
 		}
 	}
-	writeJSON(w, http.StatusOK, response)
+	writeJSON(w, http.StatusOK, withListExecutionRequirements(response))
 }

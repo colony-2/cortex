@@ -11,7 +11,7 @@ test.each([
   { name: 'uses the system pair when no browser installation is specified', managed: false, binaries: ['chromium', 'ffmpeg'], system: true },
   { name: 'falls back to Playwright when only system Chromium is available', managed: false, binaries: ['chromium'], system: false },
   { name: 'uses Playwright when no system browser is available', managed: false, binaries: [], system: false },
-])('$name', ({ managed, binaries, system }) => {
+].flatMap(settings => [false, true].map(ci => ({ ...settings, ci }))))('$name (CI=$ci)', ({ managed, binaries, system, ci }) => {
   const directory = mkdtempSync(path.join(tmpdir(), 'cortex-playwright-config-'));
   const bin = path.join(directory, 'bin');
   const browsers = path.join(directory, 'browsers');
@@ -33,6 +33,7 @@ test.each([
         launchOptions: config.use.launchOptions,
         ffmpeg: registry.findExecutable('ffmpeg').executablePath(),
         video: config.use.video,
+        reporter: config.reporter,
         uiBuildInputs: config.webServer.filter(server => server.env?.CORTEX_UI_COMMIT).map(server => ({
           CORTEX_UI_VERSION: server.env.CORTEX_UI_VERSION,
           CORTEX_UI_COMMIT: server.env.CORTEX_UI_COMMIT,
@@ -43,6 +44,7 @@ test.each([
       encoding: 'utf8',
       env: {
         ...process.env,
+        CI: ci ? '1' : '',
         PATH: bin,
         CORTEX_PLAYWRIGHT_BROWSERS_PATH: managed ? browsers : '',
         PLAYWRIGHT_BROWSERS_PATH: browsers,
@@ -57,6 +59,7 @@ test.each([
       expect(config.ffmpeg.startsWith(`${browsers}${path.sep}`)).toBe(true);
     }
     expect(config.video).toBe('retain-on-failure');
+    expect(config.reporter).toEqual([['list', { printFailuresInline: ci }], ['html', { open: 'never' }]]);
     expect(config.uiBuildInputs).toEqual([accountUIBuildEnvironment, accountUIBuildEnvironment]);
   } finally {
     rmSync(directory, { recursive: true, force: true });

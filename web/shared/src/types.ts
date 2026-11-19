@@ -55,6 +55,15 @@ export type RecipeJobFilterStatus = Exclude<RecipeJobStatus, 'COMPLETED'>
   | 'success' | 'failed_app' | 'failed_system' | 'failed_timeout'
   | 'CANCEL_REQUESTED' | 'OUTCOME_UNAVAILABLE' | `completion:${string}`;
 
+export interface ExecutionView {
+  status: string;
+  source: string;
+  published: boolean;
+  diagnostic?: string;
+  demand?: Record<string, unknown>;
+  initial?: Record<string, unknown>;
+}
+
 export interface RecipeJob {
   title?: string;
   metadata?: Record<string, unknown>;
@@ -107,14 +116,8 @@ export interface RecipeJob {
   };
   client_payload?: unknown;
   client_payload_revision?: StoredInteger;
-  execution?: {
-    status: string;
-    source: string;
-    published: boolean;
-    diagnostic?: string;
-    demand?: Record<string, unknown>;
-    initial?: Record<string, unknown>;
-  };
+  execution?: ExecutionView;
+  recorded_execution?: ExecutionView;
   wait_for?: string[];
   cancel_requested?: boolean;
 }

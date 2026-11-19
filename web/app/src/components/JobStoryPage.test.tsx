@@ -1176,6 +1176,38 @@ it('preserves transition decisions in the overview', async () => {
 
 describe('input artifact inventory', () => {
   const artifacts = [{ jobId: 'job', taskOrdinal: 0, name: 'docs/brief.md', sizeBytes: 120 }, { jobId: 'job', taskOrdinal: 0, name: 'a.bin', sizeBytes: 0 }];
+  it.each([{ saved: artifacts }, { saved: [] }])('ENV-21 IA-016 retains a loaded inventory across Env visits: $saved', async ({ saved }) => {
+    vi.mocked(getJobInputArtifacts).mockResolvedValue({ artifacts: saved });
+    mount('?tab=input-artifacts');
+    await screen.findByRole('heading', { name: `Input artifacts (${saved.length})`, exact: true });
+    for (let visit = 0; visit < 2; visit++) {
+      fireEvent.click(screen.getByRole('tab', { name: 'Env', exact: true }));
+      expect(await screen.findByRole('heading', { name: 'Execution requirements', exact: true })).toBeVisible();
+      fireEvent.click(screen.getByRole('tab', { name: 'Input artifacts', exact: true }));
+      expect(screen.getByRole('heading', { name: `Input artifacts (${saved.length})`, exact: true })).toBeVisible();
+      expect(screen.queryByText('Loading input artifacts')).toBeNull();
+    }
+    expect(getJobInputArtifacts).toHaveBeenCalledTimes(1);
+  });
+  it('ENV-21 IA-014 resumes an inventory interrupted by Env and ignores its late result', async () => {
+    const pending = deferred<{ artifacts: typeof artifacts }>();
+    let signal: AbortSignal | undefined;
+    vi.mocked(getJobInputArtifacts).mockImplementationOnce((_tenant, _job, requestSignal) => {
+      signal = requestSignal;
+      return pending.promise;
+    }).mockResolvedValueOnce({ artifacts: [] });
+    mount('?tab=input-artifacts');
+    expect(screen.getByText('Loading input artifacts')).toBeVisible();
+    fireEvent.click(screen.getByRole('tab', { name: 'Env', exact: true }));
+    expect(await screen.findByRole('heading', { name: 'Execution requirements', exact: true })).toBeVisible();
+    expect(signal?.aborted).toBe(true);
+    fireEvent.click(screen.getByRole('tab', { name: 'Input artifacts', exact: true }));
+    expect(await screen.findByText('No input artifacts')).toBeVisible();
+    await act(async () => pending.resolve({ artifacts }));
+    expect(screen.getByText('No input artifacts')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'docs/brief.md', exact: true })).toBeNull();
+    expect(getJobInputArtifacts).toHaveBeenCalledTimes(2);
+  });
   it('IA-009 breaks equal-name ties by the recorded ordinal', async () => {
     vi.mocked(getJobInputArtifacts).mockResolvedValue({ artifacts: [
       { jobId: 'job', taskOrdinal: 17, name: 'same.md', sizeBytes: 17 },
@@ -2524,4 +2556,62 @@ describe('current request callout', () => {
     expect(screen.queryByText('Obsolete failure')).toBeNull();
     expect(screen.getByRole('link', { name: 'Open review' })).toHaveAttribute('href', change === 'job' ? '/project/tenant/reviews/new' : '/project/other/reviews/job');
   });
+});
+
+it('ENV-21 opens Env using metadata alone and refreshes without Trace, history or artifact reads', async () => {
+  const requirements = { status: 'specified', source: 'submission', published: false, demand: { recipe_resolution: 'resolved', effective: { base: 'macOS-26-arm', resources: { cpu: '4', memory: '8Gi' }, capabilities: ['docker', 'network'] } } };
+  vi.mocked(getJob).mockResolvedValue(metadata({ execution: requirements }));
+  const fetch = mount('?tab=env');
+  expect(await screen.findByText('macOS-26-arm')).toBeVisible();
+  expect(screen.getByRole('tabpanel', { name: 'Env' })).toHaveAttribute('id', 'job-panel-env');
+  expect(screen.getByRole('tab', { name: 'Env' })).toHaveAttribute('aria-selected', 'true');
+  expect(getConversation).not.toHaveBeenCalled(); expect(getJobInputArtifacts).not.toHaveBeenCalled();
+  expect(fetch.mock.calls.filter(([url]) => String(url).includes('/story'))).toHaveLength(0);
+  vi.mocked(getJob).mockResolvedValue(metadata({ execution: { status: 'unspecified', source: 'submission', published: false } }));
+  fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
+  expect(await screen.findByText('No requirements specified.')).toBeVisible();
+  expect(screen.queryByText('macOS-26-arm')).toBeNull();
+  expect(fetch.mock.calls.filter(([url]) => String(url).includes('/story'))).toHaveLength(0);
+  expect(getConversation).not.toHaveBeenCalled(); expect(getJobInputArtifacts).not.toHaveBeenCalled();
+});
+it('ENV-22 keeps Env selected during loading, failure and retry', async () => {
+  const pending = deferred<RecipeJob>(); vi.mocked(getJob).mockReturnValueOnce(pending.promise);
+  mount('?tab=env');
+  expect(screen.getByRole('tab', { name: 'Env' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByRole('status', { name: 'Job details loading' })).toBeVisible();
+  await act(async () => pending.reject(new Error('Env metadata failed')));
+  expect(screen.getByText('Env metadata failed')).toBeVisible();
+  vi.mocked(getJob).mockResolvedValue(metadata({ execution: { status: 'unspecified', source: 'submission', published: false } }));
+  fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
+  expect(await screen.findByText('No requirements specified.')).toBeVisible();
+  expect(screen.getByRole('tab', { name: 'Env' })).toHaveAttribute('aria-selected', 'true');
+});
+it.each(['job', 'tenant'])('ENV-22 clears Env and ignores late metadata across %s changes', async change => {
+  const pending = deferred<RecipeJob>(); const next = deferred<RecipeJob>();
+  const execution = (base: string) => ({ status: 'specified', source: 'submission', published: false, demand: { effective: { base } } });
+  vi.mocked(getJob).mockResolvedValueOnce(metadata({ execution: execution('original-env') })).mockReturnValueOnce(pending.promise).mockReturnValueOnce(next.promise);
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('No extra reads')));
+  let navigate!: ReturnType<typeof useNavigate>;
+  function Host() { navigate = useNavigate(); return <JobStoryPage projectId={useParams().projectId!} />; }
+  render(<MemoryRouter initialEntries={['/project/tenant/jobs/job/story?tab=env']}><Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<Host />} /></Routes></MemoryRouter>);
+  await screen.findByText('original-env');
+  fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
+  act(() => navigate(change === 'job' ? '/project/tenant/jobs/new/story?tab=env' : '/project/other/jobs/job/story?tab=env'));
+  expect(screen.queryByText('original-env')).toBeNull();
+  await act(async () => pending.resolve(metadata({ execution: execution('obsolete-env') })));
+  expect(screen.queryByText('obsolete-env')).toBeNull();
+  await act(async () => next.resolve(metadata({ job_id: change === 'job' ? 'new' : 'job', tenant_id: change === 'tenant' ? 'other' : 'tenant', execution: execution('current-env') })));
+  expect(screen.getByText('current-env')).toBeVisible();
+});
+
+it('ENV-26 keeps the originating list filters on the Env return link across tab changes', async () => {
+  const returnTo = '/project/tenant/goals?executionState=cells-v1&scope=roots&status=READY&q=report&sort=submitted&order=descend';
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => story }));
+  render(<MemoryRouter initialEntries={[{ pathname: '/project/tenant/jobs/job/story', search: '?tab=env', state: { goalsReturnTo: returnTo } }]}>
+    <Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId="tenant" />} /></Routes>
+  </MemoryRouter>);
+  expect(screen.getByRole('link', { name: 'Back to Goals', exact: true })).toHaveAttribute('href', returnTo);
+  fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Env', exact: true }));
+  expect(screen.getByRole('link', { name: 'Back to Goals', exact: true })).toHaveAttribute('href', returnTo);
 });

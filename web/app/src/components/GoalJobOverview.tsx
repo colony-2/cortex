@@ -1,3 +1,4 @@
+import { requirementSummary } from '../utils/executionRequirements';
 import { useCompact } from '../hooks/useCompact';
 import type { getJob } from '@colony2/shared/api';
 import { cellLabel } from '../utils/cellPresentation';
@@ -46,11 +47,11 @@ export default function GoalJobOverview({ jobs, projectId, navigationState, requ
           <Link className="compact-touch-link" to={storyLink(job)} state={navigationState}>{jobTime(job.submitted_at || job.created_at) || 'Open execution'}</Link>
           <Link className="compact-touch-link" to={storyLink(job)} state={navigationState}><AttemptStatus job={job} /></Link>
           <Typography.Text>Cell: {cellLabel(job.cell_name)}</Typography.Text>
-          <JobWaitLinks job={job} projectId={projectId} /><JobCompletionMessage job={job} /><JobExecutionRequirements execution={job.execution} />
+          <JobWaitLinks job={job} projectId={projectId} /><JobCompletionMessage job={job} />{requirementSummary(job) && <JobExecutionRequirements job={job} projectId={projectId} navigationState={navigationState} />}
           <Button aria-pressed={job.job_id === selectedId} onClick={() => choose(job)}>Details</Button>
         </Space>
       </Card>)}
-    </div> : <Table<RecipeJobSummary> size="small" pagination={false} rowKey="job_id" dataSource={newestFirst(jobs)}
+    </div> : <Table<RecipeJobSummary> tableLayout="fixed" size="small" pagination={false} rowKey="job_id" dataSource={newestFirst(jobs)}
       rowSelection={onSelect ? {
         selectedRowKeys: selectedIds,
         onSelect: (job, selected) => onSelect([job.job_id], selected),
@@ -62,10 +63,10 @@ export default function GoalJobOverview({ jobs, projectId, navigationState, requ
         { title: 'Submitted', render: (_, job) => <Link className="compact-touch-link" to={storyLink(job)} state={navigationState}>{jobTime(job.submitted_at || job.created_at) || 'Open execution'}</Link> },
         { title: 'Status', render: (_, job) => <Link className="compact-touch-link" to={storyLink(job)} state={navigationState}><AttemptStatus job={job} /></Link> },
         { title: 'Cell', render: (_, job) => cellLabel(job.cell_name) },
-        { title: 'Progress', render: (_, job) => <Space direction="vertical" size={2}>
+        { title: 'Progress', width: '45%', render: (_, job) => <Space className="goal-title-content" direction="vertical" size={2}>
           <JobWaitLinks job={job} projectId={projectId} />
           <JobCompletionMessage job={job} />
-          <JobExecutionRequirements execution={job.execution} />
+          {requirementSummary(job) && <JobExecutionRequirements job={job} projectId={projectId} navigationState={navigationState} />}
         </Space> },
         { title: '', render: (_, job) => <Button size="small" type="text" aria-pressed={job.job_id === selectedId} onClick={() => choose(job)}>Details</Button> },
       ]} />}</section>}

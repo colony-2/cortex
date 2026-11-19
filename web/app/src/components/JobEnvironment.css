@@ -1,0 +1,23 @@
+a.job-requirements-summary, a.job-requirements-summary:visited, a.job-requirements-summary:hover {
+  display: block; min-width: 0; max-width: 100%; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis; color: #616971;
+  font-size: 13px; font-weight: 400; line-height: 22px;
+}
+a.job-requirements-summary:focus-visible { outline: 2px solid #1677ff; outline-offset: 2px; }
+.job-environment { min-width: 0; overflow-wrap: anywhere; user-select: text; }
+.job-environment h2 { font-size: 20px; }
+.job-environment-hint { color: #616971; }
+.job-environment dl { margin: 16px 0; border: 1px solid #e3e6e9; border-radius: 4px; }
+.job-environment dl > div { display: grid; grid-template-columns: 180px minmax(0, 1fr); }
+.job-environment dl > div + div { border-top: 1px solid #e3e6e9; }
+.job-environment dt, .job-environment dd { padding: 12px 16px; margin: 0; }
+.job-environment dt { color: #616971; border-right: 1px solid #e3e6e9; }
+.job-environment ul { padding-left: 20px; margin: 0; }
+.job-environment details { margin-top: 12px; }
+.job-environment summary { cursor: pointer; padding: 10px 0; }
+.job-environment pre, .job-environment-diagnostic { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 767px) {
+  a.job-requirements-summary { line-height: 44px; min-height: 44px; }
+  .job-environment dl > div { grid-template-columns: minmax(0, 1fr); }
+  .job-environment dt { border-right: 0; padding-bottom: 0; }
+}

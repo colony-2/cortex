@@ -335,10 +335,17 @@ for (const width of [1280, 390]) {
     await page.keyboard.press('End');
     await expect(page.getByRole('tab', { name: 'Trace', exact: true })).toBeFocused();
     await expect(runSummary.getByRole('heading', { name: 'Run Summary', exact: true })).toBeVisible();
-    await page.keyboard.press('ArrowLeft');
-    await page.keyboard.press('ArrowLeft');
-    await page.keyboard.press('ArrowLeft');
-    await expect(page.getByRole('tab', { name: 'Input artifacts', exact: true })).toBeFocused();
+    for (const name of ['Lease timeline', 'DAG', 'Env', 'Input artifacts']) {
+      await page.keyboard.press('ArrowLeft');
+      const tab = page.getByRole('tab', { name, exact: true });
+      await expect(tab).toBeFocused();
+      await expect(tab).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByRole('tabpanel', { name, exact: true })).toBeVisible();
+      if (name === 'Env') {
+        await expect(page.getByRole('heading', { name: 'Execution requirements', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: longName, exact: true })).not.toBeVisible();
+      }
+    }
     await expect(page.getByRole('button', { name: longName, exact: true })).toBeVisible();
     expect(inventoryRequests).toBe(loadedInventoryRequests);
 

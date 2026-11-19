@@ -30,7 +30,7 @@ Use the same mapping for ordinary, archived, child-job, and keyed lists.
 | --- | --- |
 | `completion_status` | Preserve unfamiliar strings. Keep terminal outcome separate from scheduler `status`; a retrying job need not have a terminal result. |
 | `completion_detail` | Restore completion/error text in the row's existing message or expanded-message area. Preserve Unicode, whitespace, and line breaks; render as text, not HTML. Empty detail is valid. Visual truncation is fine if the full text remains expandable/copyable from the same response. |
-| `execution` | Restore requirements badges/details using c2j's interpreted view, as described below. |
+| `execution` | Show a compact requirements link and readable Env details using c2j's interpreted view. |
 | `client_payload`, `client_payload_revision` | Retain the complete opaque value and its paired revision in the client model. Do not replace it with only `c2j.execution`, prune other namespaces, or fetch it again per row. |
 | `task_wait` | Retain `inputOrdinal`, `outputOrdinal`, `inputHash`, and `resumeJobType` for existing task UI. These identify an occurrence; they are not input/output task data. |
 | `wait_for` | Restore prerequisite IDs in their supplied order. Link using the current job's tenant/project. Do not fetch target jobs just to populate row labels. |
@@ -43,31 +43,41 @@ c2j's recipe/CLI list DTOs expose coordinates as `task_wait`; do not assume a ne
 
 ## Render execution requirements
 
-Use the returned `execution` view rather than reimplementing demand selection
-from metadata or the opaque payload in the browser.
+The goal list shows one muted line such as `req: macOS-26-arm 4c/8g [docker,
+network]`. It opens the exact attempt's **Env** tab and preserves list filters.
+`c` means CPU cores (`500m` becomes `0.5c`), and `g` means GiB. Other memory units
+remain explicit: `512Mi` becomes `512MiB`, while `8G` becomes `8GB`. Additional
+requirement groups add a count, or a descriptive summary when present alone.
+Empty results render no summary, placeholder, link or spacing. Long lines
+ellipsize; Env keeps complete selectable values.
 
-| `execution.status` | Display behavior |
-| --- | --- |
-| `specified` | Display requirements from `execution.demand.effective`, retaining existing formatting for resources and environment requirements. |
-| `unspecified` | The recipe's requirements are resolved but empty. Display the existing “no requirements specified” state. |
-| `unresolved` | Requirements are not resolved. Display an unknown/pending-requirements state, not “no requirements.” |
-| `malformed`, `unsupported` | Preserve `execution.diagnostic` and display the existing invalid/unsupported requirements state. Do not silently substitute defaults. |
-| `in_flight` | The job is active; this list view does not expose current demand. Do not keep stale requirement badges from an earlier waiting row. |
-| `not_waiting` | The job is terminal or otherwise not waiting for execution. Clear waiting-demand UI. |
+Cortex preserves the upstream `execution` field unchanged. Its additive
+`recorded_execution` field appears only when current demand is `in_flight` or
+`not_waiting`. Cortex computes it with c2j's `execution.Inspect` using metadata
+and client payload already returned; it adds no JobDB reads. List, goal-filtered
+list, children and exact detail share this projection. Deploy server and web
+together; older responses without the additive field remain readable.
 
-c2j has removed the missing-payload `not_loaded` fallback. A missing payload is
-stored absence: submission requirements apply when available; otherwise the view
-is `unresolved` with source `absent`. An empty resolved submission produces
-`unspecified`. A published demand takes priority and has source `yield`;
-submission-derived demand has source `submission`. Do not treat payload revision
-zero as proof of absence, or a nonzero revision as proof of current demand:
-payload resets can leave a nonzero revision.
+| Selected interpretation | List | Env |
+| --- | --- | --- |
+| `specified` | Known nonempty values on one line. | Full labeled values. |
+| `unspecified` | Nothing. | No requirements specified. |
+| `unresolved` | Validated known values, if any. | Explain partial resolution. |
+| `malformed`, `unsupported` | Nothing. | Explain invalid/unsupported data and retain diagnostics. |
+| Missing or unrecognized | Nothing. | Explain unavailable data. |
 
-Absence and a present JSON `null` remain distinct in the raw response. Let c2j
-validate present payloads and interpret their demand; do not turn arrays or
-malformed execution namespaces into empty objects. Replace the row's execution
-view on refresh so transitions between waiting, active, and terminal states
-clear stale badges and diagnostics.
+Use `execution` for waiting jobs and `recorded_execution` for running/finished
+jobs. Do not reconstruct requirements from raw payloads in the browser. c2j
+chooses the source: a valid published snapshot replaces submission values
+completely; invalid published data never falls back to submission. Missing/null/
+unrelated payloads can restore submission values regardless of payload revision.
+Refresh replaces responses rather than merging old requirements or diagnostics.
+
+Env includes base, CPU, memory, capabilities, ephemeral storage, packages, Python
+and legacy image/platform. Source, resolution, diagnostics and exact data live in
+**Details**. Stored requirements do not describe live scheduling demand or actual
+allocation. The panel reuses exact-job metadata, its polling and retry behavior;
+it does not fetch Trace, history or artifacts for requirements.
 
 ## Preserve the list boundary
 
@@ -99,8 +109,9 @@ clear stale badges and diagnostics.
    and revision together without pruning or precision loss.
 3. Check published demand overrides submission requirements. Check missing
    payloads with and without submission metadata, including nonzero revisions;
-   then transition the same row to active and completed and verify stale demand
-   disappears. Preserve invalid-demand diagnostics.
+   then transition the same row to active and completed and verify its retained
+   view replaces current demand. Remove both sources and verify the line disappears.
+   Preserve invalid-demand diagnostics in Env.
 4. Verify every task coordinate, prerequisite ordering, wait ID/deadline, and
    archived coordinates survive adapters. Keep task data and evaluated wait
    explanations behind explicit inspection.

@@ -31,7 +31,7 @@ it.each([
   const search = new URLSearchParams();
   for (const section of ['technical', 'data']) search.append('detail', JSON.stringify(['selected', section]));
   const { container } = render(<MemoryRouter initialEntries={['/?' + search]}><JobListDetails job={summary} inspection={inspection} projectId="tenant" /></MemoryRouter>);
-  const raw = container.querySelector('details:last-child pre')!.textContent!;
+  const raw = screen.getByText('All job data').closest('details')!.querySelector('pre')!.textContent!;
   expect(raw).not.toMatch(/other_goal_ids|summary-stale|inspection-stale/);
   expect(JSON.parse(raw).goal_id).toBe('primary-H');
   expect(JSON.stringify({ summary, inspection })).toBe(before);
@@ -42,4 +42,19 @@ it.each([
     expect(new URL(screen.getByRole('link', { name: 'View execution' }).getAttribute('href')!, 'http://localhost').pathname).toBe('/project/tenant/jobs/producer-B/story');
     expect(screen.getByText(/retained explanation/, { selector: 'div' })).toBeVisible();
   }
+});
+
+it('ENV-18 keeps each attempt’s requirements and encoded Env link separate', () => {
+  const make = (id: string, base: string) => ({ ...job, job_id: id, execution: { status: 'specified', source: 'submission', published: false, demand: { effective: { base } } } });
+  render(<MemoryRouter initialEntries={['/?status=READY&cellId=cell-platform&requestId=ignored&occurrenceId=old']}>
+    <JobListDetails job={make('one/雪', 'macOS')} projectId="tenant/雪" navigationState={{ goalsReturnTo: '/saved-goals' }} />
+    <JobListDetails job={make('two', 'linux')} projectId="tenant/雪" />
+  </MemoryRouter>);
+  const first = new URL(screen.getByRole('link', { name: 'req: macOS' }).getAttribute('href')!, 'http://localhost');
+  const second = new URL(screen.getByRole('link', { name: 'req: linux' }).getAttribute('href')!, 'http://localhost');
+  expect(first.pathname).toBe('/project/tenant%2F%E9%9B%AA/jobs/one%2F%E9%9B%AA/story');
+  expect(second.pathname).toBe('/project/tenant%2F%E9%9B%AA/jobs/two/story');
+  expect(first.searchParams.get('tab')).toBe('env'); expect(first.searchParams.get('status')).toBe('READY');
+  expect(first.searchParams.get('cellId')).toBe('cell-platform');
+  expect(first.searchParams.has('requestId')).toBe(false); expect(first.searchParams.has('occurrenceId')).toBe(false);
 });

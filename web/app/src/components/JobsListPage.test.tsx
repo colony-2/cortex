@@ -384,7 +384,7 @@ it('switches inbox visibility on the backend and resets pagination and selection
 
 it('groups attempts and restores expanded details through goal navigation and browser back/forward with selected detail queries', async () => {
   const jobs: Partial<RecipeJob>[] = [
-    { ...jobIdentity, job_id: 'first', goal_id: 'goal-a', prompt: 'Build a useful feature', status: 'READY', store: 'ACTIVE', cell_name: 'platform', execution: { ...jobIdentity, status: 'specified', source: 'yield', published: true, demand: { effective: { cpu: 4 } } } },
+    { ...jobIdentity, job_id: 'first', goal_id: 'goal-a', prompt: 'Build a useful feature', status: 'READY', store: 'ACTIVE', cell_name: 'platform', execution: { ...jobIdentity, status: 'specified', source: 'yield', published: true, demand: { effective: { resources: { cpu: '4' } } } } },
     { ...jobIdentity, job_id: 'second', goal_id: 'goal-a', prompt: 'Build a useful feature', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'failed_app' },
     { ...jobIdentity, job_id: 'single', goal_id: 'goal-b', status: 'READY', store: 'ACTIVE' },
   ];
@@ -406,7 +406,7 @@ it('groups attempts and restores expanded details through goal navigation and br
   expect(screen.queryByText('goal-b')).not.toBeInTheDocument();
   fireEvent.click(within(first).getByRole('button', { name: 'Expand goal details' }));
   fireEvent.click(await screen.findByText('Execution requirements'));
-  expect(within(screen.getByText('Execution requirements').closest('details')!).getByText(/"cpu": 4/)).toBeVisible();
+  expect(within(screen.getByText('Execution requirements').closest('details')!).getByText('4 cores')).toBeVisible();
   expect(fetch).toHaveBeenCalledTimes(1);
   const originalURL = screen.getByTestId('location').textContent;
   fireEvent.click(within(first).getByRole('link', { name: 'Goal overview' }));
@@ -420,7 +420,7 @@ it('groups attempts and restores expanded details through goal navigation and br
   })).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
   expect(await screen.findByText('Execution requirements')).toBeVisible();
-  expect(within(screen.getByText('Execution requirements').closest('details')!).getByText(/"cpu": 4/)).toBeVisible();
+  expect(within(screen.getByText('Execution requirements').closest('details')!).getByText('4 cores')).toBeVisible();
   expect(screen.getByTestId('location').textContent).toBe(originalURL);
   fireEvent.click(screen.getByRole('button', { name: 'Browser forward' }));
   await screen.findByRole('heading', { name: 'Goal overview', exact: true });
@@ -507,28 +507,38 @@ it('renders escaped multiline completion and ordered prerequisites from the list
   expect(getJob).not.toHaveBeenCalled();
 });
 
-it('replaces requirements on refresh and never shows stale demand or diagnostics for active or terminal jobs', async () => {
-  const job = { ...jobIdentity, job_id: 'job', status: 'READY', store: 'ACTIVE', execution: {
-    ...jobIdentity, status: 'specified', source: 'yield', published: true, demand: { effective: { resources: { cpu: '4', memory: '4Gi' }, image: 'example/image' } },
+it('ENV-15–17 replaces waiting, running and terminal summaries without keeping removed values or diagnostics', async () => {
+  const job: Partial<RecipeJob> = { ...jobIdentity, job_id: 'job', status: 'READY', store: 'ACTIVE', execution: {
+    status: 'specified', source: 'yield', published: true, demand: { effective: { base: 'linux', resources: { cpu: '4', memory: '8Gi' } } },
   } };
   const fetch = vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/cells') ? [] : { jobs: [job] })));
   vi.stubGlobal('fetch', fetch);
-  render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
-  expect(await screen.findByText(/4Gi/)).toBeVisible();
-  for (const [status, label] of [
-    ['unspecified', 'No requirements specified'], ['unresolved', 'Requirements not yet resolved'],
-    ['malformed', 'Invalid execution requirements'], ['unsupported', 'Unsupported execution requirements'],
-    ['in_flight', undefined], ['not_waiting', undefined],
-  ]) {
-    job.execution = { ...job.execution, status: status!, diagnostic: 'invalid demand 雪' } as typeof job.execution;
-    job.status = status === 'in_flight' ? 'ACTIVE' : status === 'not_waiting' ? 'COMPLETED' : 'READY';
-    job.store = status === 'not_waiting' ? 'ARCHIVED' : 'ACTIVE';
+  const { container } = render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
+  expect(await screen.findByRole('link', { name: 'req: linux 4c/8g' })).toBeVisible();
+  const titleContent = screen.getByRole('link', { name: 'req: linux 4c/8g' }).closest('.goal-title-content')!;
+  const itemsWithSummary = titleContent.children.length;
+  const refresh = async () => {
     const before = fetch.mock.calls.length;
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
     await waitFor(() => expect(fetch.mock.calls.length).toBe(before + 1));
-    if (label) expect(await screen.findByText(label)).toBeVisible();
-    else await waitFor(() => expect(screen.queryByText('invalid demand 雪')).not.toBeInTheDocument());
-    expect(screen.queryByText(/4Gi/)).not.toBeInTheDocument();
+  };
+  for (const status of ['in_flight', 'not_waiting']) {
+    job.recorded_execution = { status: 'specified', source: 'submission', published: false, demand: { effective: { base: status } } };
+    job.execution = { status, source: 'unavailable', published: false };
+    job.status = status === 'in_flight' ? 'ACTIVE' : 'COMPLETED';
+    job.store = status === 'not_waiting' ? 'ARCHIVED' : 'ACTIVE';
+    await refresh();
+    expect(await screen.findByRole('link', { name: `req: ${status}` })).toBeVisible();
+    expect(screen.queryByRole('link', { name: 'req: linux 4c/8g' })).not.toBeInTheDocument();
+  }
+  for (const status of ['unspecified', 'unresolved', 'malformed', 'unsupported', 'in_flight', 'not_waiting']) {
+    job.execution = { status, source: 'absent', published: false, diagnostic: 'invalid demand 雪' };
+    delete job.recorded_execution;
+    await refresh();
+    await waitFor(() => expect(container.querySelector('.job-requirements-summary')).toBeNull());
+    expect(titleContent.children.length).toBe(itemsWithSummary - 1);
+    expect(screen.queryByText('invalid demand 雪')).not.toBeInTheDocument();
+    expect(screen.queryByText(/No requirements/)).not.toBeInTheDocument();
   }
   expect(getJob).not.toHaveBeenCalled();
 });
@@ -1279,4 +1289,30 @@ it('GS16 ignores a late old-page response and its tie positions', async () => {
   expect(stableRowKeys()).toEqual(goalKeys('A-old', 'A-new', 'B-new', 'B-old'));
   clickSort('Cell');
   expect(stableRowKeys()).toEqual(goalKeys('B-new', 'B-old', 'A-old', 'A-new'));
+});
+
+it.each([1440, 390, 320])('ENV-15,16 uses the representative attempt and omits empty summaries at %spx', async width => {
+  const originalWidth = window.innerWidth;
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+  const requirement = (base: string) => ({ status: 'specified', source: 'submission', published: false, demand: { effective: { base } } });
+  const jobs = [
+    { ...copyFixture('older', { goal_id: 'shared', created_at: '2026-11-01T00:00:00Z' }), execution: requirement('old-base') },
+    { ...copyFixture('current', { goal_id: 'shared', created_at: '2026-11-02T00:00:00Z', status: 'ACTIVE' }), execution: { status: 'in_flight', source: 'unavailable', published: false }, recorded_execution: requirement('current-base') },
+    { ...copyFixture('newer-finished', { goal_id: 'shared', created_at: '2026-11-03T00:00:00Z', status: 'COMPLETED', store: 'ARCHIVED' }), execution: { status: 'not_waiting', source: 'unavailable', published: false }, recorded_execution: requirement('finished-base') },
+    { ...copyFixture('empty'), execution: { status: 'unspecified', source: 'submission', published: false } },
+  ];
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ jobs }))));
+  try {
+    const { container } = render(<MemoryRouter initialEntries={['/project/tenant/goals?status=ACTIVE&requestId=ignored']}><JobsListPage projectId="tenant" /></MemoryRouter>);
+    const summary = await screen.findByRole('link', { name: 'req: current-base' });
+    expect(container.querySelectorAll('.job-requirements-summary')).toHaveLength(1);
+    const href = new URL(summary.getAttribute('href')!, 'http://localhost');
+    expect(href.pathname).toBe('/project/tenant/jobs/current/story'); expect(href.searchParams.get('tab')).toBe('env');
+    expect(href.searchParams.get('status')).toBe('ACTIVE'); expect(href.searchParams.has('requestId')).toBe(false);
+    expect(screen.queryByText('req: old-base')).toBeNull(); expect(screen.queryByText('req: finished-base')).toBeNull();
+    expect(screen.queryByText(/No requirements/)).toBeNull(); expect(getJob).not.toHaveBeenCalled();
+    if (width < 768) expect(container.querySelectorAll('.goal-card')).toHaveLength(2);
+  } finally {
+    cleanup(); Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth });
+  }
 });

@@ -1,3 +1,4 @@
+import { routeEnvironment, captureEnvironment, longBase, envJobs } from './helpers/executionRequirements';
 import { jobIdentity, mockCells, cellFixture } from './helpers/cells';
 import { expect, type Page } from '@playwright/test';
 import { test, setNativeZoom, captureNativeZoom } from './helpers/nativeZoom';
@@ -463,5 +464,71 @@ for (const width of [320, 390]) {
     await expect(page.getByLabel('Markdown source')).toHaveText(source);
     expect(reads).toBe(1);
     await expect(feedback).toHaveValue('Keep my draft while reading.');
+  });
+}
+
+for (const width of [320, 390, 768, 1440]) {
+  test.describe(`Execution requirements at ${width}px`, () => {
+    test.use({ hasTouch: width < 768 });
+    test(`ENV summaries ellipsize without overflow and open full Env at ${width}px`, async ({ page }, testInfo) => {
+      test.setTimeout(60_000);
+      await page.setViewportSize({ width, height: 1000 });
+      const reads = await routeEnvironment(page);
+      await page.goto('/project/env/goals');
+      const summaries = page.locator('.job-requirements-summary');
+      await expect(summaries).toHaveCount(2);
+      const long = summaries.nth(1);
+      await expect(long).toContainText(longBase);
+      const geometry = await long.evaluate(element => {
+        const style = getComputedStyle(element); const bounds = element.getBoundingClientRect();
+        return { width: bounds.width, height: bounds.height, lineHeight: parseFloat(style.lineHeight), whiteSpace: style.whiteSpace, overflow: style.overflow, ellipsis: style.textOverflow, color: style.color, scroll: element.scrollWidth, client: element.clientWidth };
+      });
+      expect(geometry.whiteSpace).toBe('nowrap'); expect(geometry.overflow).toBe('hidden'); expect(geometry.ellipsis).toBe('ellipsis');
+      expect(geometry.scroll).toBeGreaterThan(geometry.client); expect(geometry.height).toBe(geometry.lineHeight);
+      expect(geometry.color).toBe('rgb(97, 105, 113)');
+      // WCAG contrast from computed text channels against the white card background.
+      const channels = [97, 105, 113].map(c => c / 255).map(c => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
+      expect(1.05 / (.2126 * channels[0] + .7152 * channels[1] + .0722 * channels[2] + .05)).toBeGreaterThanOrEqual(4.5);
+      const emptyTitle = page.getByRole('link', { name: 'Update project documentation', exact: true });
+      const row = emptyTitle.locator(width < 768 ? 'xpath=ancestor::*[contains(@class,"goal-card")][1]' : 'xpath=ancestor::tr');
+      await expect(row.locator('.job-requirements-summary')).toHaveCount(0); await expect(row.getByText(/No requirements/)).toHaveCount(0);
+      if (width < 768) {
+        expect(geometry.height).toBeGreaterThanOrEqual(44);
+        expect(await row.getByRole('button', { name: 'Expand goal details' }).getAttribute('aria-expanded')).toBe('false');
+      }
+      await noOverflow(page);
+      await captureEnvironment(page, testInfo, `goals-${width}`);
+      await long.focus();
+      await expect(long).toBeFocused();
+      expect(await long.evaluate(element => getComputedStyle(element).outlineStyle)).toBe('solid');
+      await page.keyboard.press('Enter');
+      await expect(page).toHaveURL(/\/long\/story\?.*tab=env/);
+      await expect(page.getByText(longBase, { exact: true })).toBeVisible();
+      await expect(page.getByText('0.5 cores', { exact: true })).toBeVisible();
+      await expect(page.getByText('512 MiB', { exact: true })).toBeVisible();
+      await expect(page.getByText('a-long-capability-name-with-雪', { exact: true })).toBeVisible();
+      expect(reads.some(path => /\/(story|input-artifacts|conversation)$/.test(path))).toBe(false);
+      const base = page.getByText(longBase, { exact: true });
+      expect(await base.evaluate(element => getComputedStyle(element).userSelect)).toBe('text');
+      await noOverflow(page);
+      if (width === 390 || width === 1440) await captureEnvironment(page, testInfo, `env-long-${width}`);
+      await page.getByRole('link', { name: 'Back to Goals', exact: true }).click();
+      await expect(summaries).toHaveCount(2);
+      await page.setViewportSize({ width: width < 768 ? 1440 : 390, height: 1000 });
+      await expect(summaries).toHaveCount(2); await noOverflow(page);
+      // Exercise a pointer/touch activation as well as keyboard navigation.
+      if (width < 768) await summaries.first().tap(); else await summaries.first().click();
+      await expect(page.getByRole('tab', { name: 'Env', exact: true })).toHaveAttribute('aria-selected', 'true');
+      await page.getByRole('link', { name: 'Back to Goals', exact: true }).click();
+      await page.setViewportSize({ width: 390, height: 1000 });
+      const longCard = page.locator('.goal-card').filter({ has: page.getByRole('link', { name: 'Rebuild the search index', exact: true }) });
+      const heightWithRequirements = (await longCard.boundingBox())!.height;
+      await page.route('**/api/projects/env/jobs?*', route => route.fulfill({ json: { jobs: envJobs.map(job => job.job_id === 'long' ? { ...job, recorded_execution: undefined } : job) } }));
+      const refresh = page.getByRole('button', { name: 'Refresh', exact: true });
+      if (!await refresh.isVisible()) await page.getByRole('button', { name: /^Filters and sorting/ }).click();
+      await refresh.click();
+      await expect(longCard.locator('.job-requirements-summary')).toHaveCount(0);
+      expect(heightWithRequirements - (await longCard.boundingBox())!.height).toBe(44);
+    });
   });
 }

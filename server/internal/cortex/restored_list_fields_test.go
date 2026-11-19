@@ -26,6 +26,7 @@ func TestRestoredListFieldsWithoutInspection(t *testing.T) {
 					job := &jobs[i]
 					job.ClientPayload = payloads[i%len(payloads)]
 					job.ClientPayloadRevision = 19
+					job.Metadata = json.RawMessage(submissionRequirements)
 					job.WaitFor = []string{"second", "first"}
 					job.ExecutionState.TaskWait = &jobdb.TaskWait{InputOrdinal: 0, OutputOrdinal: 12, InputHash: "input-hash", ResumeJobType: "recipe"}
 					job.BlockingWaitSummary = &jobdb.DependencyWaitSummary{WaitID: "wait-id", Deadline: &deadline}
@@ -44,6 +45,17 @@ func TestRestoredListFieldsWithoutInspection(t *testing.T) {
 				(&Server{engine: engine}).handleListJobs(w, req)
 				if w.Code != 200 || len(engine.requests) != 1 {
 					t.Fatalf("status=%d calls=%d body=%s", w.Code, len(engine.requests), w.Body)
+				}
+				var retained struct {
+					Jobs []jobWithExecutionRequirements `json:"jobs"`
+				}
+				if err := json.Unmarshal(w.Body.Bytes(), &retained); err != nil {
+					t.Fatal(err)
+				}
+				for _, job := range retained.Jobs {
+					if (job.RecordedExecution != nil) != archived {
+						t.Fatalf("wrong retained field for archived=%v", archived)
+					}
 				}
 				var page recipejob.ListRecipeJobsResponse
 				if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil {

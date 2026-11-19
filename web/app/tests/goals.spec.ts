@@ -1,3 +1,4 @@
+import { routeEnvironment, captureEnvironment } from './helpers/executionRequirements';
 import { jobIdentity, mockCells, cellFixture, registerCell } from './helpers/cells';
 import { test, expect } from '@playwright/test';
 import { setCellFilter, setStatusFilter } from './helpers/goalList';
@@ -125,7 +126,7 @@ test('renders 200 compact rows, expands a full message, and follows empty page c
 test('renders a single compact row or grouped attempts with metadata and waiting links', async ({ page, context, baseURL }) => {
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
   const created = '2026-10-25T10:00:00Z';
-  const first = { ...jobIdentity, tenant_id: 'goal-layout', job_id: 'first', goal_id: 'shared-goal', prompt: 'Build a reliable release dashboard', recipe: 'build', job_type: 'recipe', cell_name: 'platform', repo: 'https://github.com/example/platform.git', git_ref: 'main', submitted_at: created, created_at: created, store: 'ACTIVE', status: 'READY', next_route: { jobType: 'recipe', taskType: 'input:collect_user_input' }, parent: { ...jobIdentity, job_id: 'coordinator', tenant_id: 'goal-layout' }, execution: { status: 'specified', source: 'yield', published: true, demand: { effective: { memory: '4Gi' } } } };
+  const first = { ...jobIdentity, tenant_id: 'goal-layout', job_id: 'first', goal_id: 'shared-goal', prompt: 'Build a reliable release dashboard', recipe: 'build', job_type: 'recipe', cell_name: 'platform', repo: 'https://github.com/example/platform.git', git_ref: 'main', submitted_at: created, created_at: created, store: 'ACTIVE', status: 'READY', next_route: { jobType: 'recipe', taskType: 'input:collect_user_input' }, parent: { ...jobIdentity, job_id: 'coordinator', tenant_id: 'goal-layout' }, execution: { status: 'specified', source: 'yield', published: true, demand: { schema_version: 4, recipe_resolution: 'resolved', effective: { resources: { memory: '4Gi' } } } } };
   const second = { ...first, job_id: 'second', store: 'ARCHIVED', status: 'COMPLETED', completion_status: 'failed_app', completion_detail: 'sequence node 0 failed: sequence node 2 failed: The deployment check failed' };
   const solo = { ...first, job_id: 'solo', goal_id: 'solo-goal', prompt: 'Wait for deployment approval', status: 'PENDING_JOBS', next_route: undefined, parent: undefined, blocking_wait: { waitId: 'wait', state: 'PENDING', dependencies: [{ target: { goalId: 'dependency' }, condition: 'success', state: 'PENDING' }, { target: { jobId: 'job-dependency' }, condition: 'complete', state: 'PENDING' }] } };
   const compact = (job: any) => {
@@ -194,7 +195,7 @@ test('renders a single compact row or grouped attempts with metadata and waiting
   await expect(values.first().getByRole('checkbox')).not.toBeChecked();
   await expect(page).toHaveURL(/\/goals\?/);
   await page.getByText('Execution requirements', { exact: true }).click();
-  await expect(page.getByText('Execution requirements', { exact: true }).locator('..')).toContainText('4Gi');
+  await expect(page.getByText('Execution requirements', { exact: true }).locator('..')).toContainText('4 GiB');
   expect(reads).toBe(initialReads);
   await expect.poll(() => detailsRead).toEqual(['first', 'first']);
   const attempts = page.getByRole('region', { name: 'Attempts', exact: true }).getByRole('table');
@@ -858,3 +859,34 @@ for (const width of [1440, 390]) for (const alias of ['goals', 'jobs']) {
     await expect(names).toHaveText(['A-old', 'A-new', 'B-new', 'B-old']);
   });
 }
+
+// ENV-27,31: exercise the actual list, exact metadata and tab requests together.
+test('ENV desktop summaries open exact-job Env, preserve filters and survive failed Trace', async ({ page, context, baseURL }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await context.addCookies([{ name: 'colony2:user:email', value: 'env@example.com', url: baseURL! }]);
+  const reads = await routeEnvironment(page);
+  const list = '/project/env/goals?executionState=cells-v1&view=all&sort=submitted&order=descend';
+  await page.goto(list);
+  const summaries = page.locator('.job-requirements-summary');
+  await expect(summaries).toHaveCount(2);
+  await expect(summaries.first()).toHaveText('req: macOS-26-arm 4c/8g [docker, network] +2 groups');
+  await expect(page.getByRole('link', { name: 'Update project documentation', exact: true }).locator('xpath=ancestor::tr').locator('.job-requirements-summary')).toHaveCount(0);
+  await captureEnvironment(page, testInfo, 'goals-desktop');
+  await summaries.first().focus(); await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/ordinary\/story\?.*tab=env/);
+  await expect(page.getByRole('tab', { name: 'Env', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('heading', { name: 'Execution requirements', exact: true })).toBeVisible();
+  await expect(page.getByText('4 cores', { exact: true })).toBeVisible();
+  await page.getByText('Packages (2)', { exact: true }).click(); await page.getByText(/Python environment/).click();
+  await expect(page.getByText('pillow', { exact: true })).toBeVisible();
+  expect(reads.some(path => /\/(story|input-artifacts|conversation)$/.test(path))).toBe(false);
+  await captureEnvironment(page, testInfo, 'env-desktop');
+  await page.reload(); await expect(page.getByRole('tab', { name: 'Env', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await page.getByRole('tab', { name: 'Trace', exact: true }).click();
+  await expect(page.getByText('Failed to load job story', { exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Env', exact: true }).click();
+  await expect(page.getByText('4 cores', { exact: true })).toBeVisible();
+  await expect(page.getByText(/last recorded requirements/i)).toHaveCount(0);
+  await page.getByRole('link', { name: 'Back to Goals', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(list.replace(/[?]/g, '\\?') + '$'));
+});

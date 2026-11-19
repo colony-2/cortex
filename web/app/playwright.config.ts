@@ -46,7 +46,8 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: [['list'], ['html', { open: 'never' }]],
+  // Preserve assertion details even when later teardown never reaches the summary.
+  reporter: [['list', { printFailuresInline: !!process.env.CI }], ['html', { open: 'never' }]],
   // Compound journeys include full navigations, responsive layouts and dialogs.
   // Allow their total on constrained CI workers; action/assertion limits below
   // still catch a stalled interaction after 15 seconds.

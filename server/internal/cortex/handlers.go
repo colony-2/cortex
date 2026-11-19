@@ -152,7 +152,7 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, withListExecutionRequirements(resp))
 }
 
 func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
@@ -217,7 +217,7 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job.OtherGoalIDs = nil
-	writeJSON(w, http.StatusOK, job)
+	writeJSON(w, http.StatusOK, withExecutionRequirements(job))
 }
 
 // Verify tenant-scoped existence before replay/control calls. Remote replay can

@@ -54,6 +54,15 @@ status filters run on the backend before pagination. URLs store stable cell IDs;
 renames preserve selections and refresh displayed names. Missing required cell
 fields produce a protocol error rather than an inferred identity.
 
+A job with execution requirements shows one muted line below its goal title, for
+example `req: macOS-26-arm 4c/8g [docker, network]`. `c` means CPU cores and `g`
+means GiB; other memory units remain explicit (`512MiB`, `8GB`). Empty requirements
+add no line. Long lines use an ellipsis; open the line to see the full values in
+**Env**, after Input artifacts on the exact job's detail page. Env also lists
+packages, Python, storage and legacy environment values, with source information,
+diagnostics and exact data in **Details**. Running and finished jobs can display
+stored requirements; these do not describe live demand or actual allocation.
+
 The **Inbox / All jobs** selector controls visibility independently of execution
 status. Inbox is the default and includes finished jobs until they are archived.
 **Archive selected** removes jobs from the inbox and cancels unfinished work;

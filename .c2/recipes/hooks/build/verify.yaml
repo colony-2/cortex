@@ -233,6 +233,25 @@ sequence:
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
         pnpm --filter @colony2/app test src/components/JobStoryPage.test.tsx
+  # Isolate Env acceptance failures from the broader app and browser suites.
+  - id: execution-requirements-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        node scripts/verify-command.mjs bash scripts/go.sh test ./server/internal/cortex -run 'Test(JobExecution|RestoredList|ListExecution)'
+        pnpm --filter @colony2/app test src/utils/executionRequirements.test.ts src/components/JobEnvironment.test.tsx src/components/JobDetailTabs.test.tsx src/components/JobListDetails.test.tsx
+        # Exercise Env in the existing input-artifact keyboard journey at both widths.
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.artifact.config.ts --grep 'IA-016,017 queued input artifacts'
   - id: app-tests
     op: command_execution
     const: true
@@ -378,10 +397,9 @@ sequence:
     inputs:
       working_directory: '${{ context.environment.op.worktree_path }}'
       shell: bash
-      # The full suite is serial in CI and now contains over 250 cases.
-      # A recorded 60-minute run reached production cases but was killed before
-      # completion. Include cold builds and retries without changing test limits.
-      timeout: 90m
+      # Give runtime projects fresh servers after the long browser UI run.
+      # Playwright's own deadline leaves five minutes for shutdown/diagnostics.
+      timeout: 60m
       continue_on_error: false
       capture_diagnostics: always
       env: *verification-env
@@ -389,7 +407,22 @@ sequence:
         set -euo pipefail
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
-        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm test:e2e
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm test:e2e --project=chromium --project=review-development --global-timeout=3300000
+  - id: runtime-browser-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 30m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm test:e2e --project=production --project=previous-worker --project=goals-runtime --global-timeout=1500000
   - id: artifact-browser-tests
     op: command_execution
     const: true

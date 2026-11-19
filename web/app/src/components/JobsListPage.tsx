@@ -1,3 +1,4 @@
+import { requirementSummary } from '../utils/executionRequirements';
 import { cellLabel } from '../utils/cellPresentation';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -242,7 +243,7 @@ function JobsList({ projectId, goalId }: Props) {
   const columns: ColumnsType<Row> = [
     { title: 'Cell', key: 'cell', width: 140, sorter: true, sortOrder: sortOrder('cell'),
       ...checkboxFilter('Filter cells', cellOptions, filters.cell), render: (_, { job }) => cellLabel(job.cell_name) },
-    { title: 'Goal', key: 'prompt', sorter: true, sortOrder: sortOrder('prompt'), render: (_, row) => { const { group, job } = row; return <Space direction="vertical" size={2}>
+    { title: 'Goal', key: 'prompt', sorter: true, sortOrder: sortOrder('prompt'), render: (_, row) => { const { group, job } = row; return <Space className="goal-title-content" direction="vertical" size={2}>
       <Space align="start">
         <GoalExpander expanded={isExpanded(row)} onToggle={() => expand(!isExpanded(row), row)} />
       <div className="goal-title-with-copy"><Link className="goal-prompt compact-touch-link" to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)}>
@@ -253,7 +254,7 @@ function JobsList({ projectId, goalId }: Props) {
       {group.jobs.length > 1 && <Text type="secondary" className="goal-attempt-count">{group.jobs.length} attempts on this page</Text>}
       <JobWaitLinks job={job} projectId={projectId} />
       <JobCompletionMessage job={job} />
-      <JobExecutionRequirements execution={job.execution} />
+      {requirementSummary(job) && <JobExecutionRequirements job={job} projectId={projectId} navigationState={navigationState(group.goalId)} />}
     </Space>; } },
     { title: 'Status', key: 'status', width: 180,
       sorter: true, sortOrder: sortOrder('status'),
@@ -378,16 +379,17 @@ function JobsList({ projectId, goalId }: Props) {
                 <Text type="secondary">{cellLabel(row.job.cell_name)}</Text>
                 {row.group.jobs.length > 1 && <Text type="secondary" className="goal-attempt-count">{row.group.jobs.length} attempts on this page</Text>}
               </div>
+              <JobExecutionRequirements job={row.job} projectId={projectId} navigationState={navigationState(row.group.goalId)} />
               <JobWaitLinks job={row.job} projectId={projectId} />
               {isExpanded(row) && <div className="goal-card-secondary">
                 {columns.filter(column => column.key === 'submitted' || column.key === 'links').map((column, columnIndex) => <div key={columnIndex} className="goal-card-field"><Text type="secondary">{String(column.title)}: </Text>{column.render?.(undefined, row, index) as React.ReactNode}</div>)}
-                <JobCompletionMessage job={row.job} /><JobExecutionRequirements execution={row.job.execution} />
+                <JobCompletionMessage job={row.job} />
               </div>}
               {isExpanded(row) && details(row)}
             </Card>)}
             {!rows.length && !loading && <Empty description={emptyMessage} />}
           </div>
-        </Spin> :         <Table<Row> rowKey="key" columns={columns} dataSource={rows} loading={loading} pagination={false} size="small" scroll={{ x: 1000 }}
+        </Spin> :         <Table<Row> rowKey="key" columns={columns} dataSource={rows} loading={loading} pagination={false} size="small" scroll={{ x: 1000 }} tableLayout="fixed"
           onChange={onTableChange} locale={{ filterCheckAll: 'Select all', filterReset: 'Select none', filterConfirm: 'Apply',
             emptyText: emptyMessage }}
           rowSelection={{

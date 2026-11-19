@@ -320,3 +320,16 @@ it.each([
  vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify(Object.keys(change).length?{...page,...change}:{}))));
  await expect(getTreeWaits('t','job')).rejects.toBeInstanceOf(APIError);
 });
+
+it('ENV-14 preserves additive views and exact opaque data, and accepts older responses', async () => {
+  const raw = '{"job_id":"job","cell_id":"cell-platform","cell_name":"platform","repo":"github.com/acme/platform","execution":{"status":"in_flight","source":"unavailable","published":false},"recorded_execution":{"status":"specified","source":"yield","published":true,"demand":{"effective":{"resources":{"memory":"9007199254740993k"}}}},"client_payload":{"other":9007199254740993},"client_payload_revision":9007199254740995}';
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(url.endsWith('/job') ? raw : `{"jobs":[${raw}]}`)));
+  for (const job of [(await listJobs('tenant')).jobs[0], await getJob('tenant', 'job')]) {
+    expect(job.execution?.status).toBe('in_flight');
+    expect(job.recorded_execution?.demand?.effective).toEqual({ resources: { memory: '9007199254740993k' } });
+    expect(stringifyJobJSON(job)).toContain('"other":9007199254740993');
+    expect(stringifyJobJSON(job.client_payload_revision)).toBe('9007199254740995');
+  }
+  vi.stubGlobal('fetch', vi.fn(async () => new Response('{"job_id":"job","cell_id":"cell-platform","cell_name":"platform","repo":"github.com/acme/platform"}')));
+  expect((await getJob('tenant', 'job')).recorded_execution).toBeUndefined();
+});

@@ -1,3 +1,4 @@
+import { requirementSummary } from '../utils/executionRequirements';
 import JobLeaseTimeline from './JobLeaseTimeline';
 import type { ReactNode } from 'react';
 import { Alert, Descriptions, Space, Typography } from 'antd';
@@ -8,6 +9,7 @@ import dayjs from 'dayjs';
 import { jobFilterSearch } from '../utils/jobFilters';
 import JobWaitLinks, { goalPath } from './JobWaitLinks';
 import JobExecutionRequirements from './JobExecutionRequirements';
+import JobEnvironment from './JobEnvironment';
 
 const { Text } = Typography;
 
@@ -77,17 +79,11 @@ export default function JobListDetails({ job, inspection, projectId, showPrompt 
       showIcon
     />}
     <Descriptions size="small" column={{ xs: 1, sm: 2, lg: 3 }} items={items} />
-    {job.execution && <details open={isOpen('execution')}>
+    {requirementSummary(job) && <JobExecutionRequirements job={job} projectId={projectId} navigationState={navigationState} />}
+    <details open={isOpen('execution')}>
       <summary onClick={event => { event.preventDefault(); toggle('execution'); }}>Execution requirements</summary>
-      <Space direction="vertical" style={{ width: '100%', marginTop: 8 }}>
-        <JobExecutionRequirements execution={job.execution} />
-        <Text>Status: {job.execution.status.replace(/_/g, ' ')}</Text>
-        <Text type="secondary">Source: {job.execution.source.replace(/_/g, ' ')}</Text>
-        {!['in_flight', 'not_waiting'].includes(job.execution.status) && job.execution.initial && <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
-          {stringifyJobJSON({ initial: job.execution.initial }, 2)}
-        </pre>}
-      </Space>
-    </details>}
+      <JobEnvironment job={job} showHeading={false} />
+    </details>
     <details open={isOpen('technical')}>
       <summary onClick={event => { event.preventDefault(); toggle('technical'); }}>Technical details</summary>
       <Descriptions size="small" column={1} items={[

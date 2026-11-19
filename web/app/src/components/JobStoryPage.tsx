@@ -4,6 +4,7 @@ import { TreeWorkspace } from '../executionTree/TreePage';
 import InboxPanel, { inboxCount } from './InboxPanel';
 import JobLeaseTimeline from './JobLeaseTimeline';
 import JobConversation from './JobConversation';
+import JobEnvironment from './JobEnvironment';
 import JobDetailTabs, { jobDetailTab, type JobDetailTab } from './JobDetailTabs';
 import NodePayloadView from './NodePayloadView';
 import JobRelationships from './JobRelationships';
@@ -336,10 +337,14 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const artifactIdentity = JSON.stringify([projectId, jobId]);
   const activeArtifact = artifactOwner === artifactIdentity ? selectedArtifact : null;
 
+  const activeTab = jobDetailTab(searchParams);
+  const loadInputInventory = activeTab !== 'env';
   const [inputInventory, setInputInventory] = useState<{ owner: string; artifacts?: InputArtifact[]; error?: string }>();
   const [inputRetry, setInputRetry] = useState(0);
   const inputs = inputInventory?.owner === artifactIdentity ? inputInventory : undefined;
   useEffect(() => {
+    // Reuse this job's loaded inventory when returning from Env.
+    if (!loadInputInventory || inputs?.artifacts) return;
     const controller = new AbortController();
     setInputInventory({ owner: artifactIdentity });
     getJobInputArtifacts(projectId, jobId, controller.signal).then(result => {
@@ -348,11 +353,10 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
       if (!controller.signal.aborted) setInputInventory({ owner: artifactIdentity, error: error instanceof Error ? error.message : String(error) });
     });
     return () => controller.abort();
-  }, [projectId, jobId, artifactIdentity, inputRetry]);
+  }, [projectId, jobId, artifactIdentity, inputRetry, loadInputInventory]);
 
   const [historyRevision, setHistoryRevision] = useState(0);
   const historyRefreshKey = useMemo(() => ({ revision: historyRevision, pendingInputs }), [historyRevision, pendingInputs]);
-  const activeTab = jobDetailTab(searchParams);
   const dagIdentity = JSON.stringify([projectId, jobId]);
   const [dagVisited, setDagVisited] = useState<string>();
   useEffect(() => { if (activeTab === 'dag') setDagVisited(dagIdentity); }, [activeTab, dagIdentity]);
@@ -373,7 +377,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const taskOrdinalParam = taskOrdinalParamRaw ? Number(taskOrdinalParamRaw) : null;
 
   const isPendingInput = useMemo(() => pendingInputs.some((p) => p.id === jobId), [pendingInputs, jobId]);
-  const shouldLoadDetails = !!jobId && requestId === null && (isPendingInput || wantInput);
+  const shouldLoadDetails = activeTab !== 'env' && !!jobId && requestId === null && (isPendingInput || wantInput);
   const pendingRequestKey = JSON.stringify([projectId, jobId, requestId, shouldLoadDetails, pendingInputRetry]);
   // Invalidate at render time as well as cancelling reads: a replacement must
   // never display the previous request's content or action for even one render.
@@ -503,7 +507,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const load = async () => {
     setHistoryRevision(value => value + 1);
     loadMetadata();
-    await loadStory();
+    if (storyDemand) await loadStory();
   };
 
   useEffect(() => {
@@ -880,6 +884,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
           <div className="job-story-actions" role="group" aria-label="Job actions" onFocusCapture={event => {
             (event.target.closest('button, a, .ant-select') || event.target).scrollIntoView({ block: 'nearest', inline: 'nearest' });
           }}>
+            {activeTab === 'env' && <Link className="compact-touch-link" to={returnTo}>Back to Goals</Link>}
             <Link className="compact-touch-link" to={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId || '')}/story?tab=dag`} state={location.state}>DAG</Link>
             {treeReturnTo && <Link className="compact-touch-link" to={treeReturnTo}>Return to DAG</Link>}
             {overviewLink && <Link className="compact-touch-link" to={overviewLink} state={{ goalsReturnTo: returnTo }}>Goal overview</Link>}
@@ -965,12 +970,12 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
             </div>}
           />
         ) : null)}
-        <JobConversation onBack={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('occurrenceId'); next.delete('requestId'); return next; })} tenant={projectId} job={jobId} occurrence={searchParams.get('occurrenceId') ?? undefined}
+        {activeTab !== 'env' && <JobConversation onBack={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('occurrenceId'); next.delete('requestId'); return next; })} tenant={projectId} job={jobId} occurrence={searchParams.get('occurrenceId') ?? undefined}
           autoRefresh={autoRefresh} refreshIntervalMs={refreshIntervalMs} requestId={searchParams.get('requestId') ?? undefined}
           refreshKey={historyRefreshKey} onOpen={entry => setSearchParams(previous => {
             const next = new URLSearchParams(previous); next.set('occurrenceId', entry); next.set('tab', 'conversation');
             next.delete('requestId'); next.delete('input'); return next;
-          })} />
+          })} />}
         {wantInput && requestId === null && pendingInputForm && !isReview && (
           <Card title={pendingInputForm.title || 'Input request'} size="small">
             <InputFormRenderer form={pendingInputForm} onSubmit={submitPendingInput}
@@ -988,7 +993,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         </section>}
         </section>
         <section role="tabpanel" id="job-panel-relationships" aria-labelledby="job-tab-relationships" hidden={activeTab !== 'relationships'} tabIndex={0} className="job-detail-panel">
-        {job && <JobRelationships showAttempts projectId={projectId} jobId={jobId!} job={job} currentGoal={currentGoal} />}
+        {activeTab !== 'env' && job && <JobRelationships showAttempts projectId={projectId} jobId={jobId!} job={job} currentGoal={currentGoal} />}
 
         </section>
         <section role="tabpanel" id="job-panel-input-artifacts" aria-labelledby="job-tab-input-artifacts" hidden={activeTab !== 'input-artifacts'} tabIndex={0} className="job-detail-panel">
@@ -1013,6 +1018,9 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
           </Card>
         </section>
 
+        </section>
+        <section role="tabpanel" id="job-panel-env" aria-labelledby="job-tab-env" hidden={activeTab !== 'env'} tabIndex={0} className="job-detail-panel">
+          {activeTab === 'env' && job && <JobEnvironment job={job} />}
         </section>
         <section role="tabpanel" id="job-panel-dag" aria-labelledby="job-tab-dag" hidden={activeTab !== 'dag'} tabIndex={0} className="job-detail-panel">
           {(activeTab === 'dag' || dagVisited === dagIdentity) && <TreeWorkspace key={dagIdentity} tenant={projectId} entry={jobId!} active={activeTab === 'dag'} embedded onJobChanged={node => { if (node.tenant_id === projectId && node.job_id === jobId) { void loadMetadata(); void refreshPendingInputs(); } }} />}
