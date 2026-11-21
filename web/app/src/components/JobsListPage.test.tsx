@@ -1,4 +1,5 @@
 import { StrictMode } from 'react';
+import { message } from 'antd';
 import { jobIdentity, registryCell } from '../test/cellFixtures';
 import { getCell, listCells, getJob } from '@colony2/shared/api';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -25,7 +26,8 @@ beforeEach(() => { vi.mocked(listCells).mockResolvedValue({ cells: ['platform', 
 afterEach(async () => {
   // These tests mount portals and start asynchronous list/detail loads. Unmount
   // inside act so React drains queued commits before jsdom and fetch are removed.
-  await act(async () => { cleanup(); });
+  await act(async () => { cleanup(); message.destroy(); });
+  copySuccess?.mockRestore(); copySuccess = undefined;
   vi.unstubAllGlobals();
 });
 
@@ -968,6 +970,12 @@ it.each(['recipe','generic'])('DAG-09 selected %s jobs use the appropriate DAG d
  expect(await screen.findByRole('link',{name:'DAG',exact:true})).toHaveAttribute('href',`/project/tenant/jobs/entry/${job_type==='recipe'?'story?tab=dag':'tree'}`);
 });
 
+let copySuccess: ReturnType<typeof vi.spyOn> | undefined;
+function spyOnCopySuccess() {
+  const success = vi.spyOn(message, 'success').mockImplementation(() => (() => {}) as ReturnType<typeof message.success>);
+  copySuccess = success;
+  return success;
+}
 const copyId = '3M11h0hfoxIoOk6knxCN6DW9o0u';
 function copyFixture(job_id: string, extra: Partial<RecipeJob> = {}) {
   return { ...jobIdentity, job_id, prompt: `Work ${job_id}`, status: 'READY', store: 'ACTIVE', created_at: '2026-11-01T00:00:00Z', ...extra };
@@ -978,6 +986,7 @@ function clipboardFixture(clipboard: unknown) {
 for (const width of [1280, 390]) for (const alias of ['goals', 'jobs']) {
   it(`GJC-001/002/005/006/008/010/011/013 copies independently at ${width} on ${alias}`, async () => {
     vi.stubGlobal('innerWidth', width);
+    const success = spyOnCopySuccess();
     let resolve!: () => void;
     const writeText = vi.fn().mockImplementationOnce(() => new Promise<void>(done => { resolve = done; }))
       .mockRejectedValueOnce(new Error('Denied')).mockResolvedValue(undefined);
@@ -1010,15 +1019,23 @@ for (const width of [1280, 390]) for (const alias of ['goals', 'jobs']) {
     expect(writeText).toHaveBeenLastCalledWith(copyId);
     expect(local.queryByText('Job ID copied')).not.toBeInTheDocument();
     await act(async () => resolve());
-    expect(local.getByRole('status')).toHaveTextContent('Job ID copied'); unchanged();
+    expect(success).toHaveBeenCalledExactlyOnceWith('Job ID copied'); expect(local.getByRole('status')).toHaveTextContent('Job ID copied'); unchanged();
     fireEvent.click(button);
     expect(await local.findByText('Could not copy job ID.')).toBeVisible();
     expect(local.getByRole('textbox', { name: 'Job ID', exact: true })).toHaveValue(copyId);
     expect(local.queryByText('Job ID copied')).not.toBeInTheDocument(); unchanged();
     fireEvent.click(button);
-    expect(await local.findByText('Job ID copied')).toBeVisible();
+    await waitFor(() => expect(success).toHaveBeenCalledTimes(2));
+    expect(local.getByRole('status')).toHaveTextContent('Job ID copied');
     expect(writeText.mock.calls).toEqual([[copyId], [copyId], [copyId]]); unchanged();
-    const untouched = screen.getByRole('button', { name: 'Copy job ID untouched', exact: true }).closest(width < 768 ? '.goal-card' : 'tr')! as HTMLElement;
+    const untouchedButton = screen.getByRole('button', { name: 'Copy job ID untouched', exact: true });
+    writeText.mockRejectedValueOnce(new Error('Other row refused')); fireEvent.click(untouchedButton);
+    const untouched = untouchedButton.closest(width < 768 ? '.goal-card' : 'tr')! as HTMLElement;
+    expect(await within(untouched).findByText('Could not copy job ID.')).toBeVisible();
+    fireEvent.click(button);
+    await waitFor(() => expect(success).toHaveBeenCalledTimes(3));
+    expect(within(untouched).getByRole('textbox', { name: 'Job ID', exact: true })).toHaveValue('untouched');
+    expect(local.getByRole('status')).toHaveTextContent('Job ID copied');
     expect(within(untouched).queryByText('Job ID copied')).not.toBeInTheDocument();
     expect(within(untouched).getByRole('button', { name: 'Expand goal details' })).toHaveAttribute('aria-expanded', 'false');
   });
@@ -1033,6 +1050,7 @@ it.each([undefined, {}])('GJC-007 handles unavailable clipboard %j', async clipb
   expect(screen.queryByText('Job ID copied')).not.toBeInTheDocument();
 });
 it.each([true, false])('GJC-003/004 uses the title attempt with active=%s', async active => {
+  const success = spyOnCopySuccess();
   const writeText = vi.fn().mockResolvedValue(undefined); clipboardFixture({ writeText });
   const jobs = [
     copyFixture('older-active', { goal_id: 'shared', created_at: '2026-11-01T00:00:00Z', status: active ? 'READY' : 'COMPLETED' }),
@@ -1047,7 +1065,7 @@ it.each([true, false])('GJC-003/004 uses the title attempt with active=%s', asyn
   const row = within(button.closest('tr')!);
   expect(row.getByRole('link', { name: `Work ${expected}`, exact: true })).toHaveAttribute('href', expect.stringContaining(`/jobs/${expected}/story`));
   fireEvent.click(button);
-  await screen.findByText('Job ID copied');
+  await waitFor(() => expect(success).toHaveBeenCalledExactlyOnceWith('Job ID copied'));
   expect(writeText).toHaveBeenCalledExactlyOnceWith(expected);
 });
 

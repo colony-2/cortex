@@ -267,8 +267,12 @@ sequence:
       run: |
         set -euo pipefail
         pnpm install --frozen-lockfile
-        pnpm --filter @colony2/app test src/utils/copyText.test.ts src/components/CopyJobId.test.tsx src/components/JobsListPage.test.tsx
+        # Gate CT-20 against the real message DOM, then require archive and the full focused suite.
+        pnpm --filter @colony2/app test src/components/CopyJobId.test.tsx -t CT-20
+        pnpm --filter @colony2/app test src/components/JobActionDialog.test.tsx
+        pnpm --filter @colony2/app test src/utils/copyText.test.ts src/components/CopyJobId.test.tsx src/components/JobsListPage.test.tsx src/components/JobActionDialog.test.tsx src/components/JobStoryPage.test.tsx
         bash scripts/verify-browser.sh pnpm --filter @colony2/app test:e2e --config playwright.copy.config.ts
+        bash scripts/verify-browser.sh pnpm --filter @colony2/app test:e2e --config playwright.fixtures.config.ts --grep 'copies the title job'
   - id: app-tests
     op: command_execution
     const: true

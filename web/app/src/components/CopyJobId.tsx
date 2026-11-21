@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { Button, Input, Tooltip } from 'antd';
+import { Button, Input, Tooltip, message } from 'antd';
 import { CopyOutlined } from '@ant-design/icons';
 import { copyText, copyTextCompatibility } from '../utils/copyText';
 
@@ -8,6 +8,7 @@ export default function CopyJobId({ jobId, title, before, after, compact = false
   jobId: string; title: ReactNode; before?: ReactNode; after?: ReactNode; compact?: boolean;
 }) {
   const [feedback, setFeedback] = useState<Feedback>('idle');
+  const [announcement, setAnnouncement] = useState(0);
   const attempt = useRef(0);
   const button = useRef<HTMLButtonElement>(null);
   const recovery = useRef<HTMLDivElement>(null);
@@ -20,14 +21,22 @@ export default function CopyJobId({ jobId, title, before, after, compact = false
     if (feedback === 'copied') button.current?.focus({ preventScroll: true });
     else recovery.current?.querySelector('textarea')?.focus({ preventScroll: true });
   }, [feedback]);
+  const complete = (current: number, outcome: Feedback) => {
+    if (current !== attempt.current) return;
+    setFeedback(outcome);
+    if (outcome === 'copied') {
+      setAnnouncement(current);
+      message.success('Job ID copied');
+    }
+  };
   const copy = () => {
     const current = ++attempt.current;
     setFeedback('pending');
     const result = copyText(jobId);
-    if (result.method === 'compatibility') setFeedback(result.copied ? 'copied' : 'compatibility-failure');
+    if (result.method === 'compatibility') complete(current, result.copied ? 'copied' : 'compatibility-failure');
     else void result.completion.then(
-      () => { if (current === attempt.current) setFeedback('copied'); },
-      () => { if (current === attempt.current) setFeedback('modern-failure'); },
+      () => complete(current, 'copied'),
+      () => complete(current, 'modern-failure'),
     );
   };
   const failed = feedback === 'modern-failure' || feedback === 'compatibility-failure';
@@ -46,14 +55,16 @@ export default function CopyJobId({ jobId, title, before, after, compact = false
     <div className="goal-copy-recovery" ref={recovery} onClick={event => event.stopPropagation()}>
       <div className="goal-copy-outcome">
         <div className="goal-copy-feedback" role="status" aria-live="polite" aria-atomic="true">
-          {feedback === 'copied' && 'Job ID copied'}
+          {/* Static Ant Design messages have no live region. Keep one announcement
+              here; remount it for repeated synchronous compatibility copies. */}
+          {feedback === 'copied' && <span key={announcement} className="sr-only">Job ID copied</span>}
           {failed && 'Could not copy job ID.'}
         </div>
         {feedback === 'modern-failure' && <Button className="goal-copy-retry" size="small" onClick={event => {
           event.stopPropagation();
-          ++attempt.current;
+          const current = ++attempt.current;
           focusAfterRetry.current = document.activeElement === event.currentTarget;
-          setFeedback(copyTextCompatibility(jobId) ? 'copied' : 'compatibility-failure');
+          complete(current, copyTextCompatibility(jobId) ? 'copied' : 'compatibility-failure');
         }}>Copy another way</Button>}
       </div>
       {failed && <div className="goal-copy-manual">

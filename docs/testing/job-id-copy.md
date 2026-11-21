@@ -13,15 +13,18 @@ hook, including its pinned Chromium, FFmpeg and fonts. The `job-id-copy-tests`
 step runs:
 
 ```sh
+export CI=1
 pnpm install --frozen-lockfile
-pnpm --filter @colony2/app test src/utils/copyText.test.ts src/components/CopyJobId.test.tsx src/components/JobsListPage.test.tsx
+pnpm --filter @colony2/app test src/components/CopyJobId.test.tsx -t CT-20
+pnpm --filter @colony2/app test src/components/JobActionDialog.test.tsx
+pnpm --filter @colony2/app test src/utils/copyText.test.ts src/components/CopyJobId.test.tsx src/components/JobsListPage.test.tsx src/components/JobActionDialog.test.tsx src/components/JobStoryPage.test.tsx
 bash scripts/verify-browser.sh pnpm --filter @colony2/app test:e2e --config playwright.copy.config.ts
+bash scripts/verify-browser.sh pnpm --filter @colony2/app test:e2e --config playwright.fixtures.config.ts --grep 'copies the title job'
 ```
 
-Run the existing list-copy regressions, type checks and production builds too:
+Run type checks and production builds too:
 
 ```sh
-bash scripts/verify-browser.sh pnpm --filter @colony2/app test:e2e --config playwright.fixtures.config.ts --grep 'copies the title job'
 pnpm --filter @colony2/shared typecheck
 pnpm --filter @colony2/app typecheck
 pnpm build:web
@@ -53,7 +56,21 @@ is insufficient. Record exact clipboard assertions, command exit statuses,
 test counts, candidate revision and Chromium/Playwright versions. An unrun
 check remains unverified and a failed required assertion fails acceptance.
 
-The suite captures recovery and long IDs at desktop and phone widths. Inspect
+Successful copies use archive's Ant Design `message.success` defaults after the
+write succeeds, including explicit compatibility retries. There is one global
+success notice and no visible row-local success text. Because the installed Ant
+Design static message has no live-region semantics, copy retains a single polite,
+atomic local status announcement using the app's screen-reader-only style. A fresh
+span on each success also updates repeated synchronous compatibility copies.
+CT-20 renders the real message DOM and requires exactly one live success region;
+Chromium checks its accessibility snapshot and clipped styling alongside the toast.
+These are DOM/accessibility-tree checks, not native screen-reader listening tests.
+Failures retain their visible polite status with retry and manual recovery. Obsolete
+completions emit no toast or success announcement.
+Browser checks use the real success notice, wait for earlier notices to disappear
+between actions, and verify default placement, lifetime and unchanged row geometry.
+
+The suite captures success, recovery and long IDs at desktop and phone widths. Inspect
 selected actual captures before including them in review material. Linux
 Chromium evidence does not claim native Safari or macOS Chrome validation,
 and the original Mac deployment's cause remains unconfirmed.
@@ -86,7 +103,7 @@ grants or a secure-origin override.
 | JC-12 | P0 | unit | `web/app/src/components/JobsListPage.test.tsx` | R | Expect copying on jobs/goals list aliases to preserve URL, selection, expansion, and API request counts. |
 | JC-12 navigation | P0 | integration | `web/app/tests/job-id-copy.spec.ts` | B | Expect the goal overview to retain exact-job navigation without gaining a copy control. |
 | JC-13 | P0 | unit | `web/app/src/components/CopyJobId.test.tsx` | R | Expect another original copy click to clear earlier feedback and permit successful recovery after failure. |
-| JC-14 | P0 | unit | `web/app/src/components/CopyJobId.test.tsx` | R | Expect macOS hints showing ⌘C, other hints Ctrl+C, labeled read-only fields, and polite outcomes with interactive controls outside the status region. |
+| JC-14 | P0 | unit | `web/app/src/components/CopyJobId.test.tsx` | R | Expect macOS hints showing ⌘C, other hints Ctrl+C, labeled read-only fields, and polite local errors with recovery controls outside the status region. |
 | JC-15 | P0 | integration | `web/app/tests/job-id-copy.spec.ts` | B/H | Expect mouse, Enter, Space, and compact touch activation to copy exact IDs while preserving another row’s feedback. |
 | JC-16 | P0 | integration | `web/app/tests/job-id-copy.spec.ts` | H | Expect insecure-context and missing-API assertions before testing first-click HTTP compatibility copying without application clipboard grants. |
 | JC-17 | P0 | integration | `web/app/tests/job-id-copy.spec.ts` | H | Expect an independent clipboard comparison to replace a seeded sentinel with the exact copied ID after non-local HTTP activation. |

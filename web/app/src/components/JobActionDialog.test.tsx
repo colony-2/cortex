@@ -7,7 +7,6 @@ import JobActionDialog from './JobActionDialog';
 import CancelJobButton from './CancelJobButton';
 import { jobIdentity } from '../test/cellFixtures';
 import { StrictMode } from 'react';
-import { message } from 'antd';
 
 vi.mock('@colony2/shared/api', async original => ({
   ...await original<typeof import('@colony2/shared/api')>(),
@@ -177,5 +176,19 @@ it.each([true, false])('AR-016 submits archive once during StrictMode replay or 
     expect(success).toHaveBeenCalledExactlyOnceWith('Archived 1 job');
     expect(completed).toHaveBeenCalledExactlyOnceWith(['one']);
     expect(close).toHaveBeenCalledTimes(1);
+  } finally { success.mockRestore(); }
+});
+
+it('CT-23 emits no archive success while pending or after failure', async () => {
+  let reject!: (error: Error) => void;
+  vi.mocked(archiveJob).mockReturnValue(new Promise<void>((_, fail) => { reject = fail; }));
+  const success = vi.spyOn(message, 'success');
+  try {
+    render(<JobActionDialog projectId="tenant" jobIds={['one']} job={ready} action="archive" onClose={vi.fn()} onComplete={vi.fn()} />);
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Archive job', exact: true }));
+    expect(success).not.toHaveBeenCalled();
+    await act(async () => reject(new Error('Archive unavailable')));
+    expect(await screen.findByText('Archive unavailable')).toBeVisible();
+    expect(success).not.toHaveBeenCalled();
   } finally { success.mockRestore(); }
 });

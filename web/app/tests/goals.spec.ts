@@ -697,21 +697,42 @@ for (const width of [1280, 320, 390]) {
       await button.focus();
       await expect(button).toBeFocused();
       await expect(page.getByRole('tooltip', { name: `Copy job ID ${id}`, exact: true })).toBeVisible();
+      const toast = page.locator('.ant-message-notice-content').filter({ hasText: /^Job ID copied$/ });
+      const geometry = await row.boundingBox();
       for (const key of ['Enter', 'Space']) {
+        await expect(toast).toHaveCount(0);
         await page.evaluate(() => navigator.clipboard.writeText('sentinel'));
         await button.focus(); await page.keyboard.press(key);
+        await expect(toast).toHaveCount(1);
+        await expect(toast.locator('.ant-message-success')).toHaveText('Job ID copied');
         await expect(row.getByRole('status')).toHaveText('Job ID copied');
+        await expect(button).toBeFocused();
+        expect(await row.boundingBox()).toEqual(geometry);
         await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(id);
         await unchanged();
       }
+      await expect(toast).toHaveCount(0);
       await page.evaluate(() => navigator.clipboard.writeText('sentinel'));
       if (width < 768) await button.tap(); else await button.click();
       await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(id);
       await unchanged();
+      await expect(toast).toHaveCount(1);
+      const appearance = await toast.evaluate(element => {
+        const css = getComputedStyle(element);
+        return { background: css.backgroundColor, radius: css.borderRadius, shadow: css.boxShadow, font: css.fontSize, padding: css.padding };
+      });
+      const placement = (await toast.boundingBox())!;
+      expect(placement.y).toBeLessThan(100);
+      expect(Math.abs(placement.x + placement.width / 2 - width / 2)).toBeLessThan(2);
+      expect(await row.boundingBox()).toEqual(geometry);
+      await button.blur(); await page.mouse.move(0, 0);
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
       if (alias === 'goals') await page.screenshot({ path: testInfo.outputPath(`copy-success-${width}.png`), fullPage: true, animations: 'disabled' });
+      await expect(toast).toHaveCount(0);
       await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('Fixture permission denied')) } }));
       await button.click();
       await expect(row.getByRole('status')).toContainText('Could not copy job ID');
+      await expect(toast).toHaveCount(0);
       await expect(row.getByRole('status')).not.toContainText('Job ID copied');
       const manual = row.locator('.goal-copy-manual-id');
       await expect(manual).toHaveValue(id);
@@ -732,6 +753,24 @@ for (const width of [1280, 320, 390]) {
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       }
       if (alias === 'goals') await page.screenshot({ path: testInfo.outputPath(`copy-failure-${width}.png`), fullPage: true, animations: 'disabled' });
+      // Start archive's reference from a fresh fixture after the copy journey.
+      await page.reload();
+      await row.getByRole('checkbox', { name: `Select job ${id}`, exact: true }).check();
+      // Exercise archive's real dialog and toast as the visual reference.
+      await page.route(`**/api/projects/copy/jobs/${id}`, route => route.request().method() === 'DELETE'
+        ? route.fulfill({ status: 204 }) : route.fulfill({ json: job }));
+      await page.getByRole('button', { name: 'Archive selected', exact: true }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Archive job', exact: true }).click();
+      const archiveToast = page.locator('.ant-message-notice-content').filter({ hasText: /^Archived 1 job$/ });
+      await expect(archiveToast).toHaveCount(1);
+      await expect(archiveToast.locator('.ant-message-success')).toHaveText('Archived 1 job');
+      expect(await archiveToast.evaluate(element => {
+        const css = getComputedStyle(element);
+        return { background: css.backgroundColor, radius: css.borderRadius, shadow: css.boxShadow, font: css.fontSize, padding: css.padding };
+      })).toEqual(appearance);
+      expect((await archiveToast.boundingBox())!.y).toBeLessThan(100);
+      if (alias === 'goals') await page.screenshot({ path: testInfo.outputPath(`archive-reference-${width}.png`), fullPage: true, animations: 'disabled' });
+
     });
   });
 }

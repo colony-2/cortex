@@ -23,6 +23,8 @@ async function fixture(page: Page, context: BrowserContext, origin: string, jobI
     if (navigator.clipboard) navigator.clipboard.readText = () => { (window as any).copyProhibitedCalls.push('read'); return Promise.reject(new Error('Application must not read')); };
     navigator.permissions.query = () => { (window as any).copyProhibitedCalls.push('query'); return Promise.reject(new Error('Application must not query')); };
   });
+  // The independent clipboard verifier may own the foreground during setup.
+  await page.bringToFront();
   await page.goto(`${origin}/project/copy/${route}`);
   const button = page.getByRole('button', { name: `Copy job ID ${jobId}`, exact: true });
   await expect(button).toBeVisible();
@@ -42,6 +44,22 @@ async function clipboardSurface(context: BrowserContext) {
     expectValue: async (value: string) => { await surface.bringToFront(); await expect.poll(() => surface.evaluate(() => navigator.clipboard.readText())).toBe(value); },
   };
 }
+function copyToast(page: Page) {
+  return page.locator('.ant-message-notice-content').filter({ hasText: /^Job ID copied$/ });
+}
+async function expectCopyToast(page: Page) {
+  const notice = copyToast(page);
+  await expect(notice).toHaveCount(1);
+  await expect(notice.locator('.ant-message-success')).toHaveText('Job ID copied');
+  const announcement = page.getByRole('status').filter({ hasText: /^Job ID copied$/ });
+  await expect(announcement).toHaveCount(1);
+  await expect(announcement).toHaveAttribute('aria-live', 'polite');
+  await expect(announcement).toHaveAttribute('aria-atomic', 'true');
+  expect(await announcement.ariaSnapshot()).toBe('- status: Job ID copied');
+  await expect(announcement.locator('.sr-only')).toHaveCSS('clip-path', 'inset(50%)');
+  await expect(announcement.locator('.sr-only')).toHaveCSS('position', 'absolute');
+  await expect(page.locator('[role="status"], [role="alert"], [aria-live="polite"], [aria-live="assertive"]').filter({ hasText: /^Job ID copied$/ })).toHaveCount(1);
+}
 async function refuseModern(page: Page) {
   await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('Injected refusal')) } }));
 }
@@ -59,17 +77,20 @@ for (const width of [1280, 390, 320]) {
       expect(page.url()).toBe(initialURL); expect(reads()).toEqual(initialReads);
       await expect(checkbox).toBeChecked();
       await expect(row.getByRole('button', { name: 'Expand goal details' })).toHaveAttribute('aria-expanded', 'false');
-      await expect(page.locator('.goal-copy-feedback').filter({ hasText: 'Job ID copied' })).toHaveCount(1);
+      await expect(row.getByRole('status')).toHaveText('Job ID copied');
       expect(errors).toEqual([]); expect(await page.evaluate(() => (window as any).copyProhibitedCalls)).toEqual([]);
     };
     for (const activation of ['Enter', 'Space', 'click']) {
+      await expect(copyToast(page)).toHaveCount(0);
       await surface.seed(); await page.bringToFront(); await button.focus();
       if (activation === 'click') await button.click(); else await page.keyboard.press(activation);
-      await expect(row.getByRole('status')).toHaveText('Job ID copied');
+      await expectCopyToast(page); await expect(row.getByRole('status')).toHaveText('Job ID copied');
       await surface.expectValue(id); await page.bringToFront(); await unchanged();
     }
+    await expect(copyToast(page)).toHaveCount(0);
     await surface.seed(); await page.bringToFront(); await refuseModern(page); await button.click();
     await expect(row.getByRole('status')).toHaveText('Could not copy job ID.');
+    await expect(copyToast(page)).toHaveCount(0);
     const retry = row.getByRole('button', { name: 'Copy another way' });
     const field = row.getByRole('textbox', { name: 'Job ID', exact: true });
     await expect(field).toHaveValue(id); await expect(field).toHaveAttribute('readonly');
@@ -86,11 +107,13 @@ for (const width of [1280, 390, 320]) {
     await expect(page.getByRole('tooltip')).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath(`copy-recovery-${width}.png`), fullPage: true, animations: 'disabled' });
     await retry.focus(); await page.keyboard.press('Enter');
-    await expect(button).toBeFocused(); await expect(field).toHaveCount(0);
+    await expectCopyToast(page); await expect(button).toBeFocused(); await expect(field).toHaveCount(0);
     await surface.expectValue(id); await page.bringToFront(); await unchanged();
+    await expect(copyToast(page)).toHaveCount(0);
     // Deliberately fail the command; manual keyboard copying still uses the browser.
     await page.evaluate(() => { document.execCommand = () => false; });
     await button.click(); await retry.focus(); await page.keyboard.press('Space');
+    await expect(copyToast(page)).toHaveCount(0);
     await expect(field).toBeFocused(); await expect(retry).toHaveCount(0);
     expect(await field.evaluate(element => { const input = element as HTMLTextAreaElement; return input.value.slice(input.selectionStart, input.selectionEnd); })).toBe(id);
     await surface.seed(); await page.bringToFront(); await field.focus(); await page.keyboard.press('Control+c');
@@ -106,7 +129,7 @@ for (const route of ['jobs', 'goals']) test(`JC-16/17 non-local HTTP copies on $
   await page.bringToFront();
   expect(await page.evaluate(() => ({ secure: isSecureContext, clipboard: typeof navigator.clipboard }))).toEqual({ secure: false, clipboard: 'undefined' });
   const before = { url: page.url(), reads: reads() };
-  await button.click(); await expect(row.getByRole('status')).toHaveText('Job ID copied');
+  await button.click(); await expectCopyToast(page); await expect(row.getByRole('status')).toHaveText('Job ID copied');
   if (route === 'jobs') await page.screenshot({ path: testInfo.outputPath('copy-http-success.png'), fullPage: true, animations: 'disabled' });
   await surface.expectValue(id); await page.bringToFront();
   expect(page.url()).toBe(before.url); expect(reads()).toEqual(before.reads); expect(errors).toEqual([]);
@@ -134,7 +157,7 @@ test.describe('compact touch', () => {
     const surface = await clipboardSurface(context);
     const { button, row } = await fixture(page, context, 'http://cortex-copy.test:15173');
     await page.bringToFront(); await button.tap();
-    await expect(row.getByRole('status')).toHaveText('Job ID copied'); await surface.expectValue(id);
+    await expectCopyToast(page); await expect(row.getByRole('status')).toHaveText('Job ID copied'); await surface.expectValue(id);
     await expect(page.locator('.goal-card').filter({ has: page.getByRole('button', { name: 'Copy job ID untouched', exact: true }) }).getByRole('status')).toBeEmpty();
   });
 });
