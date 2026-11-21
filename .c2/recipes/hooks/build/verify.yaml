@@ -18,6 +18,8 @@ execution:
     - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#findutils
     - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#go_1_26
     - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#nodejs-slim_24
+    # Keep this Linux-only browser scoped here so shared repository defaults
+    # remain portable across worker platforms.
     - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#chromium
     - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#ffmpeg
     - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#nix
@@ -252,6 +254,21 @@ sequence:
         pnpm --filter @colony2/app test src/utils/executionRequirements.test.ts src/components/JobEnvironment.test.tsx src/components/JobDetailTabs.test.tsx src/components/JobListDetails.test.tsx
         # Exercise Env in the existing input-artifact keyboard journey at both widths.
         bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.artifact.config.ts --grep 'IA-016,017 queued input artifacts'
+  - id: job-id-copy-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        pnpm install --frozen-lockfile
+        pnpm --filter @colony2/app test src/utils/copyText.test.ts src/components/CopyJobId.test.tsx src/components/JobsListPage.test.tsx
+        bash scripts/verify-browser.sh pnpm --filter @colony2/app test:e2e --config playwright.copy.config.ts
   - id: app-tests
     op: command_execution
     const: true

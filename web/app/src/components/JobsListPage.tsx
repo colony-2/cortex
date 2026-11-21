@@ -2,8 +2,8 @@ import { requirementSummary } from '../utils/executionRequirements';
 import { cellLabel } from '../utils/cellPresentation';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Alert, Button, Card, Checkbox, Empty, Input, Space, Spin, Table, Tooltip, Typography, theme } from 'antd';
-import { CopyOutlined, FilterFilled, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Checkbox, Empty, Input, Space, Spin, Table, Typography, theme } from 'antd';
+import { FilterFilled, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType, TableProps } from 'antd/es/table';
 import type { SortOrder } from 'antd/es/table/interface';
 import { getCell, getJob, listJobs } from '@colony2/shared/api';
@@ -21,6 +21,7 @@ import JobExecutionRequirements from './JobExecutionRequirements';
 import './JobsListPage.css';
 import NewGoalDialog from './NewGoalDialog';
 import CompactFilter from './CompactFilter';
+import CopyJobId from './CopyJobId';
 import { useCompact } from '../hooks/useCompact';
 import { useCells } from '../hooks/useCells';
 import { matchesSearchTerms, searchTerms } from '../utils/searchTerms';
@@ -37,31 +38,6 @@ const rowComparisons = {
   status: (a: Row, b: Row) => jobStatus(a.job).label.localeCompare(jobStatus(b.job).label),
   submitted: (a: Row, b: Row) => jobTimestamp(a.job) - jobTimestamp(b.job),
 };
-function CopyJobId({ jobId }: { jobId: string }) {
-  const [feedback, setFeedback] = useState<'success' | 'failure' | null>(null);
-  const attempt = useRef(0);
-  useEffect(() => () => { attempt.current++; }, []);
-  const copy = async () => {
-    const current = ++attempt.current;
-    setFeedback(null);
-    try {
-      await navigator.clipboard.writeText(jobId);
-      if (current === attempt.current) setFeedback('success');
-    } catch {
-      if (current === attempt.current) setFeedback('failure');
-    }
-  };
-  return <>
-    <Tooltip title={`Copy job ID ${jobId}`} trigger={['hover', 'focus']}>
-      <Button className="goal-copy-id" type="text" size="small" aria-label={`Copy job ID ${jobId}`}
-        icon={<CopyOutlined aria-hidden="true" />} onClick={event => { event.stopPropagation(); void copy(); }} />
-    </Tooltip>
-    <div className="goal-copy-feedback" role="status" aria-live="polite" aria-atomic="true">
-      {feedback === 'success' && 'Job ID copied'}
-      {feedback === 'failure' && <>Could not copy job ID <code className="goal-copy-manual-id">{jobId}</code></>}
-    </div>
-  </>;
-}
 function GoalExpander({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
   const { token } = theme.useToken();
   return <button type="button" className="goal-expander"
@@ -244,13 +220,11 @@ function JobsList({ projectId, goalId }: Props) {
     { title: 'Cell', key: 'cell', width: 140, sorter: true, sortOrder: sortOrder('cell'),
       ...checkboxFilter('Filter cells', cellOptions, filters.cell), render: (_, { job }) => cellLabel(job.cell_name) },
     { title: 'Goal', key: 'prompt', sorter: true, sortOrder: sortOrder('prompt'), render: (_, row) => { const { group, job } = row; return <Space className="goal-title-content" direction="vertical" size={2}>
-      <Space align="start">
-        <GoalExpander expanded={isExpanded(row)} onToggle={() => expand(!isExpanded(row), row)} />
-      <div className="goal-title-with-copy"><Link className="goal-prompt compact-touch-link" to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)}>
-        {abbreviatePrompt(fullPrompt(group) || 'Untitled goal')}
-      </Link>
-      <CopyJobId key={job.job_id} jobId={job.job_id} /></div>
-      </Space>
+      <CopyJobId key={job.job_id} jobId={job.job_id}
+        before={<GoalExpander expanded={isExpanded(row)} onToggle={() => expand(!isExpanded(row), row)} />}
+        title={<Link className="goal-prompt compact-touch-link" to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)}>
+          {abbreviatePrompt(fullPrompt(group) || 'Untitled goal')}
+        </Link>} />
       {group.jobs.length > 1 && <Text type="secondary" className="goal-attempt-count">{group.jobs.length} attempts on this page</Text>}
       <JobWaitLinks job={job} projectId={projectId} />
       <JobCompletionMessage job={job} />
@@ -366,14 +340,12 @@ function JobsList({ projectId, goalId }: Props) {
           {!!rows.length && <Checkbox disabled={loading} checked={rows.every(row => row.group.jobs.every(job => selectedIds.includes(job.job_id)))} indeterminate={!!selectedIds.length && !rows.every(row => row.group.jobs.every(job => selectedIds.includes(job.job_id)))} onChange={event => setSelection(rows.flatMap(row => row.group.jobs.map(job => job.job_id)), event.target.checked)}>Select all goals on this page</Checkbox>}
           <div className="compact-cards" aria-label="Goals">
             {rows.map((row, index) => <Card key={row.key} size="small" className="goal-card">
-              <div className="goal-card-summary">
-                <Checkbox disabled={loading} checked={row.group.jobs.every(job => selectedIds.includes(job.job_id))} indeterminate={row.group.jobs.some(job => selectedIds.includes(job.job_id)) && !row.group.jobs.every(job => selectedIds.includes(job.job_id))} onChange={event => setSelection(row.group.jobs.map(job => job.job_id), event.target.checked)} aria-label={row.group.jobs.length === 1 ? `Select job ${row.job.job_id}` : `Select attempts for ${abbreviatePrompt(fullPrompt(row.group) || 'Untitled goal')}`} />
-                <div className="goal-title-with-copy"><Link className="goal-prompt compact-touch-link" to={`${jobPath(projectId, row.job.job_id)}${jobFilterSearch(params)}`} state={navigationState(row.group.goalId)}>
+              <CopyJobId key={row.job.job_id} jobId={row.job.job_id} compact
+                before={<Checkbox disabled={loading} checked={row.group.jobs.every(job => selectedIds.includes(job.job_id))} indeterminate={row.group.jobs.some(job => selectedIds.includes(job.job_id)) && !row.group.jobs.every(job => selectedIds.includes(job.job_id))} onChange={event => setSelection(row.group.jobs.map(job => job.job_id), event.target.checked)} aria-label={row.group.jobs.length === 1 ? `Select job ${row.job.job_id}` : `Select attempts for ${abbreviatePrompt(fullPrompt(row.group) || 'Untitled goal')}`} />}
+                title={<Link className="goal-prompt compact-touch-link" to={`${jobPath(projectId, row.job.job_id)}${jobFilterSearch(params)}`} state={navigationState(row.group.goalId)}>
                   <span className="goal-card-title">{abbreviatePrompt(fullPrompt(row.group) || 'Untitled goal')}</span>
-                </Link>
-                <CopyJobId key={row.job.job_id} jobId={row.job.job_id} /></div>
-                <GoalExpander expanded={isExpanded(row)} onToggle={() => expand(!isExpanded(row), row)} />
-              </div>
+                </Link>}
+                after={<GoalExpander expanded={isExpanded(row)} onToggle={() => expand(!isExpanded(row), row)} />} />
               <div className="goal-card-meta">
                 {columns.find(column => column.key === 'status')?.render?.(undefined, row, index) as React.ReactNode}
                 <Text type="secondary">{cellLabel(row.job.cell_name)}</Text>

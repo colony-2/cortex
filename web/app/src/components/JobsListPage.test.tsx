@@ -973,7 +973,7 @@ function copyFixture(job_id: string, extra: Partial<RecipeJob> = {}) {
   return { ...jobIdentity, job_id, prompt: `Work ${job_id}`, status: 'READY', store: 'ACTIVE', created_at: '2026-11-01T00:00:00Z', ...extra };
 }
 function clipboardFixture(clipboard: unknown) {
-  vi.stubGlobal('navigator', { userAgent: navigator.userAgent, clipboard });
+  vi.stubGlobal('navigator', { userAgent: navigator.userAgent, platform: navigator.platform, clipboard });
 }
 for (const width of [1280, 390]) for (const alias of ['goals', 'jobs']) {
   it(`GJC-001/002/005/006/008/010/011/013 copies independently at ${width} on ${alias}`, async () => {
@@ -1012,8 +1012,8 @@ for (const width of [1280, 390]) for (const alias of ['goals', 'jobs']) {
     await act(async () => resolve());
     expect(local.getByRole('status')).toHaveTextContent('Job ID copied'); unchanged();
     fireEvent.click(button);
-    expect(await local.findByText('Could not copy job ID')).toBeVisible();
-    expect(within(local.getByRole('status')).getByText(copyId, { selector: 'code' })).toHaveTextContent(copyId);
+    expect(await local.findByText('Could not copy job ID.')).toBeVisible();
+    expect(local.getByRole('textbox', { name: 'Job ID', exact: true })).toHaveValue(copyId);
     expect(local.queryByText('Job ID copied')).not.toBeInTheDocument(); unchanged();
     fireEvent.click(button);
     expect(await local.findByText('Job ID copied')).toBeVisible();
@@ -1028,8 +1028,8 @@ it.each([undefined, {}])('GJC-007 handles unavailable clipboard %j', async clipb
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ jobs: [copyFixture(copyId)] }))));
   render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
   fireEvent.click(await screen.findByRole('button', { name: `Copy job ID ${copyId}` }));
-  expect(await screen.findByText('Could not copy job ID')).toBeVisible();
-  expect(screen.getByText(copyId, { selector: 'code' })).toBeVisible();
+  expect(await screen.findByText('Could not copy job ID.')).toBeVisible();
+  expect(screen.getByRole('textbox', { name: 'Job ID', exact: true })).toHaveValue(copyId);
   expect(screen.queryByText('Job ID copied')).not.toBeInTheDocument();
 });
 it.each([true, false])('GJC-003/004 uses the title attempt with active=%s', async active => {

@@ -671,8 +671,8 @@ for (const width of [1280, 320, 390]) {
       await page.route('**/api/projects/copy/jobs/*', route => route.fulfill({ json: job }));
       await page.goto(`/project/copy/${alias}?executionState=cells-v1&sort=prompt&order=ascend`);
       const button = page.getByRole('button', { name: `Copy job ID ${id}`, exact: true });
-      const row = button.locator(width < 768 ? 'xpath=ancestor::*[contains(@class,"goal-card")][1]' : 'xpath=ancestor::tr');
-      const other = page.getByRole('button', { name: 'Copy job ID untouched', exact: true }).locator(width < 768 ? 'xpath=ancestor::*[contains(@class,"goal-card")][1]' : 'xpath=ancestor::tr');
+      const row = button.locator(width < 768 ? 'xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " goal-card ")][1]' : 'xpath=ancestor::tr');
+      const other = page.getByRole('button', { name: 'Copy job ID untouched', exact: true }).locator(width < 768 ? 'xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " goal-card ")][1]' : 'xpath=ancestor::tr');
       await expect(button).toBeVisible();
       await expect(button.locator('svg')).toHaveCount(1);
       expect(await button.evaluate(element => element.closest('a') === null && element.textContent === '')).toBe(true);
@@ -714,12 +714,12 @@ for (const width of [1280, 320, 390]) {
       await expect(row.getByRole('status')).toContainText('Could not copy job ID');
       await expect(row.getByRole('status')).not.toContainText('Job ID copied');
       const manual = row.locator('.goal-copy-manual-id');
-      await expect(manual).toHaveText(id);
+      await expect(manual).toHaveValue(id);
       await expect(manual).toHaveCSS('user-select', 'text');
+      await manual.focus();
       expect(await manual.evaluate(element => {
-        const range = document.createRange(); range.selectNodeContents(element);
-        const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
-        return selection.toString();
+        const field = element as HTMLTextAreaElement;
+        return field.value.slice(field.selectionStart, field.selectionEnd);
       })).toBe(id);
       await unchanged();
       if (width < 768) {

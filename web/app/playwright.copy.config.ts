@@ -1,0 +1,24 @@
+import { defineConfig } from '@playwright/test';
+import fixtures from './playwright.fixtures.config';
+
+// Keep the extra hostname and resolver confined to this acceptance check.
+export default defineConfig({
+  ...fixtures,
+  testMatch: 'job-id-copy.spec.ts',
+  reporter: [['list', { printFailuresInline: true }]],
+  fullyParallel: false,
+  workers: 1,
+  projects: [{ name: 'copy-chromium', use: { browserName: 'chromium' } }],
+  use: {
+    ...fixtures.use,
+    permissions: [],
+    launchOptions: {
+      ...fixtures.use?.launchOptions,
+      args: ['--host-resolver-rules=MAP cortex-copy.test 127.0.0.1', '--no-proxy-server'],
+    },
+  },
+  webServer: (Array.isArray(fixtures.webServer) ? fixtures.webServer : []).map(server => ({
+    ...server,
+    command: server.command.replace('pnpm exec vite ', 'pnpm exec vite --config vite.copy.config.ts '),
+  })),
+});

@@ -39,6 +39,19 @@ closure or deletion. Empty pages with continuation and unavailable reads remain
 distinct. Historical attempts, recorded parent/child links and settled result identities
 remain separate; a missing exact job never selects a neighbor.
 
+## Copying job IDs
+
+The copy icon beside a goal title copies that attempt's job ID. On remote HTTP
+pages, browsers may omit the modern clipboard API even though it works on
+localhost or HTTPS. Cortex then tries a compatibility copy during the click.
+HTTPS remains the preferred setup for remote access.
+
+If the browser refuses modern copying, use **Copy another way**. If copying is
+still blocked, focus the labeled Job ID field and press ⌘C on macOS or Ctrl+C on
+other platforms. The field contains the complete ID. No browser security setting
+change is required. [Job ID copy verification](docs/testing/job-id-copy.md) describes the
+Playwright Chromium acceptance checks and their clipboard evidence.
+
 ## Goal list filters and search
 
 The Status column's filter matches the badges shown for jobs, including Succeeded,
@@ -379,17 +392,20 @@ The `previous-worker` browser project produces pending inputs with that worker,
 then answers through Cortex and continues with the current worker. Both workers
 are built automatically; `make test-worker previous-worker` builds them directly.
 
-The c2 execution tools in [`.c2/config.yaml`](.c2/config.yaml) declare Go, Bash,
-Make, Node.js, pnpm, Playwright, Chromium, and FFmpeg. Nix supplies Chromium's
-runtime libraries. Linux workers must also expose fonts through a usable
+The shared c2 execution tools in [`.c2/config.yaml`](.c2/config.yaml) declare Go,
+Bash, Make, Node.js, pnpm, Playwright, and FFmpeg. The
+[build verify hook](.c2/recipes/hooks/build/verify.yaml) additionally declares
+Linux-only Chromium with its Nix runtime libraries. Keeping Chromium out of the
+shared defaults keeps those defaults portable across worker platforms.
+Linux workers must also expose fonts through a usable
 Fontconfig configuration; on minimal workers, set `FONTCONFIG_FILE` to a
 configuration referencing the provisioned fonts and a writable cache directory.
 Having font files in the Nix store alone does not configure font discovery.
-The browser tests use Chromium and FFmpeg from
+The Linux hook's browser tests use Chromium and FFmpeg from
 `PATH`, without downloading browsers or installing system packages.
 
-Outside c2, either provide Chromium and FFmpeg on `PATH`, or install Playwright's
-browser before running the tests:
+Outside the Linux verify hook, either provide Chromium and FFmpeg on `PATH`, or
+install Playwright's browser before running the tests:
 
 ```sh
 PLAYWRIGHT_BROWSERS_PATH="${CORTEX_PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}" \

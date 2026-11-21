@@ -9,8 +9,8 @@ packages:
   - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#go_1_26
   # Use Node directly: nodejs_24 requires a local npm/Corepack wrapper build.
   - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#nodejs-slim_24
-  # Browser, codecs, fonts, and shared libraries come from the Nix closures.
-  - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#chromium
+  # Linux-only Chromium is declared by the build verify hook to keep these
+  # shared defaults portable across worker platforms.
   - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#ffmpeg
   # Match package.json and pnpm-lock.yaml, respectively.
   - pnpm:pnpm@10.0.0

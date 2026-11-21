@@ -5,8 +5,14 @@ a.goal-prompt, a.goal-prompt:hover, a.goal-prompt:visited { color: inherit; text
 a.goal-prompt:focus-visible { outline: 2px solid #1677ff; outline-offset: 3px; }
 .goal-attempt-count { font-size: 12px; }
 .goal-title-with-copy { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 4px; align-items: start; min-width: 0; }
-.goal-copy-feedback { grid-column: 1 / -1; overflow-wrap: anywhere; font-size: 12px; }
-.goal-copy-manual-id { display: block; user-select: text; white-space: pre-wrap; }
+.goal-copy-feedback { overflow-wrap: anywhere; font-size: 12px; }
+.goal-copy-region { width: 100%; min-width: 0; }
+.goal-copy-header { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: start; }
+.goal-copy-outcome { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.goal-copy-recovery { min-width: 0; }
+.goal-copy-manual { display: grid; gap: 4px; margin-top: 6px; font-size: 12px; overflow-wrap: anywhere; }
+.goal-copy-manual-id { display: block; user-select: text; white-space: pre-wrap; overflow-wrap: anywhere; width: 100%; font-family: monospace; }
+.goal-copy-manual label { font-weight: 600; }
 .goal-overview-content { display: flex; flex-direction: column; gap: 16px; }
 .goal-full-prompt { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 16px; margin: 0 !important; }
 .goal-attempt-detail { background: #fff; }
@@ -25,6 +31,9 @@ a.goal-prompt:focus-visible { outline: 2px solid #1677ff; outline-offset: 3px; }
   .goal-visibility { grid-area: 2 / 2; }
   .goal-expander { width: 44px; height: 44px; }
   .goal-title-with-copy { align-items: center; }
+  .goal-copy-outcome { align-items: start; flex-direction: column; gap: 4px; }
+  .goal-copy-retry.ant-btn { min-height: 44px; height: auto; }
+  .goal-copy-manual-id.ant-input { font-size: 16px; }
   .goal-copy-id.ant-btn { min-width: 44px; width: 44px; min-height: 44px; height: 44px; }
 }
 
