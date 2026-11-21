@@ -12,7 +12,7 @@ export default function DiffView({ text, dual }: { text: string; dual: boolean }
     {!!result.files.length && <Select aria-label="Patch file" value={selected} style={{ maxWidth: '100%', width: 400 }} options={result.files.map((f,i) => ({ label: f.name, value: i }))} onChange={i => { setSelected(i); sections.current[i]?.scrollIntoView?.({ block: 'nearest' }); }} />}
     {result.files.map((file, i) => <section key={i} ref={el => { sections.current[i] = el; }}>
       <h4>{file.name}</h4>
-      {file.lines.some(l => /^(GIT binary patch|Binary files )/.test(l.text)) && <Alert type="info" message="Binary patch metadata only; image contents cannot be reconstructed." />}
+      {file.lines.some(l => /^(GIT binary patch|Binary files )/.test(l.text)) && <Alert type="info" message={file.lines.some(l => l.text === 'GIT binary patch') ? 'Binary file changed. A binary patch is included in the saved diff; this preview shows its source.' : 'Binary file changed. Its contents were not included in this saved diff.'} />}
       <div className="review-diff-scroll" tabIndex={0} role="region" aria-label={dual ? 'Side by side diff' : 'Unified diff'}>
         <table className="review-diff"><thead><tr>{dual ? <><th colSpan={2}>Old</th><th colSpan={2}>New</th></> : <><th>Old</th><th>New</th><th>Change</th></>}</tr></thead>
           <tbody>{dual ? alignDiff(file.lines).map((r,n) => <tr key={n}>{cell(r.left,'old')}{cell(r.right,'next')}</tr>) : file.lines.map((l,n) => <tr key={n}><td className="diff-number">{l.old}</td><td className="diff-number">{l.next}</td><td className={`diff-${l.kind}`}>{l.text}</td></tr>)}</tbody>

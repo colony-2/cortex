@@ -376,8 +376,23 @@ sequence:
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
         bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.recovery.config.ts recovery-stage1.spec.ts
-  # Changes uses native HTTP/SQLite fixtures and its own production server.
-  # Keep it separate from the general mocked browser project.
+  # Saved-diff contracts must pass before checking the production review UI.
+  - id: workspace-diff-contract-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        bash scripts/verify-workspace-diff.sh
+  # Saved comparisons use native HTTP/SQLite fixtures and a production server.
   - id: changes-browser-tests
     op: command_execution
     const: true
@@ -408,15 +423,16 @@ sequence:
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
         bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.review-history.config.ts review-v2-usability.spec.ts
-  - id: browser-tests
+  # Keep the complete general suite, but give each half a fresh execution window
+  # and fresh servers. Both sequential shards must pass before runtime checks.
+  - id: browser-tests-shard-1
     op: command_execution
     const: true
     inputs:
       working_directory: '${{ context.environment.op.worktree_path }}'
       shell: bash
-      # Give runtime projects fresh servers after the long browser UI run.
-      # Playwright's own deadline leaves five minutes for shutdown/diagnostics.
-      timeout: 60m
+      # Allow bounded cold builds, then 55 minutes of tests and shutdown time.
+      timeout: 75m
       continue_on_error: false
       capture_diagnostics: always
       env: *verification-env
@@ -424,14 +440,32 @@ sequence:
         set -euo pipefail
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
-        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm test:e2e --project=chromium --project=review-development --global-timeout=3300000
+        timeout 15m node scripts/verify-command.mjs bash scripts/prepare-browser-tests.sh
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm test:e2e --project=chromium --project=review-development --shard=1/2 --global-timeout=3300000
+  - id: browser-tests-shard-2
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      # Match shard 1; this is a separate managed task, not a timeout retry.
+      timeout: 75m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        timeout 15m node scripts/verify-command.mjs bash scripts/prepare-browser-tests.sh
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm test:e2e --project=chromium --project=review-development --shard=2/2 --global-timeout=3300000
   - id: runtime-browser-tests
     op: command_execution
     const: true
     inputs:
       working_directory: '${{ context.environment.op.worktree_path }}'
       shell: bash
-      timeout: 30m
+      timeout: 45m
       continue_on_error: false
       capture_diagnostics: always
       env: *verification-env
@@ -439,6 +473,7 @@ sequence:
         set -euo pipefail
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
+        timeout 15m node scripts/verify-command.mjs bash scripts/prepare-browser-tests.sh
         bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm test:e2e --project=production --project=previous-worker --project=goals-runtime --global-timeout=1500000
   - id: artifact-browser-tests
     op: command_execution

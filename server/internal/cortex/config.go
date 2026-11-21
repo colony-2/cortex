@@ -28,7 +28,7 @@ type Config struct {
 	Logger           *slog.Logger
 	Assistant        *AssistantIntegration
 	AssistantRuntime *AssistantRuntimeConfig
-	// Trusted application policy; zero configuration keeps Changes offline.
+	// Deprecated: retained for Go configuration compatibility; saved diff reads do not reconstruct Git history.
 	Changes jobinspect.ChangesConfig
 }
 
@@ -39,7 +39,7 @@ type Server struct {
 	jobDeletion   jobdb.JobDeletionRuntime
 	chapters      chapterReader
 	leaseEvents   jobdb.LeaseEventReader
-	changes       func(string) (jobinspect.ChangesAPI, error)
+	workspaceDiff func(string) (jobinspect.WorkspaceDiffAPI, error)
 	router        http.Handler
 	story         storyService
 	inputs        inputRuntime

@@ -91,7 +91,7 @@ describe('V04,V06-V10,J02-J04,D01,D05,D06 visible viewers', () => {
     const d=data('diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-old\n+new\n','sample.patch');
     const {rerender}=render(<DocumentPreview {...props} data={d} />);expect(screen.getByLabelText('Unified diff')).toHaveTextContent('-old');
     rerender(<DocumentPreview {...props} dual data={d} />);expect(screen.getByLabelText('Side by side diff')).toHaveTextContent('+new');
-    rerender(<DocumentPreview {...props} data={data('diff --git a/a b/a\nBinary files a/a and b/a differ\n','sample.diff')} />);expect(screen.getByText(/Binary patch metadata only/)).toBeInTheDocument();
+    rerender(<DocumentPreview {...props} data={data('diff --git a/a b/a\nBinary files a/a and b/a differ\n','sample.diff')} />);expect(screen.getByText(/Binary file changed/)).toBeInTheDocument();
     rerender(<DocumentPreview {...props} data={data('@@@ invalid','sample.diff')} />);expect(screen.getByLabelText('Document source')).toHaveTextContent('@@@ invalid');
   });
   it('renders logs and control sequences as visible inert source', () => {

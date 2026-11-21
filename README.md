@@ -295,32 +295,39 @@ select a tenant in the header, use `/?tenantId=42`, or open a tenant route such 
 `/project/42/jobs`. The email screen records an identity cookie; it does not
 provide server-side authentication.
 
-### Reviewing commits
+### Reviewing saved changes
 
-The review v2 reader opens on Documents, beside the document catalog and
-discussion. Its Changes tab shows the job's latest recorded main
-workspace, its repository, base/head and source, and the complete oldest-first
-commit sequence since the base. Click a commit to inspect its changes; Shift-click
-or Shift+Arrow selects an inclusive range. From / Through controls also support
-touch. All changes compares base to head. Use the existing Unified, Side by side,
-Source and file-navigation controls, or download the complete patch. Tabs preserve
-the response draft, attachments and document display state.
+The Review v2 reader opens on Documents beside the catalog and discussion.
+Changes reads the latest saved cumulative diff for the main workspace, from its
+recorded active base to its head. It shows repository and compact base/head labels,
+Unified and Side by side layouts, Source, file navigation and Download saved diff.
+Refresh changes reads the latest persisted state; tabs and refresh preserve review
+drafts, attachments, settings and document display state.
 
-Refresh changes loads the latest recorded workspace; advancement rejects old
-selections. This is committed, persisted code, not a live checkout or a statement
-about an earlier check or approval. An in-range merge explicitly disables commit
-and range selection; an available All diff remains labeled as an endpoint net
-comparison. Empty history, reverted net changes and unavailable objects have
-separate states. No recipe opt-in or extra Git artifact is required.
+This is saved code, not a live checkout or a statement about an earlier approval.
+Empty comparisons and missing evidence have different messages. Binary notices
+explain that their contents were not included. Text previews stop at 2 MiB; the
+download opens the exact original saved artifact even when a preview is shortened.
+No history reconstruction, Git invocation, base fetching or repository policy is
+needed. Old records without a provable saved comparison remain unavailable.
 
-The reader reuses retained c2j bundles in bounded temporary repositories. The
-server needs Git on PATH and writable temporary storage. Repository access is
-offline by default, including no local-checkout fallback. Missing prerequisites
-produce `missing_closure` with object hashes. Embedded deployments may deliberately
-configure `cortex.Config.Changes` (`jobinspect.ChangesConfig`) with a trusted
-repository policy; browser parameters cannot enable repository access. The
-standard command retains the offline default. Ambient Git credentials do not
-authorize a fetch.
+`GET /api/projects/{tenant}/jobs/{job}/workspace-diff` returns `metadata`, `patch`,
+`preview_complete` and, when a saved file exists, `download_url`. Optional query
+selectors are `task` or `scope` (exact native occurrence IDs), `attempt`, `workspace`
+and `boundary=before|after`. IDs come from `c2j job log` and `c2j job story`.
+Omitted boundary means after; omitted attempt uses the latest recorded attempt.
+With a selected point, omitted workspace follows its recorded active workspace.
+Without a point, it selects main. Every comparison remains cumulative to that
+point. Duplicate, unknown and conflicting selectors fail with HTTP 400.
+Unavailable comparisons return explicit metadata with HTTP 200; operational
+failures remain errors. The Review v2 screen uses latest without selectors.
+
+Upgrade the server/web together with c2j's saved-diff reader. The old `/changes`
+and `/changes/diff` routes return HTTP 410 with migration guidance; commit/range
+selection is retired. CLI callers use `c2j job diff JOB`, optionally with
+`--task`, `--scope`, `--attempt`, `--workspace`, `--boundary` and metadata-only
+`--json`. `cortex.Config.Changes` remains for Go configuration compatibility but
+is unused by saved-diff reads.
 
 ## Build from source
 
@@ -454,12 +461,12 @@ The timeout regression also runs against the real worker. It verifies that an
 unanswered input expires, clears pending prompts in both browser tabs, and rejects
 late submissions.
 
-The Changes acceptance suite uses the embedded production UI and real writer
-bundles recorded in native recipe jobs over HTTP/SQLite. Producing checkouts are
-deleted before reads. It compares All/single/range downloads with independent Git
-oracles, exercises v2 and legacy reviews, desktop/phone selection and workspace
-advancement, and keeps
-normal review submissions and receipts working. Run it separately on port 18086:
+The Changes acceptance suite uses the embedded production UI and real saved
+diff files recorded in native recipe jobs over HTTP/SQLite. Producing checkouts
+are deleted before reads. It compares original downloads with independent Git
+oracles, forbids history requests, exercises v2 and legacy reviews, refresh
+races, missing/empty/large/binary states, phone and native 200% zoom, and keeps
+review submissions and receipts working. Run it separately on port 18086:
 
 ```sh
 pnpm --filter @colony2/app exec playwright test --config playwright.changes.config.ts

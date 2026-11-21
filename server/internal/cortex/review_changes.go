@@ -2,6 +2,7 @@ package cortex
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,12 +16,9 @@ import (
 
 const changesPreviewBytes = 2 << 20
 
-// Keep Changes composition separate from the read-only lease history capability.
-// The shared reader currently takes WorkflowRuntime; handlers receive only its
-// read API, scoped to the requested tenant with job authorization on every read.
 func (s *Server) configureChanges(runtime jobdb.WorkflowRuntime) {
-	s.changes = func(tenant string) (jobinspect.ChangesAPI, error) {
-		service := &jobinspect.Service{Runtime: runtime, Tenant: tenant, Authorize: func(ctx context.Context, job string) error {
+	s.workspaceDiff = func(tenant string) (jobinspect.WorkspaceDiffAPI, error) {
+		return &jobinspect.Service{Runtime: runtime, Tenant: tenant, Authorize: func(ctx context.Context, job string) error {
 			page, err := s.engine.ListJobs(ctx, jobdb.ListJobsRequest{
 				TenantIds: []string{tenant}, JobKeys: []jobdb.JobKey{{TenantId: tenant, JobId: job}}, IncludeHidden: true,
 				Stores: []jobdb.JobStore{jobdb.JobStoreActive, jobdb.JobStoreArchived}, PageSize: 1,
@@ -32,76 +30,73 @@ func (s *Server) configureChanges(runtime jobdb.WorkflowRuntime) {
 				return jobdb.ErrCellForbidden
 			}
 			return nil
-		}}
-		return jobinspect.NewChangesService(service, s.cfg.Changes)
+		}}, nil
 	}
 }
 
-func (s *Server) changesReader(r *http.Request) (jobinspect.ChangesAPI, error) {
-	if s.changes == nil {
-		return nil, &jobinspect.ChangesError{Version: 1, Code: "backend", Detail: "Changes reader is unavailable on this server"}
-	}
-	return s.changes(s.tenantID(r))
-}
-
-// The browser chooses a comparison, never a repository, workspace or artifact.
-func changesQuery(r *http.Request, diff bool) (jobinspect.DiffRequest, string, error) {
+func workspaceDiffQuery(r *http.Request) (jobinspect.WorkspaceDiffRequest, error) {
+	request := jobinspect.WorkspaceDiffRequest{JobID: mux.Vars(r)["jobId"]}
 	q, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil {
-		return jobinspect.DiffRequest{}, "", err
-	}
-	allowed := map[string]bool{"cursor": !diff, "limit": !diff, "selection": true}
-	if diff {
-		for _, key := range []string{"all", "commit", "from", "through", "format"} {
-			allowed[key] = true
-		}
+		return request, jobinspect.WorkspaceDiffDiagnostic("invalid_request", "Invalid query encoding", err)
 	}
 	for key, values := range q {
-		if !allowed[key] || len(values) != 1 {
-			return jobinspect.DiffRequest{}, "", fmt.Errorf("invalid changes parameter")
+		if len(values) != 1 {
+			return request, jobinspect.WorkspaceDiffDiagnostic("invalid_request", "Duplicate selector", nil)
+		}
+		value := values[0]
+		switch key {
+		case "task":
+			request.Task = &value
+		case "scope":
+			request.Scope = &value
+		case "workspace":
+			request.Workspace = &value
+		case "boundary":
+			request.Boundary = &value
+		case "attempt":
+			n, err := strconv.Atoi(value)
+			if err != nil {
+				return request, jobinspect.WorkspaceDiffDiagnostic("invalid_request", "Attempt must be a positive integer", err)
+			}
+			request.Attempt = &n
+		default:
+			return request, jobinspect.WorkspaceDiffDiagnostic("invalid_request", "Use task/scope IDs from job log/story, with optional attempt, workspace and boundary selectors", nil)
 		}
 	}
-	request := jobinspect.DiffRequest{ChangesRequest: jobinspect.ChangesRequest{JobID: mux.Vars(r)["jobId"], Selection: q.Get("selection"), Cursor: q.Get("cursor"), Limit: 50}, Commit: q.Get("commit"), From: q.Get("from"), Through: q.Get("through")}
-	if q.Has("limit") {
-		request.Limit, err = strconv.Atoi(q.Get("limit"))
-		if err != nil || request.Limit < 1 || request.Limit > 500 {
-			return request, "", fmt.Errorf("invalid page size")
-		}
-	}
-	format := q.Get("format")
-	if !diff {
-		return request, format, nil
-	}
-	request.Limit = 0
-	if q.Has("all") && q.Get("all") != "true" {
-		return request, format, fmt.Errorf("all must be true")
-	}
-	request.All = q.Get("all") == "true"
-	if request.Selection == "" || (format != "" && format != "patch") {
-		return request, format, fmt.Errorf("selection and valid output format are required")
-	}
-	return request, format, nil
+	return request, request.Validate()
 }
 
-func writeChangesError(w http.ResponseWriter, err error) {
-	diagnostic := jobinspect.ChangesDiagnostic(err)
-	status := http.StatusUnprocessableEntity
+func writeWorkspaceDiffError(w http.ResponseWriter, err error) {
+	var diagnostic *jobinspect.WorkspaceDiffError
+	if !errors.As(err, &diagnostic) {
+		diagnostic = jobinspect.WorkspaceDiffDiagnostic("backend", "Could not read saved workspace diff", err)
+	}
+	status := http.StatusBadGateway
 	switch diagnostic.Code {
-	case "invalid_request", "invalid_range", "invalid_cursor":
+	case "invalid_request", "point_not_found", "workspace_ambiguous", "workspace_not_found":
 		status = http.StatusBadRequest
-	case "stale_selection":
-		status = http.StatusConflict
-	case "job_denied", "repository_denied", "repository_authentication":
+	case "job_denied", "source_denied", "access_denied", "denied":
 		status = http.StatusForbidden
-	case "backend", "transport":
-		status = http.StatusBadGateway
+	case "unsupported":
+		status = http.StatusNotImplemented
 	case "deadline":
 		status = http.StatusGatewayTimeout
 	}
+	if errors.Is(err, jobdb.ErrCellForbidden) {
+		status = http.StatusForbidden
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		status = http.StatusGatewayTimeout
+	}
+	// Do not disclose foreign producer information on access failures.
+	if status == http.StatusForbidden {
+		diagnostic = jobinspect.WorkspaceDiffDiagnostic("job_denied", "Access to the saved comparison is denied", nil)
+	}
 	writeJSON(w, status, struct {
-		Error      string                   `json:"error"`
-		Diagnostic *jobinspect.ChangesError `json:"diagnostic"`
-	}{diagnostic.Error(), diagnostic})
+		Error      string                         `json:"error"`
+		Diagnostic *jobinspect.WorkspaceDiffError `json:"diagnostic"`
+	}{diagnostic.Detail, diagnostic})
 }
 
 func changesHeaders(w http.ResponseWriter) {
@@ -109,82 +104,74 @@ func changesHeaders(w http.ResponseWriter) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 }
 
-func (s *Server) handleChanges(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleRetiredChanges(w http.ResponseWriter, r *http.Request) {
 	changesHeaders(w)
-	request, _, err := changesQuery(r, false)
-	if err != nil {
-		writeHTTPError(w, http.StatusBadRequest, err)
-		return
-	}
-	reader, err := s.changesReader(r)
-	if err != nil {
-		writeChangesError(w, err)
-		return
-	}
-	history, err := reader.History(r.Context(), request.ChangesRequest)
-	if err == nil {
-		err = jobinspect.ValidateChangesHistory(history)
-	}
-	if err != nil {
-		writeChangesError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, history)
+	writeJSON(w, http.StatusGone, map[string]string{"error": "Changes history and commit ranges have been retired. Use workspace-diff with optional task/scope, attempt, workspace and boundary selectors."})
 }
 
-func (s *Server) handleChangesDiff(w http.ResponseWriter, r *http.Request) {
+type workspaceDiffPreview struct {
+	Metadata        *jobinspect.WorkspaceDiff `json:"metadata"`
+	Patch           string                    `json:"patch"`
+	PreviewComplete bool                      `json:"preview_complete"`
+	DownloadURL     string                    `json:"download_url,omitempty"`
+}
+
+func (s *Server) handleWorkspaceDiff(w http.ResponseWriter, r *http.Request) {
 	changesHeaders(w)
-	request, format, err := changesQuery(r, true)
+	request, err := workspaceDiffQuery(r)
 	if err != nil {
-		writeHTTPError(w, http.StatusBadRequest, err)
+		writeWorkspaceDiffError(w, err)
 		return
 	}
-	reader, err := s.changesReader(r)
+	if s.workspaceDiff == nil {
+		writeWorkspaceDiffError(w, jobinspect.WorkspaceDiffDiagnostic("unsupported", "Upgrade Cortex to enable saved workspace diff reads", nil))
+		return
+	}
+	reader, err := s.workspaceDiff(s.tenantID(r))
 	if err != nil {
-		writeChangesError(w, err)
+		writeWorkspaceDiffError(w, err)
 		return
 	}
-	metadata, body, err := reader.OpenDiff(r.Context(), request)
-	if err != nil {
-		writeChangesError(w, err)
-		return
-	}
-	defer body.Close()
-	if err = jobinspect.ValidateChangesDiff(metadata); err != nil {
-		writeChangesError(w, err)
-		return
-	}
-	limit := s.cfg.Changes.Limits.PatchBytes
-	if limit == 0 {
-		limit = jobinspect.DefaultChangesLimits().PatchBytes
-	}
-	// Verify complete bytes before writing headers, including for downloads.
-	patch, err := io.ReadAll(io.LimitReader(body, limit+1))
-	closeErr := body.Close()
+	metadata, body, err := reader.OpenWorkspaceDiff(r.Context(), request)
+	defer func() {
+		if body != nil {
+			_ = body.Close()
+		}
+	}()
 	if err == nil {
-		err = closeErr
-	}
-	if err == nil && (int64(len(patch)) > limit || int64(len(patch)) != metadata.Bytes) {
-		err = &jobinspect.ChangesError{Version: 1, Code: "protocol", Detail: "incomplete patch bytes"}
+		err = jobinspect.ValidateWorkspaceDiff(request, metadata)
 	}
 	if err != nil {
-		writeChangesError(w, err)
+		writeWorkspaceDiffError(w, err)
 		return
 	}
-	if format == "patch" {
-		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Disposition", `attachment; filename="changes.patch"`)
-		w.Header().Set("Content-Length", strconv.Itoa(len(patch)))
-		_, _ = w.Write(patch)
-		return
+	result := workspaceDiffPreview{Metadata: metadata, PreviewComplete: true}
+	if metadata.Status != "unavailable" {
+		if body == nil {
+			writeWorkspaceDiffError(w, jobinspect.WorkspaceDiffDiagnostic("protocol", "Saved comparison stream is missing", nil))
+			return
+		}
+		// A bounded text preview deliberately does not certify full-file integrity.
+		patch, readErr := io.ReadAll(io.LimitReader(body, changesPreviewBytes+1))
+		closeErr := body.Close()
+		body = nil
+		if err = errors.Join(readErr, closeErr); err != nil {
+			writeWorkspaceDiffError(w, err)
+			return
+		}
+		result.PreviewComplete = len(patch) <= changesPreviewBytes
+		if result.PreviewComplete && metadata.Bytes != nil && int64(len(patch)) != *metadata.Bytes {
+			writeWorkspaceDiffError(w, jobinspect.WorkspaceDiffDiagnostic("protocol", "Incomplete saved comparison bytes", nil))
+			return
+		}
+		if !result.PreviewComplete {
+			patch = patch[:changesPreviewBytes]
+		}
+		result.Patch = string(patch)
+		if metadata.Source != nil {
+			key := metadata.Source.Key
+			result.DownloadURL = fmt.Sprintf("/api/projects/%s/jobs/%s/tasks/%d/artifacts/%s", url.PathEscape(s.tenantID(r)), url.PathEscape(key.JobId), key.TaskOrdinal, url.PathEscape(key.Name))
+		}
 	}
-	complete := len(patch) <= changesPreviewBytes
-	if !complete {
-		patch = patch[:changesPreviewBytes]
-	}
-	writeJSON(w, http.StatusOK, struct {
-		Metadata        *jobinspect.ChangesDiff `json:"metadata"`
-		Patch           string                  `json:"patch"`
-		PreviewComplete bool                    `json:"preview_complete"`
-	}{metadata, string(patch), complete})
+	writeJSON(w, http.StatusOK, result)
 }

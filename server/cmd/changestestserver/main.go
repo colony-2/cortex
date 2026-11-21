@@ -1,4 +1,4 @@
-// changestestserver serves the embedded production UI with real writer bundles,
+// changestestserver serves the embedded production UI with real saved writer diffs,
 // native review waits and a remote JobDB backed by SQLite. Fixture controls are
 // confined to this test executable.
 package main
@@ -45,13 +45,15 @@ type fixture struct {
 	Head    string   `json:"head"`
 	Commits []string `json:"commits"`
 	All     string   `json:"all"`
-	Single  []string `json:"single"`
-	Range   string   `json:"range"`
 	worker  wf.ExecutionWorker
 	tasks   []wf.TaskWorker
 }
 
-type recordedWorker struct{ steps []changestest.Step }
+type recordedWorker struct {
+	steps   []changestest.Step
+	patches [][]byte
+	missing bool
+}
 
 func (recordedWorker) Name() string { return "changes:recorded" }
 func (w recordedWorker) Run(_ wf.TaskContext, data jobdb.TaskData) (jobdb.TaskData, error) {
@@ -66,14 +68,18 @@ func (w recordedWorker) Run(_ wf.TaskContext, data jobdb.TaskData) (jobdb.TaskDa
 		return nil, err
 	}
 	step := w.steps[in.Index]
-	envelope, err := coretask.NewOutputEnvelope(coretask.OutputKindActivityInvocationOutput, map[string]any{"workspace_after": step.State, "workspace_scope_id": "main", "git": contextual.GitCommitContext{ParentHash: step.State.BaseCommit, PersistHash: step.State.HeadCommit}, "output": map[string]any{}})
+	envelope, err := coretask.NewOutputEnvelope(coretask.OutputKindActivityInvocationOutput, map[string]any{"workspace_before": step.State, "workspace_after": step.State, "workspace_scope_id": "main", "git": contextual.GitCommitContext{ParentHash: step.State.BaseCommit, PersistHash: step.State.HeadCommit}, "output": map[string]any{}})
 	if err != nil {
 		return nil, err
 	}
-	if step.Bundle == nil {
-		return jobdb.NewTaskData(envelope)
+	var files []jobdb.Artifact
+	if step.Bundle != nil {
+		files = append(files, jobdb.NewArtifactFromBytes(gitstate.ThinPackArtifactName, step.Bundle))
 	}
-	return jobdb.NewTaskData(envelope, jobdb.NewArtifactFromBytes(gitstate.ThinPackArtifactName, step.Bundle))
+	if !w.missing {
+		files = append(files, jobdb.NewArtifactFromBytes("diff_from_base.diff", w.patches[in.Index]))
+	}
+	return jobdb.NewTaskData(envelope, files...)
 }
 
 func seed(ctx context.Context, rt jobdb.WorkflowRuntime, dir, scenario string, doc artifacts.Ref) (*fixture, error) {
@@ -109,29 +115,33 @@ func seed(ctx context.Context, rt jobdb.WorkflowRuntime, dir, scenario string, d
 		f.Base = f.Head
 	}
 	manifest := &fixture{Job: scenario, Base: f.Base, Head: f.Head, Commits: f.Commits}
-	oracle, err := f.Oracle(ctx, f.Base, f.Head)
+	oracle, err := changestest.Git(ctx, f.Checkout, "diff", "--unified=10", f.Base, f.Head)
 	if err != nil {
 		return nil, err
 	}
 	manifest.All = string(oracle)
-	previous := f.Base
-	for _, commit := range f.Commits {
-		patch, e := f.Oracle(ctx, previous, commit)
+	patches := make([][]byte, len(f.Steps))
+	for i, step := range f.Steps {
+		base := step.State.BaseCommit
+		if step.State.EmptyBase {
+			base = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+		}
+		saved, e := gitcommit.GenerateDiff(ctx, gitcommit.GenerateDiffInput{RepoPath: f.Checkout, FromHash: base, ToHash: step.State.HeadCommit, StorageLocation: filepath.Join(dir, scenario, "saved-diffs")})
 		if e != nil {
 			return nil, e
 		}
-		manifest.Single = append(manifest.Single, string(patch))
-		previous = commit
+		patches[i], err = os.ReadFile(saved.DiffPath)
+		if err != nil {
+			return nil, err
+		}
 	}
-	oracle, err = f.Oracle(ctx, f.Commits[0], f.Commits[3])
-	if err != nil {
-		return nil, err
-	}
-	manifest.Range = string(oracle)
 	if err = f.DeleteCheckout(); err != nil {
 		return nil, err
 	}
-	worker := recordedWorker{f.Steps}
+	if err = os.RemoveAll(filepath.Join(dir, scenario, "saved-diffs")); err != nil {
+		return nil, err
+	}
+	worker := recordedWorker{steps: f.Steps, patches: patches, missing: scenario == "missing"}
 	var v2Form input.InputForm
 	if strings.HasPrefix(scenario, "v2") {
 		raw, e := os.ReadFile("web/app/tests/fixtures/recipes/browser-review-v2.yaml")
@@ -185,16 +195,36 @@ func seed(ctx context.Context, rt jobdb.WorkflowRuntime, dir, scenario string, d
 			return e
 		}
 
+		var incoming jobdb.Artifact
 		for i, step := range f.Steps {
 			g := gitstate.GlobalGitTaskContext{BaseRepo: opt.Repository, BaseRef: "main", ParentHash: step.State.BaseCommit, ResolvedBaseHash: step.State.BaseCommit, PersistHash: step.State.HeadCommit, Workspace: &contextual.WorkspaceContext{Cell: opt.Cell, ScopeID: "main"}}
 			if step.State.EmptyBase {
 				g.Workspace.Initial = "empty"
 			}
-			_, e := c.DoTask(wf.TaskCall{Site: "workspace", TaskType: worker.Name(), ContractVersion: 1, Command: json.RawMessage(strconv.Quote(fmt.Sprint(i)))}, func(context.Context) (jobdb.TaskData, error) {
-				return jobdb.NewTaskData(map[string]any{"context": g, "index": i})
+			out, e := c.DoTask(wf.TaskCall{Site: "workspace", TaskType: worker.Name(), ContractVersion: 1, Command: json.RawMessage(strconv.Quote(fmt.Sprint(i)))}, func(context.Context) (jobdb.TaskData, error) {
+				payload := map[string]any{"context": g, "index": i}
+				var files []jobdb.Artifact
+				if incoming != nil {
+					key, err := incoming.ArtifactKey()
+					if err != nil {
+						return nil, err
+					}
+					payload["restore_artifact"] = &key
+					files = append(files, incoming)
+				}
+				return jobdb.NewTaskData(payload, files...)
 			})
 			if e != nil {
 				return nil, e
+			}
+			files, e := out.GetArtifacts()
+			if e != nil {
+				return nil, e
+			}
+			for _, file := range files {
+				if file.Name() == gitstate.ThinPackArtifactName {
+					incoming = file
+				}
 			}
 			if scenario == "moving" && i == 2 {
 				if e := publish("first"); e != nil {
@@ -260,7 +290,7 @@ func main() {
 		log.Fatal(err)
 	}
 	fixtures := map[string]*fixture{}
-	for _, scenario := range []string{"linear", "revert", "merge", "empty", "missing", "paged", "large", "moving", "v2", "v2-paged", "v2-empty"} {
+	for _, scenario := range []string{"linear", "revert", "merge", "empty", "missing", "paged", "large", "moving", "v2", "v2-paged", "v2-empty", "v2-zoom"} {
 		f, e := seed(ctx, db, dir, scenario, artifacts.NewStoredRef(key))
 		if e != nil {
 			log.Fatalf("%s: %v", scenario, e)

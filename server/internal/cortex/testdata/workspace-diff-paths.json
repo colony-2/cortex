@@ -1,0 +1,42 @@
+[
+  {
+    "tenant": "t+plus",
+    "producer": "producer+plus",
+    "download_url": "/api/projects/t+plus/jobs/producer+plus/tasks/7/artifacts/diff_from_base.diff"
+  },
+  {
+    "tenant": "t:colon",
+    "producer": "producer:colon",
+    "download_url": "/api/projects/t:colon/jobs/producer:colon/tasks/7/artifacts/diff_from_base.diff"
+  },
+  {
+    "tenant": "t@at",
+    "producer": "producer@at",
+    "download_url": "/api/projects/t@at/jobs/producer@at/tasks/7/artifacts/diff_from_base.diff"
+  },
+  {
+    "tenant": "t$dollar",
+    "producer": "producer$dollar",
+    "download_url": "/api/projects/t$dollar/jobs/producer$dollar/tasks/7/artifacts/diff_from_base.diff"
+  },
+  {
+    "tenant": "t&and",
+    "producer": "producer&and",
+    "download_url": "/api/projects/t&and/jobs/producer&and/tasks/7/artifacts/diff_from_base.diff"
+  },
+  {
+    "tenant": "t=equals",
+    "producer": "producer=equals",
+    "download_url": "/api/projects/t=equals/jobs/producer=equals/tasks/7/artifacts/diff_from_base.diff"
+  },
+  {
+    "tenant": "t/percent% μ",
+    "producer": "producer/percent% μ",
+    "download_url": "/api/projects/t%2Fpercent%25%20%CE%BC/jobs/producer%2Fpercent%25%20%CE%BC/tasks/7/artifacts/diff_from_base.diff"
+  },
+  {
+    "tenant": "t!quote'()*",
+    "producer": "producer!quote'()*",
+    "download_url": "/api/projects/t%21quote%27%28%29%2A/jobs/producer%21quote%27%28%29%2A/tasks/7/artifacts/diff_from_base.diff"
+  }
+]
