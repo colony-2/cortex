@@ -50,7 +50,8 @@ describe('Input Pages - Error Cases', () => {
 
   describe('API Error Handling', () => {
     it('should handle 404 when fetching input details', async () => {
-      setupMockInputs(projectId, [], []); // No inputs available
+      setupMockInputs(projectId, [createMockPendingInput(jobId)], []);
+      server.use(http.get(`http://localhost:8080/api/projects/${projectId}/user-inputs/${jobId}`,()=>new HttpResponse(null,{status:404})));
 
       render(
         <MemoryRouter initialEntries={[`/project/test-project-123/reviews/job-error-test`]}>
@@ -69,7 +70,7 @@ describe('Input Pages - Error Cases', () => {
 
       await waitFor(
       () => {
-        expect(screen.getByText(/Failed to load request details/i)).toBeInTheDocument();
+        expect(screen.getByText(/Could not load this request/i)).toBeInTheDocument();
       },
       { timeout: 3000 }
     );
@@ -222,7 +223,8 @@ describe('Input Pages - Error Cases', () => {
       sse.emitError('Test error message');
 
       // Should continue working (error should be logged but not crash)
-      expect(screen.getByText('No pending reviews')).toBeInTheDocument();
+      expect(await screen.findByText('Could not load reviews')).toBeInTheDocument();
+      expect(screen.queryByText('No pending reviews')).not.toBeInTheDocument();
     });
   });
 

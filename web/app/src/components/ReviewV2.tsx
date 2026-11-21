@@ -224,7 +224,7 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
     {(submitError||draftConflict)&&<Alert type="error" message={submitError||draftConflict}/>}
     {draftNotice&&<Alert type="warning" message={draftNotice} closable onClose={()=>setDraftNotice('')}/>}
     {phase==='other'&&<Button onClick={()=>navigate(reviewsPath)}>Open pending reviews</Button>}
-    {ready&&<>
+    <fieldset disabled={!ready} hidden={!ready && phase !== 'unavailable'} style={{border:0,padding:0,margin:0,minWidth:0}}>
       <div hidden={composerOpen&&policy?.mode!=='forbidden'} className="review-v2-directions" aria-label="Review actions">{request.directions.map(d=><Button key={d.id} ref={element=>{if(element)actionButtons.current.set(d.id,element);else actionButtons.current.delete(d.id);}} type={direction===d.id?'primary':'default'} onClick={()=>choose(d.id)}>{d.label}</Button>)}</div>
       {Object.entries(drafts).filter(([id,value])=>request.settings?.find(s=>s.id===id)?.value!==value).map(([id,value])=>{
         const setting=request.settings?.find(s=>s.id===id);
@@ -239,7 +239,7 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
       {(allowUploads||files.length>0)&&<div className="review-v2-upload">{allowUploads&&<><label htmlFor="review-v2-files">Attach notes</label><input ref={fileInput} id="review-v2-files" type="file" multiple onChange={e=>{setFiles(Array.from(e.target.files??[]));setSubmitError('');}}/></>}{files.map((file,i)=><div key={i}><span>{file.name} ({file.size} bytes)</span> <Button aria-label={`Remove ${file.name} (${i+1})`} onClick={()=>{setFiles(previous=>previous.filter((_,index)=>index!==i));if(fileInput.current)fileInput.current.value='';setSubmitError('');}}>Remove</Button></div>)}</div>}
       <div className="review-v2-directions"><Button onClick={()=>{setComposerOpen(false);if(direction)actionButtons.current.get(direction)?.focus();}}>Back</Button>{policy?.mode!=='forbidden'&&<Button type="primary" onClick={()=>direction&&void submit(direction)}>Send · {selected?.label}</Button>}</div>
       </section>
-    </>}
+    </fieldset>
     {!ready&&<Button loading={busy} disabled={phase==='sending'} onClick={()=>void refresh()}>Refresh</Button>}
     </div>
   </div>;

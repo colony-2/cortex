@@ -497,3 +497,21 @@ when needed. For macOS signing, configure all five secrets: `MACOS_SIGN_P12`,
 `MACOS_SIGN_PASSWORD`, `APPLE_API_ISSUER`, `APPLE_API_KEY_ID`, and `APPLE_API_KEY`.
 With none configured, macOS binaries are unsigned; a partial configuration fails
 the release. These secret names match c2j.
+
+### Pending input discovery and upgrades
+
+The UI discovers input requests from the shared pending list and stream. It reads
+`GET /api/projects/{tenant}/user-inputs/{job}` only for a selected advertised
+request version. History and job-status refreshes continue independently.
+Disconnected discovery retains readable review content and drafts while response
+controls wait for a fresh snapshot. Retry refreshes discovery before details.
+
+The details GET preserves its existing 200 JSON object for pending input. For a
+known job whose input is no longer pending, it now returns **204 with no body**
+and `Cache-Control: no-store`. Clients must check 204 before parsing JSON. Missing
+jobs and wrong tenants still return 404; operational failures remain errors.
+The pending list continues to return 200 with `[]` for no pending requests.
+
+Upgrade the Cortex server and UI together, and reload existing tabs. External
+clients of this Cortex route must support 204. There is no migration, new
+availability route, worker upgrade, or change to c2j's standalone management API.

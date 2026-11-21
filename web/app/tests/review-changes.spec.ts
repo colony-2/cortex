@@ -171,6 +171,68 @@ test('obsolete refresh responses cannot replace the current preview or download'
   await expect(page.getByText('OBSOLETE SAVED PATCH')).toHaveCount(0);
 });
 
+test('successor discovery retains the old draft while saved changes advance, then requires opening the new request', async ({ page, request }, info) => {
+  await page.setViewportSize({ width: 1360, height: 1000 });
+  const oracle = await (await request.get('/fixture/moving')).json();
+  const legacyRequests: string[] = [];
+  page.on('request', r => { if (/\/changes(?:\/diff)?(?:\?|$)/.test(r.url())) legacyRequests.push(r.url()); });
+  await openChanges(page, 'moving');
+  const response = page.getByRole('textbox', { name: 'Your response', exact: true });
+  await response.fill('Old draft');
+  await expect(page.getByLabel('Unified diff').last()).toBeVisible();
+  expect(await download(page)).not.toEqual(Buffer.from(oracle.all));
+  expect(new URL(page.url()).searchParams.get('request_id')).toBe('moving-first');
+
+  // Delay the real successor details after discovery, without manufacturing its
+  // identity or the saved workspace response. The old reader must stay readable.
+  let releaseSuccessor!: () => void;
+  const successorGate = new Promise<void>(resolve => { releaseSuccessor = resolve; });
+  let successorReads = 0;
+  await page.route(`**/api/projects/${tenant}/user-inputs/moving`, async route => {
+    const details = await route.fetch();
+    if (details.status() === 200 && (await details.json()).form.request_id === 'moving-second') {
+      successorReads++;
+      await successorGate;
+    }
+    await route.fulfill({ response: details });
+  });
+  try {
+    const accepted = await page.request.post(`/api/projects/${tenant}/reviews/moving/respond`, {
+      data: { request_id: 'moving-first', submission_id: 'advance-request', fields: { response: 'Continue' } },
+    });
+    expect(accepted.ok(), await accepted.text()).toBeTruthy();
+    const advanced = await request.post('/fixture/moving/advance');
+    expect(advanced.ok(), await advanced.text()).toBeTruthy();
+    await expect.poll(() => successorReads).toBe(1);
+    await expect(response).toBeDisabled();
+    await expect(response).toHaveValue('Old draft');
+    await page.getByRole('button', { name: 'Refresh changes', exact: true }).click();
+    await expect(page.getByLabel('Unified diff').last()).toBeVisible();
+    expect(await download(page)).toEqual(Buffer.from(oracle.all));
+    await expect(response).toHaveValue('Old draft');
+    await response.scrollIntoViewIfNeeded();
+    await capture(page, info, 'input-successor-saved-diff-pending.png');
+  } finally {
+    releaseSuccessor();
+  }
+  await expect(page.getByText('This linked review is no longer current')).toBeVisible();
+  expect(successorReads).toBe(1);
+  await expect(page.getByRole('tab', { name: 'Changes', exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByText('This linked review is no longer current')).toBeVisible();
+  await page.getByRole('button', { name: 'Open current review', exact: true }).click();
+  await expect(response).toBeEnabled();
+  await expect(response).toHaveValue('');
+  expect(new URL(page.url()).searchParams.get('request_id')).toBe('moving-second');
+  expect(successorReads).toBe(2); // One read per page lifetime, reused on explicit open.
+  await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+  await expect(page.getByLabel('Unified diff').last()).toBeVisible();
+  expect(await download(page)).toEqual(Buffer.from(oracle.all));
+  expect(legacyRequests).toEqual([]);
+  await response.scrollIntoViewIfNeeded();
+  await capture(page, info, 'input-successor-saved-diff-current.png');
+});
+
 test.describe('phone', () => {
   test.use({ hasTouch: true, isMobile: true });
   test('touch layouts preserve the composer without horizontal page overflow', async ({ page, request }, info) => {

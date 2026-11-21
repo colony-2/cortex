@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, configure, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation, useNavigate, useNavigationType, type Location, type NavigateFunction, type NavigationType } from 'react-router-dom';
-import { inputActivityService, type UserInputDetails } from '@colony2/shared';
+import { inputActivityService, InputActivityProvider, type UserInputDetails } from '@colony2/shared';
 import InputDetailPage from './InputDetailPage';
 
 configure({ asyncUtilTimeout: 5000 });
@@ -23,10 +23,15 @@ let data: UserInputDetails;
 let getDetails: ReturnType<typeof vi.spyOn>;
 let submit: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
+  inputActivityService.clearCaches();
   data = details();
   getDetails = vi.spyOn(inputActivityService, 'getInputDetails').mockImplementation(async () => data);
   submit = vi.spyOn(inputActivityService, 'submitReview').mockResolvedValue(undefined as never);
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(`# Body ${new URL(url).searchParams.get('document_id')}`)));
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if(url.endsWith('/pending')) return new Response(JSON.stringify([{id:'job',cell_id:'cell-1',cell_name:'platform',repo:'github.com/acme/platform',client_payload_revision:1}]));
+    if(url.endsWith('/jobs/job')) return new Response(JSON.stringify({job_id:'job',cell_id:'cell-1',cell_name:'platform',repo:'github.com/acme/platform'}));
+    return new Response(`# Body ${new URL(url).searchParams.get('document_id')}`);
+  }));
 });
 afterEach(() => { getDetails.mockRestore(); submit.mockRestore(); vi.unstubAllGlobals(); });
 interface ObservedRouter { state: { location: Location; historyAction: NavigationType }; navigate: NavigateFunction }
@@ -37,14 +42,14 @@ function HistoryProbe({ router }: { router: ObservedRouter }) {
 }
 function mount(search = '') {
   const router = {} as ObservedRouter;
-  const view = render(<MemoryRouter initialEntries={['/queue', base + search]} initialIndex={1}>
+  const view = render(<InputActivityProvider><MemoryRouter initialEntries={['/queue', base + search]} initialIndex={1}>
     <HistoryProbe router={router} />
     <Routes>
       <Route path="/queue" element={<h1>Previous queue</h1>} />
       <Route path="/project/:projectId/reviews" element={<h1>Review queue</h1>} />
       <Route path="/project/:projectId/reviews/:jobId" element={<InputDetailPage projectId="tenant" />} />
     </Routes>
-  </MemoryRouter>);
+  </MemoryRouter></InputActivityProvider>);
   const go = async (to: number | string) => { await act(async () => { if (typeof to === 'number') router.navigate(to); else router.navigate(to); }); };
   return { ...view, router, go };
 }
@@ -98,7 +103,7 @@ it.each(['?request_id=old&document_id=a', '?request_id=r&request_id=r&document_i
   expect(router.state.location.search).toBe(search);
   expect(screen.queryByRole('button', { name: 'Approve', exact: true })).toBeNull();
   expect(screen.queryByLabelText('Selected document')).toBeNull();
-  expect(fetch).not.toHaveBeenCalled();
+  expect(vi.mocked(fetch).mock.calls.filter(([url])=>String(url).includes('/documents?'))).toHaveLength(0);
   expect(submit).not.toHaveBeenCalled();
   fireEvent.click(recover);
   await screen.findByRole('heading', { name: 'Body a' });
@@ -137,7 +142,7 @@ it('H17 empty catalog removes document identity, retains warning and adds no his
   await screen.findByText('No documents attached');
   await waitFor(() => expect(router.state.location.search).toBe('?request_id=r'));
   expect(screen.getByText(/linked document is unavailable/)).toBeVisible();
-  expect(fetch).not.toHaveBeenCalled();
+  expect(vi.mocked(fetch).mock.calls.filter(([url])=>String(url).includes('/documents?'))).toHaveLength(0);
   await go(-1);
   expect(screen.getByRole('heading', { name: 'Previous queue' })).toBeVisible();
 });
@@ -145,12 +150,13 @@ it('H18 keeps the URL intact while request details load or fail', async () => {
   let reject!: (error: Error) => void;
   getDetails.mockImplementation(() => new Promise((_, fail) => { reject = fail; }));
   const { router } = mount('?request_id=old&document_id=gone');
-  expect(screen.getByText('Loading request...')).toBeVisible();
+  expect(screen.getByText('Checking pending requests…')).toBeVisible();
   expect(router.state.location.search).toBe('?request_id=old&document_id=gone');
+  await waitFor(()=>expect(reject).toBeTypeOf('function'));
   await act(async () => reject(new Error('offline')));
-  await screen.findByText(/Failed to load request details/);
+  await screen.findByText('Could not load this request');
   expect(router.state.location.search).toBe('?request_id=old&document_id=gone');
-  expect(fetch).not.toHaveBeenCalled();
+  expect(vi.mocked(fetch).mock.calls.filter(([url])=>String(url).includes('/documents?'))).toHaveLength(0);
 });
 it('H19 new request rejects old URL identity and resets its response draft', async () => {
   const { router, go } = mount();

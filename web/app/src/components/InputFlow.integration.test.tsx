@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useEffect } from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render as rawRender, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter, MemoryRouter, Routes, Route } from 'react-router-dom';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 import { InputActivityProvider, inputActivityService } from '@colony2/shared';
+const render = (ui: Parameters<typeof rawRender>[0]) => rawRender(ui, {wrapper: InputActivityProvider});
 import PendingInputsListPage from './PendingInputsListPage';
 import JobStoryPage from './JobStoryPage';
 import InputDetailPage from './InputDetailPage';
@@ -363,7 +364,7 @@ describe('MAL review draft preservation', () => {
     }}};
     const getDetails=vi.spyOn(inputActivityService,'getInputDetails').mockResolvedValue(details);
     const submit=vi.spyOn(inputActivityService,'submitReview');
-    const fetcher=vi.fn(async(url:string)=>url.includes('/documents?')?new Response(url.includes('document_id=a')?'[next](foo.md)':'# Foo'):new Response('{}',{headers:{'Content-Type':'application/json'}}));
+    const fetcher=vi.fn(async(url:string)=>url.endsWith('/pending')?new Response(JSON.stringify([{...jobIdentity,id:'review-job',client_payload_revision:1}])):url.endsWith('/jobs/review-job')?new Response(JSON.stringify({...jobIdentity,job_id:'review-job',status:'ACTIVE'})):url.includes('/documents?')?new Response(url.includes('document_id=a')?'[next](foo.md)':'# Foo'):new Response('{}',{headers:{'Content-Type':'application/json'}}));
     vi.stubGlobal('fetch',fetcher);
     try {
       render(<MemoryRouter initialEntries={['/project/tenant/reviews/review-job']}><NavigationHarness/><Routes><Route path="/project/:projectId/reviews/:jobId" element={<InputDetailPage projectId="tenant"/>}/></Routes></MemoryRouter>);

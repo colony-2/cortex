@@ -3,6 +3,7 @@ package cortex
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/colony-2/colony2/server/internal/testjobdb"
 	"mime/multipart"
@@ -27,6 +28,17 @@ type reviewRuntimeStub struct {
 func (f *reviewRuntimeStub) ListPendingInputs(_ context.Context, tenant string) ([]input.PendingInput, error) {
 	f.tenant = tenant
 	return []input.PendingInput{{Id: "ordinary"}, {Id: "review"}, {Id: "completed"}}, nil
+}
+func (f *reviewRuntimeStub) GetDetails(ctx context.Context, tenant, job string) (*input.UserInputDetails, error) {
+	form, err := f.GetForm(ctx, tenant, job)
+	if err != nil {
+		return nil, err
+	}
+	data, _ := json.Marshal(form)
+	var details input.UserInputDetails
+	details.JobId = job
+	_ = json.Unmarshal([]byte(`{"form":`+string(data)+`}`), &details)
+	return &details, nil
 }
 func (f *reviewRuntimeStub) GetForm(_ context.Context, tenant, job string) (input.InputForm, error) {
 	f.tenant = tenant

@@ -1,12 +1,13 @@
 import { jobIdentity } from '../test/cellFixtures';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render as rawRender, screen, waitFor } from '@testing-library/react';
 import InputDetailPage from './InputDetailPage';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { InputActivityProvider, inputActivityService } from '@colony2/shared';
+const render = (ui:Parameters<typeof rawRender>[0]) => rawRender(ui,{wrapper:InputActivityProvider});
 import PendingInputsListPage from './PendingInputsListPage';
 import { inputApiHandlers, setupMockInputs, resetMockInputStore } from '../test/mocks/inputApiHandlers';
 import { mockEventSource, waitForSSEConnection } from '../test/mocks/mockSSE';
@@ -38,18 +39,19 @@ it('applies streamed summaries without per-entry requests and isolates tenants',
   const { rerender } = render(view('first'));
   (await waitForSSEConnection()).emitConnected();
   const fetch = vi.spyOn(globalThis, 'fetch');
-  inputActivityService.emit('inputs_changed', { projectId: 'first', inputs: Array.from({ length: 200 }, (_, i) => ({ ...jobIdentity, id: String(i), title: `Request ${i}` })) });
+  const first=events.getInstance()!;
+  act(()=>first.dispatchEvent(new MessageEvent('inputs_changed',{data:JSON.stringify({inputs:Array.from({length:200},(_,i)=>({...jobIdentity,id:String(i),title:`Request ${i}`,client_payload_revision:1}))})})));
   expect(await screen.findByText('Request 199')).toBeVisible();
   expect(fetch.mock.calls.filter(([url]) => String(url).includes('/jobs/'))).toHaveLength(0);
   rerender(view('second'));
-  inputActivityService.emit('inputs_changed', { projectId: 'first', inputs: [{ ...jobIdentity, id: 'old', title: 'Stale tenant' }] });
+  act(()=>first.dispatchEvent(new MessageEvent('inputs_changed',{data:JSON.stringify({inputs:[{...jobIdentity,id:'old',title:'Stale tenant',client_payload_revision:1}]})})));
   expect(screen.queryByText('Request 199')).toBeNull();
   expect(screen.queryByText('Stale tenant')).toBeNull();
   fetch.mockRestore();
 });
 
 it.each([404, 503, 'network'] as const)('preserves review draft and submission through metadata failure %s and retry', async failure => {
-  setupMockInputs('tenant', [], [{ jobId: 'a', status: 'pending', startTime: '2026-10-25T10:00:00Z', form: {
+  setupMockInputs('tenant', [{...jobIdentity,id:'a',client_payload_revision:1}], [{ jobId: 'a', status: 'pending', startTime: '2026-10-25T10:00:00Z', form: {
     kind: 'review', title: 'Review phase', request_id: 'original-request', fields: [
       { ...jobIdentity, id: 'decision', type: 'multiple_choice', question: 'Response question', required: true, options: [{ value: 'approve', label: 'Approve' }] },
       { ...jobIdentity, id: 'feedback', type: 'paragraph_text', question: 'Feedback', required: true },
@@ -60,7 +62,7 @@ it.each([404, 503, 'network'] as const)('preserves review draft and submission t
   const submit = vi.spyOn(inputActivityService, 'submitReview');
   server.use(
     http.get('http://localhost:8080/api/projects/tenant/jobs/a', () => {
-      if (++reads === 1) return failure === 'network' ? HttpResponse.error() : new HttpResponse(null, { status: failure });
+      if (++reads === 2) return failure === 'network' ? HttpResponse.error() : new HttpResponse(null, { status: failure });
       return HttpResponse.json({ ...jobIdentity, status: 'READY', store: 'ACTIVE', cell_name: 'platform', prompt: 'Complete goal prompt' });
     }),
     http.post('http://localhost:8080/api/projects/tenant/reviews/a/respond', async ({ request }) => {
@@ -86,7 +88,7 @@ it.each([404, 503, 'network'] as const)('preserves review draft and submission t
 });
 
 it('REL-001,030,031 preserves parent context and review draft through child failure with one job inspection', async () => {
-  setupMockInputs('tenant', [], [{jobId:'a',status:'pending',startTime:'2026-11-07T00:00:00Z',form:{kind:'review',title:'Review evidence',request_id:'relationship-review',fields:[
+  setupMockInputs('tenant', [{...jobIdentity,id:'a',client_payload_revision:1}], [{jobId:'a',status:'pending',startTime:'2026-11-07T00:00:00Z',form:{kind:'review',title:'Review evidence',request_id:'relationship-review',fields:[
     {id:'decision',type:'multiple_choice',question:'Approve evidence',required:true,options:[{value:'approve',label:'Approve'}]},
     {id:'feedback',type:'paragraph_text',question:'Feedback',required:false},
   ]}}]);
@@ -106,13 +108,13 @@ it('REL-001,030,031 preserves parent context and review draft through child fail
   await userEvent.type(screen.getByLabelText('Feedback'),'Retained draft');
   fireEvent.click(screen.getByRole('button',{name:'Retry',exact:true}));
   await screen.findByText('Child jobs unavailable');
-  expect(reads).toBe(1);
+  expect(reads).toBe(2); // Independent existence read and retained context read.
   expect(screen.getByLabelText('Feedback')).toHaveValue('Retained draft');
   expect(screen.getByRole('button',{name:'OK',exact:true})).toBeEnabled();
 });
 
 it('PR-009,015 orders load, refresh and live replacements and preserves unavailable, empty and disconnected states', async () => {
-  const row=(id:string,requested_at?:string)=>({...jobIdentity,id,title:`Queue ${id}`,requested_at});
+  const row=(id:string,requested_at?:string)=>({...jobIdentity,id,title:`Queue ${id}`,requested_at,client_payload_revision:1});
   setupMockInputs('tenant',[row('new','2026-11-10T00:00:00Z'),row('old','2026-11-01T00:00:00Z'),row('unknown')], []);
   const {container}=render(view());
   const source=await waitForSSEConnection(); source.emitConnected();
@@ -125,7 +127,7 @@ it('PR-009,015 orders load, refresh and live replacements and preserves unavaila
   source.dispatchEvent(new MessageEvent('inputs_changed',{data:JSON.stringify({inputs:[row('future','2030-01-01T00:00:00Z'),row('earliest','2026-01-01T00:00:00Z'),row('unknown')]})}));
   await waitFor(()=>expect(titles()).toEqual(['Queue earliest','Queue future','Queue unknown']));
   expect(screen.getByText('Request time unavailable')).toBeVisible();
-  inputActivityService.emit('connection_failed');
+  act(()=>source.emitError('Connection lost'));
   expect(await screen.findByText('Live updates unavailable. Refresh to check for requests.')).toBeVisible();
   expect(titles()).toEqual(['Queue earliest','Queue future','Queue unknown']);
   source.dispatchEvent(new MessageEvent('inputs_changed',{data:JSON.stringify({inputs:[]})}));
@@ -137,8 +139,8 @@ it('PR-015 keeps load errors distinct from empty state and retries the queue', a
   render(view()); (await waitForSSEConnection()).emitConnected();
   expect(await screen.findByText('Could not load reviews')).toBeVisible();
   expect(screen.queryByText('No pending reviews')).toBeNull();
-  setupMockInputs('tenant',[{...jobIdentity,id:'a',title:'Recovered review'}], []);
-  server.use(http.get('http://localhost:8080/api/projects/tenant/user-inputs/pending',()=>HttpResponse.json([{...jobIdentity,id:'a',title:'Recovered review'}])));
+  setupMockInputs('tenant',[{...jobIdentity,id:'a',title:'Recovered review',client_payload_revision:1}], []);
+  server.use(http.get('http://localhost:8080/api/projects/tenant/user-inputs/pending',()=>HttpResponse.json([{...jobIdentity,id:'a',title:'Recovered review',client_payload_revision:1}])));
   fireEvent.click(screen.getByRole('button',{name:'Retry reviews'}));
   expect(await screen.findByText('Recovered review')).toBeVisible();
   expect(screen.getByText('Request time unavailable')).toBeVisible();

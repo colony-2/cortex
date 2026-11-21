@@ -10,12 +10,35 @@ const entry={entry_id:'entry',request_id:'native',form_fields:form,locator:{gene
 const page=(extra={})=>({tenant_id:'tenant',job_id:'job',snapshot_token:'snapshot',snapshot_revision:1,entries:[entry],completeness:'complete',activity:{availability:'available',value:{status:'ACTIVE',store:'ACTIVE',job_id:'job',tenant_id:'tenant'}},...extra}) as shared.HistoryPage;
 const detail=()=>({...entry,raw_form:form,raw_accepted_output:{response:{direction:'ask',feedback:' exact ',attachments:[],settings:{removed:null}},receipt:{request_id:'native',submission_id:'saved'}},request_manifest:[],response_manifest:[],actionability:{actionable:false}}) as shared.HistoryDetail;
 beforeEach(()=>{
+ shared.inputActivityService.clearCaches();
+ (shared.inputActivityService as any).publish('tenant',[]);
  vi.mocked(shared.getConversation).mockResolvedValue(page());vi.mocked(shared.getConversationEntry).mockResolvedValue(detail());
- vi.spyOn(shared.inputActivityService,'getInputDetails').mockRejectedValue(new shared.APIError('No pending input',404));
+ vi.spyOn(shared.inputActivityService,'getInputDetails').mockResolvedValue(null);
 });
 afterEach(()=>{vi.restoreAllMocks();vi.clearAllMocks();vi.useRealTimers();});
 describe('selected review recovery',()=>{
+ it('refreshes accepted history and terminal status while matched details remain slow',async()=>{
+  vi.useFakeTimers();
+  (shared.inputActivityService as any).publish('tenant',[{cell_id:'cell-1',cell_name:'platform',repo:'github.com/acme/platform',id:'job',client_payload_revision:1}]);
+  vi.mocked(shared.inputActivityService.getInputDetails).mockImplementation(()=>new Promise(()=>{}));
+  const {result}=renderHook(()=>useReviewV2('tenant','job','review-one'));
+  await act(async()=>{await vi.advanceTimersByTimeAsync(1);});
+  expect(result.current.view?.output?.receipt.submission_id).toBe('saved');
+  expect(result.current.view?.conversation[0].text).toBe(' exact ');
+  expect(result.current.view?.current).toBeUndefined();
+  const count=vi.mocked(shared.getConversation).mock.calls.length;
+  await act(async()=>{await vi.advanceTimersByTimeAsync(5_100);});
+  await act(async()=>{await vi.advanceTimersByTimeAsync(5_100);});
+  expect(vi.mocked(shared.getConversation).mock.calls.length).toBeGreaterThanOrEqual(count+2);
+  expect(shared.inputActivityService.getInputDetails).toHaveBeenCalledTimes(1);
+  vi.mocked(shared.getConversation).mockResolvedValue(page({activity:{availability:'available',value:{status:'COMPLETED',completion_status:'success',job_id:'job',tenant_id:'tenant'}}}));
+  await act(async()=>{shared.inputActivityService.emit('connected');});
+  expect(result.current.view?.phase).toBe('terminal');
+  expect(result.current.view?.conversation[0].text).toBe(' exact ');
+  expect(shared.inputActivityService.getInputDetails).toHaveBeenCalledTimes(1);
+ });
  it('keeps verified originals while accepted history is delayed and after that refresh fails',async()=>{
+  (shared.inputActivityService as any).publish('tenant',[{cell_id:'cell-1',cell_name:'platform',repo:'github.com/acme/platform',id:'job',client_payload_revision:1}]);
   const frozen=detail();frozen.accepted_response={present:false};frozen.raw_accepted_output=undefined;
   vi.mocked(shared.getConversationEntry).mockResolvedValue(frozen);
   vi.mocked(shared.inputActivityService.getInputDetails).mockResolvedValue({jobId:'job',status:'pending',startTime:'now',form} as shared.UserInputDetails);
@@ -47,8 +70,7 @@ describe('selected review recovery',()=>{
  it('preserves saved content and disables actions on failed current observations',async()=>{
   const {result}=renderHook(()=>useReviewV2('tenant','job','review-one'));
   await waitFor(()=>expect(result.current.view?.phase).toBe('waiting'));
-  vi.mocked(shared.inputActivityService.getInputDetails).mockRejectedValueOnce(new shared.APIError('Offline',503));
-  await act(()=>result.current.refresh());
+  act(()=>(shared.inputActivityService as any).unavailable('tenant',new Error('Offline')));
   expect(result.current.view?.request.review_id).toBe('review-one');expect(result.current.view?.phase).toBe('unavailable');expect(result.current.error).toContain('Offline');
  });
  it('coalesces concurrent refreshes and ignores obsolete unmounted reads',async()=>{

@@ -9,9 +9,10 @@ import type { RecipeJob } from '@colony2/shared/types';
 import JobsListPage from './JobsListPage';
 import JobStoryPage from './JobStoryPage';
 
+const setInputTenant=vi.hoisted(()=>vi.fn());
 vi.mock('@colony2/shared', async (importOriginal) => ({
   ...await importOriginal<typeof import('@colony2/shared')>(),
-  useInputActivity: () => ({ pendingInputs: [], refresh: vi.fn() }),
+  useInputActivity: () => ({ pendingInputs: [], refresh: vi.fn(), setCurrentProjectId:setInputTenant }),
 }));
 vi.mock('@colony2/shared/api', async (importOriginal) => ({
   ...await importOriginal<typeof import('@colony2/shared/api')>(),

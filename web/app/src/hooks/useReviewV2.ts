@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { APIError, getConversation, getConversationEntry, inputActivityService, type HistoryDetail, type ReviewV2Output, type ReviewV2Request, type UserInputDetails } from '@colony2/shared';
+import { APIError, getConversation, getConversationEntry, inputActivityService, useCurrentInput, type HistoryDetail, type ReviewV2Output, type ReviewV2Request, type UserInputDetails } from '@colony2/shared';
 import { reconcileReviewV2, reviewV2FromForm, type ReviewV2View } from '../utils/reviewV2State';
 import { isFinishedJob } from '../utils/jobStatus';
 import { object } from '../components/conversationPresentation';
 
 export function useReviewV2(tenant: string, job: string, selected: string, initial?: UserInputDetails) {
+  const selectedInput = useCurrentInput(tenant, job);
+  const currentRef = useRef(selectedInput); currentRef.current = selectedInput;
+  const retained = useRef<{detail?: HistoryDetail; job?: ReviewV2View['job']; declarations: Record<string,ReviewV2Request>; limitations: string}>();
+  const [historyVersion, setHistoryVersion] = useState(0);
   const [view,setView] = useState<ReviewV2View>();
   const [error,setError] = useState('');
   const [busy,setBusy] = useState(false);
@@ -23,7 +27,6 @@ export function useReviewV2(tenant: string, job: string, selected: string, initi
     setBusy(true);
     const run = async () => {
       try {
-        const currentResult = inputActivityService.getInputDetails(tenant,job,true,abort.signal).then(data => ({data}),error => ({error}));
         // Acquire a complete immutable snapshot. Snapshot expiry restarts once.
         let detail: HistoryDetail | undefined;
         const declarations:Record<string,ReviewV2Request>=Object.create(null);
@@ -49,19 +52,11 @@ export function useReviewV2(tenant: string, job: string, selected: string, initi
             break;
           } catch (e) {if (attempt === 0 && e instanceof APIError && e.code === 'history_snapshot_expired') continue; throw e;}
         }
-        const result = await currentResult;
         if (abort.signal.aborted || !active.current || turn !== generation.current) return;
-        let current: UserInputDetails | undefined;
-        if ('data' in result) current = result.data;
-        else if (!(result.error instanceof APIError) || ![404,409].includes(result.error.status)) throw result.error;
         const jobValue = page?.activity?.availability === 'available' ? page.activity.value : undefined;
-        const next = reconcileReviewV2(selected,current,detail,jobValue,provisional.current,latest.current);
-        if(current?.form.request_id){const live=reviewV2FromForm(current.form);if(live?.review_id===selected)declarations[current.form.request_id]=live;}
-        next.declarations=declarations;
-        if(inFlight.current){next.phase='sending';next.current=undefined;}
-        latest.current = next; setView(next);
         const limitations = [page?.completeness && !['complete','recorded'].includes(page.completeness) ? `History coverage: ${page.completeness}.` : '', page?.activity?.availability !== 'available' ? 'Job status is unavailable.' : '', ...(page?.diagnostics ?? []).map(d=>d.message)];
-        setError(limitations.filter(Boolean).join(' '));
+        retained.current = {detail, job: jobValue, declarations, limitations: limitations.filter(Boolean).join(' ')};
+        setHistoryVersion(value => value + 1);
       } catch (e) {
         if (abort.signal.aborted || !active.current || turn !== generation.current) return;
         setError(e instanceof Error ? e.message : String(e));
@@ -77,7 +72,7 @@ export function useReviewV2(tenant: string, job: string, selected: string, initi
     active.current=true;
     if (initial) {
       const request=reviewV2FromForm(initial.form);
-      if (request?.review_id === selected) {const first:ReviewV2View={request,current:initial,phase:'actionable',conversation:request.conversation};latest.current=first;setView(first);}
+      if (request?.review_id === selected) {const first:ReviewV2View={request,phase:'unavailable',conversation:request.conversation};latest.current=first;setView(first);}
     }
     void refresh();
     const events = ['connected','inputs_changed','input_pending','input_completed','input_cancelled'];
@@ -85,6 +80,23 @@ export function useReviewV2(tenant: string, job: string, selected: string, initi
     events.forEach(e=>inputActivityService.on(e,changed));
     return ()=>{active.current=false;generation.current++;controller.current?.abort();running.current=undefined;events.forEach(e=>inputActivityService.off(e,changed));};
   },[refresh,initial,selected]);
+  useEffect(() => {
+    const saved = retained.current;
+    const current = selectedInput.details ?? undefined;
+    try {
+      const next = reconcileReviewV2(selected,current,saved?.detail,saved?.job,provisional.current,latest.current, selectedInput.discovery.status === 'current' && !selectedInput.loading && !selectedInput.error);
+      next.declarations = {...saved?.declarations};
+      if (current?.form.request_id) {const live = reviewV2FromForm(current.form); if (live?.review_id === selected) next.declarations[current.form.request_id] = live;}
+      if (inFlight.current) {next.phase = 'sending'; next.current = undefined;}
+      latest.current = next; setView(next);
+      setError([saved?.limitations, selectedInput.error, selectedInput.discovery.error].filter(Boolean).join(' '));
+    } catch (error) {
+      if (!selectedInput.loading && selectedInput.discovery.status === 'current') setError(error instanceof Error ? error.message : String(error));
+    }
+  }, [historyVersion, selectedInput.details, selectedInput.loading, selectedInput.error, selectedInput.discovery, selected]);
+  const retry = useCallback(async () => {
+    await Promise.all([refresh(), currentRef.current.refresh().catch(() => {})]);
+  }, [refresh]);
   useEffect(()=>{
     if (view?.job && isFinishedJob(view.job)) return;
     if (!view || !['waiting','unavailable','sending'].includes(view.phase)) return;
@@ -98,5 +110,7 @@ export function useReviewV2(tenant: string, job: string, selected: string, initi
     next.declarations={...latest.current?.declarations,[String(output.receipt.request_id)]:request};
     latest.current=next;setView(next);void refresh();
   };
-  return {view,error,busy,refresh,sending,accepted,failed:()=>{inFlight.current=false;}};
+  const safeView = view?.current && (view.current !== selectedInput.details || selectedInput.discovery.status !== 'current')
+    ? {...view, current: undefined, phase: 'unavailable' as const} : view;
+  return {view:safeView,error,busy,refresh:retry,sending,accepted,failed:()=>{inFlight.current=false;}};
 }

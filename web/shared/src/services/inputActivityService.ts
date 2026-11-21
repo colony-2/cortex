@@ -205,256 +205,212 @@ export interface InputSSEEvent {
   data: any;
 }
 
+export type DiscoveryStatus = 'loading' | 'current' | 'unavailable';
+export interface InputDiscovery { status: DiscoveryStatus; inputs: PendingInput[]; error?: string }
+const initialDiscovery: InputDiscovery = { status: 'loading', inputs: [] };
+interface DetailAttempt {
+  key: string; epoch: number; promise: Promise<UserInputDetails | null>;
+  details?: UserInputDetails | null; error?: Error;
+}
+
+function integer(value: unknown): boolean {
+  const text = stringifyJobJSON(value);
+  return !!text && /^(0|[1-9][0-9]*)$/.test(text);
+}
+function requestVersion(input: PendingInput): string {
+  return stringifyJobJSON([input.id, input.request_id ?? null, input.task_ordinal ?? null, input.client_payload_revision])!;
+}
+function validateSnapshot(value: unknown): PendingInput[] {
+  if (!Array.isArray(value)) throw new Error('Invalid pending request snapshot');
+  const ids = new Set<string>();
+  for (const row of value) {
+    validateJobCell(row);
+    if (typeof row.id !== 'string' || !row.id || ids.has(row.id) || !integer(row.client_payload_revision)
+      || (row.request_id !== undefined && (typeof row.request_id !== 'string' || !row.request_id))
+      || (row.task_ordinal !== undefined && !integer(row.task_ordinal))) throw new Error('Invalid pending request identity or revision');
+    ids.add(row.id);
+  }
+  return value;
+}
+
 class InputActivityService extends EventEmitter {
   private eventSource: EventSource | null = null;
-  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 3;
-  private reconnectDelay = 1000;
   private currentProjectId: string | null = null;
-  private pendingVersions = new Map<string, number>();
+  private epoch = 0;
+  private detailEpoch = 0;
+  private observation = 0;
+  private discovery = new Map<string, InputDiscovery>();
   private pendingInputsCache = new Map<string, PendingInput[]>();
-  private formDetailsCache = new Map<string, UserInputDetails>();
+  private formDetailsCache = new Map<string, DetailAttempt>();
+  private memberships = new Map<string, number>();
+  private pendingRead?: { project: string; epoch: number; observation: number; promise: Promise<PendingInput[]> };
 
-  connect(projectId: string): void {
-    // If already connected to this project, do nothing
-    if (this.eventSource?.readyState === 1 && this.currentProjectId === projectId) {
-      return;
+  getDiscovery(project: string): InputDiscovery { return this.discovery.get(project) ?? initialDiscovery; }
+  private unavailable(project: string, error: unknown): void {
+    this.observation++; this.detailEpoch++;
+    for (const [key, attempt] of this.formDetailsCache) {
+      if (attempt.details === undefined && !attempt.error) this.formDetailsCache.delete(key);
     }
-
-    // Disconnect from previous project if any
+    this.discovery.set(project, { status: 'unavailable', inputs: this.getDiscovery(project).inputs,
+      error: error instanceof Error ? error.message : 'Pending request availability is unavailable.' });
+    this.emit('discovery_changed');
+    this.emit('inputs_error', { projectId: project, error });
+  }
+  private publish(project: string, value: unknown): PendingInput[] {
+    const inputs = validateSnapshot(value);
+    const next = new Map(inputs.map(row => [row.id, row]));
+    for (const row of this.pendingInputsCache.get(project) ?? []) {
+      const successor = next.get(row.id);
+      if (!successor || requestVersion(successor) !== requestVersion(row)) {
+        const oldKey = JSON.stringify([project, requestVersion(row), this.memberships.get(JSON.stringify([project, row.id])) ?? 0]);
+        this.formDetailsCache.delete(oldKey);
+        const key = JSON.stringify([project, row.id]);
+        this.memberships.set(key, (this.memberships.get(key) ?? 0) + 1);
+      }
+    }
+    this.observation++;
+    this.pendingInputsCache.set(project, inputs);
+    this.discovery.set(project, {status: 'current', inputs});
+    this.emit('discovery_changed');
+    this.emit('inputs_changed', {projectId: project, inputs});
+    return inputs;
+  }
+  connect(project: string): void {
+    if (this.eventSource && this.eventSource.readyState !== 2 && this.currentProjectId === project) return;
+    const retainedInputs = this.getDiscovery(project).inputs;
     this.disconnect();
-
-    this.currentProjectId = projectId;
-
-    // Check if EventSource is available (browser environment)
-    if (typeof EventSource === 'undefined') {
-      console.warn('EventSource not available, SSE connection disabled');
-      return;
-    }
-
-    // Attempt SSE connection
-    this.createEventSource();
-  }
-
-  private createEventSource(): void {
-    if (!this.currentProjectId) {
-      console.warn('No project ID set, cannot create SSE connection');
-      return;
-    }
-
-    const streamTenant = this.currentProjectId;
-    try {
-      this.eventSource = new EventSource(
-        `${API_BASE}/projects/${this.currentProjectId}/user-inputs/stream`
-      );
-
-      this.eventSource.onopen = () => {
-        console.log('SSE connection established for project:', this.currentProjectId);
-        this.reconnectAttempts = 0;
-        this.emit('connected');
-      };
-
-      this.eventSource.addEventListener('connected', (event) => {
-        try {
-          const data = JSON.parse((event as MessageEvent).data);
-          console.log('SSE connected, client_id:', data.client_id);
-        } catch (error) {
-          console.error('Failed to parse connected event:', error);
-        }
+    this.currentProjectId = project;
+    this.discovery.set(project, {status: 'loading', inputs: retainedInputs});
+    this.emit('discovery_changed');
+    if (typeof EventSource === 'undefined') { this.unavailable(project, new Error('Live updates unavailable')); return; }
+    let source: EventSource;
+    try { source = new EventSource(`${API_BASE}/projects/${encodeURIComponent(project)}/user-inputs/stream`); }
+    catch (error) { this.unavailable(project, error); return; }
+    this.eventSource = source;
+    const epoch = this.epoch;
+    const active = () => this.eventSource === source && this.epoch === epoch && this.currentProjectId === project;
+    source.onopen = () => {
+      if (!active()) return;
+      this.emit('connected');
+      if (this.getDiscovery(project).status !== 'current') void this.getPendingInputs(project, true).catch(() => {});
+    };
+    source.addEventListener('inputs_changed', event => {
+      if (!active()) return;
+      try { this.publish(project, (parseJobJSON((event as MessageEvent).data) as {inputs: unknown}).inputs); }
+      catch (error) { this.unavailable(project, error); }
+    });
+    source.addEventListener('error', event => {
+      if (!active()) return;
+      this.unavailable(project, new Error((event as MessageEvent).data ? 'Pending request stream failed.' : 'Pending request connection lost. Reconnecting…'));
+    });
+    source.onerror = () => {
+      if (!active()) return;
+      this.unavailable(project, new Error('Pending request connection lost. Reconnecting…'));
+      this.emit('disconnected');
+    };
+    for (const name of ['input_pending', 'input_cancelled', 'input_completed']) {
+      source.addEventListener(name, event => {
+        if (!active()) return;
+        try { this.emit(name, JSON.parse((event as MessageEvent).data)); void this.getPendingInputs(project, true).catch(() => {}); }
+        catch (error) { this.unavailable(project, error); }
       });
-
-      this.eventSource.addEventListener('inputs_changed', (event) => {
-        try {
-          const { inputs } = parseJobJSON((event as MessageEvent).data) as { inputs: PendingInput[] };
-          const projectId = streamTenant;
-          if (this.currentProjectId !== projectId) return;
-          this.pendingVersions.set(projectId, (this.pendingVersions.get(projectId) || 0) + 1);
-          // A compact revision change may denote a new form on the same job.
-          inputs.forEach(validateJobCell);
-          const previous = this.pendingInputsCache.get(projectId) || [];
-          const byId = new Map(inputs.map(input => [input.id, input]));
-          for (const input of previous) {
-            const next = byId.get(input.id);
-            if (stringifyJobJSON(next) !== stringifyJobJSON(input)) this.formDetailsCache.delete(JSON.stringify([projectId, input.id]));
-          }
-          this.pendingInputsCache.set(projectId, inputs);
-          this.emit('inputs_changed', { projectId, inputs });
-        } catch (error) {
-          this.pendingInputsCache.delete(streamTenant);
-          this.emit('inputs_error', { projectId: streamTenant, error });
-        }
-      });
-
-      this.eventSource.addEventListener('input_pending', (event) => {
-        try {
-          const data = JSON.parse((event as MessageEvent).data);
-          this.handleInputPendingEvent(data);
-        } catch (error) {
-          console.error('Failed to parse input_pending event:', error);
-        }
-      });
-
-      this.eventSource.addEventListener('input_cancelled', (event) => {
-        try {
-          const data = JSON.parse((event as MessageEvent).data);
-          this.handleInputCancelledEvent(data);
-        } catch (error) {
-          console.error('Failed to parse input_cancelled event:', error);
-        }
-      });
-
-      this.eventSource.addEventListener('input_completed', (event) => {
-        try {
-          const data = JSON.parse((event as MessageEvent).data);
-          if (this.currentProjectId) {
-            this.invalidatePendingInputsCache();
-            this.formDetailsCache.delete(JSON.stringify([this.currentProjectId, data.jobId]));
-          }
-          this.emit('input_completed', data);
-        } catch (error) {
-          console.error('Failed to parse input_completed event:', error);
-        }
-      });
-
-      this.eventSource.addEventListener('heartbeat', () => {
-        // Heartbeat - can be used for connection monitoring
-      });
-
-      this.eventSource.addEventListener('error', (event) => {
-        try {
-          const data = JSON.parse((event as MessageEvent).data);
-          console.error('SSE error event:', data.error);
-        } catch (error) {
-          // Ignore parsing errors for error events
-        }
-      });
-
-      this.eventSource.onerror = () => {
-        // Check if the connection was immediately closed (likely 404)
-        if (this.eventSource?.readyState === 2 && this.reconnectAttempts === 0) {
-          // Connection closed immediately, likely endpoint doesn't exist
-          // Silently disable without logging error
-          this.disconnect();
-          return;
-        }
-
-        // For subsequent errors, handle reconnection
-        if (this.eventSource?.readyState === 2) {
-          this.handleConnectionError();
-        }
-      };
-    } catch (error) {
-      console.error('Failed to create SSE connection:', error);
-      this.handleConnectionError();
     }
   }
-
   disconnect(): void {
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = null;
-    }
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
-    }
-    this.currentProjectId = null;
+    const project = this.currentProjectId;
+    this.eventSource?.close(); this.eventSource = null;
+    this.currentProjectId = null; this.epoch++; this.observation++;
+    this.pendingRead = undefined;
+    if (project) this.unavailable(project, new Error('Pending request connection closed.'));
     this.emit('disconnected');
   }
-
-  private handleInputPendingEvent(data: { id: string }): void {
-    // Invalidate cache BEFORE emitting event so listeners get fresh data
-    if (this.currentProjectId) {
-      this.invalidatePendingInputsCache();
-      this.formDetailsCache.delete(JSON.stringify([this.currentProjectId, data.id]));
-    }
-    this.emit('input_pending', data);
-  }
-
-  private handleInputCancelledEvent(data: { jobId: string; reason?: string }): void {
-    // Invalidate cache BEFORE emitting event so listeners get fresh data
-    if (this.currentProjectId) {
-      this.invalidatePendingInputsCache();
-      this.formDetailsCache.delete(JSON.stringify([this.currentProjectId, data.jobId]));
-    }
-    this.emit('input_cancelled', data);
-  }
-
-  private handleConnectionError(): void {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('Max reconnection attempts reached');
-      this.emit('connection_failed');
-      return;
-    }
-
-    this.reconnectAttempts++;
-    const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
-
-    console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-
-    this.reconnectTimeout = setTimeout(() => {
-      this.createEventSource();
-    }, delay);
-  }
-
-  private invalidatePendingInputsCache(): void {
-    if (this.currentProjectId) {
-      this.pendingVersions.set(this.currentProjectId, (this.pendingVersions.get(this.currentProjectId) || 0) + 1);
-      this.pendingInputsCache.delete(this.currentProjectId);
-    }
-  }
-
-  async getPendingInputs(projectId: string, force = false): Promise<PendingInput[]> {
-    // Check cache first
-    if (!force && this.pendingInputsCache.has(projectId)) {
-      return this.pendingInputsCache.get(projectId)!;
-    }
-
-    const version = this.pendingVersions.get(projectId) || 0;
-    try {
-      const url = `${API_BASE}/projects/${encodeURIComponent(projectId)}/user-inputs/pending`;
-
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch pending inputs: ${response.statusText}`);
+  async getPendingInputs(project: string, force = false): Promise<PendingInput[]> {
+    if (!force && this.getDiscovery(project).status === 'current') return this.getDiscovery(project).inputs;
+    if (force && this.currentProjectId === project && this.eventSource?.readyState === 2) this.connect(project);
+    const epoch = this.epoch, observation = this.observation;
+    if (this.pendingRead?.project === project && this.pendingRead.epoch === epoch && this.pendingRead.observation === observation) return this.pendingRead.promise;
+    const accepted = () => {
+      const state = this.getDiscovery(project);
+      if (this.epoch === epoch && state.status === 'current') return state.inputs;
+      throw new Error(state.error ?? 'Pending request availability is unavailable.');
+    };
+    let promise!: Promise<PendingInput[]>;
+    promise = (async () => {
+      try {
+        const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(project)}/user-inputs/pending`, {cache: 'no-store'});
+        if (!response.ok) throw new APIError(`Failed to fetch pending requests: ${response.statusText}`, response.status);
+        const value = parseJobJSON(await response.text());
+        if (epoch !== this.epoch || observation !== this.observation) return accepted();
+        return this.publish(project, value);
+      } catch (error) {
+        if (epoch !== this.epoch || observation !== this.observation) return accepted();
+        this.unavailable(project, error); throw error;
+      } finally {
+        if (this.pendingRead?.promise === promise) this.pendingRead = undefined;
       }
-
-      const inputs = parseJobJSON(await response.text()) as PendingInput[];
-      inputs.forEach(validateJobCell);
-      if ((this.pendingVersions.get(projectId) || 0) !== version) return this.pendingInputsCache.get(projectId) || inputs;
-      this.pendingInputsCache.set(projectId, inputs);
-      return inputs;
-    } catch (error) {
-      console.error('Failed to fetch pending inputs:', error);
-      throw error;
-    }
+    })();
+    this.pendingRead = {project, epoch, observation, promise};
+    return promise;
   }
-
-  async getInputDetails(projectId: string, jobId: string, force = false, signal?: AbortSignal): Promise<UserInputDetails> {
-    const cacheKey = JSON.stringify([projectId, jobId]);
-
-    // Check cache first
-    if (!force && this.formDetailsCache.has(cacheKey)) {
-      return this.formDetailsCache.get(cacheKey)!;
-    }
-
-    try {
-      const response = await fetch(`${API_BASE}/projects/${projectId}/user-inputs/${jobId}`, { signal });
-      if (!response.ok) {
-        throw new APIError(`Failed to fetch input details: ${response.statusText}`, response.status);
+  selectedVersion(project: string, job: string): string | undefined {
+    const state = this.getDiscovery(project);
+    const row = state.status === 'current' && state.inputs.find(input => input.id === job);
+    return row ? JSON.stringify([project, requestVersion(row), this.memberships.get(JSON.stringify([project, job])) ?? 0]) : undefined;
+  }
+  async getInputDetails(project: string, job: string, force = false, _signal?: AbortSignal): Promise<UserInputDetails | null> {
+    // Retry always discovers first. A caller cannot turn a route into a probe.
+    const before = this.formDetailsCache.get(this.selectedVersion(project, job) ?? '');
+    if (force) await this.getPendingInputs(project, true);
+    const key = this.selectedVersion(project, job);
+    if (!key) return null;
+    const previous = this.formDetailsCache.get(key);
+    if (previous && (!force || previous !== before)) return previous.promise;
+    const epoch = this.detailEpoch;
+    const row = this.getDiscovery(project).inputs.find(input => input.id === job)!;
+    const valid = () => this.detailEpoch === epoch && this.selectedVersion(project, job) === key && this.formDetailsCache.get(key) === attempt;
+    const revalidate = () => { if (valid()) void this.getPendingInputs(project, true).catch(() => {}); };
+    const attempt: DetailAttempt = {key, epoch, promise: Promise.resolve(null)};
+    attempt.promise = (async () => {
+      try {
+        const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(project)}/user-inputs/${encodeURIComponent(job)}`, {cache: 'no-store'});
+        if (!valid()) return null;
+        if (response.status === 204) { attempt.details = null; revalidate(); return null; }
+        if (!response.ok) throw new APIError(`Failed to fetch input details: ${response.statusText}`, response.status);
+        const details = parseJobJSON(await response.text()) as UserInputDetails;
+        if (!valid()) return null;
+        if (!details || !details.form || typeof details.form !== 'object' || Array.isArray(details.form) || typeof details.jobId !== 'string') throw new Error('Invalid input details');
+        if (details.jobId !== job || (row.request_id !== undefined && row.request_id !== details.form.request_id)
+          || (row.task_ordinal !== undefined && (details.task_ordinal ?? details.taskOrdinal) !== undefined && stringifyJobJSON(row.task_ordinal) !== stringifyJobJSON(details.task_ordinal ?? details.taskOrdinal))) {
+          attempt.details = null; revalidate(); return null;
+        }
+        attempt.details = details; return details;
+      } catch (error) {
+        if (!valid()) return null;
+        attempt.error = error instanceof Error ? error : new Error(String(error)); throw attempt.error;
+      } finally {
+        if (!valid() && attempt.details === undefined && this.formDetailsCache.get(key) === attempt) this.formDetailsCache.delete(key);
+        this.emit('details_changed');
       }
-
-      const details = await response.json();
-      this.formDetailsCache.set(cacheKey, details);
-      return details;
-    } catch (error) {
-      console.error('Failed to fetch input details:', error);
-      throw error;
-    }
+    })();
+    this.formDetailsCache.set(key, attempt);
+    return attempt.promise;
   }
-
+  getDetailsState(project: string, job: string): DetailAttempt | undefined {
+    const key = this.selectedVersion(project, job);
+    return key ? this.formDetailsCache.get(key) : undefined;
+  }
+  private answered(project: string, job: string, key: string | undefined): void {
+    // A successor may be discovered before the completion's HTTP acknowledgement.
+    // Only suppress the version captured when the operation started.
+    if (key && this.selectedVersion(project, job) === key) {
+      this.formDetailsCache.set(key, {key, epoch: this.epoch, details: null, promise: Promise.resolve(null)});
+    }
+    this.emit('details_changed');
+    this.emit('input_completed', {jobId: job});
+    void this.getPendingInputs(project, true).catch(() => {});
+  }
   async submitResponse(projectId: string, jobId: string, response: FormResponse): Promise<void> {
+    const key = this.selectedVersion(projectId, jobId);
     try {
       const apiResponse = await fetch(`${API_BASE}/projects/${projectId}/user-inputs/${jobId}/respond`, {
         method: 'POST',
@@ -469,9 +425,7 @@ class InputActivityService extends EventEmitter {
       }
 
       // Clear caches
-      const cacheKey = JSON.stringify([projectId, jobId]);
-      this.formDetailsCache.delete(cacheKey);
-      this.pendingInputsCache.delete(projectId);
+      this.answered(projectId, jobId, key);
     } catch (error) {
       console.error('Failed to submit response:', error);
       throw error;
@@ -484,6 +438,7 @@ class InputActivityService extends EventEmitter {
   }
 
   async submitReview(projectId: string, jobId: string, requestId: string, response: FormResponse): Promise<void> {
+    const key = this.selectedVersion(projectId, jobId);
     const submission = {
       request_id: requestId,
       submission_id: createSubmissionId(),
@@ -500,12 +455,11 @@ class InputActivityService extends EventEmitter {
       const error = await result.json().catch(() => null);
       throw new Error(error?.error || 'Failed to submit review. Reload if this review has changed.');
     }
-    this.formDetailsCache.delete(JSON.stringify([projectId, jobId]));
-    this.pendingInputsCache.delete(projectId);
-    this.emit('input_completed', { jobId });
+    this.answered(projectId, jobId, key);
   }
 
   async submitReviewV2(projectId: string, jobId: string, requestId: string, response: import('../reviewV2').ReviewV2Response, attachments: File[], submissionId = createSubmissionId()): Promise<import('../reviewV2').ReviewV2Output> {
+    const key = this.selectedVersion(projectId, jobId);
     const body = new FormData();
     body.append('submission', JSON.stringify({ request_id: requestId, submission_id: submissionId, response }));
     for (const file of attachments) body.append('attachments', file);
@@ -515,13 +469,12 @@ class InputActivityService extends EventEmitter {
       throw new Error(error?.error || 'Submission could not be confirmed. Refresh to check acceptance before retrying.');
     }
     const output = await result.json();
-    this.formDetailsCache.delete(JSON.stringify([projectId, jobId]));
-    this.pendingInputsCache.delete(projectId);
-    this.emit('input_completed', { jobId });
+    this.answered(projectId, jobId, key);
     return output;
   }
 
   async cancelInput(projectId: string, jobId: string, reason?: string): Promise<void> {
+    const key = this.selectedVersion(projectId, jobId);
     try {
       const response = await fetch(`${API_BASE}/projects/${projectId}/user-inputs/${jobId}/cancel`, {
         method: 'POST',
@@ -536,9 +489,7 @@ class InputActivityService extends EventEmitter {
       }
 
       // Clear caches
-      const cacheKey = JSON.stringify([projectId, jobId]);
-      this.formDetailsCache.delete(cacheKey);
-      this.pendingInputsCache.delete(projectId);
+      this.answered(projectId, jobId, key);
     } catch (error) {
       console.error('Failed to cancel input:', error);
       throw error;
@@ -565,6 +516,8 @@ class InputActivityService extends EventEmitter {
   clearCaches(): void {
     this.pendingInputsCache.clear();
     this.formDetailsCache.clear();
+    this.discovery.clear(); this.memberships.clear(); this.pendingRead = undefined;
+    this.observation++;
   }
 }
 

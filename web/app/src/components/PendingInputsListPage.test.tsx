@@ -138,7 +138,9 @@ describe('PendingInputsListPage', () => {
     await screen.findByText('Job ID: review');
     act(() => sse.dispatchEvent(new MessageEvent('inputs_changed', { data: JSON.stringify({ inputs: [{ id: 'invalid' }] }) })));
     expect(await screen.findByRole('alert')).toHaveTextContent('required cell_id is missing');
-    expect(screen.queryByText('Job ID: review')).not.toBeInTheDocument();
+    expect(screen.getByText('Job ID: review')).toBeVisible();
+    expect(screen.getByText('Last known: Showing 1 of 1 pending requests')).toBeVisible();
+    expect(screen.queryByText('Job ID: invalid')).not.toBeInTheDocument();
     expect(screen.queryByText('No pending reviews')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Retry reviews' }));
     await screen.findByText('Job ID: review');

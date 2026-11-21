@@ -2,6 +2,19 @@ import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { jobIdentity } from './helpers/cells';
 
+// These static HTTP fixtures exercise artifact interactions, not live updates.
+// An unhandled stream must not turn a valid pending snapshot into an outage.
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => {
+    (window as any).EventSource = class {
+      readyState = 1;
+      close() {}
+      addEventListener() {}
+      removeEventListener() {}
+    };
+  });
+});
+
 for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
   test(`SAV-026,027 story viewer ${viewport.width}`, async ({ page, context, baseURL }, testInfo) => {
     await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
@@ -15,7 +28,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 
       let body: unknown = [];
       if (url.pathname === '/api/projects') body = [{ tenant_id: 'tenant', name: 'Test tenant' }];
       else if (url.pathname.endsWith('/story')) body = {job_id:'job', status:'success',root:{id:'root',kind:'opStep',title:'Contents',status:'success',path:[],artifact_keys:[{name:'large.md',taskOrdinal:1},{name:'huge.png',taskOrdinal:2},{name:'wide.png',taskOrdinal:3},{name:'wide.patch',taskOrdinal:4}]}};
-      else if (url.pathname.endsWith('/jobs/job')) body = {job_id:'job',title:'Fixture job',status:'SUCCEEDED'};
+      else if (url.pathname.endsWith('/jobs/job')) body = {...jobIdentity,job_id:'job',title:'Fixture job',status:'SUCCEEDED'};
       else if (url.pathname.includes('/events')) return route.fulfill({contentType:'text/event-stream',body:': fixture\n\n'});
       await route.fulfill({json:body});
     });
@@ -107,9 +120,10 @@ for (const viewport of [{width:1280,height:800},{width:390,height:844}]) {
           return route.fulfill({contentType:'text/plain',body:content});
         }
         if(url.pathname==='/api/projects')body=[{tenant_id:'tenant',name:'Tenant'}];
+        else if(url.pathname.endsWith('/user-inputs/pending'))body=viewer==='review'?[{...jobIdentity,id:'job',request_id:'request-1',client_payload_revision:1}]:[];
         else if(url.pathname.endsWith('/user-inputs/job'))body={jobId:'job',status:'pending',startTime:'2026-11-06T00:00:00Z',form:{kind:'review',request_id:'request-1',title:'Link review',fields:[{id:'notes',question:'Notes',type:'paragraph_text',required:true}],documents:Object.fromEntries(keys.map((key,i)=>[i===0?'a':i===1?'b/雪':'z',{kind:'stored',name:key.name,stored:{key:{...key,jobId:`producer-${i}`}}}]))}};
         else if(url.pathname.endsWith('/story'))body={job_id:'job',status:'success',root:{id:'root',kind:'opStep',title:'Contents',status:'success',path:[],artifact_keys:backgroundChanged?[...keys,{name:'docs/outside.md',taskOrdinal:9}]:keys}};
-        else if(url.pathname.endsWith('/jobs/job'))body={job_id:'job',title:'Fixture job',status:'SUCCEEDED'};
+        else if(url.pathname.endsWith('/jobs/job'))body={...jobIdentity,job_id:'job',title:'Fixture job',status:'SUCCEEDED'};
         else if(url.pathname.includes('/events'))return route.fulfill({contentType:'text/event-stream',body:': fixture\n\n'});
         await route.fulfill({json:body});
       });
@@ -182,7 +196,9 @@ for (const width of [375, 767, 768, 1280]) {
       const url=new URL(route.request().url());let body:unknown=[];
       if(url.pathname.includes('/documents')) {reads.push(url.toString());return route.fulfill({contentType:'text/plain',body:url.searchParams.get('document_id')==='z'?'# Large overview\n\n'+'Review paragraph.\n\n'.repeat(350)+'Last paragraph.':'# Target contents'});}
       if(url.pathname==='/api/projects')body=[{tenant_id:'tenant',name:'Tenant'}];
+      else if(url.pathname.endsWith('/user-inputs/pending'))body=[{...jobIdentity,id:'job',request_id:'r',client_payload_revision:1}];
       else if(url.pathname.endsWith('/user-inputs/job'))body={jobId:'job',status:'pending',form:{kind:'review',request_id:'r',overview_document_id:'z',document_metadata:metadata,documents,fields:[{id:'notes',type:'paragraph_text',question:'Notes',required:true}]}};
+      else if(url.pathname.endsWith('/jobs/job'))body={...jobIdentity,job_id:'job',title:'Metadata fixture',status:'ACTIVE'};
       else if(url.pathname.includes('/events'))return route.fulfill({contentType:'text/event-stream',body:': fixture\n\n'});
       await route.fulfill({json:body});
     });

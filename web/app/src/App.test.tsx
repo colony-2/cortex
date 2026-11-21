@@ -3,7 +3,7 @@ import { AppShell, readNavigationPreference } from './App';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-const activity = vi.hoisted(() => ({ pendingCount: 0, setCurrentProjectId: vi.fn() }));
+const activity = vi.hoisted(() => ({ pendingCount: 0, discoveryStatus:'current', currentProjectId:'navigation', setCurrentProjectId: vi.fn() }));
 vi.mock('@colony2/shared', async importOriginal => ({
   ...await importOriginal<typeof import('@colony2/shared')>(),
   isAuthenticated: () => true,
@@ -32,7 +32,12 @@ describe('desktop navigation preference', () => {
 });
 
 describe('navigation control and activity', () => {
-  afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); activity.pendingCount = 0; });
+  afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); activity.pendingCount = 0; activity.currentProjectId = 'navigation'; });
+  it('hides another tenant’s fresh count until provider selection catches up', () => {
+    activity.currentProjectId = 'other'; activity.pendingCount = 7;
+    render(shell());
+    expect(screen.getByRole('link', { name: 'Reviews' })).toHaveAccessibleDescription('Pending review count unavailable');
+  });
   it('toggles once for mouse, Enter and Space with accessible state and icons', async () => {
     const user = userEvent.setup();
     render(shell());

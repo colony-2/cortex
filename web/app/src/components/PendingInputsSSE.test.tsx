@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { setupServer } from 'msw/node';
+import { http, HttpResponse } from 'msw';
 import { InputActivityProvider, inputActivityService } from '@colony2/shared';
 import PendingInputsListPage from './PendingInputsListPage';
 import {
@@ -30,6 +31,7 @@ describe('PendingInputsListPage - Real-time SSE Updates', () => {
   afterEach(() => {
     inputActivityService.clearCaches(); // Clear caches between tests
     server.close();
+    server.resetHandlers();
     eventSourceMock.restore();
     vi.clearAllMocks();
   });
@@ -43,6 +45,27 @@ describe('PendingInputsListPage - Real-time SSE Updates', () => {
       </BrowserRouter>
     );
   };
+
+  it('retains last-known rows while retrying a closed connection', async () => {
+    const row = createMockPendingInput('retained');
+    setupMockInputs(projectId, [row], []);
+    renderComponent();
+    await screen.findByText('Job ID: retained');
+    const sse = await waitForSSEConnection();
+    act(() => { sse.readyState = sse.CLOSED; sse.emitError('Connection lost'); });
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    server.use(http.get(`http://localhost:8080/api/projects/${projectId}/user-inputs/pending`, async () => {
+      await gate;
+      return HttpResponse.json([row]);
+    }));
+    fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+    await screen.findByText('Checking pending requests…');
+    expect(screen.getByText('Job ID: retained')).toBeVisible();
+    expect(screen.getByText('Last known: Showing 1 of 1 pending requests')).toBeVisible();
+    await act(async () => { release(); });
+    await screen.findByText('Showing 1 of 1 pending requests');
+  });
 
   it('reapplies controls to Refresh and replacement occurrences without retaining old time', async () => {
     window.history.replaceState({}, '', '/project/test-project-123/reviews?q=foo+bar&cellId=one&sort=requested&order=descend');

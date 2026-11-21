@@ -20,11 +20,11 @@ export async function reviewV2BrowserFixture(page:Page) {
  await page.route('**/api/**',r=>r.fulfill({status:404,json:{error:'No fixture for this endpoint'}}));
  await page.route('**/api/projects',r=>r.fulfill({json:[{...jobIdentity,tenant_id:'v2'}]}));
  await mockCells(page,['platform']);
- await page.route('**/user-inputs/pending',r=>r.fulfill({json:[]}));
+ await page.route('**/user-inputs/pending',r=>r.fulfill({json:state.pending?[{...jobIdentity,id:'one',client_payload_revision:state.native==='native-one'?1:2,request_id:state.native}]:[]}));
  await page.route('**/jobs/one',r=>r.fulfill({json:activity()}));
  await page.route('**/jobs/one/children?*',r=>r.fulfill({json:{jobs:[]}}));
  await page.route('**/tree-node',r=>{const id=new URL(r.request().url()).pathname.split('/').slice(-2)[0];return r.fulfill({json:{node:{tenant_id:'v2',job_id:id,job_type:'build',status:'ACTIVE',...(id==='one'?{title:'Review viewer usability',parent_job_id:'parent'}:id==='parent'?{prompt:'Improve the review reading and response flow',parent_job_id:'root'}:{title:'Build a useful job workspace',store:'ARCHIVED'})},observed_at:'now'}});});
- await page.route('**/user-inputs/one',r=>{state.details++;return r.fulfill(state.pending?{json:{jobId:'one',status:'pending',startTime:'2026-11-16T12:00:00Z',form:{...form(),request:{...state.request,review_id:state.liveReviewId||state.request.review_id}}}}:{status:404,json:{error:'No pending request'}});});
+ await page.route('**/user-inputs/one',r=>{state.details++;return r.fulfill(state.pending?{json:{jobId:'one',status:'pending',startTime:'2026-11-16T12:00:00Z',form:{...form(),request:{...state.request,review_id:state.liveReviewId||state.request.review_id}}}}:{status:204,body:''});});
  await page.route('**/jobs/one/conversation?*',r=>r.fulfill(state.historyError?{status:503,json:{error:'History unavailable'}}:{json:{tenant_id:'v2',job_id:'one',snapshot_token:'snapshot',snapshot_revision:1,entries:[entry()],completeness:'complete',activity:{availability:'available',value:activity()}}}));
  await page.route('**/jobs/one/conversation/entry?*',r=>r.fulfill({json:detail()}));
  await page.route('**/jobs/one/conversation/artifact?*',async r=>{

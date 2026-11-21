@@ -504,7 +504,7 @@ for (const multiField of [false, true]) {
   });
 }
 
-test('cancellation removes a pending prompt in open tabs and rejects late answers', async ({ page, request, recipeRun }) => {
+test('cancellation removes a pending prompt in open tabs and rejects late answers', async ({ page, request, recipeRun }, testInfo) => {
   const { tenant, jobID, observer, stopWorker, startWorker } = recipeRun;
   await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
   await openPendingInput(page);
@@ -518,6 +518,7 @@ test('cancellation removes a pending prompt in open tabs and rejects late answer
   expect(cancelled.status(), await cancelled.text()).toBe(200);
   await expect(observer.getByText('No pending reviews')).toBeVisible();
   await expect(page.getByLabel('What should the recipe publish?')).not.toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('ordinary-prompt-cancelled.png'), fullPage: true });
   expect(await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).toEqual([]);
 
   const lateAnswer = await request.post(`/api/projects/${tenant}/user-inputs/${jobID}/respond`, {
@@ -526,6 +527,37 @@ test('cancellation removes a pending prompt in open tabs and rejects late answer
   expect(lateAnswer.ok()).toBe(false);
   startWorker();
   await expect.poll(async () => (await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`)).json()).toMatchObject({ status: 'canceled' });
+});
+
+test('returns a real quiet 204 when a discovered input finishes before details load', async ({ page, request, recipeRun }, testInfo) => {
+  const { tenant, jobID, stopWorker } = recipeRun;
+  await stopWorker();
+  const reads: number[] = [];
+  page.on('response', response => {
+    if (response.url().endsWith(`/user-inputs/${jobID}`)) reads.push(response.status());
+  });
+  // The browser has already matched a real pending snapshot when it requests
+  // details. Finish that request before forwarding the read to the real server.
+  await page.route(`**/api/projects/${tenant}/user-inputs/${jobID}`, async route => {
+    const cancelled = await request.post(`/api/projects/${tenant}/user-inputs/${jobID}/cancel`, {
+      data: { reason: 'Complete between discovery and details' },
+    });
+    expect(cancelled.status(), await cancelled.text()).toBe(200);
+    const response = await route.fetch();
+    expect(response.status()).toBe(204);
+    expect(await response.body()).toHaveLength(0);
+    expect(response.headers()['cache-control']).toBe('no-store');
+    await testInfo.attach('real-input-race.txt', {
+      body: `tenant=${tenant}\njob=${jobID}\nGET details: 204, empty body, Cache-Control: no-store\n`,
+      contentType: 'text/plain',
+    });
+    await route.fulfill({ response });
+  });
+  await page.goto(`/project/${tenant}/reviews/${jobID}`);
+  await expect(page.getByText('No outstanding input request.', { exact: true })).toBeVisible();
+  await expect.poll(() => reads).toEqual([204]);
+  await page.waitForTimeout(10_500); // More than two existing history refresh periods.
+  expect(reads).toEqual([204]);
 });
 
 test.describe('sequential prompts', () => {
@@ -805,7 +837,7 @@ test.describe('review job metadata', () => {
     });
   }
 
-  test('opens a review while metadata requests are pending', async ({ page, recipeRun }) => {
+  test('opens a review while metadata requests are pending', async ({ page, recipeRun }, testInfo) => {
     const { tenant, jobID, stopWorker } = recipeRun;
     await stopWorker();
     let release!: () => void;
@@ -821,11 +853,15 @@ test.describe('review job metadata', () => {
       await expect(page.getByText('Loading job context...', { exact: true })).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeEnabled();
+      const viewport = page.viewportSize()!;
+      await page.setViewportSize({ ...viewport, height: 1000 });
+      await page.screenshot({ path: testInfo.outputPath('review-metadata-pending.png'), fullPage: true });
+      await page.setViewportSize(viewport);
     } finally { release(); }
     await expect(page.getByRole('region', { name: 'Goal prompt' })).toContainText(reviewGoalPrompt);
   });
 
-  test('preserves feedback and attachment through context retry and submission', async ({ page, request, recipeRun }) => {
+  test('preserves feedback and attachment through context retry and submission', async ({ page, request, recipeRun }, testInfo) => {
     const { tenant, jobID, observer, stopWorker, startWorker } = recipeRun;
     await stopWorker();
     let failMetadata = true;
@@ -842,6 +878,10 @@ test.describe('review job metadata', () => {
     const feedback = page.getByLabel('What should change?', { exact: true });
     await feedback.fill('Keep this feedback through context retry');
     await page.locator('input[type=file]').setInputFiles({ name: 'feedback.md', mimeType: 'text/markdown', buffer: Buffer.from('# Browser feedback') });
+    const viewport = page.viewportSize()!;
+    await page.setViewportSize({ ...viewport, height: 1000 });
+    await page.screenshot({ path: testInfo.outputPath('review-metadata-unavailable.png'), fullPage: true });
+    await page.setViewportSize(viewport);
     failMetadata = false;
     await page.getByRole('button', { name: 'Retry job context' }).click();
     await expect(page.getByRole('region', { name: 'Goal prompt' })).toContainText(reviewGoalPrompt);
@@ -1242,6 +1282,8 @@ test.describe('review/v2 continuous discussion',()=>{
   test('keeps the reader through two questions, uploads, gap reload and typed settings',async({page,request,recipeRun},testInfo)=>{
     const {tenant,jobID,stopWorker,startWorker}=recipeRun;
     await stopWorker();
+    const inputReads:number[]=[];
+    page.on('response',response=>{if(response.url().endsWith(`/user-inputs/${jobID}`))inputReads.push(response.status());});
     const capture=async(name:string)=>{
       const session=await page.context().newCDPSession(page);
       await page.evaluate(()=>new Promise<void>(done=>requestAnimationFrame(()=>requestAnimationFrame(()=>done()))));
@@ -1252,6 +1294,7 @@ test.describe('review/v2 continuous discussion',()=>{
     await page.goto(`/project/${tenant}/reviews/${jobID}`);
     await expect(page.getByRole('heading',{name:'Keep unsent drafts',exact:true})).toHaveCount(2); // title and immutable Markdown
     await expect(page).toHaveURL(/review_id=/);
+    expect(inputReads).toEqual([200]);
     await page.getByRole('button',{name:'Show documents',exact:true}).click();
     await page.getByRole('button',{name:'Recovery notes',exact:false}).first().click();
     await expect(page.getByRole('heading',{name:'Recovery',exact:true})).toBeVisible();
@@ -1278,12 +1321,18 @@ test.describe('review/v2 continuous discussion',()=>{
     await page.getByRole('button',{name:'Send · Ask a question',exact:true}).click();
     await expect(page.getByText('Response pending',{exact:true})).toBeVisible();
     await expect(page.getByRole('heading',{name:'Recovery',exact:true})).toBeVisible();
+    const gapReads=inputReads.length;
+    await page.waitForTimeout(10_500); // Two history refresh periods without probing missing input.
+    expect(inputReads).toHaveLength(gapReads);
     await page.reload();
     await expect(page.getByText('Response pending',{exact:true})).toBeVisible();
     await expect(page.getByText(exactQuestion,{exact:true})).toBeVisible();
     await capture('review-v2-waiting.png');
+    expect(inputReads).toHaveLength(gapReads);
+    expect(inputReads.every(status=>status===200 || status===204)).toBe(true);
     startWorker();
     await expect(page.getByText('Saved drafts return when you reopen the app.',{exact:true})).toBeVisible({timeout:30000});
+    expect(inputReads).toEqual([200,200]);
     await stopWorker();
     await page.getByRole('button',{name:'Ask a question',exact:true}).click();
     await page.getByLabel('Attach notes',{exact:true}).setInputFiles([
@@ -1294,6 +1343,7 @@ test.describe('review/v2 continuous discussion',()=>{
     await expect(page.getByText('Response pending',{exact:true})).toBeVisible();
     startWorker();
     await expect(page.getByText('Earlier notes keep their original producer references.',{exact:true})).toBeVisible({timeout:30000});
+    expect(inputReads).toEqual([200,200,200]);
     await stopWorker();
     const links=page.getByRole('link',{name:'Download notes.md',exact:true});
     await expect(links).toHaveCount(2);

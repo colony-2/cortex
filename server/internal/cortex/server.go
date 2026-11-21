@@ -141,6 +141,8 @@ func (s *Server) buildRouter(inputService ops.ManagementService) http.Handler {
 	api.HandleFunc("/projects/{projectId}/reviews/{jobId}/documents", s.handleReviewDocument).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/reviews/{jobId}/respond", s.handleReviewResponse).Methods(http.MethodPost, http.MethodOptions)
 
+	api.HandleFunc("/projects/{projectId}/user-inputs/{jobId}", s.handleInputDetails).Methods(http.MethodGet, http.MethodOptions)
+
 	for _, route := range inputService.GetRoutes() {
 		r.HandleFunc(route.Path, route.Handler).Methods(route.Method, http.MethodOptions)
 	}

@@ -1,12 +1,13 @@
-import {fireEvent,render,screen,within} from '@testing-library/react';
+import {fireEvent,render as rawRender,screen,within} from '@testing-library/react';
 import {afterEach,beforeEach,it,expect,vi} from 'vitest';
 import {MemoryRouter,Route,Routes} from 'react-router-dom';
-import {inputActivityService,type ReviewV2Turn,type UserInputDetails} from '@colony2/shared';
+import {inputActivityService,InputActivityProvider,type ReviewV2Turn,type UserInputDetails} from '@colony2/shared';
+const render = (ui: Parameters<typeof rawRender>[0]) => rawRender(ui, {wrapper: InputActivityProvider});
 import {ReviewV2Discussion} from './ReviewV2';
 import InputDetailPage from './InputDetailPage';
 import {reviewV2Fixture} from '../../../shared/src/test/reviewV2Fixture';
 beforeEach(()=>{vi.mocked(window.matchMedia).mockImplementation(query=>({matches:false,media:query,onchange:null,addListener:vi.fn(),removeListener:vi.fn(),addEventListener:vi.fn(),removeEventListener:vi.fn(),dispatchEvent:vi.fn()}));});
-afterEach(()=>vi.restoreAllMocks());
+afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();inputActivityService.clearCaches();});
 it('shows frozen labels and exact historical values without applying successor declarations',()=>{
  const old=reviewV2Fixture(),next=reviewV2Fixture();next.settings![0].label='New label';
  const turn:ReviewV2Turn={role:'human',direction:'ask',text:' exact text ',attachments:[],receipt:{request_id:'old'},settings:{response_style:null,removed:false}};
@@ -23,6 +24,7 @@ for(const kind of ['unsupported','malformed'] as const)it(`fails closed for ${ki
  const req=reviewV2Fixture();if(kind==='malformed')delete (req.directions[0] as Partial<typeof req.directions[0]>).feedback_required;
  const details:UserInputDetails={jobId:'job',status:'pending',startTime:'now',form:{request_id:'native',presentation:{type:kind==='unsupported'?'review/v3':'review/v2'},request:req,request_schema:{type:'object'},response_schema:{type:'object'}}};
  vi.spyOn(inputActivityService,'getInputDetails').mockResolvedValue(details);
+ vi.stubGlobal('fetch',vi.fn(async url=>new Response(JSON.stringify(String(url).endsWith('/pending')?[{id:'job',cell_id:'cell',cell_name:'platform',repo:'github.com/acme/platform',client_payload_revision:1}]:{job_id:'job',cell_id:'cell',cell_name:'platform',repo:'github.com/acme/platform'}))));
  render(<MemoryRouter initialEntries={['/reviews/job']}><Routes><Route path="/reviews/:jobId" element={<InputDetailPage projectId="tenant"/>}/></Routes></MemoryRouter>);
  expect(await screen.findByText(kind==='unsupported'?'Unsupported input presentation':'Incompatible review request')).toBeInTheDocument();expect(screen.queryByRole('button',{name:'Continue'})).not.toBeInTheDocument();
 });

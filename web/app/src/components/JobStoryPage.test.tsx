@@ -13,7 +13,7 @@ import type { RecipeJob } from '@colony2/shared/types';
 import DownloadChaptersButton from './DownloadChaptersButton';
 import { inputActivityService, getConversation, getFinalDocuments, getTreeNode, getTreeChildren } from '@colony2/shared';
 
-const inputState = vi.hoisted(() => ({ pendingInputs: [] as any[], refresh: vi.fn() }));
+const inputState = vi.hoisted(() => ({ pendingInputs: [] as any[], refresh: vi.fn(), setCurrentProjectId: vi.fn() }));
 const scrollIntoView = vi.fn();
 const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView');
 // jsdom omits this browser API; portal focus also reaches the header's handler.
@@ -24,15 +24,24 @@ afterAll(() => {
   if (originalScrollIntoView) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalScrollIntoView);
   else delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
 });
-vi.mock('@colony2/shared', async (importOriginal) => ({
-  ...await importOriginal<typeof import('@colony2/shared')>(),
-  getFinalDocuments: vi.fn(),
-  getTreeNode: vi.fn(), getTreeChildren: vi.fn(),
+vi.mock('@colony2/shared', async (importOriginal) => {
+ const actual = await importOriginal<typeof import('@colony2/shared')>();
+ const {useLayoutEffect} = await import('react');
+ return {
+  ...actual,
+  getFinalDocuments: vi.fn(), getTreeNode: vi.fn(), getTreeChildren: vi.fn(),
   getConversation: vi.fn().mockRejectedValue(new Error('History unavailable')),
   getConversationRequest: vi.fn().mockRejectedValue(new Error('Request unavailable')),
   getConversationEntry: vi.fn().mockRejectedValue(new Error('Request unavailable')),
-  useInputActivity: () => ({ pendingInputs: inputState.pendingInputs, refresh: inputState.refresh }),
-}));
+  useInputActivity: () => ({ pendingInputs: inputState.pendingInputs, refresh: inputState.refresh, setCurrentProjectId: inputState.setCurrentProjectId }),
+  useCurrentInput: (tenant: string, job: string, enabled = true) => {
+    useLayoutEffect(() => {
+      (actual.inputActivityService as any).publish(tenant, inputState.pendingInputs.map(row => ({...jobIdentity,client_payload_revision:1,...row,id:row.id ?? row.job_id})));
+    }, [tenant, inputState.pendingInputs]);
+    return actual.useCurrentInput(tenant, job, enabled);
+  },
+ };
+});
 vi.mock('@colony2/shared/api', async (importOriginal) => ({
   ...await importOriginal<typeof import('@colony2/shared/api')>(),
   getJob: vi.fn(),
@@ -83,6 +92,7 @@ function mount(search = '?tab=execution', response: unknown = story) {
 beforeEach(() => {
   scrollIntoView.mockClear();
   sessionStorage.clear();
+  inputActivityService.clearCaches();
   inputState.pendingInputs = [];
   inputState.refresh.mockReset().mockResolvedValue(undefined);
   vi.mocked(listCells).mockResolvedValue({ cells: [registryCell()] });
@@ -1425,6 +1435,7 @@ describe('Conversation tab layout', () => {
     expect(screen.getByRole('tab', { name: 'Trace', exact: true })).toHaveAttribute('aria-selected', 'true');
   });
   it('CT-004 opens legacy pending input independently of the execution tree', async () => {
+    inputState.pendingInputs = [{id:'job',client_payload_revision:1}];
     const read = vi.spyOn(inputActivityService, 'getInputDetails').mockResolvedValue({
       jobId: 'job', status: 'pending', startTime: '', task_ordinal: 10,
       form: { kind: 'review', request_id: 'current', title: 'Current review' },
@@ -2549,6 +2560,7 @@ describe('current request callout', () => {
     function Nav() { navigate = useNavigate(); return null; }
     function Host() { return <JobStoryPage projectId={useParams().projectId!} />; }
     render(<MemoryRouter initialEntries={['/project/tenant/jobs/job/story?input=1']}><Nav /><Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<Host />} /></Routes></MemoryRouter>);
+    inputState.pendingInputs = [{id:change === 'job' ? 'new' : 'job',client_payload_revision:1}];
     act(() => navigate(change === 'job' ? '/project/tenant/jobs/new/story?input=1' : '/project/other/jobs/job/story?input=1'));
     await screen.findByRole('link', { name: 'Open review' });
     await act(async () => outcome === 'success' ? stale.resolve(details({ ...review, title: 'Obsolete title' })) : stale.reject(new Error('Obsolete failure')));

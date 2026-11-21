@@ -10,7 +10,7 @@ export const mockInputDetailsStore = new Map<string, UserInputDetails>();
 
 // Helper to create mock data
 export function createMockPendingInput(jobId: string): PendingInput {
-  return { ...jobIdentity, id: jobId };
+  return { ...jobIdentity, id: jobId, client_payload_revision: 1 };
 }
 
 export function createMockSingleQuestionDetails(jobId: string): UserInputDetails {
@@ -70,7 +70,7 @@ export function resetMockInputStore() {
 
 // Setup initial mock data for a project
 export function setupMockInputs(projectId: string, inputs: PendingInput[], details: UserInputDetails[]) {
-  mockPendingInputsStore.set(projectId, inputs.map(input => ({ ...jobIdentity, ...input })));
+  mockPendingInputsStore.set(projectId, inputs.map(input => ({ ...jobIdentity, client_payload_revision: 1, ...input })));
   details.forEach((detail) => {
     mockInputDetailsStore.set(`${projectId}:${detail.jobId}`, detail);
   });
@@ -78,6 +78,7 @@ export function setupMockInputs(projectId: string, inputs: PendingInput[], detai
 
 // MSW handlers
 export const inputApiHandlers = [
+  http.get(`${API_BASE}/projects/:projectId/jobs/:jobId`, ({params}) => HttpResponse.json({...jobIdentity,job_id:params.jobId,tenant_id:params.projectId,status:'ACTIVE'})),
   // GET /api/projects/{projectId}/user-inputs/pending
   http.get(`${API_BASE}/projects/:projectId/user-inputs/pending`, ({ params }) => {
     const { projectId } = params;
@@ -92,7 +93,7 @@ export const inputApiHandlers = [
     const details = mockInputDetailsStore.get(key);
 
     if (!details) {
-      return new HttpResponse(null, { status: 404 });
+      return new HttpResponse(null, { status: 204 });
     }
 
     return HttpResponse.json(details);

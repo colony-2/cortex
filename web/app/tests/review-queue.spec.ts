@@ -20,7 +20,7 @@ for (const width of [1440, 390]) test(`PR-009,013,014 queue at ${width}px`, asyn
    addEventListener(type:string, listener:any){ (window as any).queueEvents[type]=listener; }
   };
  });
- const row=(id:string,requested_at?:string)=>({...jobIdentity,id,job_id:id,tenant_id:'queue',title:`Review ${id}`,requested_at,request_id:`request-${id}`,task_ordinal:2});
+ const row=(id:string,requested_at?:string)=>({...jobIdentity,id,client_payload_revision:1,job_id:id,tenant_id:'queue',title:`Review ${id}`,requested_at,request_id:`request-${id}`,task_ordinal:2});
  let rows=[row('recent','2026-11-10T11:59:30Z'),row('unknown'),row('oldest','2026-11-08T12:00:00Z'),row('middle','2026-11-10T10:00:00Z')];
  await page.route('**/api/projects',route=>route.fulfill({json:[{tenant_id:'queue'}]}));
  await mockCells(page,['platform']);
@@ -52,7 +52,8 @@ for (const width of [1440, 390]) test(`PR-009,013,014 queue at ${width}px`, asyn
  await page.getByRole('button',{name:/Refresh/}).click();
  await expect(cards).toHaveCount(3); await expect(cards.first()).toContainText('Review oldest'); await expect(cards.last()).toContainText('Review new');
  // A replacement snapshot inserts and removes cards immediately.
- await page.evaluate((inputs)=>{ (window as any).queueEvents.inputs_changed({data:JSON.stringify({inputs})}); },[row('future','2026-11-11T12:00:00Z'),row('earliest','2026-11-01T12:00:00Z')]);
+ rows=[row('future','2026-11-11T12:00:00Z'),row('earliest','2026-11-01T12:00:00Z')];
+ await page.evaluate((inputs)=>{ (window as any).queueEvents.inputs_changed({data:JSON.stringify({inputs})}); },rows);
  await expect(cards).toHaveCount(2); await expect(cards.first()).toContainText('Review earliest'); await expect(cards.last()).toContainText('Requested just now');
  await cards.first().getByRole('button',{name:'Open Review'}).click(); await expect(page).toHaveURL(/\/project\/queue\/reviews\/earliest$/);
  await expect(page.getByRole('textbox',{name:'Confirm the earliest request?'})).toBeVisible();
@@ -73,12 +74,14 @@ for (const width of [1440, 390]) test(`Reviews controls and return navigation at
  });
  const reads: string[] = [];
  page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/')) reads.push(new URL(request.url()).pathname); });
- const make=(id:string,title:string,cell:string,time?:string,prompt?:string)=>({...jobIdentity,id,job_id:id,tenant_id:'controls',title,prompt,cell_id:`cell-${cell}`,cell_name:cell,requested_at:time,task_ordinal:2});
+ const make=(id:string,title:string,cell:string,time?:string,prompt?:string)=>({...jobIdentity,id,client_payload_revision:1,job_id:id,tenant_id:'controls',title,prompt,cell_id:`cell-${cell}`,cell_name:cell,requested_at:time,task_ordinal:2});
  let rows=[make('alpha','Alpha food at the bar','Zeta','2026-11-08T12:00:00Z'), make('zeta','Zeta food at the bar','Alpha','2026-11-10T10:00:00Z'), make('unknown','Middle food at the bar','Alpha'), make('split','Food','Other',undefined,'bar')];
  await page.route('**/api/projects', route=>route.fulfill({json:[{tenant_id:'controls'}]}));
  await page.route('**/user-inputs/pending', route=>route.fulfill({json:rows}));
  await page.route('**/cells**', route=>route.abort());
  await page.route('**/user-inputs/alpha', route=>route.request().method()==='POST' ? route.fulfill({json:{}}) : route.fulfill({json:{jobId:'alpha',status:'pending',startTime:'2026-11-08T12:00:00Z',task_ordinal:2,form:{question:'Confirm food?',type:'short_answer'}}}));
+ await page.route('**/jobs/alpha', route=>route.fulfill({json:{...jobIdentity,job_id:'alpha',tenant_id:'controls',status:'READY',store:'ACTIVE',prompt:'Confirm food'}}));
+ await page.route('**/jobs/alpha/children?*', route=>route.fulfill({json:{jobs:[]}}));
  await page.route('**/user-inputs/alpha/respond',route=>route.fulfill({json:{}}));
  await page.goto('/project/controls/reviews?unrelated=keep');
  const cards=page.locator('.review-page .ant-list .ant-card');
@@ -145,7 +148,8 @@ for (const width of [1440, 390]) test(`Reviews controls and return navigation at
  if(width<768) await controls.click();
  // SSE replacement retains a disappeared selection without borrowing its timing.
  const beforeLive=reads.length;
- await page.evaluate(inputs=>(window as any).queueEvents.inputs_changed({data:JSON.stringify({inputs})}),[make('replacement','Food bar','New')]);
+ rows=[make('replacement','Food bar','New')];
+ await page.evaluate(inputs=>(window as any).queueEvents.inputs_changed({data:JSON.stringify({inputs})}),rows);
  await expect(page.getByText('No requests match these filters')).toBeVisible();
  await page.getByRole('button',{name:'Cells: 1 selected'}).click(); dialog=page.getByRole('dialog');
  await expect(dialog.getByRole('checkbox',{name:'Selected cell (cell-Zeta)'})).toBeChecked();

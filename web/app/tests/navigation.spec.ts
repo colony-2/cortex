@@ -5,6 +5,7 @@ const captures = process.env.NAV_EVIDENCE_DIR || '/tmp/cortex-navigation-capture
 mkdirSync(captures, { recursive: true });
 import { mockCells } from './helpers/cells';
 test.beforeEach(async ({ page, context, baseURL }) => {
+  await page.route('**/assistant/capabilities', route => route.fulfill({ json: { available: false } }));
   await context.addCookies([{ name: 'colony2:user:email', value: 'nav@example.com', url: baseURL! }]);
   await page.addInitScript(() => { if (!(window as any).navStreams) (window as any).EventSource = class { close() {} addEventListener() {} removeEventListener() {} }; });
   await page.route('**/api/projects', route => route.fulfill({ json: [{ tenant_id: 'navigation' }] }));
@@ -143,7 +144,7 @@ test('badges update through activity events in both widths', async ({ page }) =>
     for (const count of [0, 7, 120, 3]) {
       await page.evaluate(count => {
         const inputs = Array.from({ length: count }, (_, i) => ({
-          id: String(i), tenant_id: 'navigation', cell_id: 'cell-platform', cell_name: 'platform',
+          id: String(i), client_payload_revision: 1, tenant_id: 'navigation', cell_id: 'cell-platform', cell_name: 'platform',
           cell_alias: 'platform', cell_version: 1, repo: 'github.com/acme/platform', ref: 'main',
         }));
         (window as any).navStreams.at(-1).listeners.inputs_changed({ data: JSON.stringify({ inputs }) });

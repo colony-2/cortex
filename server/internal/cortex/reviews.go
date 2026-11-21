@@ -18,6 +18,7 @@ import (
 
 // Keep review validation, request identity, and persistence in c2j.
 type inputRuntime interface {
+	GetDetails(context.Context, string, string) (*input.UserInputDetails, error)
 	GetForm(context.Context, string, string) (input.InputForm, error)
 	SubmitFormResponse(context.Context, string, string, input.FormSubmission, input.Actor) (input.Output, error)
 	SubmitStructuredResponse(context.Context, string, string, input.StructuredSubmission, input.Actor) (input.Output, error)

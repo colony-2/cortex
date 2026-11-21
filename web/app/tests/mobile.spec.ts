@@ -22,6 +22,7 @@ async function filter(page: Page, name: string, selected: string[] | null) {
 }
 
 test.beforeEach(async ({ page, context, baseURL }) => {
+  await page.route('**/assistant/capabilities', route => route.fulfill({ json: { available: false } }));
   await page.route('**/conversation?*', route => route.fulfill({ status: 501, json: { error: 'Fixture has no retained history', code: 'history_unsupported' } }));
   await context.addCookies([{ name: 'colony2:user:email', value: 'phone@example.com', url: baseURL! }]);
   await page.addInitScript(() => {
@@ -423,6 +424,8 @@ for (const width of [320, 390]) {
   test(`phone review reads large documents in the page scroller at ${width}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
     let reads = 0;
+    await page.route('**/jobs/one/children?*', route => route.fulfill({ json: { jobs: [] } }));
+    await page.route('**/user-inputs/pending', route => route.fulfill({ json: [{ ...jobIdentity, id: 'one', client_payload_revision: 1, request_id: 'request' }] }));
     const source = '# Large design\n\n' + 'A paragraph with enough detail to review comfortably.\n\n'.repeat(350) + 'Last paragraph.';
     await page.route('**/user-inputs/one', route => route.fulfill({ json: {
       jobId: 'one', status: 'pending', startTime: '2026-10-30T10:00:00Z', form: {

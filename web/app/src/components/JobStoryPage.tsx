@@ -40,7 +40,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import ReactJson from 'react-json-view';
-import { API_BASE, inputActivityService, type UserInputDetails, type FormResponse, useInputActivity, parseReviewV2 } from '@colony2/shared';
+import { API_BASE, inputActivityService, type FormResponse, useInputActivity, useCurrentInput, parseReviewV2 } from '@colony2/shared';
 import InputFormRenderer from './InputFormRenderer';
 import AttemptTabs from './AttemptTabs';
 import CancelJobButton from './CancelJobButton';
@@ -277,7 +277,9 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   // Node/tab selections must retain the originating goal/list entry.
   const setSearchParams: typeof setURLSearchParams = (next, options) =>
     setURLSearchParams(next, { state: location.state, ...options });
-  const { pendingInputs, refresh: refreshPendingInputs } = useInputActivity();
+  const { pendingInputs, refresh: refreshPendingInputs, setCurrentProjectId } = useInputActivity();
+
+  useEffect(() => {setCurrentProjectId(projectId);}, [projectId, setCurrentProjectId]);
 
   const [story, setStory] = useState<JobStoryResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -312,11 +314,6 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const [inspection, setInspection] = useState<{ key: string; snapshot?: RestartContext }>();
   const [applyPatch, setApplyPatch] = useState(false);
 
-  const [pendingInputRetry, setPendingInputRetry] = useState(0);
-  const [pendingRequest, setPendingRequest] = useState<{
-    key: string; observedInputs: typeof pendingInputs;
-    details?: UserInputDetails; error?: string;
-  }>();
   const [pendingInputSubmitting, setPendingInputSubmitting] = useState(false);
 
   const jobId = routeJobId || '';
@@ -376,16 +373,11 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const taskOrdinalParamRaw = searchParams.get('taskOrdinal');
   const taskOrdinalParam = taskOrdinalParamRaw ? Number(taskOrdinalParamRaw) : null;
 
-  const isPendingInput = useMemo(() => pendingInputs.some((p) => p.id === jobId), [pendingInputs, jobId]);
-  const shouldLoadDetails = activeTab !== 'env' && !!jobId && requestId === null && (isPendingInput || wantInput);
-  const pendingRequestKey = JSON.stringify([projectId, jobId, requestId, shouldLoadDetails, pendingInputRetry]);
-  // Invalidate at render time as well as cancelling reads: a replacement must
-  // never display the previous request's content or action for even one render.
-  const currentRequest = shouldLoadDetails && pendingRequest?.key === pendingRequestKey
-    && pendingRequest.observedInputs === pendingInputs ? pendingRequest : undefined;
-  const pendingInputDetails = currentRequest?.details;
-  const pendingInputError = currentRequest?.error;
-  const pendingInputLoading = shouldLoadDetails && !pendingInputDetails && !pendingInputError;
+  const selectedInput = useCurrentInput(projectId, jobId, activeTab !== 'env' && requestId === null);
+  const isPendingInput = !!selectedInput.version;
+  const pendingInputDetails = selectedInput.details ?? (selectedInput.discovery.status !== 'current' || wantInput ? selectedInput.readableDetails : undefined);
+  const pendingInputError = selectedInput.error;
+  const pendingInputLoading = selectedInput.loading || (wantInput && selectedInput.discovery.status === 'loading');
 
   const pendingTaskOrdinal = useMemo(() => {
     const details: any = pendingInputDetails;
@@ -562,30 +554,6 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
       restartGoalInitialized.current = true;
     }
   }, [restartOpen, story]);
-
-  useEffect(() => {
-    if (!shouldLoadDetails) return;
-
-    let cancelled = false;
-    setPendingRequest(undefined);
-
-    inputActivityService
-      .getInputDetails(projectId, jobId)
-      .then((d) => {
-        if (cancelled) return;
-        setPendingRequest({ key: pendingRequestKey, observedInputs: pendingInputs, details: d });
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        console.error('Failed to load pending input details', e);
-        setPendingRequest({ key: pendingRequestKey, observedInputs: pendingInputs,
-          error: e instanceof Error && e.message.trim() ? e.message : 'Failed to load pending input details' });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, jobId, shouldLoadDetails, pendingInputs, pendingRequestKey]);
 
   // Browser history changes the URL without reloading the job. Restore the
   // recorded execution selection while retaining the selected top-level tab.
@@ -851,7 +819,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     selectedNode?.task_ordinal === focusTaskOrdinal;
 
   const submitPendingInput = async (response: FormResponse) => {
-    if (!jobId) return;
+    if (!jobId || !selectedInput.details) return;
     setPendingInputSubmitting(true);
     try {
       await inputActivityService.submitResponse(projectId, jobId, response);
@@ -864,7 +832,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         return next;
       });
       setActiveDetailsTab('overview');
-      setPendingRequest(undefined);
+
       await load();
     } catch (e) {
       console.error('Failed to submit input response', e);
@@ -938,11 +906,15 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
             img: ({ alt }) => <span>Image unavailable: {alt || 'unbound image'}</span>,
           }}>{prompt}</Markdown></div> : <p>No prompt recorded for this job.</p>}
         </section>}
+        {selectedInput.discovery.status === 'unavailable' && pendingInputDetails && requestId === null && <Alert type="warning" showIcon message="Pending request availability is unavailable." description={selectedInput.discovery.error} action={<Button onClick={() => void selectedInput.refresh().catch(() => {})}>Retry</Button>} />}
+        {wantInput && requestId === null && !pendingInputLoading && !pendingInputDetails && !pendingInputError && <Alert type={selectedInput.discovery.status === 'unavailable' ? 'warning' : 'info'} showIcon
+          message={selectedInput.discovery.status === 'unavailable' ? 'Pending request availability is unavailable.' : 'No outstanding input request.'}
+          action={<Button onClick={() => void selectedInput.refresh().catch(() => {})}>{selectedInput.discovery.status === 'unavailable' ? 'Retry' : 'Refresh'}</Button>} />}
         {requestId === null && (pendingInputLoading ? (
           <Alert type="warning" showIcon message="Loading request…" />
         ) : pendingInputError ? (
           <Alert type="warning" showIcon message="Could not load this request" description={pendingInputError}
-            action={<Button onClick={() => setPendingInputRetry(value => value + 1)}>Retry</Button>} />
+            action={<Button onClick={() => void selectedInput.refresh().catch(() => {})}>Retry</Button>} />
         ) : pendingInputDetails ? (
           <Alert type="warning" showIcon className="pending-request-callout"
             message={isReview ? 'Review requested' : 'Your input is needed'}
@@ -978,9 +950,9 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
           })} />}
         {wantInput && requestId === null && pendingInputForm && !isReview && (
           <Card title={pendingInputForm.title || 'Input request'} size="small">
-            <InputFormRenderer form={pendingInputForm} onSubmit={submitPendingInput}
+            <InputFormRenderer key={JSON.stringify([projectId, jobId, pendingInputDetails?.form.request_id ?? selectedInput.readableVersion])} form={pendingInputForm} onSubmit={submitPendingInput}
               onCancel={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('input'); return next; })}
-              loading={pendingInputSubmitting} />
+              loading={pendingInputSubmitting || !selectedInput.details} />
           </Card>
         )}
         {job && terminalStatus && (job.store === 'ARCHIVED' || isFinishedJob(job)) && <section aria-label="Job completion">
@@ -1349,7 +1321,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                                       });
                                       setActiveDetailsTab('overview');
                                     }}
-                                    loading={pendingInputSubmitting}
+                                    loading={pendingInputSubmitting || !selectedInput.details}
                                   />
                                 </Card>
                               ) : (

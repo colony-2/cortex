@@ -3,11 +3,12 @@ import { test, setNativeZoom, captureNativeZoom } from './helpers/nativeZoom';
 import { jobIdentity, mockCells } from './helpers/cells';
 
 test.beforeEach(async ({page, context, baseURL}) => {
+  await page.route('**/assistant/capabilities', route => route.fulfill({ json: { available: false } }));
   await context.addCookies([{name:'colony2:user:email', value:'review@example.com', url:baseURL!}]);
   await page.addInitScript(() => { (window as any).EventSource = class { readyState=1; close(){} addEventListener(){} removeEventListener(){} }; });
   await page.route('**/api/projects', r => r.fulfill({json:[{...jobIdentity, tenant_id:'phone'}]}));
   await mockCells(page,['platform']);
-  await page.route('**/user-inputs/pending', r => r.fulfill({json:[]}));
+  await page.route('**/user-inputs/pending', r => r.fulfill({json:[{...jobIdentity,id:'one',client_payload_revision:1,request_id:'request'}]}));
   await page.route('**/jobs/one', r => r.fulfill({json:{...jobIdentity, job_id:'one', status:'ACTIVE', prompt:'Review fixture'}}));
   await page.route('**/jobs/one/children?*', r => r.fulfill({json:{jobs:[]}}));
 });

@@ -84,7 +84,8 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
   const navigate = useNavigate();
   const [tenantId, setTenantId] = useState(() => initialTenantId(location.search, location.pathname, defaultTenantId));
   const [tenantDraft, setTenantDraft] = useState(tenantId);
-  const { pendingCount, setCurrentProjectId } = useInputActivity();
+  const { pendingCount, setCurrentProjectId, discoveryStatus, currentProjectId } = useInputActivity();
+  const reviewCountKnown = currentProjectId === tenantId && discoveryStatus === 'current';
 
   useEffect(() => {
     const selectedTenant = initialTenantId(location.search, location.pathname, defaultTenantId);
@@ -159,15 +160,15 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
           aria-label={String(name)} aria-describedby={key === 'reviews' ? 'navigation-review-count' : undefined}
           to={`/project/${encodeURIComponent(tenantId)}/${route}`}>
           <span className="shell-navigation-icon">{key === 'reviews' && rail
-            ? <Badge count={pendingCount} size="small">{icon}</Badge> : icon}</span>
-          <span className="shell-navigation-label">{name}{key === 'reviews' && !rail && <Badge count={pendingCount} size="small" />}</span>
+            ? <Badge count={reviewCountKnown ? pendingCount : '?'} size="small">{icon}</Badge> : icon}</span>
+          <span className="shell-navigation-label">{name}{key === 'reviews' && !rail && <Badge count={reviewCountKnown ? pendingCount : '?'} size="small" />}</span>
         </Link></span></Tooltip>,
       }))}
       style={{ borderRight: 0 }} />
   );
   return (
     <Layout className="app-shell">
-      <span id="navigation-review-count" className="sr-only">{pendingCount} pending reviews</span>
+      <span id="navigation-review-count" className="sr-only">{reviewCountKnown ? `${pendingCount} pending reviews` : 'Pending review count unavailable'}</span>
       <Header className="app-header">
         <div className="app-brand">
           {compact && <Button ref={menuButton} aria-label="Open navigation" aria-expanded={menuOpen} icon={<MenuOutlined />} onClick={() => setMenuOpen(true)} />}

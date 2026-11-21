@@ -18,7 +18,10 @@ export default function PendingInputsListPage({ projectId }: { projectId: string
   const filters = readReviewFilters(params);
   const change = (patch: Partial<ReviewFilters>, replace = false) => setParams(writeReviewFilters({ ...filters, ...patch }, params), { replace });
   const reset = () => setParams(writeReviewFilters(readReviewFilters(new URLSearchParams()), params));
-  const { pendingInputs, refresh, setCurrentProjectId, currentProjectId, connectionError, loadError } = useInputActivity();
+  const { pendingInputs, refresh, setCurrentProjectId, currentProjectId, connectionError: activityConnectionError, loadError: activityLoadError, discoveryStatus: activityStatus } = useInputActivity();
+  const discoveryStatus = currentProjectId === projectId ? activityStatus : 'loading';
+  const connectionError = currentProjectId === projectId && activityConnectionError;
+  const loadError = currentProjectId === projectId ? activityLoadError : undefined;
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const update = () => setNow(Date.now());
@@ -54,10 +57,12 @@ export default function PendingInputsListPage({ projectId }: { projectId: string
           }}>{reviewSortOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
           <Button onClick={reset}>Reset</Button>
         </div>
-        <Typography.Text type="secondary" className="reviews-count">Showing {items.length} of {snapshot.length} pending requests</Typography.Text>
+        <Typography.Text type="secondary" className="reviews-count">{discoveryStatus !== 'current' && !snapshot.length ? 'Pending request count unavailable' : <>{discoveryStatus !== 'current' ? 'Last known: ' : ''}Showing {items.length} of {snapshot.length} pending requests</>}</Typography.Text>
       </div>
       {connectionError && <Typography.Text type="warning">Live updates unavailable. Refresh to check for requests.</Typography.Text>}
-      {loadError ? <Alert type="error" showIcon message="Could not load reviews" description={loadError} action={<Button onClick={() => void refresh()}>Retry reviews</Button>} /> : !items.length ? <Card><Empty description={!snapshot.length ? 'No pending reviews' : filters.cells?.length === 0 ? 'No cells selected' : 'No requests match these filters'}>{!snapshot.length ? <Typography.Text type="secondary">Reviews and input requests from jobs will appear here</Typography.Text> : <Button onClick={reset}>Reset</Button>}</Empty></Card>
+      {loadError && <Alert type="error" showIcon message="Could not load reviews" description={loadError} action={<Button onClick={() => void refresh()}>Retry reviews</Button>} />}
+      {discoveryStatus === 'loading' && <Alert type="info" message="Checking pending requests…" />}
+      {discoveryStatus !== 'current' && !snapshot.length || loadError && !items.length ? null : !items.length ? <Card><Empty description={!snapshot.length ? 'No pending reviews' : filters.cells?.length === 0 ? 'No cells selected' : 'No requests match these filters'}>{!snapshot.length ? <Typography.Text type="secondary">Reviews and input requests from jobs will appear here</Typography.Text> : <Button onClick={reset}>Reset</Button>}</Empty></Card>
         : <List dataSource={items} renderItem={input => <Card key={input.id} style={{ marginBottom: 16, overflowWrap: 'anywhere' }}>
           <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
             <Space direction="vertical">

@@ -4,7 +4,10 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/colony-2/colony2/server/internal/testjobdb"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -21,10 +24,16 @@ type inputStreamEngine struct {
 	jobworkflow.Engine
 	snapshots chan []jobdb.JobSummary
 	requests  chan jobdb.ListJobsRequest
+	failAt    int
+	calls     int
 }
 
 func (e *inputStreamEngine) ListJobs(ctx context.Context, req jobdb.ListJobsRequest) (jobdb.ListJobsResponse, error) {
 	e.requests <- req
+	e.calls++
+	if e.calls == e.failAt {
+		return jobdb.ListJobsResponse{}, errors.New("storage unavailable")
+	}
 	select {
 	case snapshot := <-e.snapshots:
 		return jobdb.ListJobsResponse{Jobs: snapshot}, nil
@@ -100,5 +109,38 @@ func TestInputStreamTracksSequentialTasksAndRemoval(t *testing.T) {
 		if !reflect.DeepEqual(req.TenantIds, []string{"tenant-a"}) || !reflect.DeepEqual(req.JobTasks, []jobdb.JobTaskFilter{{JobType: "recipe", TaskType: "input:collect_user_input"}}) {
 			t.Fatalf("incorrect task filter: %+v", req)
 		}
+	}
+}
+
+func TestInputStreamRepublishesIdenticalSnapshotAfterFailure(t *testing.T) {
+	engine := &inputStreamEngine{snapshots: make(chan []jobdb.JobSummary, 2), requests: make(chan jobdb.ListJobsRequest, 10), failAt: 2}
+	engine.snapshots <- streamSummary(7)
+	engine.snapshots <- streamSummary(7)
+	s := &Server{engine: engine, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.handleInputStream(w, mux.SetURLVars(r, map[string]string{"projectId": "tenant-a"}))
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(testjobdb.Context(context.Background()), 6*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
+	response, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	scanner := bufio.NewScanner(response.Body)
+	events := []string{}
+	for scanner.Scan() {
+		if strings.HasPrefix(scanner.Text(), "event: ") {
+			events = append(events, strings.TrimPrefix(scanner.Text(), "event: "))
+		}
+		if len(events) == 4 {
+			break
+		}
+	}
+	want := []string{"connected", "inputs_changed", "error", "inputs_changed"}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("events=%v err=%v", events, scanner.Err())
 	}
 }

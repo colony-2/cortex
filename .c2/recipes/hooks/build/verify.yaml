@@ -288,6 +288,40 @@ sequence:
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
         pnpm --filter @colony2/app test --exclude src/components/JobStoryPage.test.tsx
+  # Exercise acknowledgements that arrive after a successor is discovered.
+  - id: input-completion-race-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        pnpm --filter @colony2/shared test src/services/inputActivityService.test.ts -t 'completion acknowledgements'
+  # Keep availability and request-count regressions visible independently.
+  - id: input-discovery-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        node scripts/verify-command.mjs bash scripts/go.sh test -count=1 ./server/internal/cortex -run 'TestInputDetailsContract|TestInputStream|TestPending'
+        pnpm --filter @colony2/shared test src/services/inputActivityService.test.ts src/contexts/InputActivityContext.test.tsx
+        pnpm --filter @colony2/app test src/hooks/useReviewV2.test.tsx src/components/InputDetailPage.test.tsx src/components/PendingInputsSSE.test.tsx src/components/InputFlow.integration.test.tsx
   - id: shared-build
     op: command_execution
     const: true
@@ -379,7 +413,7 @@ sequence:
         set -euo pipefail
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
-        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.recovery.config.ts recovery-stage1.spec.ts
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.recovery.config.ts recovery-stage1.spec.ts --retries=0
   # Saved-diff contracts must pass before checking the production review UI.
   - id: workspace-diff-contract-tests
     op: command_execution
@@ -411,7 +445,7 @@ sequence:
         set -euo pipefail
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
-        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.changes.config.ts
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.changes.config.ts --retries=0
   - id: review-v2-browser-tests
     op: command_execution
     const: true
@@ -426,7 +460,23 @@ sequence:
         set -euo pipefail
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
-        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.review-history.config.ts review-v2-usability.spec.ts
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.review-history.config.ts review-v2-usability.spec.ts input-discovery.spec.ts
+  # Catch discovery regressions separately while retaining both upstream browser shards.
+  - id: input-discovery-browser-regressions
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 30m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.review-history.config.ts job-relationships.spec.ts mobile.spec.ts navigation.spec.ts review-document-history.spec.ts review-queue.spec.ts review-scroll.spec.ts story-scroll.spec.ts --grep 'REL-|JS-024|phone review|badges update|H[0-9]|PR-009|Reviews controls|REV-|RC-|RM-|JS-SC-003 wheel|JS-SC-004 trusted' --retries=0 --global-timeout=1500000
   # Keep the complete general suite, but give each half a fresh execution window
   # and fresh servers. Both sequential shards must pass before runtime checks.
   - id: browser-tests-shard-1
@@ -478,7 +528,7 @@ sequence:
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
         timeout 15m node scripts/verify-command.mjs bash scripts/prepare-browser-tests.sh
-        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm test:e2e --project=production --project=previous-worker --project=goals-runtime --global-timeout=1500000
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm test:e2e --project=production --project=previous-worker --project=goals-runtime --global-timeout=1500000 --retries=0
   - id: artifact-browser-tests
     op: command_execution
     const: true
@@ -493,7 +543,7 @@ sequence:
         set -euo pipefail
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
-        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.artifact.config.ts
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.artifact.config.ts --retries=0
 # Native failures propagate to the caller's existing repair handlers.
 # Successful command logs remain attached to their individual tasks.
 outputs:

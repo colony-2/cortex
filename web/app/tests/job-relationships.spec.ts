@@ -18,10 +18,11 @@ let childRequests: number;
 let submissions: unknown[];
 let failChildren = false;
 let long = false;
-async function fixtures(page: Page) {
-  inspections = []; childRequests = 0; submissions = []; failChildren = false; long = false;
+let pendingReview = false;
+async function fixtures(page: Page, baseURL: string) {
+  inspections = []; childRequests = 0; submissions = []; failChildren = false; long = false; pendingReview = false;
   if(process.env.CORTEX_DEBUG_BROWSER){page.on('request',r=>console.log('REQ',r.url()));page.on('response',r=>console.log('RES',r.status(),r.url()));page.on('pageerror',e=>console.log('PAGEERROR',e.message));page.on('console',m=>console.log('CONSOLE',m.text()));}
-  await page.context().addCookies([{name:'colony2:user:email',value:'review@example.com',url:'http://127.0.0.1:15175'}]);
+  await page.context().addCookies([{name:'colony2:user:email',value:'review@example.com',url:baseURL}]);
   await page.addInitScript(() => {
     (window as any).EventSource = class { readyState=1; close(){} addEventListener(){} removeEventListener(){} };
   });
@@ -31,7 +32,7 @@ async function fixtures(page: Page) {
     if(process.env.CORTEX_DEBUG_BROWSER) console.log('HANDLER',url.pathname);
     if (url.pathname.endsWith('/cells')) return route.fulfill({json:{cells:[]}});
     if (url.pathname === '/api/projects') return route.fulfill({json:[{id:'demo',name:'Demo',tenant_id:'demo'}]});
-    if (url.pathname.endsWith('/user-inputs/pending')) return route.fulfill({json:[]});
+    if (url.pathname.endsWith('/user-inputs/pending')) return route.fulfill({json:pendingReview ? [{...jobIdentity,id:'evidence-105',client_payload_revision:1,request_id:'review-evidence'}] : []});
     if (url.pathname.endsWith('/respond')) {const body = route.request().postData() || ''; const match = body.match(/name="submission"\r\n\r\n([^\r]+)\r\n/); if (!match) throw new Error('Missing multipart submission'); submissions.push(JSON.parse(match[1])); return route.fulfill({json:{ok:true}});}
     if (url.pathname.endsWith('/documents')) return route.fulfill({body:'# Release evidence\nAPI checks passed. Navigation evidence is ready.',contentType:'text/markdown'});
     if (url.pathname.includes('/user-inputs/evidence-105')) return route.fulfill({json:{jobId:'evidence-105',status:'pending',startTime:'2026-11-07T00:00:00Z',form:{kind:'review',request_id:'review-evidence',title:'Review release evidence',fields:[
@@ -76,7 +77,7 @@ async function initiallyVisible(page:Page) {
 async function openFresh(page:Page) { await initiallyVisible(page); }
 
 
-test.beforeEach(async({page})=>fixtures(page));
+test.beforeEach(async({page,baseURL})=>fixtures(page,baseURL!));
 
 test('REL-001,010,011,012,030,033,038 story links navigate to correct identities and preserve story inspection',async({page})=>{
   await page.setViewportSize({width:1440,height:1000});
@@ -115,6 +116,7 @@ test('REL-001,010,011,012,030,033,038 story links navigate to correct identities
 });
 
 test('REL-001,030,031,032,033,038 review context and document remain usable through child failure',async({page})=>{
+  pendingReview=true;
   await page.setViewportSize({width:1440,height:1000});
   await page.goto('/project/demo/reviews/evidence-105');
   await initiallyVisible(page);
@@ -123,7 +125,7 @@ test('REL-001,030,031,032,033,038 review context and document remain usable thro
   await expect(related(page).getByRole('link',{name:'Goal · goal-api',exact:true})).toBeVisible();
   await expect(page.getByRole('link',{name:'Open execution',exact:true})).toBeVisible();
   await expect(page.getByRole('region',{name:'Goal prompt'})).toHaveText(/Prepare release evidence/);
-  expect(inspections).toEqual(['evidence-105', 'evidence-105']); // Existing development StrictMode replay.
+  expect(inspections).toEqual(Array(4).fill('evidence-105')); // Reader existence check and goal context, each with development StrictMode replay.
   expect(await related(page).evaluate(e=>!!(e.previousElementSibling?.classList.contains('review-goal-context')))).toBe(true);
   const document=page.getByText('API checks passed. Navigation evidence is ready.',{exact:true}).first();
   await expect(document).toBeVisible();
@@ -141,6 +143,7 @@ test('REL-001,030,031,032,033,038 review context and document remain usable thro
 });
 
 for(const width of [1440,390,320]) test(`REL-034/D3,035,036,040,041,042 review ordering keyboard and wrapping ${width}`,async({page})=>{
+  pendingReview=true;
   long=width!==390;
   await page.setViewportSize({width,height:1000});
   await page.goto('/project/demo/reviews/evidence-105');

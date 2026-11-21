@@ -1,419 +1,267 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { inputActivityService } from './inputActivityService';
-const identity = { cell_id: 'cell-1', cell_name: 'platform', repo: 'github.com/acme/platform' };
-import { stringifyJobJSON } from '../jobJSON';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { inputActivityService as service, type PendingInput } from './inputActivityService';
+import { parseJobJSON, stringifyJobJSON } from '../jobJSON';
+const identity = {cell_id:'cell-1',cell_name:'platform',repo:'github.com/acme/platform'};
+class Source {
+ static instances: Source[] = [];
+ readyState = 0; onopen?: () => void; onerror?: () => void;
+ listeners = new Map<string, Function>();
+ constructor(public url: string) {Source.instances.push(this);}
+ addEventListener(name: string, listener: Function) {this.listeners.set(name,listener);}
+ close() {this.readyState = 2;}
+ send(name: string, value: unknown) {this.listeners.get(name)?.({data: stringifyJobJSON(value)});}
+}
+const row = (extra = {}): PendingInput => ({...identity,id:'job',client_payload_revision:1,...extra});
+const details = (extra = {}) => ({jobId:'job',status:'pending',startTime:'now',form:{question:'Continue?'},...extra});
+const deferred = <T,>() => {let resolve!: (value:T)=>void; let reject!: (error:Error)=>void; const promise = new Promise<T>((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
+let source: Source;
+const snapshot = (inputs: PendingInput[] = [row()]) => source.send('inputs_changed',{inputs});
+beforeEach(() => {
+ service.disconnect(); service.clearCaches(); Source.instances=[];
+ vi.stubGlobal('EventSource',Source); vi.stubGlobal('fetch',vi.fn());
+ service.connect('tenant'); source=Source.instances[0];
+});
+afterEach(() => {service.disconnect();service.clearCaches();vi.unstubAllGlobals();vi.restoreAllMocks();});
 
-// Create mock EventSource instance
-const createMockEventSource = () => ({
-  close: vi.fn(),
-  addEventListener: vi.fn(),
-  removeEventListener: vi.fn(),
-  dispatchEvent: vi.fn(),
-  onopen: null,
-  onmessage: null,
-  onerror: null,
-  readyState: 0,
-  url: '',
-  withCredentials: false,
-  CONNECTING: 0,
-  OPEN: 1,
-  CLOSED: 2,
+describe('shared discovery and selected request acquisition',()=>{
+ it('keeps startup, socket-open and heartbeat unknown until successful discovery',async()=>{
+  const read=deferred<Response>();vi.mocked(fetch).mockReturnValue(read.promise);
+  expect(service.getDiscovery('tenant').status).toBe('loading');
+  source.onopen?.();source.send('heartbeat',{});
+  expect(service.getDiscovery('tenant').status).toBe('loading');
+  expect(await service.getInputDetails('tenant','job')).toBeNull();
+  snapshot([]);expect(service.getDiscovery('tenant')).toEqual({status:'current',inputs:[]});
+  read.resolve(new Response('[]'));await read.promise;
+ });
+ it.each(['transport','application','malformed'])('marks retained rows stale on %s failure',async kind=>{
+  snapshot();
+  if(kind==='transport')source.onerror?.();
+  else if(kind==='application')source.send('error',{error:'storage failed'});
+  else source.send('inputs_changed',{inputs:{}});
+  expect(service.getDiscovery('tenant').status).toBe('unavailable');
+  expect(service.getDiscovery('tenant').inputs).toHaveLength(1);
+  expect(await service.getInputDetails('tenant','job')).toBeNull();expect(fetch).not.toHaveBeenCalled();
+ });
+ it.each([
+  [row({client_payload_revision:undefined})], [row({client_payload_revision:-1})], [row({client_payload_revision:1.5})],
+  [row({client_payload_revision:'7'})], [row({id:''})], [row({cell_id:undefined})], [row(),row()],
+  [row({request_id:42})], [row({task_ordinal:1.5})],
+ ])('rejects the entire invalid snapshot %j',inputs=>{
+  snapshot();snapshot(inputs);expect(service.getDiscovery('tenant').status).toBe('unavailable');
+  expect(service.getDiscovery('tenant').inputs).toEqual([row()]);
+ });
+ it('marks failed EventSource construction unavailable and reconnects a closed source on Retry',async()=>{
+  snapshot();
+  source.readyState=2;source.onerror?.();
+  const read=deferred<Response>();vi.mocked(fetch).mockReturnValue(read.promise);
+  const recovery=service.getPendingInputs('tenant',true);
+  expect(service.getDiscovery('tenant')).toEqual({status:'loading',inputs:[row()]});
+  expect(service.selectedVersion('tenant','job')).toBeUndefined();
+  read.resolve(new Response('[]'));await recovery;
+  expect(Source.instances).toHaveLength(2);expect(service.getDiscovery('tenant').status).toBe('current');
+  vi.stubGlobal('EventSource',class {constructor(){throw new Error('Cannot open stream');}});
+  service.connect('other');expect(service.getDiscovery('other').status).toBe('unavailable');
+ });
+ it('ignores every old connection callback, even after reconnecting to the same tenant',()=>{
+  const old=source;service.disconnect();service.connect('tenant');source=Source.instances.at(-1)!;snapshot();
+  old.send('inputs_changed',{inputs:[]});old.send('error',{error:'late'});old.onerror?.();old.onopen?.();
+  expect(service.getDiscovery('tenant')).toEqual({status:'current',inputs:[row()]});expect(fetch).not.toHaveBeenCalled();
+ });
+ it.each(['success','failure'])('does not let late GET %s overwrite newer SSE data',async kind=>{
+  const read=deferred<Response>();vi.mocked(fetch).mockReturnValue(read.promise);
+  const pending=service.getPendingInputs('tenant',true);snapshot();
+  if(kind==='success')read.resolve(new Response('[]'));else read.reject(new Error('late failure'));
+  expect(await pending).toEqual([row()]);expect(service.getDiscovery('tenant').status).toBe('current');
+ });
+ it('does not present a late GET as fresh after disconnect',async()=>{
+  const read=deferred<Response>();vi.mocked(fetch).mockReturnValue(read.promise);
+  const pending=service.getPendingInputs('tenant',true);source.onerror?.();read.resolve(new Response('[]'));
+  await expect(pending).rejects.toThrow();expect(service.getDiscovery('tenant').status).toBe('unavailable');
+ });
+ it('coalesces fresh list reads and retains stale information on failure',async()=>{
+  snapshot();vi.mocked(fetch).mockResolvedValue(new Response('',{status:503}));
+  const a=service.getPendingInputs('tenant',true),b=service.getPendingInputs('tenant',true);
+  await expect(a).rejects.toThrow();await expect(b).rejects.toThrow();expect(fetch).toHaveBeenCalledTimes(1);
+  expect(service.getDiscovery('tenant').inputs).toEqual([row()]);
+ });
+ it('reads only matched selected jobs and coalesces consumers',async()=>{
+  expect(await service.getInputDetails('tenant','job')).toBeNull();snapshot([row(),row({id:'other'})]);
+  const read=deferred<Response>();vi.mocked(fetch).mockReturnValue(read.promise);
+  const a=service.getInputDetails('tenant','job'),b=service.getInputDetails('tenant','job',false,new AbortController().signal);
+  expect(fetch).toHaveBeenCalledTimes(1);read.resolve(new Response(JSON.stringify(details())));
+  expect(await a).toEqual(details());expect(await b).toEqual(details());
+  expect(await service.getInputDetails('tenant','absent')).toBeNull();expect(fetch).toHaveBeenCalledTimes(1);
+ });
+ it('reuses verified details across duplicates, metadata changes, reordering and unrelated versions',async()=>{
+  snapshot();vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify(details())));await service.getInputDetails('tenant','job');
+  snapshot();snapshot([row({id:'other',client_payload_revision:99}),row({title:'Changed title',requested_at:'later'})]);
+  expect(await service.getInputDetails('tenant','job')).toEqual(details());expect(fetch).toHaveBeenCalledTimes(1);
+ });
+ it.each([{client_payload_revision:2},{request_id:'new'},{task_ordinal:2}])('acquires a successor when its version changes: %j',async extra=>{
+  snapshot();vi.mocked(fetch).mockImplementation(async()=>new Response(JSON.stringify(details({form:{request_id:extra.request_id,question:'Continue?'},task_ordinal:extra.task_ordinal}))));
+  await service.getInputDetails('tenant','job');snapshot([row(extra)]);await service.getInputDetails('tenant','job');expect(fetch).toHaveBeenCalledTimes(2);
+ });
+ it('preserves exact large revisions and detects their changes',async()=>{
+  const exact=parseJobJSON('[{"id":"job","cell_id":"cell-1","cell_name":"platform","repo":"github.com/acme/platform","client_payload_revision":9007199254740993}]') as PendingInput[];
+  snapshot(exact);const first=service.selectedVersion('tenant','job');
+  expect(first).toContain('9007199254740993');
+  snapshot(parseJobJSON(stringifyJobJSON(exact)!.replace('9007199254740993','9007199254740994')) as PendingInput[]);
+  expect(service.selectedVersion('tenant','job')).not.toBe(first);
+ });
+ it('reuses verified details after unknown/recovery, but reacquires after confirmed removal/reappearance',async()=>{
+  snapshot();vi.mocked(fetch).mockImplementation(async()=>new Response(JSON.stringify(details())));await service.getInputDetails('tenant','job');
+  source.onerror?.();snapshot();await service.getInputDetails('tenant','job');expect(fetch).toHaveBeenCalledTimes(1);
+  snapshot([]);snapshot();await service.getInputDetails('tenant','job');expect(fetch).toHaveBeenCalledTimes(2);
+ });
+ it('ignores obsolete completions and cleanup while a successor is loading',async()=>{
+  snapshot();const old=deferred<Response>(),next=deferred<Response>();vi.mocked(fetch).mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise);
+  const a=service.getInputDetails('tenant','job');snapshot([row({client_payload_revision:2})]);const b=service.getInputDetails('tenant','job');
+  old.resolve(new Response(JSON.stringify(details())));expect(await a).toBeNull();
+  next.resolve(new Response(JSON.stringify(details({form:{question:'Successor'}}))));expect((await b)?.form.question).toBe('Successor');
+  expect((await service.getInputDetails('tenant','job'))?.form.question).toBe('Successor');expect(fetch).toHaveBeenCalledTimes(2);
+ });
+ it('invalidates a pending read across an outage, without deleting the recovered attempt',async()=>{
+  snapshot();const old=deferred<Response>();vi.mocked(fetch).mockReturnValueOnce(old.promise);
+  const a=service.getInputDetails('tenant','job');source.onerror?.();snapshot();vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(details())));
+  const b=service.getInputDetails('tenant','job');old.resolve(new Response(JSON.stringify(details({form:{question:'Obsolete'}}))));
+  expect(await a).toBeNull();expect(await b).toEqual(details());expect(await service.getInputDetails('tenant','job')).toEqual(details());
+ });
+ it('handles 204 without JSON parsing, revalidates once and latches unchanged absence',async()=>{
+  snapshot();vi.mocked(fetch).mockResolvedValueOnce(new Response(null,{status:204})).mockResolvedValueOnce(new Response(JSON.stringify([row()])));
+  const a=service.getInputDetails('tenant','job'),b=service.getInputDetails('tenant','job');expect(await a).toBeNull();expect(await b).toBeNull();
+  await vi.waitFor(()=>expect(service.getDiscovery('tenant').status).toBe('current'));
+  snapshot();expect(await service.getInputDetails('tenant','job')).toBeNull();expect(fetch).toHaveBeenCalledTimes(2);
+ });
+ it.each([403,404,409,500])('latches HTTP %s as an error instead of absence',async status=>{
+  snapshot();vi.mocked(fetch).mockResolvedValue(new Response(null,{status}));
+  await expect(service.getInputDetails('tenant','job')).rejects.toMatchObject({status});snapshot();
+  await expect(service.getInputDetails('tenant','job')).rejects.toMatchObject({status});expect(fetch).toHaveBeenCalledTimes(1);
+ });
+ it.each(['malformed','network'])('latches real %s failures',async kind=>{
+  snapshot();if(kind==='malformed')vi.mocked(fetch).mockResolvedValue(new Response('{'));else vi.mocked(fetch).mockRejectedValue(new Error('Network failed'));
+  await expect(service.getInputDetails('tenant','job')).rejects.toThrow();await expect(service.getInputDetails('tenant','job')).rejects.toThrow();expect(fetch).toHaveBeenCalledTimes(1);
+ });
+ it.each([{jobId:'wrong'},{form:{request_id:'wrong'}},{task_ordinal:99}])('revalidates mismatched details without a loop: %j',async extra=>{
+  snapshot([row({request_id:'native',task_ordinal:12})]);
+  vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(details({form:{request_id:'native'},task_ordinal:12,...extra})))).mockResolvedValueOnce(new Response(JSON.stringify([row({request_id:'native',task_ordinal:12})])));
+  expect(await service.getInputDetails('tenant','job')).toBeNull();await vi.waitFor(()=>expect(fetch).toHaveBeenCalledTimes(2));
+  expect(await service.getInputDetails('tenant','job')).toBeNull();expect(fetch).toHaveBeenCalledTimes(2);
+ });
+ it('refreshes discovery before explicit retry and coalesces concurrent retries',async()=>{
+  snapshot();vi.mocked(fetch).mockResolvedValueOnce(new Response(null,{status:503}));await expect(service.getInputDetails('tenant','job')).rejects.toThrow();
+  vi.mocked(fetch).mockImplementation(async url=>new Response(JSON.stringify(String(url).endsWith('/pending')?[row()]:details())));
+  await Promise.all([service.getInputDetails('tenant','job',true),service.getInputDetails('tenant','job',true)]);
+  expect(vi.mocked(fetch).mock.calls.slice(1).map(([url])=>String(url).split('/').at(-1))).toEqual(['pending','job']);
+ });
+ it.each(['empty','failed'])('never probes details when explicit retry discovery is %s',async kind=>{
+  snapshot();vi.mocked(fetch).mockResolvedValue(kind==='empty'?new Response('[]'):new Response(null,{status:503}));
+  if(kind==='empty')expect(await service.getInputDetails('tenant','job',true)).toBeNull();else await expect(service.getInputDetails('tenant','job',true)).rejects.toThrow();
+  expect(fetch).toHaveBeenCalledTimes(1);
+ });
+ it('suppresses an answered ordinary request before discovery catches up',async()=>{
+  snapshot();vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(details())));await service.getInputDetails('tenant','job');
+  vi.mocked(fetch).mockResolvedValueOnce(new Response('{}')).mockResolvedValueOnce(new Response(JSON.stringify([row()])));
+  await service.submitResponse('tenant','job',{fields:{answer:'yes'}});expect(await service.getInputDetails('tenant','job')).toBeNull();
+ });
 });
 
-// Mock EventSource constructor - need to define it as a class-like function
-const EventSourceMock = vi.fn(createMockEventSource);
-EventSourceMock.CONNECTING = 0;
-EventSourceMock.OPEN = 1;
-EventSourceMock.CLOSED = 2;
-(globalThis as any).EventSource = EventSourceMock;
+describe('completion acknowledgements',()=>{
+ const kinds = ['ordinary response','legacy review','review/v2','cancel'] as const;
+ const complete = (kind: typeof kinds[number]) => kind === 'ordinary response'
+  ? service.submitResponse('tenant','job',{fields:{answer:'yes'}})
+  : kind === 'legacy review'
+   ? service.submitReview('tenant','job','request-1',{fields:{decision:'approve'}})
+   : kind === 'review/v2'
+    ? service.submitReviewV2('tenant','job','request-1',{direction:'approve',feedback:'',attachments:[],settings:{}},[],'submission-1')
+    : service.cancelInput('tenant','job');
+ const versionRow = (revision: number) => row({request_id:`request-${revision}`,client_payload_revision:revision});
+ const versionDetails = (revision: number) => details({form:{request_id:`request-${revision}`,question:`Request ${revision}`}});
+ const acknowledgement = () => new Response(JSON.stringify({response:{direction:'approve'},receipt:{request_id:'request-1',submission_id:'submission-1'}}));
 
-// Mock fetch
-(globalThis as any).fetch = vi.fn();
-
-describe('InputActivityService', () => {
-  const projectId = 'proj-1';
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // Reset EventSource mock
-    EventSourceMock.mockClear();
-    EventSourceMock.mockImplementation(createMockEventSource);
-    // Reset the service state
-    inputActivityService.disconnect();
-    // Reset the cache
-    (inputActivityService as any).pendingInputsCache.clear();
-    (inputActivityService as any).formDetailsCache.clear();
-    // Reset reconnect attempts
-    (inputActivityService as any).reconnectAttempts = 0;
+ it.each(kinds)('preserves a cached successor after a late %s acknowledgement',async kind=>{
+  snapshot([versionRow(1)]);
+  const post=deferred<Response>();
+  vi.mocked(fetch).mockImplementation(async(url,init)=>{
+   if(init?.method==='POST')return post.promise;
+   return new Response(JSON.stringify(String(url).endsWith('/pending')?[versionRow(2)]:versionDetails(2)));
   });
+  const completing=complete(kind);
+  // The server has accepted A and advertised B before A's POST response arrives.
+  snapshot([versionRow(2)]);
+  expect(await service.getInputDetails('tenant','job')).toEqual(versionDetails(2));
+  post.resolve(acknowledgement());await completing;
+  await service.getPendingInputs('tenant',true);
+  expect(service.getDiscovery('tenant').inputs).toEqual([versionRow(2)]);
+  expect(await service.getInputDetails('tenant','job')).toEqual(versionDetails(2));
+  expect(vi.mocked(fetch).mock.calls.filter(([url])=>String(url).endsWith('/user-inputs/job'))).toHaveLength(1);
+ });
 
-  afterEach(() => {
-    inputActivityService.disconnect();
-    vi.unstubAllGlobals();
+ it.each(kinds)('preserves an in-flight successor after a late %s acknowledgement',async kind=>{
+  snapshot([versionRow(1)]);
+  const post=deferred<Response>(),next=deferred<Response>();
+  vi.mocked(fetch).mockImplementation(async(url,init)=>{
+   if(init?.method==='POST')return post.promise;
+   if(String(url).endsWith('/pending'))return new Response(JSON.stringify([versionRow(2)]));
+   return next.promise;
   });
+  const completing=complete(kind);
+  snapshot([versionRow(2)]);const reading=service.getInputDetails('tenant','job');
+  post.resolve(acknowledgement());await completing;
+  await service.getPendingInputs('tenant',true);
+  next.resolve(new Response(JSON.stringify(versionDetails(2))));
+  expect(await reading).toEqual(versionDetails(2));
+  expect(await service.getInputDetails('tenant','job')).toEqual(versionDetails(2));
+  expect(vi.mocked(fetch).mock.calls.filter(([url])=>String(url).endsWith('/user-inputs/job'))).toHaveLength(1);
+ });
 
-  it('submits reviews without randomUUID, preserving the request and generating distinct IDs', async () => {
-    vi.stubGlobal('crypto', { getRandomValues: globalThis.crypto.getRandomValues.bind(globalThis.crypto) });
-    vi.mocked(fetch).mockResolvedValue({ ok: true } as Response);
-    const response = { fields: { decision: 'revise', feedback: 'Please clarify the rollout.' } };
-    await inputActivityService.submitReview(projectId, 'job', 'request', response);
-    await inputActivityService.submitReview(projectId, 'job', 'request', response);
-    const submissions = vi.mocked(fetch).mock.calls.map(([url, init]) => {
-      expect(url).toContain(`/projects/${projectId}/reviews/job/respond`);
-      expect(init?.method).toBe('POST');
-      return JSON.parse((init?.body as FormData).get('submission') as string);
-    });
-    for (const submission of submissions) {
-      expect(submission).toMatchObject({ request_id: 'request', fields: response.fields });
-      expect(submission.submission_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
-    }
-    expect(submissions[0].submission_id).not.toBe(submissions[1].submission_id);
+ it.each(kinds)('preserves a reappeared request identity after a late %s acknowledgement',async kind=>{
+  snapshot([versionRow(1)]);
+  const post=deferred<Response>();
+  vi.mocked(fetch).mockImplementation(async(url,init)=>{
+   if(init?.method==='POST')return post.promise;
+   return new Response(JSON.stringify(String(url).endsWith('/pending')?[versionRow(1)]:versionDetails(1)));
   });
+  const completing=complete(kind),original=service.selectedVersion('tenant','job');
+  snapshot([]);snapshot([versionRow(1)]);
+  expect(service.selectedVersion('tenant','job')).not.toBe(original);
+  expect(await service.getInputDetails('tenant','job')).toEqual(versionDetails(1));
+  post.resolve(acknowledgement());await completing;
+  await service.getPendingInputs('tenant',true);
+  expect(await service.getInputDetails('tenant','job')).toEqual(versionDetails(1));
+  expect(vi.mocked(fetch).mock.calls.filter(([url])=>String(url).endsWith('/user-inputs/job'))).toHaveLength(1);
+ });
 
-  describe('SSE Connection', () => {
-    it('preserves exact payloads with their revision through HTTP caching and streamed replacement', async () => {
-      const raw = '{"requested_at":"2026-11-01T00:00:00Z","request_id":"first","task_ordinal":12,"cell_id":"cell-1","cell_name":"platform","repo":"github.com/acme/platform","id":"job","client_payload":{"other":9007199254740993},"client_payload_revision":7}';
-      vi.mocked(fetch).mockResolvedValueOnce(new Response(`[${raw}]`));
-      expect(stringifyJobJSON((await inputActivityService.getPendingInputs(projectId))[0])).toBe(raw);
-      inputActivityService.connect(projectId);
-      const source = EventSourceMock.mock.results[0].value;
-      const snapshot = source.addEventListener.mock.calls.find(([name]: [string]) => name === 'inputs_changed')[1];
-      const replacement = '{"requested_at":"2026-11-02T00:00:00Z","request_id":"second","task_ordinal":13,"cell_id":"cell-1","cell_name":"platform","repo":"github.com/acme/platform","id":"job","client_payload":null,"client_payload_revision":8}';
-      snapshot({ data: `{"inputs":[${replacement}]}` });
-      expect(stringifyJobJSON((await inputActivityService.getPendingInputs(projectId))[0])).toBe(replacement);
-      expect(fetch).toHaveBeenCalledTimes(1);
-    });
-
-    it('uses one compact snapshot for all pending rows and invalidates changed forms', async () => {
-      inputActivityService.connect(projectId);
-      const source = EventSourceMock.mock.results[0].value;
-      const snapshot = source.addEventListener.mock.calls.find(([name]: [string]) => name === 'inputs_changed')[1];
-      const inputs = Array.from({ length: 200 }, (_, i) => ({ ...identity, id: String(i), client_payload_revision: 1 }));
-      snapshot({ data: JSON.stringify({ inputs }) });
-      expect(await inputActivityService.getPendingInputs(projectId)).toEqual(inputs);
-      expect(fetch).not.toHaveBeenCalled();
-      vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify(({ form: { question: 'First?' } }))) as Response);
-      await inputActivityService.getInputDetails(projectId, '0');
-      snapshot({ data: JSON.stringify({ inputs: inputs.map(input => input.id === '0' ? { ...input, client_payload_revision: 2 } : input) }) });
-      vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify(({ form: { question: 'Next?' } }))) as Response);
-      expect((await inputActivityService.getInputDetails(projectId, '0')).form.question).toBe('Next?');
-      expect(fetch).toHaveBeenCalledTimes(2);
-      inputActivityService.connect('other');
-      snapshot({ data: JSON.stringify({ inputs: [{ ...identity, id: 'wrong-tenant' }] }) });
-      expect((inputActivityService as any).pendingInputsCache.has('other')).toBe(false);
-    });
-
-    it('does not let a late pending-list response overwrite a newer streamed snapshot', async () => {
-      inputActivityService.connect(projectId);
-      let resolve!: (response: Response) => void;
-      vi.mocked(fetch).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
-      const pending = inputActivityService.getPendingInputs(projectId, true);
-      const source = EventSourceMock.mock.results[0].value;
-      const snapshot = source.addEventListener.mock.calls.find(([name]: [string]) => name === 'inputs_changed')[1];
-      snapshot({ data: JSON.stringify({ inputs: [{ ...identity, id: 'new' }] }) });
-      resolve(new Response(JSON.stringify([{ ...identity, id: 'old' }])) as Response);
-      expect(await pending).toEqual([{ ...identity, id: 'new' }]);
-      expect(await inputActivityService.getPendingInputs(projectId)).toEqual([{ ...identity, id: 'new' }]);
-    });
-
-    it('refreshes cached requests and details when another tab completes an input', async () => {
-      inputActivityService.connect(projectId);
-      const completed = vi.fn();
-      inputActivityService.on('input_completed', completed);
-      try {
-        vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify([{ ...identity, id: 'job-1' }])) as Response);
-        await inputActivityService.getPendingInputs(projectId);
-        await inputActivityService.getInputDetails(projectId, 'job-1');
-
-        const source = EventSourceMock.mock.results[0].value;
-        const listener = source.addEventListener.mock.calls.find(([name]: [string]) => name === 'input_completed')[1];
-        listener({ data: JSON.stringify({ jobId: 'job-1' }) });
-        expect(completed).toHaveBeenCalledWith({ jobId: 'job-1' });
-
-        vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify([])) as Response);
-        expect(await inputActivityService.getPendingInputs(projectId)).toEqual([]);
-        await inputActivityService.getInputDetails(projectId, 'job-1');
-        expect(fetch).toHaveBeenCalledTimes(4);
-      } finally {
-        inputActivityService.off('input_completed', completed);
-      }
-    });
-
-    it('fetches a fresh form when the same job requests another input', async () => {
-      inputActivityService.connect(projectId);
-      vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify(({ form: { question: 'First?' } }))) as Response);
-      await inputActivityService.getInputDetails(projectId, 'job-1');
-      const source = EventSourceMock.mock.results[0].value;
-      const listener = source.addEventListener.mock.calls.find(([name]: [string]) => name === 'input_pending')[1];
-      listener({ data: JSON.stringify({ ...identity, id: 'job-1', task_ordinal: 9 }) });
-      vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify(({ form: { question: 'Second?' } }))) as Response);
-      expect(await inputActivityService.getInputDetails(projectId, 'job-1')).toMatchObject({ form: { question: 'Second?' } });
-      expect(fetch).toHaveBeenCalledTimes(2);
-    });
-
-    it('should create an EventSource connection when connect is called', () => {
-      inputActivityService.connect(projectId);
-      expect(EventSourceMock).toHaveBeenCalledWith(
-        expect.stringContaining(`/projects/${projectId}/user-inputs/stream`)
-      );
-    });
-
-    it('should not create duplicate connections', () => {
-      // Create a mock that simulates an open connection
-      const mockEventSource = {
-        close: vi.fn(),
-        readyState: 1, // OPEN - this prevents creating a duplicate
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-        onopen: null,
-        onmessage: null,
-        onerror: null,
-        url: '',
-        withCredentials: false,
-        CONNECTING: 0,
-        OPEN: 1,
-        CLOSED: 2,
-      };
-      
-      // First call creates the connection
-      EventSourceMock.mockImplementationOnce(() => mockEventSource);
-      
-      inputActivityService.connect(projectId);
-      expect(EventSourceMock).toHaveBeenCalledTimes(1);
-      
-      // Second call should not create a new connection because readyState is OPEN
-      inputActivityService.connect(projectId);
-      expect(EventSourceMock).toHaveBeenCalledTimes(1);
-    });
-
-    it('should close connection when disconnect is called', () => {
-      // Create a mock EventSource with a close method we can spy on
-      const mockEventSource = {
-        close: vi.fn(),
-        readyState: 1, // OPEN
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-        onopen: null,
-        onmessage: null,
-        onerror: null,
-        url: '',
-        withCredentials: false,
-        CONNECTING: 0,
-        OPEN: 1,
-        CLOSED: 2,
-      };
-      
-      EventSourceMock.mockImplementation(() => mockEventSource);
-
-      inputActivityService.connect(projectId);
-      
-      // Verify connection was created
-      expect(EventSourceMock).toHaveBeenCalled();
-      
-      inputActivityService.disconnect();
-      
-      // Verify close was called on the event source
-      expect(mockEventSource.close).toHaveBeenCalled();
-    });
+ it.each(kinds)('does not borrow a newly discovered version for a %s started without one',async kind=>{
+  const post=deferred<Response>();
+  vi.mocked(fetch).mockImplementation(async(url,init)=>{
+   if(init?.method==='POST')return post.promise;
+   return new Response(JSON.stringify(String(url).endsWith('/pending')?[versionRow(2)]:versionDetails(2)));
   });
+  const completing=complete(kind);
+  snapshot([versionRow(2)]);
+  expect(await service.getInputDetails('tenant','job')).toEqual(versionDetails(2));
+  post.resolve(acknowledgement());await completing;
+  await service.getPendingInputs('tenant',true);
+  expect(await service.getInputDetails('tenant','job')).toEqual(versionDetails(2));
+  expect(vi.mocked(fetch).mock.calls.filter(([url])=>String(url).endsWith('/user-inputs/job'))).toHaveLength(1);
+ });
 
-  describe('getPendingInputs', () => {
-    it('should fetch pending inputs for a project', async () => {
-      const mockInputs = [
-        { ...identity, id: 'job-1' }
-      ];
-
-      ((globalThis as any).fetch as any).mockResolvedValueOnce(new Response(JSON.stringify(mockInputs)));
-
-      const result = await inputActivityService.getPendingInputs(projectId);
-      
-      expect((globalThis as any).fetch).toHaveBeenCalledWith(
-        `http://localhost:8080/api/projects/${projectId}/user-inputs/pending`
-      );
-      expect(result).toEqual(mockInputs);
-    });
-
-    it('should cache results', async () => {
-      const mockInputs = [{ ...identity, id: 'job-1' }];
-
-      ((globalThis as any).fetch as any).mockImplementation(async () => new Response(JSON.stringify(mockInputs)));
-
-      const result1 = await inputActivityService.getPendingInputs(projectId);
-      const result2 = await inputActivityService.getPendingInputs(projectId);
-      
-      // Should be called only once due to caching
-      expect((globalThis as any).fetch).toHaveBeenCalledTimes(1);
-      expect(result1).toEqual(result2);
-    });
-  });
-
-  describe('getInputDetails', () => {
-    it('should fetch input details for a job', async () => {
-      const mockDetails = {
-        jobId: 'job-1',
-        status: 'pending',
-        form: {
-          title: 'Test Form',
-          fields: []
-        },
-        startTime: '2024-01-01T00:00:00Z',
-      };
-
-      ((globalThis as any).fetch as any).mockImplementation((url: string) => {
-        if (url.includes(`/projects/${projectId}/user-inputs/job-1`)) {
-          return Promise.resolve(new Response(JSON.stringify(mockDetails)));
-        }
-        return Promise.reject(new Error('Unexpected URL'));
-      });
-
-      const result = await inputActivityService.getInputDetails(projectId, 'job-1');
-      
-      expect((globalThis as any).fetch).toHaveBeenCalledWith(
-        `http://localhost:8080/api/projects/${projectId}/user-inputs/job-1`, { signal: undefined }
-      );
-      expect(result).toEqual(mockDetails);
-    });
-  });
-
-  describe('submitResponse', () => {
-    it('should submit a response for a job', async () => {
-      const mockResponse = {
-        fields: { field1: 'value1' },
-        submitted_at: '2024-01-01T00:00:00Z',
-      };
-
-      ((globalThis as any).fetch as any).mockResolvedValueOnce({
-        ok: true
-      });
-
-      await inputActivityService.submitResponse(projectId, 'job-1', mockResponse);
-      
-      expect((globalThis as any).fetch).toHaveBeenCalledWith(
-        `http://localhost:8080/api/projects/${projectId}/user-inputs/job-1/respond`,
-        expect.objectContaining({
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: expect.stringContaining('value1')
-        })
-      );
-    });
-
-    it('should send submitted_at timestamp', async () => {
-      const mockResponse = {
-        fields: { field1: 'value1' },
-        submitted_at: '2024-01-01T00:00:00Z',
-      };
-
-      ((globalThis as any).fetch as any).mockResolvedValueOnce({
-        ok: true
-      });
-
-      await inputActivityService.submitResponse(projectId, 'job-1', mockResponse);
-      
-      const callArgs = ((globalThis as any).fetch as any).mock.calls[0];
-      const body = JSON.parse(callArgs[1].body);
-      
-      expect(body.submitted_at).toBeDefined();
-    });
-  });
-
-  describe('cancelInput', () => {
-    it('should cancel an input for a job', async () => {
-      ((globalThis as any).fetch as any).mockResolvedValueOnce({
-        ok: true
-      });
-
-      await inputActivityService.cancelInput(projectId, 'job-1');
-      
-      expect((globalThis as any).fetch).toHaveBeenCalledWith(
-        `http://localhost:8080/api/projects/${projectId}/user-inputs/job-1/cancel`,
-        expect.objectContaining({
-          method: 'POST'
-        })
-      );
-    });
-  });
-
-  describe('event emitter', () => {
-    it('should register and remove listeners', () => {
-      const callback = vi.fn();
-
-      inputActivityService.on('custom-event', callback);
-      (inputActivityService as any).emit('custom-event', { ...identity, id: 'job-1' });
-      expect(callback).toHaveBeenCalledWith({ ...identity, id: 'job-1' });
-
-      inputActivityService.off('custom-event', callback);
-      (inputActivityService as any).emit('custom-event', { ...identity, id: 'job-2' });
-      expect(callback).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('getConnectionState', () => {
-    it('should return closed when no connection exists', () => {
-      const state = inputActivityService.getConnectionState();
-      expect(state).toBe('closed');
-    });
-
-    it('should return correct state based on EventSource readyState', () => {
-      // Test CONNECTING state
-      const mockEventSourceConnecting = {
-        close: vi.fn(),
-        readyState: 0, // CONNECTING
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-        onopen: null,
-        onmessage: null,
-        onerror: null,
-        url: '',
-        withCredentials: false,
-        CONNECTING: 0,
-        OPEN: 1,
-        CLOSED: 2,
-      };
-      
-      EventSourceMock.mockImplementation(() => mockEventSourceConnecting);
-      inputActivityService.connect(projectId);
-      
-      let state = inputActivityService.getConnectionState();
-      expect(state).toBe('connecting');
-      
-      // Clean up for next test
-      inputActivityService.disconnect();
-      
-      // Test OPEN state
-      const mockEventSourceOpen = {
-        close: vi.fn(),
-        readyState: 1, // OPEN
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-        onopen: null,
-        onmessage: null,
-        onerror: null,
-        url: '',
-        withCredentials: false,
-        CONNECTING: 0,
-        OPEN: 1,
-        CLOSED: 2,
-      };
-      
-      EventSourceMock.mockImplementation(() => mockEventSourceOpen);
-      inputActivityService.connect(projectId);
-      
-      state = inputActivityService.getConnectionState();
-      expect(state).toBe('open');
-    });
-  });
+ it.each(kinds)('suppresses the matching answered version after %s despite stale discovery',async kind=>{
+  snapshot([versionRow(1)]);
+  vi.mocked(fetch).mockImplementation(async(url,init)=>init?.method==='POST'
+   ? acknowledgement()
+   : new Response(JSON.stringify(String(url).endsWith('/pending')?[versionRow(1)]:versionDetails(1))));
+  expect(await service.getInputDetails('tenant','job')).toEqual(versionDetails(1));
+  await complete(kind);await service.getPendingInputs('tenant',true);
+  snapshot([versionRow(1)]);
+  expect(await service.getInputDetails('tenant','job')).toBeNull();
+  expect(vi.mocked(fetch).mock.calls.filter(([url])=>String(url).endsWith('/user-inputs/job'))).toHaveLength(1);
+ });
 });
 
 describe('A05 review document URL identity', () => {
   it('encodes tenant/job path segments and request/document query identities', () => {
-    const url = new URL(inputActivityService.reviewDocumentURL('tenant/雪','job/a','request & 1','folder/雪.md'), 'http://localhost');
+    const url = new URL(service.reviewDocumentURL('tenant/雪','job/a','request & 1','folder/雪.md'), 'http://localhost');
     expect(url.pathname).toContain('/projects/tenant%2F%E9%9B%AA/reviews/job%2Fa/documents');
     expect(url.searchParams.get('request_id')).toBe('request & 1');
     expect(url.searchParams.get('document_id')).toBe('folder/雪.md');
@@ -425,9 +273,28 @@ describe('review/v2 structured submission',()=>{
   const output={response:{direction:'ask',feedback:' exact ',attachments:[],settings:{strange:false,zero:0,reset:null}},receipt:{request_id:'request-v2',submission_id:'correlation'}};
   const fetchMock=vi.fn().mockResolvedValue(new Response(JSON.stringify(output),{status:200}));vi.stubGlobal('fetch',fetchMock);
   const files=[new File(['one'],'same.md'),new File(['two'],'same.md')];
-  const result=await inputActivityService.submitReviewV2('tenant','job','request-v2',{direction:'ask',feedback:' exact ',attachments:[],settings:{strange:false,zero:0,reset:null}},files,'correlation');
+  const result=await service.submitReviewV2('tenant','job','request-v2',{direction:'ask',feedback:' exact ',attachments:[],settings:{strange:false,zero:0,reset:null}},files,'correlation');
   const body=fetchMock.mock.calls[0][1].body as FormData;
   expect(JSON.parse(body.get('submission') as string)).toEqual({request_id:'request-v2',submission_id:'correlation',response:output.response});
   expect(body.getAll('attachments')).toEqual(files);expect(result).toEqual(output);vi.unstubAllGlobals();
  });
 });
+
+  it('submits reviews without randomUUID, preserving the request and generating distinct IDs', async () => {
+    const projectId='tenant';
+    vi.stubGlobal('crypto', { getRandomValues: globalThis.crypto.getRandomValues.bind(globalThis.crypto) });
+    vi.mocked(fetch).mockResolvedValue({ ok: true } as Response);
+    const response = { fields: { decision: 'revise', feedback: 'Please clarify the rollout.' } };
+    await service.submitReview(projectId, 'job', 'request', response);
+    await service.submitReview(projectId, 'job', 'request', response);
+    const submissions = vi.mocked(fetch).mock.calls.filter(([url])=>String(url).endsWith('/respond')).map(([url, init]) => {
+      expect(url).toContain(`/projects/${projectId}/reviews/job/respond`);
+      expect(init?.method).toBe('POST');
+      return JSON.parse((init?.body as FormData).get('submission') as string);
+    });
+    for (const submission of submissions) {
+      expect(submission).toMatchObject({ request_id: 'request', fields: response.fields });
+      expect(submission.submission_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    }
+    expect(submissions[0].submission_id).not.toBe(submissions[1].submission_id);
+  });

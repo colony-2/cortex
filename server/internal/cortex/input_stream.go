@@ -34,6 +34,7 @@ func (s *Server) handleInputStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var previous []byte
+	failed := false
 	poll := time.NewTicker(time.Second)
 	defer poll.Stop()
 	heartbeat := time.NewTicker(30 * time.Second)
@@ -44,6 +45,7 @@ func (s *Server) handleInputStream(w http.ResponseWriter, r *http.Request) {
 			if r.Context().Err() != nil {
 				return
 			}
+			failed = true
 			s.logger.Warn("load pending inputs for stream", "tenant", projectID, "error", err)
 			if err := send("error", map[string]string{"error": "failed to load pending inputs"}); err != nil {
 				return
@@ -53,11 +55,12 @@ func (s *Server) handleInputStream(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return
 			}
-			if !bytes.Equal(previous, current) {
+			if failed || !bytes.Equal(previous, current) {
 				if err := send("inputs_changed", map[string]any{"inputs": inputs}); err != nil {
 					return
 				}
 				previous = current
+				failed = false
 			}
 		}
 		select {

@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { act, cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, cleanup, render as rawRender, screen, waitFor, fireEvent } from '@testing-library/react';
 import { message } from 'antd';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, Link } from 'react-router-dom';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 import { InputActivityProvider, inputActivityService } from '@colony2/shared';
+const render = (ui: Parameters<typeof rawRender>[0]) => rawRender(ui, {wrapper: InputActivityProvider});
 import InputDetailPage from './InputDetailPage';
+import {jobIdentity} from '../test/cellFixtures';
 import {
   inputApiHandlers,
   resetMockInputStore,
@@ -34,6 +36,8 @@ describe('InputDetailPage - Single Question Flow', () => {
   let eventSourceMock: ReturnType<typeof mockEventSource>;
 
   beforeEach(() => {
+    global.ResizeObserver = vi.fn().mockImplementation(()=>({observe:vi.fn(),unobserve:vi.fn(),disconnect:vi.fn()}));
+    vi.mocked(window.matchMedia).mockImplementation(query=>({matches:query.includes('min-width'),media:query,onchange:null,addListener:vi.fn(),removeListener:vi.fn(),addEventListener:vi.fn(),removeEventListener:vi.fn(),dispatchEvent:vi.fn()}));
     server.listen({ onUnhandledRequest: 'error' });
     resetMockInputStore();
     eventSourceMock = mockEventSource();
@@ -48,6 +52,7 @@ describe('InputDetailPage - Single Question Flow', () => {
     server.close();
     server.resetHandlers();
     eventSourceMock.restore();
+    vi.restoreAllMocks();
     vi.clearAllMocks();
   });
 
@@ -76,7 +81,7 @@ describe('InputDetailPage - Single Question Flow', () => {
       { id: 'attachment', type: 'file_upload', question: 'Annotations' },
     ] };
     setupMockInputs(projectId, [createMockPendingInput(jobId)], [details]);
-    server.use(http.get('http://localhost:8080/api/projects/:tenant/jobs/:job', () => HttpResponse.json({job_id:jobId,status:'ACTIVE'})),
+    server.use(http.get('http://localhost:8080/api/projects/:tenant/jobs/:job', () => HttpResponse.json({...jobIdentity,job_id:jobId,status:'ACTIVE'})),
       http.get('http://localhost:8080/api/projects/:tenant/jobs/:job/children', () => HttpResponse.json({jobs:[]})));
     return details;
   };
@@ -168,7 +173,7 @@ describe('InputDetailPage - Single Question Flow', () => {
 
   it('REV-014 resets request-owned draft when the tenant changes', async () => {
     const details=setupReview();
-    setupMockInputs('other-tenant',[],[details]);
+    setupMockInputs('other-tenant',[createMockPendingInput(jobId)],[details]);
     const view=(tenant:string)=><MemoryRouter initialEntries={[`/reviews/${jobId}`]}><Routes><Route path="/reviews/:jobId" element={<InputDetailPage projectId={tenant}/>}/></Routes></MemoryRouter>;
     const {rerender}=render(view(projectId));
     await userEvent.click(await screen.findByRole('button',{name:'Reject',exact:true}));
@@ -185,8 +190,8 @@ describe('InputDetailPage - Single Question Flow', () => {
     const {rerender}=render(view());
     await userEvent.click(await screen.findByRole('button',{name:'Reject',exact:true}));
     await userEvent.type(screen.getByLabelText('Reason'),'Earlier request draft');
-    if(identity==='job') await userEvent.click(screen.getByRole('link',{name:'Next request'}));
-    else { details.form.request_id='request-2'; rerender(view()); }
+    if(identity==='job') {setupMockInputs(projectId,[createMockPendingInput('next-job')],[{...details,jobId:'next-job'}]); await act(async()=>{await inputActivityService.getPendingInputs(projectId,true);}); await userEvent.click(screen.getByRole('link',{name:'Next request'}));}
+    else { details.form.request_id='request-2'; await act(async()=>{(inputActivityService as any).publish(projectId,[{...createMockPendingInput(jobId),client_payload_revision:2}]);}); rerender(view()); }
     await userEvent.click(await screen.findByRole('button',{name:'Reject',exact:true}));
     expect(screen.getByLabelText('Reason')).toHaveValue('');
     getDetails.mockRestore();
@@ -196,7 +201,41 @@ describe('InputDetailPage - Single Question Flow', () => {
     setupMockInputs(projectId, [createMockPendingInput(jobId)], [createMockSingleQuestionDetails(jobId)]);
     renderComponent();
 
-    expect(screen.getByText('Loading request...')).toBeInTheDocument();
+    expect(screen.getByText('Checking pending requests…')).toBeInTheDocument();
+  });
+
+  it.each(['pending', 'failed'])('keeps the review and its draft mounted while job metadata is %s', async state => {
+    setupReview();
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let failed = state === 'failed';
+    server.use(http.get(`http://localhost:8080/api/projects/${projectId}/jobs/${jobId}`, async () => {
+      if (state === 'pending') await gate;
+      return failed ? HttpResponse.json({error:'Metadata unavailable'}, {status:503})
+        : HttpResponse.json({...jobIdentity, job_id:jobId, status:'ACTIVE', prompt:'Metadata recovered'});
+    }));
+    const {container} = renderComponent();
+    try {
+      await userEvent.click(await screen.findByRole('button', {name:'Reject', exact:true}));
+      const feedback = screen.getByLabelText('Reason');
+      await userEvent.type(feedback, 'Keep this draft while context recovers');
+      await userEvent.upload(container.querySelector('input[type=file]')!, new File(['notes'], 'metadata-notes.md', {type:'text/markdown'}));
+      const upload = container.querySelector('input[type=file]')!;
+      if (state === 'failed') {
+        await screen.findByText('Job context unavailable');
+        failed = false;
+        await userEvent.click(screen.getByRole('button', {name:'Retry job context'}));
+      } else {
+        expect(screen.getByText('Loading job context...')).toBeVisible();
+        release();
+      }
+      await screen.findByText('Metadata recovered');
+      expect(screen.getByLabelText('Reason')).toBe(feedback);
+      expect(feedback).toHaveValue('Keep this draft while context recovers');
+      expect(container.querySelector('input[type=file]')).toBe(upload);
+      expect(screen.getByText('metadata-notes.md')).toBeVisible();
+      expect(screen.getByRole('button', {name:'OK'})).toBeEnabled();
+    } finally { release(); }
   });
 
   it('should display input details for single question', async () => {
@@ -324,16 +363,37 @@ describe('InputDetailPage - Single Question Flow', () => {
     expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/reviews`);
   });
 
-  it('should show error when input not found', async () => {
+  it('shows confirmed absence without probing details', async () => {
     setupMockInputs(projectId, [], []); // No inputs
     renderComponent();
 
     await waitFor(
       () => {
-      expect(screen.getByText(/Failed to load request details/i)).toBeInTheDocument();
+      expect(screen.getByText(/No outstanding input request/i)).toBeInTheDocument();
     },
       { timeout: 3000 }
     );
+  });
+
+  it('keeps an exact-job failure visible when no request details establish a reader', async () => {
+    setupMockInputs(projectId, [], []);
+    server.use(http.get(`http://localhost:8080/api/projects/${projectId}/jobs/${jobId}`, () => HttpResponse.json({error:'Job not found'}, {status:404})));
+    renderComponent();
+    expect(await screen.findByText('Could not load job')).toBeInTheDocument();
+    expect(screen.queryByText('No outstanding input request.')).not.toBeInTheDocument();
+  });
+
+  it('retains the draft and reports an operational detail error after retry', async () => {
+    setupMockInputs(projectId, [createMockPendingInput(jobId)], [createMockSingleQuestionDetails(jobId)]);
+    renderComponent();
+    const answer = await screen.findByRole('textbox', { name: 'How old are you?' });
+    fireEvent.change(answer, { target: { value: '30' } });
+    server.use(http.get(`http://localhost:8080/api/projects/${projectId}/user-inputs/${jobId}`, () => HttpResponse.json({ error: 'storage failed' }, { status: 500 })));
+    await act(async () => { await inputActivityService.getInputDetails(projectId, jobId, true).catch(() => {}); });
+    expect(await screen.findByText('Could not load this request')).toBeInTheDocument();
+    expect(screen.queryByText('No outstanding input request.')).not.toBeInTheDocument();
+    expect(answer).toHaveValue('30');
+    expect(screen.getByRole('button', { name: /submit/i })).toBeDisabled();
   });
 
   it('should display started time', async () => {

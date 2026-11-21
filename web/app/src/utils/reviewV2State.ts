@@ -13,7 +13,7 @@ export function reviewV2FromForm(form: unknown): ReviewV2Request | undefined {
   if (object(f.presentation).type !== 'review/v2') return undefined;
   return parseReviewV2(f.request);
 }
-export function reconcileReviewV2(selected: string, current: UserInputDetails | undefined, history: HistoryDetail | undefined, job: RecipeJob | undefined, provisional?: {request: ReviewV2Request; output: ReviewV2Output}, previous?: ReviewV2View): ReviewV2View {
+export function reconcileReviewV2(selected: string, current: UserInputDetails | undefined, history: HistoryDetail | undefined, job: RecipeJob | undefined, provisional?: {request: ReviewV2Request; output: ReviewV2Output}, previous?: ReviewV2View, availabilityKnown = true): ReviewV2View {
   const live = current && reviewV2FromForm(current.form);
   const recorded = history && reviewV2FromForm(history.raw_form);
   const liveMatches=live?.review_id===selected;
@@ -44,6 +44,7 @@ export function reconcileReviewV2(selected: string, current: UserInputDetails | 
   });
   const base = {request,history,documentHistory,conversation,output,job};
   if (job && isFinishedJob(job)) return {...base,phase:'terminal',message:`Job ${jobStatus(job).label.toLowerCase()}.`};
+  if (!availabilityKnown) return {...base,phase:'unavailable',message:'Pending request availability is unavailable. Refresh to reconcile this review.'};
   // A recorded receipt takes precedence over a stale current-form observation.
   const answeredCurrent = output?.receipt?.request_id && output.receipt.request_id === current?.form.request_id;
   if (live?.review_id === selected && !answeredCurrent) return {...base,current,phase:'actionable'};

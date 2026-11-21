@@ -70,7 +70,11 @@ async function geometry(page: Page) {
   return measurements;
 }
 async function offsets(page: Page) {
-  return page.evaluate(() => ({ document: scrollY, inner: [...document.querySelectorAll('.story-tree-panel, .story-tree-panel *')].map(e => [e.scrollLeft, e.scrollTop]) }));
+  // Refresh indicators can mount or unmount without scrolling. Compare actual
+  // offsets so zero-offset decoration does not change the scroll snapshot.
+  return page.evaluate(() => ({ document: scrollY, inner: [...document.querySelectorAll('.story-tree-panel, .story-tree-panel *')]
+    .filter(e => e.scrollLeft !== 0 || e.scrollTop !== 0)
+    .map(e => [e.scrollLeft, e.scrollTop]) }));
 }
 for (const size of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1100, height: 800 }, { width: 1101, height: 800 }, { width: 1440, height: 900 }, { width: 844, height: 390 }]) {
   test(`JS-SC-001,002,005,006,007 geometry ${size.width}x${size.height}`, async ({ page }, info) => {

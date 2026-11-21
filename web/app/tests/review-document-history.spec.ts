@@ -25,7 +25,7 @@ async function fixture(page: Page) {
   await page.route('**/api/**', route => route.fulfill({ status: 404, json: { error: 'No fixture for this endpoint' } }));
   await page.route('**/api/projects', route => route.fulfill({ json: [{ ...jobIdentity, tenant_id: 'history' }] }));
   await mockCells(page, ['platform']);
-  await page.route('**/user-inputs/pending', route => route.fulfill({ json: [] }));
+  await page.route('**/user-inputs/pending', route => route.fulfill({ json: [{ ...jobIdentity, id: 'one', client_payload_revision: 1, request_id: requestId }] }));
   await page.route('**/jobs/one', route => route.fulfill({ json: { ...jobIdentity, job_id: 'one', status: 'ACTIVE', prompt: 'Review document navigation' } }));
   await page.route('**/jobs/one/children?*', route => route.fulfill({ json: { jobs: [] } }));
   await page.route('**/user-inputs/one', route => {

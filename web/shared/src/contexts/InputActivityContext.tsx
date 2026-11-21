@@ -1,163 +1,90 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
-import { inputActivityService, type PendingInput } from '../services/inputActivityService';
+import { createContext, useContext, useState, useEffect, useCallback, useSyncExternalStore, useRef, ReactNode } from 'react';
+import { inputActivityService, type UserInputDetails } from '../services/inputActivityService';
 
-interface InputActivityContextValue {
-  pendingInputs: PendingInput[];
-  pendingCount: number;
-  isConnected: boolean;
-  connectionError: boolean;
-  loadError?: string;
-  currentProjectId: string | null;
-  setCurrentProjectId: (projectId: string | null) => void;
-  refresh: () => Promise<void>;
+const subscribe = (listener: () => void) => {
+  inputActivityService.on('discovery_changed', listener);
+  inputActivityService.on('details_changed', listener);
+  return () => { inputActivityService.off('discovery_changed', listener); inputActivityService.off('details_changed', listener); };
+};
+export function useInputDiscovery(project: string) {
+  return useSyncExternalStore(subscribe, () => inputActivityService.getDiscovery(project));
 }
-
-const InputActivityContext = createContext<InputActivityContextValue | null>(null);
-
-export interface InputActivityProviderProps {
-  children: ReactNode;
-}
-
-export function InputActivityProvider({ children }: InputActivityProviderProps) {
-  const [currentProjectId, setCurrentProjectIdState] = useState<string | null>(null);
-  const [snapshot, setSnapshot] = useState<{ projectId: string | null; inputs: PendingInput[] }>({ projectId: null, inputs: [] });
-  // Never expose an old tenant's snapshot during the render before effect cleanup.
-  const pendingInputs = snapshot.projectId === currentProjectId ? snapshot.inputs : [];
-  const setPendingInputs = (inputs: PendingInput[], projectId: string | null = null) => setSnapshot({ projectId, inputs });
-  const [failure, setFailure] = useState<{ projectId: string; message: string }>();
-  const loadError = failure?.projectId === currentProjectId ? failure.message : undefined;
-  const [isConnected, setIsConnected] = useState(false);
-  const [connectionError, setConnectionError] = useState(false);
-
-  const setCurrentProjectId = useCallback((projectId: string | null) => {
-    setCurrentProjectIdState(projectId);
-  }, []);
-  const projectRef = useRef(currentProjectId);
-  projectRef.current = currentProjectId;
-  const loadVersion = useRef(0);
-
-  const loadPendingInputs = async (projectId: string, force = false) => {
-    const version = ++loadVersion.current;
-    try {
-      const inputs = await inputActivityService.getPendingInputs(projectId, force);
-      if (projectRef.current === projectId && version === loadVersion.current) { setPendingInputs(inputs, projectId); setFailure(undefined); }
-    } catch (error) {
-      console.error('Failed to load pending inputs:', error);
-      if (projectRef.current === projectId && version === loadVersion.current) {
-        setPendingInputs([]);
-        setFailure({ projectId, message: error instanceof Error ? error.message : 'Could not load pending reviews' });
-      }
-    }
-  };
-
-  const refresh = async () => {
-    if (currentProjectId) {
-      await loadPendingInputs(currentProjectId, true);
-    }
-  };
-
+export function useCurrentInput(project: string, job: string, enabled = true) {
+  const discovery = useInputDiscovery(project);
+  const key = enabled ? inputActivityService.selectedVersion(project, job) : undefined;
+  const [turn, setTurn] = useState(0);
+  const [result, setResult] = useState<{key:string; details?:UserInputDetails|null; error?:string}>();
+  const retained = useRef<{owner: string; key: string; details: UserInputDetails}>();
+  const owner = JSON.stringify([project, job]);
   useEffect(() => {
-    if (!currentProjectId) {
-      // No project selected, disconnect
-      inputActivityService.disconnect();
-      setPendingInputs([]);
-      setIsConnected(false);
-      return;
+    const changed = () => setTurn(value => value + 1);
+    inputActivityService.on('details_changed', changed);
+    return () => inputActivityService.off('details_changed', changed);
+  }, []);
+  useEffect(() => {
+    if (!key) return;
+    let active = true;
+    inputActivityService.getInputDetails(project, job).then(details => {if(active)setResult({key,details});}, error => {if(active)setResult({key,error: error instanceof Error ? error.message : String(error)});});
+    return () => {active = false;};
+  }, [project, job, key, turn]);
+  const state = key ? inputActivityService.getDetailsState(project, job) : undefined;
+  const observed = state ?? (result?.key === key ? result : undefined);
+  if (observed?.details) retained.current = {owner, key: key!, details: observed.details};
+  // Keep reviews readable through normal gaps. An ordinary prompt must disappear
+  // on confirmed absence, and a later outage must not bring that obsolete form back.
+  const retainedForm = retained.current?.details.form;
+  const retainedReview = retainedForm?.kind === 'review' || retainedForm?.presentation?.type === 'review/v2';
+  if (enabled && discovery.status === 'current' && (!key || observed?.details === null) && !retainedReview) {
+    retained.current = undefined;
+  }
+  const refresh = useCallback(async () => {
+    try {
+      const details = await inputActivityService.getInputDetails(project, job, true);
+      const key = inputActivityService.selectedVersion(project, job);
+      if (key) setResult({key,details});
+    } catch (error) {
+      const key = inputActivityService.selectedVersion(project, job);
+      if (key) setResult({key,error: error instanceof Error ? error.message : String(error)});
+      throw error;
     }
+  }, [project, job]);
+  return { discovery, version: key, details: key ? observed?.details : undefined,
+    readableDetails: retained.current?.owner === owner ? retained.current.details : undefined,
+    readableVersion: retained.current?.owner === owner ? retained.current.key : undefined,
+    error: state ? state.error?.message : result?.key === key ? result?.error : undefined, loading: !!key && (!observed || (observed.details === undefined && !observed.error)), refresh };
+}
 
-    setPendingInputs([]);
-    setIsConnected(false);
-    // Connect to SSE for current project
-    inputActivityService.connect(currentProjectId);
-
-    // Listen for connection events
-    const handleConnected = () => {
-      setIsConnected(true);
-      setConnectionError(false);
-      // Load pending inputs on connection
-      loadPendingInputs(currentProjectId);
-    };
-
-    const handleDisconnected = () => {
-      setIsConnected(false);
-    };
-
-    const handleConnectionFailed = () => {
-      setConnectionError(true);
-      setIsConnected(false);
-    };
-
-    const handleInputPending = () => {
-      // Reload pending inputs when new input arrives
-      loadPendingInputs(currentProjectId);
-    };
-
-    const handleInputFinished = () => {
-      // Reload when any tab completes or cancels an input request.
-      loadPendingInputs(currentProjectId);
-    };
-
-    const handleSnapshot = ({ projectId, inputs }: { projectId: string; inputs: PendingInput[] }) => {
-      if (projectRef.current !== projectId) return;
-      loadVersion.current++;
-      setPendingInputs(inputs, projectId); setFailure(undefined);
-    };
-    const handleInputError = ({ projectId, error }: { projectId: string; error: unknown }) => {
-      if (projectRef.current !== projectId) return;
-      loadVersion.current++; setPendingInputs([]);
-      setFailure({ projectId, message: error instanceof Error ? error.message : 'Invalid pending review response' });
-    };
-    inputActivityService.on('inputs_error', handleInputError);
-    inputActivityService.on('inputs_changed', handleSnapshot);
-    inputActivityService.on('connected', handleConnected);
-    inputActivityService.on('disconnected', handleDisconnected);
-    inputActivityService.on('connection_failed', handleConnectionFailed);
-    inputActivityService.on('input_pending', handleInputPending);
-    inputActivityService.on('input_cancelled', handleInputFinished);
-    inputActivityService.on('input_completed', handleInputFinished);
-
-    // Load initial data
-    if (inputActivityService.getConnectionState() === 'open') {
-      setIsConnected(true);
-      loadPendingInputs(currentProjectId);
-    }
-
+function useActivityValue() {
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const discovery = useInputDiscovery(currentProjectId ?? '');
+  const [isConnected, setConnected] = useState(false);
+  useEffect(() => {
+    const connected = () => setConnected(true);
+    const disconnected = () => setConnected(false);
+    inputActivityService.on('connected', connected);
+    inputActivityService.on('disconnected', disconnected);
+    if (currentProjectId) {
+      inputActivityService.connect(currentProjectId);
+      void inputActivityService.getPendingInputs(currentProjectId, true).catch(() => {});
+    } else inputActivityService.disconnect();
     return () => {
-      inputActivityService.off('inputs_error', handleInputError);
-      inputActivityService.off('inputs_changed', handleSnapshot);
-      inputActivityService.off('connected', handleConnected);
-      inputActivityService.off('disconnected', handleDisconnected);
-      inputActivityService.off('connection_failed', handleConnectionFailed);
-      inputActivityService.off('input_pending', handleInputPending);
-      inputActivityService.off('input_cancelled', handleInputFinished);
-      inputActivityService.off('input_completed', handleInputFinished);
+      inputActivityService.off('connected', connected); inputActivityService.off('disconnected', disconnected);
+      inputActivityService.disconnect();
     };
   }, [currentProjectId]);
-
-  const pendingCount = pendingInputs.length;
-
-  return (
-    <InputActivityContext.Provider
-      value={{
-        pendingInputs,
-        pendingCount,
-        isConnected,
-        connectionError,
-        loadError,
-        currentProjectId,
-        setCurrentProjectId,
-        refresh,
-      }}
-    >
-      {children}
-    </InputActivityContext.Provider>
-  );
+  const refresh = useCallback(async () => {
+    if (currentProjectId) await inputActivityService.getPendingInputs(currentProjectId, true).catch(() => {});
+  }, [currentProjectId]);
+  return { pendingInputs: discovery.inputs, pendingCount: discovery.inputs.length, discoveryStatus: discovery.status,
+    isConnected, connectionError: discovery.status === 'unavailable', loadError: discovery.error,
+    currentProjectId, setCurrentProjectId, refresh };
 }
-
+const InputActivityContext = createContext<ReturnType<typeof useActivityValue> | null>(null);
+export function InputActivityProvider({children}: {children: ReactNode}) {
+  return <InputActivityContext.Provider value={useActivityValue()}>{children}</InputActivityContext.Provider>;
+}
 export function useInputActivity() {
-  const context = useContext(InputActivityContext);
-  if (!context) {
-    throw new Error('useInputActivity must be used within InputActivityProvider');
-  }
-  return context;
+  const value = useContext(InputActivityContext);
+  if (!value) throw new Error('useInputActivity must be used within InputActivityProvider');
+  return value;
 }
