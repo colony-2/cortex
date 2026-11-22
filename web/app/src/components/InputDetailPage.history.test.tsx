@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { act, configure, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, configure, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { message } from 'antd';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation, useNavigate, useNavigationType, type Location, type NavigateFunction, type NavigationType } from 'react-router-dom';
 import { inputActivityService, InputActivityProvider, type UserInputDetails } from '@colony2/shared';
@@ -33,7 +34,13 @@ beforeEach(() => {
     return new Response(`# Body ${new URL(url).searchParams.get('document_id')}`);
   }));
 });
-afterEach(() => { getDetails.mockRestore(); submit.mockRestore(); vi.unstubAllGlobals(); });
+afterEach(async () => {
+  // Static messages own a React root outside the rendered page. Drain its
+  // removal before restoring fetch or letting Vitest dispose of jsdom.
+  await act(async () => { cleanup(); message.destroy(); });
+  expect(screen.queryByText('Response submitted successfully')).not.toBeInTheDocument();
+  getDetails.mockRestore(); submit.mockRestore(); vi.unstubAllGlobals();
+});
 interface ObservedRouter { state: { location: Location; historyAction: NavigationType }; navigate: NavigateFunction }
 function HistoryProbe({ router }: { router: ObservedRouter }) {
   router.state = { location: useLocation(), historyAction: useNavigationType() };
@@ -95,6 +102,7 @@ it('H09-11 preserves drafts, uploads and details through exact A/B/C history; no
   fireEvent.click(screen.getByRole('button', { name: 'OK', exact: true }));
   await waitFor(() => expect(submit).toHaveBeenCalledWith('tenant', 'job', 'r', expect.objectContaining({ fields: { decision: 'revise', feedback: 'Draft stays' }, attachments: { attachment: file } })));
   await screen.findByRole('heading', { name: 'Review queue' });
+  await screen.findByText('Response submitted successfully');
   expect(router.state.location.search).toBe('?q=foo+bar&cellId=platform&sort=title&order=descend');
 });
 it.each(['?request_id=old&document_id=a', '?request_id=r&request_id=r&document_id=a', '?document_id=a&document_id=a'])('H12-14 withholds stale/invalid review and replaces only after recovery: %s', async search => {

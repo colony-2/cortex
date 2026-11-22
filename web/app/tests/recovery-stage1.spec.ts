@@ -199,7 +199,7 @@ for (const phone of [false, true]) {
    return route.fulfill({ json: { jobs: [retained], next_page_token: cursor } });
   });
   await page.goto(goal);
-  await expect(page.getByText('Recover release validation', { exact: true }).first()).toBeVisible();
+  await expect(page.locator('.goal-full-prompt')).toHaveText(source.prompt);
   if (!phone) await capture(page, '14-retained-first-page');
   await page.getByRole('button', { name: 'Next jobs', exact: true }).click();
   await expect(page.getByText('No retained matches on this page.', { exact: true })).toBeVisible();
@@ -215,7 +215,7 @@ for (const phone of [false, true]) {
   await expect(page).toHaveURL(cursorURL);
   await capture(page, phone ? '18-direct-cursor-phone' : '17-direct-cursor-desktop');
   await page.getByRole('button', { name: 'First page', exact: true }).click();
-  await expect(page.getByText('Recover release validation', { exact: true }).first()).toBeVisible();
+  await expect(page.locator('.goal-full-prompt')).toHaveText(source.prompt);
   await expect(page).toHaveURL(goal + '?executionState=cells-v1');
   await expect(page.getByRole('button', { name: 'Next jobs', exact: true })).toBeEnabled();
   expect(reads).toEqual(['', cursor, cursor, '']);

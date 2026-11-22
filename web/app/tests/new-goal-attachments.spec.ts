@@ -39,3 +39,45 @@ test('ATT-018 ATT-020 ATT-035 creates a goal with persisted file bytes', async (
  expect(await artifact.body()).toEqual(upload.buffer);
  }
 });
+
+for (const width of [1440, 390]) test(`pasted PNG persists exact bytes and renders from owning input artifacts at ${width}px`, async ({ page, request, context, baseURL }, testInfo) => {
+ const tenant = `pasted-${randomUUID()}`;
+ const cell = await registerCell(request, tenant);
+ await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+ await page.setViewportSize({ width, height: 900 });
+ await page.goto(`/project/${tenant}/goals`);
+ await page.getByRole('button', { name: 'New goal', exact: true }).click();
+ const dialog = page.getByRole('dialog', { name: 'New goal' });
+ const prompt = dialog.getByRole('textbox', { name: 'Prompt', exact: true });
+ await dialog.getByRole('combobox', { name: 'Cell', exact: true }).click();
+ await page.getByTitle(`${cell.name} · ${cell.repo}`, { exact: true }).click();
+ await prompt.fill('Build the release dashboard'); await prompt.press('End'); await prompt.press('Enter');
+ const bytes = Buffer.from(await prompt.evaluate(element => {
+   const canvas = document.createElement('canvas'); canvas.width = 240; canvas.height = 100;
+   const ctx = canvas.getContext('2d')!; ctx.fillStyle = '#e6f4ff'; ctx.fillRect(0, 0, 240, 100);
+   ctx.fillStyle = '#1677ff'; ctx.font = '18px sans-serif'; ctx.fillText('Release → Review', 25, 55);
+   const bytes = Uint8Array.from(atob(canvas.toDataURL().split(',')[1]), c => c.charCodeAt(0));
+   const transfer = new DataTransfer(); transfer.items.add(new File([bytes], 'flow.png', { type: 'image/png' }));
+   element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
+   return Array.from(bytes);
+ }));
+ await expect(prompt.locator('img')).toBeVisible();
+ const responseEvent = page.waitForResponse(response => response.url().endsWith(`/api/projects/${tenant}/jobs`) && response.request().method() === 'POST');
+ await dialog.getByRole('button', { name: 'Create goal', exact: true }).click();
+ const response = await responseEvent; expect(response.status(), await response.text()).toBe(201);
+ const job = await response.json();
+ const detail = await request.get(`/api/projects/${tenant}/jobs/${job.job_id}`);
+ const storedPrompt = (await detail.json()).prompt;
+ expect(storedPrompt).toMatch(/!\[flow\.png\]\(pasted-[a-f\d-]+\.png\)/);
+ const filename = storedPrompt.match(/\(pasted-[a-f\d-]+\.png\)/)[0].slice(1, -1);
+ const inventory = await request.get(`/api/projects/${tenant}/jobs/${job.job_id}/input-artifacts`);
+ expect((await inventory.json()).artifacts.filter((a: { name: string }) => a.name === filename)).toHaveLength(1);
+ const download = await request.get(`/api/projects/${tenant}/jobs/${job.job_id}/tasks/0/artifacts/${filename}`);
+ expect(download.status()).toBe(200); expect(await download.body()).toEqual(bytes);
+ await expect(page).toHaveURL(new RegExp(`/goals/${job.goal_id}`));
+ await expect(page.locator('.goal-full-prompt img[alt="flow.png"]')).toBeVisible();
+ await page.screenshot({ path: testInfo.outputPath(`goal-bound-image-${width}.png`), animations: 'disabled' });
+ await page.goto(`/project/${tenant}/jobs/${job.job_id}/story`);
+ await expect(page.getByRole('region', { name: 'Job prompt' }).locator('img[alt="flow.png"]')).toBeVisible();
+ await page.screenshot({ path: testInfo.outputPath(`story-bound-image-${width}.png`), animations: 'disabled' });
+});

@@ -19,6 +19,7 @@ async function filter(page: Page, name: string, selected: string[] | null) {
   await popup.getByRole('button', { name: selected === null ? 'Select all' : 'Select none', exact: true }).click();
   for (const label of selected || []) await popup.getByRole('checkbox', { name: label, exact: true }).check();
   await popup.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(popup).toBeHidden();
 }
 
 test.beforeEach(async ({ page, context, baseURL }) => {
@@ -188,7 +189,7 @@ test('compact controls meet touch and text-entry sizes and login fits', async ({
   await noOverflow(page);
 });
 
-test('goal target modes validate before posting and cancellation starts a fresh draft', async ({ page }) => {
+test('existing-cell validation precedes posting and cancellation starts a fresh draft', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const posts: unknown[] = [];
   page.on('request', request => { if (request.method() === 'POST') posts.push(request.postDataJSON()); });
@@ -196,24 +197,26 @@ test('goal target modes validate before posting and cancellation starts a fresh 
   await page.getByRole('button', { name: 'New goal', exact: true }).click();
   let dialog = page.getByRole('dialog');
   await expect(dialog.locator('.goal-target-summary')).toContainText('platform');
-  await dialog.getByRole('radio', { name: 'New cell', exact: true }).check();
-  await dialog.getByLabel('Repository', { exact: true }).fill('github/colony-2/a?invalid');
-  await dialog.getByLabel('Prompt').fill('An old draft');
+  await expect(dialog.getByRole('radio')).toHaveCount(0);
+  await expect(dialog.getByLabel('Repository', { exact: true })).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Create goal', exact: true }).click();
-  await expect(dialog.getByText('Enter a cell name')).toBeVisible();
+  await expect(dialog.getByText('Enter a prompt with text or an image')).toBeVisible();
+  await expect(dialog.getByRole('textbox', { name: 'Prompt', exact: true })).toHaveAttribute('aria-invalid', 'true');
   expect(posts).toEqual([]);
+  await dialog.getByLabel('Prompt').fill('An old draft');
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'New goal', exact: true })).toBeFocused();
   await page.getByRole('button', { name: 'New goal', exact: true }).click();
   dialog = page.getByRole('dialog');
-  await expect(dialog.getByLabel('Prompt')).toHaveValue('');
-  await expect(dialog.getByRole('radio', { name: 'Existing cell' })).toBeChecked();
+  await expect(dialog.getByLabel('Prompt')).toHaveText('');
+  await expect(dialog.getByRole('radio')).toHaveCount(0);
   const picker = dialog.getByRole('combobox', { name: 'Cell', exact: true });
   await picker.focus(); await picker.fill('api'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
   await expect(dialog.locator('.goal-target-summary')).toHaveText('api · github.com/acme/api');
   await dialog.getByRole('button', { name: 'Create goal', exact: true }).click();
-  await expect(dialog.getByText('Enter a prompt')).toBeVisible();
+  await expect(dialog.getByText('Enter a prompt with text or an image')).toBeVisible();
+  await expect(dialog.getByRole('textbox', { name: 'Prompt', exact: true })).toHaveAttribute('aria-invalid', 'true');
   expect(posts).toEqual([]);
 });
 
@@ -273,7 +276,7 @@ test.describe('native browser zoom', () => {
     await newGoal.click();
     let dialog = page.getByRole('dialog');
     await dialog.getByRole('button', { name: 'Create goal', exact: true }).click();
-    await expect(dialog.getByText('Enter a prompt')).toBeVisible();
+    await expect(dialog.getByText('Enter a prompt with text or an image')).toBeVisible();
     await dialog.getByLabel('Prompt').fill(prompt);
     await noOverflow(page);
     await dialog.getByRole('button', { name: 'Create goal', exact: true }).scrollIntoViewIfNeeded();

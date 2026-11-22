@@ -88,8 +88,10 @@ test(`confirms cancellation and active archive, immediately archives cancelled j
   // All remaining selections are now cancelled: no second confirmation click.
   await page.getByRole('button', { name: 'Archive selected' }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'bulk-one', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'bulk-two', exact: true })).toHaveCount(0);
+  // Wait for the refreshed inbox, rather than matching the compact link label
+  // (which includes status and therefore never equals the bare job ID).
+  await expect(page.getByRole('checkbox', { name: 'Select job bulk-one', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('checkbox', { name: 'Select job bulk-two', exact: true })).toHaveCount(0);
   const remaining = (await (await request.get(`${base}?status=all`)).json()).jobs;
   expect(remaining.map((job: { job_id: string }) => job.job_id).sort()).toEqual(['detail-job', 'untouched']);
   expect(remaining.find((job: { job_id: string }) => job.job_id === 'untouched').status).toBe('READY');
@@ -487,17 +489,17 @@ test('shows persisted prompt and failure on the production story through direct 
   }
 });
 
-test('registers an ordinary cell named root and creates its goal on a phone', async ({ page, request, context, baseURL }) => {
+test('creates a goal for an existing ordinary cell named root on a phone', async ({ page, request, context, baseURL }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const tenant = `phone-${randomUUID()}`;
   await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
-  await request.post(`/api/projects/${tenant}/cells`, { data: { name: 'platform', repo: 'github.com/cortex-test/platform' } });
+  await request.post(`/api/projects/${tenant}/cells`, { data: { name: 'root', repo: 'github.com/colony-2/cortex' } });
   await page.goto(`/project/${tenant}/goals`);
   await page.getByRole('button', { name: 'New goal', exact: true }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByRole('radio', { name: 'New cell', exact: true }).check();
-  await dialog.getByLabel('Repository', { exact: true }).fill('github.com/colony-2/cortex');
-  await dialog.getByLabel('Name', { exact: true }).fill('root');
+  await expect(dialog.getByRole('radio')).toHaveCount(0);
+  await dialog.getByRole('combobox', { name: 'Cell', exact: true }).click();
+  await page.getByTitle('root · github.com/colony-2/cortex', { exact: true }).click();
   await dialog.getByLabel('Prompt').fill('Build a phone-friendly dashboard');
   const responsePromise = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith(`/projects/${tenant}/jobs`));
   const mutations: string[] = [];
@@ -505,8 +507,8 @@ test('registers an ordinary cell named root and creates its goal on a phone', as
   await dialog.getByRole('button', { name: 'Create goal', exact: true }).click();
   const response = await responsePromise;
   expect(response.status(), await response.text()).toBe(201);
-  expect(response.request().postDataJSON()).toEqual({ cell: 'root', repo: 'github.com/colony-2/cortex', inputs: { prompt: 'Build a phone-friendly dashboard', type: 'build' } });
-  expect(mutations).toEqual([`/api/projects/${tenant}/cells`, `/api/projects/${tenant}/jobs`]);
+  expect(response.request().postDataJSON()).toEqual({ cell: 'root', inputs: { prompt: 'Build a phone-friendly dashboard', type: 'build' } });
+  expect(mutations).toEqual([`/api/projects/${tenant}/jobs`]);
   const job = await response.json();
   const stored = await (await request.get(`/api/projects/${tenant}/jobs/${job.job_id}`)).json();
   expect(stored.repo.replace(/\.git$/, '')).toContain('github.com/colony-2/cortex');

@@ -1,4 +1,5 @@
 import { requirementSummary } from '../utils/executionRequirements';
+import GoalPrompt from './GoalPrompt';
 import JobLeaseTimeline from './JobLeaseTimeline';
 import type { ReactNode } from 'react';
 import { Alert, Descriptions, Space, Typography } from 'antd';
@@ -63,7 +64,7 @@ export default function JobListDetails({ job, inspection, projectId, showPrompt 
   delete (rawData as Partial<RecipeJob>).other_goal_ids;
 
   return <Space direction="vertical" size="middle" style={{ width: '100%', overflowWrap: 'anywhere' }}>
-    {showPrompt && job.prompt && <div style={{ whiteSpace: 'pre-wrap' }}>{job.prompt}</div>}
+    {showPrompt && job.prompt && <GoalPrompt projectId={projectId} jobId={job.job_id} text={job.prompt} />}
     <JobLeaseTimeline projectId={projectId} jobId={job.job_id} createdAt={job.created_at} />
     <JobWaitLinks job={job} projectId={projectId} details={inspection} />
     {inspection?.blocking_wait?.dependencies.map((dependency, index) => <div key={index}>

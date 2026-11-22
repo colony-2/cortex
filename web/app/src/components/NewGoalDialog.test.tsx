@@ -1,9 +1,10 @@
+vi.mock('./GoalPromptEditor', () => ({ default: ({ value, onChange, disabled, id }: any) => <textarea id={id} aria-label="Prompt" value={value || ''} disabled={disabled} onChange={event => onChange(event.target.value)} /> }));
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { createCell, getCell, listCells, submitJob } from '@colony2/shared/api';
 import { registryCell } from '../test/cellFixtures';
 import NewGoalDialog from './NewGoalDialog';
-vi.mock('@colony2/shared/api', () => ({ createCell: vi.fn(), getCell: vi.fn(), listCells: vi.fn(), submitJob: vi.fn() }));
+vi.mock('@colony2/shared/api', async importOriginal => ({ ...await importOriginal<typeof import('@colony2/shared/api')>(), createCell: vi.fn(), getCell: vi.fn(), listCells: vi.fn(), submitJob: vi.fn() }));
 beforeEach(() => {
   vi.mocked(createCell).mockReset();
   vi.mocked(createCell).mockResolvedValue({ ...registryCell("new-cell", "one"), repo: "github.com/acme/new" });
@@ -26,24 +27,30 @@ it('refreshes a selected stable ID and submits its renamed canonical name withou
   await waitFor(() => expect(submitJob).toHaveBeenCalledWith('one', { cell: 'renamed', inputs: { prompt: 'Build a tool', type: 'build' } }));
   expect(created).toHaveBeenCalledWith('g');
 });
-it('registers an explicit name and repo before submitting a new-cell goal', async () => {
+it('CX-38 CX-39 offers existing cells without registration controls', async () => {
   open(null);
-  fireEvent.click(screen.getByRole('radio', { name: 'New cell' }));
-  fireEvent.change(screen.getByLabelText('Repository'), { target: { value: 'git@github.com:acme/new.git' } });
+  await screen.findByRole('combobox', { name: 'Cell' });
+  expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Repository')).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Create goal' })).toBeEnabled());
   fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
-  await screen.findByText('Enter a cell name');
+  await screen.findByText('Choose a cell');
+  expect(createCell).not.toHaveBeenCalled();
   expect(submitJob).not.toHaveBeenCalled();
-  vi.mocked(getCell).mockResolvedValue({ ...registryCell('new-cell', 'one'), repo: 'github.com/acme/new' });
-  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'new-cell' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
-  await waitFor(() => expect(submitJob).toHaveBeenCalledWith('one', expect.objectContaining({ cell: 'new-cell', repo: 'github.com/acme/new' })));
-  expect(vi.mocked(submitJob).mock.calls[0][1]).not.toHaveProperty('job_id');
-  expect(createCell).toHaveBeenCalledWith('one', { name: 'new-cell', repo: 'git@github.com:acme/new.git', requestId: expect.any(String) });
-  expect(vi.mocked(createCell).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(submitJob).mock.invocationCallOrder[0]);
+});
+it('CX-38 CX-39 explains empty registries and disables submission', async () => {
+  vi.mocked(listCells).mockResolvedValue({ cells: [] });
+  open(null);
+  await screen.findByText('Create a cell in Cells first, then choose it here to start a goal.');
+  expect(screen.getByRole('button', { name: 'Create goal' })).toBeDisabled();
+  expect(createCell).not.toHaveBeenCalled();
+  expect(submitJob).not.toHaveBeenCalled();
 });
 it('preserves fields and reuses the original submission after an uncertain failure', async () => {
   vi.mocked(submitJob).mockRejectedValueOnce(new Error('Connection lost')).mockResolvedValue({ goal_id: 'g' } as any);
   open();
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Create goal' })).toBeEnabled());
   fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
   await screen.findByText('Connection lost');
   const first = vi.mocked(submitJob).mock.calls[0][1];
@@ -51,6 +58,7 @@ it('preserves fields and reuses the original submission after an uncertain failu
   await waitFor(() => expect(submitJob).toHaveBeenCalledTimes(2));
   expect(vi.mocked(submitJob).mock.calls[1][1]).toBe(first);
   expect(first).not.toHaveProperty('job_id');
+  expect(createCell).not.toHaveBeenCalled();
 });
 it('rejects a cell retired since selection', async () => {
   open();
@@ -61,50 +69,12 @@ it('rejects a cell retired since selection', async () => {
   expect(submitJob).not.toHaveBeenCalled();
 });
 it('blocks submission while the registry is unavailable and allows retry', async () => {
-  vi.mocked(listCells).mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ cells: [] });
+  vi.mocked(listCells).mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ cells: [registryCell('platform', 'one')] });
   open();
   await screen.findByText('offline');
   expect(screen.getByRole('button', { name: 'Create goal' })).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: 'Retry cells' }));
   await waitFor(() => expect(screen.getByRole('button', { name: 'Create goal' })).not.toBeDisabled());
-});
-
-function fillNewCell() {
-  const created = open(null);
-  fireEvent.click(screen.getByRole('radio', { name: 'New cell' }));
-  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'new-cell' } });
-  fireEvent.change(screen.getByLabelText('Repository'), { target: { value: 'github.com/acme/new' } });
-  vi.mocked(getCell).mockResolvedValue({ ...registryCell('new-cell', 'one'), repo: 'github.com/acme/new' });
-  return created;
-}
-it('retries an uncertain registration with the same ID before submitting any job', async () => {
-  fillNewCell();
-  vi.mocked(createCell).mockRejectedValueOnce(new Error('Registration connection lost'));
-  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
-  await screen.findByText('Registration connection lost');
-  expect(submitJob).not.toHaveBeenCalled();
-  fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Updated goal' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
-  await waitFor(() => expect(submitJob).toHaveBeenCalledTimes(1));
-  expect(vi.mocked(createCell).mock.calls[1]).toEqual(vi.mocked(createCell).mock.calls[0]);
-});
-it('keeps a successfully registered cell when submission fails and does not register it again', async () => {
-  fillNewCell();
-  vi.mocked(submitJob).mockRejectedValueOnce(new Error('Goal connection lost'));
-  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
-  await screen.findByText('Goal connection lost');
-  expect(screen.getByText(/Cell “new-cell” is registered/)).toBeVisible();
-  const first = vi.mocked(submitJob).mock.calls[0];
-  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
-  await waitFor(() => expect(submitJob).toHaveBeenCalledTimes(2));
-  expect(createCell).toHaveBeenCalledTimes(1);
-  expect(vi.mocked(submitJob).mock.calls[1]).toEqual(first);
-});
-it('accepts root as an ordinary new cell name', async () => {
-  fillNewCell();
-  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'root' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
-  await waitFor(() => expect(createCell).toHaveBeenCalledWith('one', expect.objectContaining({ name: 'root' })));
 });
 
 function attach(files: File[]) {
@@ -145,13 +115,12 @@ it('ATT-013 ATT-014 ATT-016 ATT-019 retains exact files on retry and distinguish
  expect(vi.mocked(submitJob).mock.calls[2][2]![0]).toBe(replacement);
  expect(vi.mocked(submitJob).mock.calls[2][2]).toEqual([replacement]);
 });
-it('ATT-010 preserves files across modes and rejects a missing prompt before registration', async () => {
+it('ATT-010 CX-39 preserves files and rejects a missing prompt without registration', async () => {
  open(); attach([new File([], 'empty')]); await screen.findByRole('button', { name: 'Remove empty' });
- fireEvent.click(screen.getByRole('radio', { name: 'New cell' }));
  expect(screen.getByRole('button', { name: 'Remove empty' })).toBeVisible();
  fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: '' } });
  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
- await screen.findByText('Enter a prompt');
+ await screen.findByText('Enter a prompt with text or an image');
  expect(createCell).not.toHaveBeenCalled(); expect(submitJob).not.toHaveBeenCalled();
 });
 it('ATT-012 guards duplicate submission and disables file mutation while pending', async () => {
@@ -174,8 +143,20 @@ it('ATT-009 retains valid selection after oversized additions', async () => {
  expect(screen.getByRole('button', { name: 'Remove ok' })).toBeVisible();
  expect(screen.queryByRole('button', { name: 'Remove big' })).not.toBeInTheDocument();
 });
-it('ATT-011 revalidates file sizes before registration', async () => {
- fillNewCell();
+it('RC-39 rejects an invalid filename without replacing valid attachments', async () => {
+ const valid = new File(['retained requirements'], 'brief.md', { lastModified: 1 });
+ open(); attach([valid]); await screen.findByRole('button', { name: 'Remove brief.md' });
+ attach([new File(['invalid'], '../secret.txt')]);
+ await screen.findByText(/Invalid filename/);
+ expect(screen.getAllByRole('button', { name: /^Remove / }).map(button => button.getAttribute('aria-label'))).toEqual(['Remove brief.md']);
+ vi.mocked(submitJob).mockRejectedValue(new Error('Inspect retained selection'));
+ fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
+ await screen.findByText('Inspect retained selection');
+ expect(vi.mocked(submitJob).mock.calls[0][2]).toEqual([valid]);
+ expect(vi.mocked(submitJob).mock.calls[0][2]![0]).toBe(valid);
+});
+it('ATT-011 revalidates file sizes before submission', async () => {
+ open();
  const file = new File(['ok'], 'file'); attach([file]);
  await screen.findByRole('button', { name: 'Remove file' });
  Object.defineProperty(file, 'size', { value: 26 * 1024 * 1024 });
@@ -193,17 +174,18 @@ it('ATT-017 cancellation discards files without uploading', async () => {
  view.unmount(); render(<NewGoalDialog {...props} />);
  expect(screen.queryByRole('button', { name: 'Remove discard' })).not.toBeInTheDocument();
 });
-it('ATT-013 retains files after registration failure, then submits them for the new cell', async () => {
- const created = fillNewCell(); const file = new File(['brief'], 'brief'); attach([file]);
+it('CX-39 retains files after target refresh failure and never registers a cell', async () => {
+ const created = open(); const file = new File(['brief'], 'brief'); attach([file]);
  await screen.findByRole('button', { name: 'Remove brief' });
- vi.mocked(createCell).mockRejectedValueOnce(new Error('Registration failed'));
+ vi.mocked(getCell).mockRejectedValueOnce(new Error('Cell lookup failed'));
  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
- await screen.findByText('Registration failed');
+ await screen.findByText('Cell lookup failed');
  expect(submitJob).not.toHaveBeenCalled();
  expect(screen.getByRole('button', { name: 'Remove brief' })).toBeVisible();
  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
- await waitFor(() => expect(submitJob).toHaveBeenCalledWith('one', expect.objectContaining({ cell: 'new-cell' }), [file]));
+ await waitFor(() => expect(submitJob).toHaveBeenCalledWith('one', expect.objectContaining({ cell: 'platform' }), [file]));
  expect(created).toHaveBeenCalledWith('g');
+ expect(createCell).not.toHaveBeenCalled();
 });
 it('ATT-015 allocates new attempts when files are added, removed, or reordered by reselection', async () => {
  vi.mocked(submitJob).mockRejectedValue(new Error('Try again'));
@@ -225,10 +207,13 @@ it('ATT-015 allocates new attempts when files are added, removed, or reordered b
  expect(calls[3][2]).toEqual([b, a]);
 });
 
-it('CID-001 CID-003 CID-006 refreshes edited prompts and modes while returning the complete goal identity', async () => {
+it('CID-001 CID-003 CID-006 refreshes edited prompts and targets while returning the complete goal identity', async () => {
  const goalId = '3LfLqNNl2VVLo8Cg5a032Lm0igK';
  vi.mocked(submitJob).mockRejectedValue(new Error('Try again'));
- const created = fillNewCell();
+ vi.mocked(listCells).mockResolvedValue({ cells: [registryCell('platform', 'one'), registryCell('api', 'one')] });
+ vi.mocked(getCell).mockImplementation(async (_tenant, id) => registryCell(id === 'cell-api' ? 'api' : 'platform', 'one'));
+ const created = open();
+ await waitFor(() => expect(screen.getByRole('button', { name: 'Create goal' })).toBeEnabled());
  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
  await screen.findByText('Try again');
  const first = vi.mocked(submitJob).mock.calls[0][1];
@@ -238,12 +223,13 @@ it('CID-001 CID-003 CID-006 refreshes edited prompts and modes while returning t
  await screen.findByRole('button', { name: 'Create goal' });
  expect(vi.mocked(submitJob).mock.calls[1][1]).not.toBe(first);
  expect(vi.mocked(submitJob).mock.calls[1][1].inputs?.prompt).toBe('Edited prompt');
- fireEvent.click(screen.getByRole('radio', { name: 'Existing cell' }));
  fireEvent.mouseDown(screen.getByRole('combobox'));
- fireEvent.click(await screen.findByText('platform · github.com/acme/platform', { selector: '.ant-select-item-option-content' }));
+ fireEvent.click(await screen.findByText('api · github.com/acme/api', { selector: '.ant-select-item-option-content' }));
  vi.mocked(submitJob).mockResolvedValueOnce({ goal_id: goalId } as any);
  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
  await waitFor(() => expect(created).toHaveBeenCalledWith(goalId));
+ expect(vi.mocked(submitJob).mock.calls[2][1].cell).toBe('api');
+ expect(vi.mocked(submitJob).mock.calls[2][1]).not.toBe(vi.mocked(submitJob).mock.calls[1][1]);
  expect(vi.mocked(submitJob).mock.calls[2][1]).not.toHaveProperty('repo');
  expect(vi.mocked(submitJob).mock.calls.every(call => !('job_id' in call[1]))).toBe(true);
 });
@@ -258,4 +244,27 @@ it('submits a long new-goal prompt intact without an editor maximum', async () =
  expect(editor).toHaveValue(prompt);
  fireEvent.click(screen.getByRole('button',{name:'Create goal'}));
  await waitFor(()=>expect(submitJob).toHaveBeenCalledWith('one',expect.objectContaining({inputs:{prompt,type:'build'}})));
+});
+
+for (const source of ['---', '## ', '> ', '```\n\n```']) it(`CX-17 rejects formatting-only source ${JSON.stringify(source)}`, async () => {
+  open();
+  await screen.findAllByText('platform · github.com/acme/platform');
+  fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: source } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
+  await screen.findByText('Enter a prompt with text or an image');
+  expect(submitJob).not.toHaveBeenCalled();
+  expect(screen.getByLabelText('Prompt')).toHaveValue(source);
+});
+
+it('CX-33 keeps a referenced attachment until its image reference is removed', async () => {
+  open();
+  attach([new File(['image'], 'diagram.png', { type: 'image/png' })]);
+  const remove = await screen.findByRole('button', { name: 'Remove diagram.png' });
+  fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: '![diagram](diagram.png)' } });
+  expect(remove).toBeDisabled();
+  expect(remove).toHaveAttribute('title', 'Remove the image reference from the prompt first.');
+  fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Diagram no longer needed' } });
+  expect(remove).toBeEnabled();
+  fireEvent.click(remove);
+  expect(screen.queryByRole('button', { name: 'Remove diagram.png' })).not.toBeInTheDocument();
 });

@@ -235,6 +235,8 @@ sequence:
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
         pnpm --filter @colony2/app test src/components/JobStoryPage.test.tsx
+        # Exercise history submission and its independent static-message cleanup.
+        pnpm --filter @colony2/app test src/components/InputDetailPage.history.test.tsx src/components/InputDetailPage.test.tsx
   # Isolate Env acceptance failures from the broader app and browser suites.
   - id: execution-requirements-tests
     op: command_execution
@@ -273,6 +275,39 @@ sequence:
         pnpm --filter @colony2/app test src/utils/copyText.test.ts src/components/CopyJobId.test.tsx src/components/JobsListPage.test.tsx src/components/JobActionDialog.test.tsx src/components/JobStoryPage.test.tsx
         bash scripts/verify-browser.sh pnpm --filter @colony2/app test:e2e --config playwright.copy.config.ts
         bash scripts/verify-browser.sh pnpm --filter @colony2/app test:e2e --config playwright.fixtures.config.ts --grep 'copies the title job'
+  # Gate the delivered editor identity, semantic Link, images and fresh-empty checks.
+  - id: composer-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      # Allow bounded cold Go preparation before native server readiness checks.
+      timeout: 30m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        node --input-type=module <<'NODE'
+        import assert from 'node:assert/strict';
+        import { createHash } from 'node:crypto';
+        import { readFileSync } from 'node:fs';
+        const identity = JSON.parse(readFileSync('web/app/vendor/critrev/package-identity.json', 'utf8'));
+        const archive = readFileSync(`web/app/vendor/critrev/${identity.tarball}`);
+        const app = JSON.parse(readFileSync('web/app/package.json', 'utf8'));
+        assert.equal(createHash('sha256').update(archive).digest('hex'), identity.sha256);
+        assert.equal('sha512-' + createHash('sha512').update(archive).digest('base64'), identity.integrity);
+        assert.equal(app.dependencies.critrev, 'file:vendor/critrev/' + identity.tarball);
+        console.log('Verified immutable Critrev delivery:', identity.version);
+        NODE
+        pnpm --filter @colony2/app test src/components/NewGoalDialog.test.tsx src/components/GoalPrompt.test.tsx src/components/GoalJobOverview.test.tsx src/components/ReviewJobContext.test.tsx src/utils/goalPrompt.test.ts src/utils/promptImages.test.ts
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.composer.config.ts
+        # Warm the native fixture's Go cache outside its 180-second readiness budget.
+        timeout 10m node scripts/verify-command.mjs bash scripts/go.sh build -o /dev/null ./server/cmd/uitestserver
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.composer-runtime.config.ts
   - id: app-tests
     op: command_execution
     const: true

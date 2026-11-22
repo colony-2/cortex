@@ -45,8 +45,7 @@ import InputFormRenderer from './InputFormRenderer';
 import AttemptTabs from './AttemptTabs';
 import CancelJobButton from './CancelJobButton';
 import JobActionDialog from './JobActionDialog';
-import Markdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import GoalPrompt from './GoalPrompt';
 import { getJob, getJobInputArtifacts, type InputArtifact } from '@colony2/shared/api';
 import type { RecipeJob } from '@colony2/shared/types';
 import { canArchiveImmediately, isFinishedJob, confirmsRecoveryCompletion, jobStatusPresentation, jobStatusValue } from '../utils/jobStatus';
@@ -899,12 +898,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         <section role="tabpanel" id="job-panel-conversation" aria-labelledby="job-tab-conversation" hidden={activeTab !== 'conversation'} tabIndex={0} className="job-detail-panel">
         {job && <section aria-label="Job prompt">
           <Text strong>Prompt</Text>
-          {prompt ? <div className="job-prompt-markdown"><Markdown skipHtml remarkPlugins={[remarkGfm]} components={{
-            a: ({ children, href }) => /^(https?:|mailto:)/i.test(href || '')
-              ? <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
-              : <span>{children} (link unavailable)</span>,
-            img: ({ alt }) => <span>Image unavailable: {alt || 'unbound image'}</span>,
-          }}>{prompt}</Markdown></div> : <p>No prompt recorded for this job.</p>}
+          {prompt ? <GoalPrompt projectId={projectId} jobId={jobId} text={prompt} /> : <p>No prompt recorded for this job.</p>}
         </section>}
         {selectedInput.discovery.status === 'unavailable' && pendingInputDetails && requestId === null && <Alert type="warning" showIcon message="Pending request availability is unavailable." description={selectedInput.discovery.error} action={<Button onClick={() => void selectedInput.refresh().catch(() => {})}>Retry</Button>} />}
         {wantInput && requestId === null && !pendingInputLoading && !pendingInputDetails && !pendingInputError && <Alert type={selectedInput.discovery.status === 'unavailable' ? 'warning' : 'info'} showIcon

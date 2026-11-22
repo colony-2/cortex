@@ -107,7 +107,7 @@ test('REL-001,010,011,012,030,033,038 story links navigate to correct identities
   await openFresh(page);
   await related(page).getByRole('link',{name:'Goal · goal-api',exact:true}).click();
   await expect(page).toHaveURL(/\/goals\/goal-api/);
-  await expect(page.getByText('Check API compatibility',{exact:true}).first()).toBeVisible();
+  await expect(page.locator('.goal-full-prompt')).toHaveText(current.prompt);
   await page.goBack();
   await openFresh(page);
   await related(page).getByRole('link',{name:'Job · release-104',exact:true}).click();

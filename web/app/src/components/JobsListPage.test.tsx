@@ -1,3 +1,4 @@
+vi.mock('./GoalPromptEditor', () => ({ default: ({ value, onChange, disabled, id }: any) => <textarea id={id} aria-label="Prompt" value={value || ''} disabled={disabled} onChange={event => onChange(event.target.value)} /> }));
 import { StrictMode } from 'react';
 import { message } from 'antd';
 import { jobIdentity, registryCell } from '../test/cellFixtures';

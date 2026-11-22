@@ -8,8 +8,8 @@ import JobListDetails from './JobListDetails';
 
 // Mounted only for a visible selection, keyed by tenant and job by the parent.
 // List responses never enter this state. Reopening remounts and revalidates.
-export default function SelectedJobDetails({ projectId, jobId, summary, refresh, prompt, navigationState, inspectionRequests }: {
-  inspectionRequests?: Map<string, ReturnType<typeof getJob>>; projectId: string; jobId: string; summary?: RecipeJobSummary; refresh: number; prompt?: string; navigationState: Record<string, unknown>;
+export default function SelectedJobDetails({ projectId, jobId, summary, refresh, prompt, promptJobId, navigationState, inspectionRequests }: {
+  inspectionRequests?: Map<string, ReturnType<typeof getJob>>; projectId: string; jobId: string; summary?: RecipeJobSummary; refresh: number; prompt?: string; promptJobId?: string; navigationState: Record<string, unknown>;
 }) {
   const [job, setJob] = useState<RecipeJob>();
   const [error, setError] = useState<string>();
@@ -41,6 +41,6 @@ export default function SelectedJobDetails({ projectId, jobId, summary, refresh,
       action={<Button onClick={() => setRetry(value => value + 1)}>Retry details</Button>} />}
     {loading && <Spin size="small" aria-label="Loading dependency and membership details" />}
     {!summary && <p>Requested job: {jobId}</p>}
-    {(job || summary) && <JobListDetails job={(job || summary)!} inspection={job} projectId={projectId} showPrompt={!!(job || summary)?.prompt && (job || summary)?.prompt !== prompt} navigationState={navigationState} />}
+    {(job || summary) && <JobListDetails job={(job || summary)!} inspection={job} projectId={projectId} showPrompt={!!(job || summary)?.prompt && ((job || summary)?.prompt !== prompt || jobId !== promptJobId)} navigationState={navigationState} />}
   </>;
 }

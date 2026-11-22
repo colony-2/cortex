@@ -15,13 +15,16 @@
     "@colony2/shared": "file:../shared",
     "@testing-library/dom": "^10.4.1",
     "antd": "^5.26.7",
+    "critrev": "file:vendor/critrev/critrev-0.1.5-link.20261121.t2145.xwtz5b.r3.tgz",
     "dayjs": "^1.11.10",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-json-view": "^1.21.3",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^6.26.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5"
   },
   "devDependencies": {
     "@playwright/test": "^1.53.1",

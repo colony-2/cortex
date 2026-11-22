@@ -1,4 +1,5 @@
 import { requirementSummary } from '../utils/executionRequirements';
+import GoalPrompt from './GoalPrompt';
 import { useCompact } from '../hooks/useCompact';
 import type { getJob } from '@colony2/shared/api';
 import { cellLabel } from '../utils/cellPresentation';
@@ -26,7 +27,8 @@ export default function GoalJobOverview({ jobs, projectId, navigationState, requ
   const location = useLocation();
   const current = latestActiveJob(jobs);
   if (!current) return <Empty description="No attempts found" />;
-  const prompt = current.title || current.prompt || jobs.find(job => job.prompt?.trim())?.prompt;
+  const promptOwner = current.prompt?.trim() ? current : jobs.find(job => job.prompt?.trim());
+  const prompt = promptOwner?.prompt;
   const selected = requestedSelection ? jobs.find(job => job.job_id === requestedSelection) : jobs.find(job => params.getAll('inspect').includes(job.job_id)) || current;
   const selectedId = requestedSelection || selected!.job_id;
   const choose = (job: RecipeJobSummary) => setParams(previous => {
@@ -38,7 +40,7 @@ export default function GoalJobOverview({ jobs, projectId, navigationState, requ
   }, { replace: true, state: location.state });
   const storyLink = (job: RecipeJobSummary) => jobPath(projectId, job.job_id);
   return <div className="goal-overview-content">
-    {showPrompt && <Typography.Paragraph className="goal-full-prompt">{prompt || 'No prompt provided'}</Typography.Paragraph>}
+    {showPrompt && <div className="goal-full-prompt">{prompt && promptOwner ? <GoalPrompt projectId={projectId} jobId={promptOwner.job_id} text={prompt} /> : 'No prompt provided'}</div>}
     {jobs.length > 1 && <section aria-label="Attempts">{compact ? <div className="compact-cards">
       {onSelect && <Checkbox checked={jobs.every(job => selectedIds?.includes(job.job_id))} indeterminate={jobs.some(job => selectedIds?.includes(job.job_id)) && !jobs.every(job => selectedIds?.includes(job.job_id))} onChange={event => onSelect(jobs.map(job => job.job_id), event.target.checked)}>Select all attempts</Checkbox>}
       {newestFirst(jobs).map(job => <Card size="small" key={job.job_id} className={job.job_id === selectedId ? 'goal-selected-attempt' : ''}>
@@ -73,7 +75,7 @@ export default function GoalJobOverview({ jobs, projectId, navigationState, requ
     <Card size="small" className="goal-attempt-detail" title={<Space wrap>
       <Typography.Text>{selectedId}</Typography.Text>{selected && <><AttemptStatus job={selected} /><Typography.Text type="secondary">{jobTime(selected.submitted_at || selected.created_at)}</Typography.Text></>}
     </Space>} extra={<Link className="compact-touch-link" to={jobPath(projectId, selectedId)} state={navigationState}>Open execution</Link>}>
-      <SelectedJobDetails inspectionRequests={inspectionRequests} key={JSON.stringify([projectId, selectedId])} summary={selected} jobId={selectedId} projectId={projectId} refresh={refresh} prompt={prompt} navigationState={navigationState} />
+      <SelectedJobDetails inspectionRequests={inspectionRequests} key={JSON.stringify([projectId, selectedId])} summary={selected} jobId={selectedId} projectId={projectId} refresh={refresh} prompt={prompt} promptJobId={promptOwner?.job_id} navigationState={navigationState} />
     </Card>
   </div>;
 }

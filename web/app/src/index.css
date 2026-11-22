@@ -482,3 +482,95 @@ html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-heig
 .execution-tree button:focus-visible, .execution-tree a:focus-visible { outline: 3px solid #305f9c; outline-offset: 3px; }
 @media (max-width:767px) { .tree-wait-actions > a { min-height:44px; display:inline-flex; align-items:center; } }
 .execution-tree > p, .tree-wait-identity { overflow-wrap: anywhere; }
+/* New goal owns its viewport; other dialogs retain the shared modal sizing. */
+.new-goal-modal-root .ant-modal-wrap { overflow: hidden; }
+.new-goal-composer.ant-modal {
+  top: calc(var(--composer-top, 0px) + 32px);
+  max-width: calc(100vw - 64px);
+  height: max(180px, calc(var(--composer-height, 100dvh) - 64px));
+  margin: 0 auto;
+  padding-bottom: 0;
+}
+.new-goal-composer .ant-modal-content {
+  height: max(180px, calc(var(--composer-height, 100dvh) - 64px));
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+.new-goal-composer .ant-modal-header {
+  flex: none;
+  margin: 0;
+  padding: 20px 56px 20px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.new-goal-composer .ant-modal-title { font-size: 20px; }
+.new-goal-composer .ant-modal-body {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+  padding: 20px 24px;
+  overscroll-behavior: contain;
+}
+.new-goal-composer .ant-modal-body > .ant-alert { margin-bottom: 16px; }
+.new-goal-composer .ant-form { min-height: 100%; display: flex; flex-direction: column; }
+.new-goal-composer .goal-prompt-field { flex: 1; }
+.new-goal-composer .goal-attachment-capacity { margin-bottom: 12px; color: #58657a; overflow-wrap: anywhere; }
+.new-goal-composer .goal-prompt-field textarea { min-height: 280px; font-size: 16px; }
+.new-goal-composer .ant-modal-footer {
+  flex: none;
+  margin: 0;
+  padding: 16px 24px;
+  border-top: 1px solid #e5e7eb;
+}
+.new-goal-composer :focus-visible { outline: 2px solid #1677ff; outline-offset: 2px; }
+@media (max-width: 767px) {
+  .new-goal-composer.ant-modal {
+    top: var(--composer-top, 0px);
+    width: 100% !important;
+    max-width: 100%;
+    height: var(--composer-height, 100dvh);
+    margin: 0;
+  }
+  .new-goal-composer.ant-modal .ant-modal-content {
+    height: var(--composer-height, 100dvh);
+    padding: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .new-goal-composer .ant-modal-header {
+    padding: max(16px, env(safe-area-inset-top)) 60px 16px max(16px, env(safe-area-inset-left));
+  }
+  .new-goal-composer .ant-modal-body {
+    padding: 16px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left));
+  }
+  .new-goal-composer .ant-modal-footer {
+    padding: 12px max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  }
+  .new-goal-composer .ant-btn, .new-goal-composer .ant-select-selector { min-height: 44px; }
+  .new-goal-composer .ant-modal-close { width: 44px; height: 44px; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); }
+  .new-goal-composer input, .new-goal-composer textarea { font-size: 16px; }
+}
+
+.goal-prompt-editor { border: 1px solid #aeb9c7; border-radius: 8px; overflow: hidden; background: white; }
+.goal-editor-controls { background: #f7f9fc; border-bottom: 1px solid #dce2ea; padding: 10px 12px; }
+.goal-editor-toolbar { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 10px; }
+.goal-editor-toolbar[hidden] { display: none; }
+.goal-editor-toolbar .ant-btn { font-size: 13px; }
+.goal-editor-surface { min-height: 300px; padding: 18px; font-size: 16px; line-height: 1.65; outline: none; overflow-wrap: anywhere; }
+.goal-editor-surface.source { white-space: pre-wrap; font-family: ui-monospace, monospace; }
+.goal-editor-surface p { margin: 0 0 .7em; }
+.goal-editor-surface ul, .goal-editor-surface ol { padding-left: 24px; }
+.goal-editor-surface blockquote { border-left: 3px solid #b8c8de; padding-left: 16px; margin-left: 0; color: #46556a; }
+.goal-editor-surface pre { padding: 12px; background: #f1f4f8; white-space: pre-wrap; }
+.goal-editor-surface [data-critrev-image] { display: inline-block; max-width: 100%; border: 1px solid #c7d2e0; border-radius: 4px; padding: 4px; color: #526174; }
+.goal-editor-surface img, .goal-full-prompt img, .job-prompt-markdown img { max-width: 100%; max-height: 420px; object-fit: contain; }
+.goal-editor-surface [data-critrev-image-selected=true] { outline: 3px solid #1677ff; }
+.goal-editor-help { font-size: 12px; color: #58657a; border-top: 1px solid #e5e7eb; padding: 8px 12px; }
+.prompt-image-placeholder { display: inline-block; padding: 8px; border: 1px dashed #aeb9c7; color: #526174; }
+@media (max-width: 767px) {
+  .goal-editor-surface { min-height: 260px; padding: 12px; }
+}
+.prompt-bound-image { display: inline-flex; flex-direction: column; align-items: flex-start; max-width: 100%; margin: .5em 0; vertical-align: top; }
+.prompt-bound-image a { margin-top: 6px; font-size: 13px; }

@@ -5,7 +5,11 @@ import { getJob } from '@colony2/shared/api';
 import type { RecipeJob } from '@colony2/shared/types';
 import ReviewJobContext from './ReviewJobContext';
 
-vi.mock('@colony2/shared/api', () => ({ getJob: vi.fn() }));
+// Prompt-reader imports also use APIError; retain the real module contract.
+vi.mock('@colony2/shared/api', async importOriginal => ({
+  ...await importOriginal<typeof import('@colony2/shared/api')>(),
+  getJob: vi.fn(),
+}));
 afterEach(() => { vi.mocked(getJob).mockReset(); vi.clearAllMocks(); });
 const job = { status: 'READY', store: 'ACTIVE', cell_name: 'platform', prompt: '**Build**\n<script>bad()</script>',
   recipe: 'build', job_type: 'recipe', repo: 'https://example.test/repo', git_ref: 'main', goal_id: 'goal / one',
