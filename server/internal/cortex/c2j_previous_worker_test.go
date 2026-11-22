@@ -49,7 +49,7 @@ func TestC2JUpgradePreviousWorkerHistory(t *testing.T) {
 	require.NoError(t, err, "%s", output)
 	info, err = buildinfo.ReadFile(newWorker)
 	require.NoError(t, err)
-	require.Equal(t, "v0.0.129-0.20261120222353-de6156203cbc", info.Main.Version)
+	require.Equal(t, "v0.0.129-0.20261122000941-33bb99f65fce", info.Main.Version)
 
 	ctx := testjobdb.Context(context.Background())
 	rt, err := sqlite.NewFromConfig(ctx, sqlite.Config{DBPath: filepath.Join(t.TempDir(), "previous.db")})

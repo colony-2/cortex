@@ -24,6 +24,7 @@ import (
 	"github.com/colony-2/c2j/pkg/git/gitcommit"
 	"github.com/colony-2/c2j/pkg/git/gitstate"
 	"github.com/colony-2/c2j/pkg/input"
+	"github.com/colony-2/c2j/pkg/jobinspect"
 	"github.com/colony-2/c2j/pkg/jobinspect/changestest"
 	"github.com/colony-2/c2j/pkg/starter"
 	coretask "github.com/colony-2/c2j/pkg/task"
@@ -40,19 +41,23 @@ import (
 const tenant = "changes-browser"
 
 type fixture struct {
-	Job     string   `json:"job"`
-	Base    string   `json:"base"`
-	Head    string   `json:"head"`
-	Commits []string `json:"commits"`
-	All     string   `json:"all"`
-	worker  wf.ExecutionWorker
-	tasks   []wf.TaskWorker
+	Job        string   `json:"job"`
+	Base       string   `json:"base"`
+	Head       string   `json:"head"`
+	Commits    []string `json:"commits"`
+	All        string   `json:"all"`
+	SourceTask string   `json:"source_task,omitempty"`
+	StateTask  string   `json:"state_task,omitempty"`
+	worker     wf.ExecutionWorker
+	tasks      []wf.TaskWorker
 }
 
 type recordedWorker struct {
-	steps   []changestest.Step
-	patches [][]byte
-	missing bool
+	steps                 []changestest.Step
+	patches               [][]byte
+	missing               bool
+	observerStart         int
+	missingObserverParent bool
 }
 
 func (recordedWorker) Name() string { return "changes:recorded" }
@@ -68,7 +73,14 @@ func (w recordedWorker) Run(_ wf.TaskContext, data jobdb.TaskData) (jobdb.TaskDa
 		return nil, err
 	}
 	step := w.steps[in.Index]
-	envelope, err := coretask.NewOutputEnvelope(coretask.OutputKindActivityInvocationOutput, map[string]any{"workspace_before": step.State, "workspace_after": step.State, "workspace_scope_id": "main", "git": contextual.GitCommitContext{ParentHash: step.State.BaseCommit, PersistHash: step.State.HeadCommit}, "output": map[string]any{}})
+	git := contextual.GitCommitContext{ParentHash: step.State.BaseCommit, PersistHash: step.State.HeadCommit}
+	if w.missingObserverParent && in.Index >= w.observerStart {
+		// Match unchangedGitResult for an input with fixed resolved base and
+		// incoming head, but no legacy ParentHash. The observation and exact
+		// incoming snapshot still identify the unchanged workspace.
+		git.ParentHash = ""
+	}
+	envelope, err := coretask.NewOutputEnvelope(coretask.OutputKindActivityInvocationOutput, map[string]any{"workspace_before": step.State, "workspace_after": step.State, "workspace_scope_id": "main", "git": git, "output": map[string]any{}})
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +88,7 @@ func (w recordedWorker) Run(_ wf.TaskContext, data jobdb.TaskData) (jobdb.TaskDa
 	if step.Bundle != nil {
 		files = append(files, jobdb.NewArtifactFromBytes(gitstate.ThinPackArtifactName, step.Bundle))
 	}
-	if !w.missing {
+	if !w.missing && in.Index < len(w.patches) {
 		files = append(files, jobdb.NewArtifactFromBytes("diff_from_base.diff", w.patches[in.Index]))
 	}
 	return jobdb.NewTaskData(envelope, files...)
@@ -141,7 +153,13 @@ func seed(ctx context.Context, rt jobdb.WorkflowRuntime, dir, scenario string, d
 	if err = os.RemoveAll(filepath.Join(dir, scenario, "saved-diffs")); err != nil {
 		return nil, err
 	}
-	worker := recordedWorker{steps: f.Steps, patches: patches, missing: scenario == "missing"}
+	observerStart := len(f.Steps)
+	if scenario == "v2-handoff" || scenario == "v2-handoff-control" {
+		last := f.Steps[len(f.Steps)-1]
+		last.Bundle = nil
+		f.Steps = append(f.Steps, last, last)
+	}
+	worker := recordedWorker{steps: f.Steps, patches: patches, missing: scenario == "missing", observerStart: observerStart, missingObserverParent: scenario == "v2-handoff"}
 	var v2Form input.InputForm
 	if strings.HasPrefix(scenario, "v2") {
 		raw, e := os.ReadFile("web/app/tests/fixtures/recipes/browser-review-v2.yaml")
@@ -198,11 +216,17 @@ func seed(ctx context.Context, rt jobdb.WorkflowRuntime, dir, scenario string, d
 		var incoming jobdb.Artifact
 		for i, step := range f.Steps {
 			g := gitstate.GlobalGitTaskContext{BaseRepo: opt.Repository, BaseRef: "main", ParentHash: step.State.BaseCommit, ResolvedBaseHash: step.State.BaseCommit, PersistHash: step.State.HeadCommit, Workspace: &contextual.WorkspaceContext{Cell: opt.Cell, ScopeID: "main"}}
+			if worker.missingObserverParent && i >= observerStart {
+				g.ParentHash = ""
+			}
 			if step.State.EmptyBase {
 				g.Workspace.Initial = "empty"
 			}
 			out, e := c.DoTask(wf.TaskCall{Site: "workspace", TaskType: worker.Name(), ContractVersion: 1, Command: json.RawMessage(strconv.Quote(fmt.Sprint(i)))}, func(context.Context) (jobdb.TaskData, error) {
 				payload := map[string]any{"context": g, "index": i}
+				if i >= observerStart {
+					payload["const"] = true
+				}
 				var files []jobdb.Artifact
 				if incoming != nil {
 					key, err := incoming.ArtifactKey()
@@ -258,6 +282,24 @@ func seed(ctx context.Context, rt jobdb.WorkflowRuntime, dir, scenario string, d
 	if err != nil {
 		return nil, err
 	}
+	if len(f.Steps) > observerStart {
+		service := &jobinspect.Service{Runtime: rt, Tenant: tenant}
+		log, e := service.Inspect(ctx, jobinspect.Request{Operation: "log", JobID: scenario, Limit: 100})
+		if e != nil {
+			return nil, e
+		}
+		var tasks []string
+		for _, task := range log.Tasks {
+			if task.Type == worker.Name() {
+				tasks = append(tasks, task.ID)
+			}
+		}
+		if len(tasks) != len(f.Steps) {
+			return nil, fmt.Errorf("expected %d workspace tasks, got %d", len(f.Steps), len(tasks))
+		}
+		manifest.SourceTask = tasks[observerStart-1]
+		manifest.StateTask = tasks[len(tasks)-1]
+	}
 	return manifest, nil
 }
 
@@ -290,7 +332,7 @@ func main() {
 		log.Fatal(err)
 	}
 	fixtures := map[string]*fixture{}
-	for _, scenario := range []string{"linear", "revert", "merge", "empty", "missing", "paged", "large", "moving", "v2", "v2-paged", "v2-empty", "v2-zoom"} {
+	for _, scenario := range []string{"linear", "revert", "merge", "empty", "missing", "paged", "large", "moving", "v2", "v2-paged", "v2-empty", "v2-zoom", "v2-handoff", "v2-handoff-control"} {
 		f, e := seed(ctx, db, dir, scenario, artifacts.NewStoredRef(key))
 		if e != nil {
 			log.Fatalf("%s: %v", scenario, e)

@@ -304,6 +304,10 @@ Unified and Side by side layouts, Source, file navigation and Download saved dif
 Refresh changes reads the latest persisted state; tabs and refresh preserve review
 drafts, attachments, settings and document display state.
 
+An unchanged task can reuse an earlier saved patch when its recorded comparison
+and exact incoming snapshot prove the original source. The download retains that
+producer's identity; the patch does not need to appear in the review's documents.
+
 This is saved code, not a live checkout or a statement about an earlier approval.
 Empty comparisons and missing evidence have different messages. Binary notices
 explain that their contents were not included. Text previews stop at 2 MiB; the
@@ -328,6 +332,12 @@ selection is retired. CLI callers use `c2j job diff JOB`, optionally with
 `--task`, `--scope`, `--attempt`, `--workspace`, `--boundary` and metadata-only
 `--json`. `cortex.Config.Changes` remains for Go configuration compatibility but
 is unused by saved-diff reads.
+
+For recovery through unchanged tasks that omit legacy parent metadata, use c2j
+revision `33bb99f65fce` or later. Rebuild and restart the API and embedded web UI,
+then confirm the linked c2j commit in Version info. Check Changes, Refresh changes
+and Download saved diff on the affected job after deployment; passing fixture tests
+does not verify an existing deployment or establish that an old job has saved bytes.
 
 ## Build from source
 

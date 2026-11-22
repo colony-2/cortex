@@ -465,6 +465,9 @@ sequence:
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
         bash scripts/verify-workspace-diff.sh
+        # Recover original saved bytes across patchless unchanged handoffs,
+        # independently of the review's document attachments.
+        node scripts/verify-command.mjs bash scripts/go.sh test -count=1 ./server/cmd/changestestserver -run '^TestWorkspaceDiffHTTPUnchangedHandoffs$'
   # Saved comparisons use native HTTP/SQLite fixtures and a production server.
   - id: changes-browser-tests
     op: command_execution

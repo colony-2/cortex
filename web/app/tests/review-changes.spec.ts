@@ -33,6 +33,38 @@ test.beforeEach(async ({ context, baseURL }) => {
   await context.addCookies([{ name: 'colony2:user:email', value: 'changes@example.test', url: baseURL! }]);
 });
 
+test('unchanged handoffs recover original saved bytes without attaching the patch to the review', async ({ page, request }, info) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const job = 'v2-handoff';
+  const oracle = await (await request.get(`/fixture/${job}`)).json();
+  const root = `/api/projects/${tenant}`;
+  const details = await (await request.get(`${root}/user-inputs/${job}`)).json();
+  const documents: Record<string, { name: string }> = details.form.request.documents;
+  expect(Object.keys(documents).sort()).toEqual(['notes', 'overview']);
+  expect(Object.values(documents).map(ref => ref.name)).toEqual(['overview.md', 'overview.md']);
+  const original = await (await request.get(`${root}/jobs/${job}/workspace-diff?task=${encodeURIComponent(oracle.source_task)}`)).json();
+  expect(original.metadata.status).toBe('available');
+  expect(original.patch).toBe(oracle.all);
+  const reads: string[] = [];
+  page.on('request', r => { if (r.url().includes('/workspace-diff')) reads.push(r.url()); });
+  await openChanges(page, job);
+  await expect(page.getByLabel('Unified diff').last()).toBeVisible();
+  expect(await download(page)).toEqual(Buffer.from(oracle.all));
+  await expect(page.getByRole('link', { name: 'Download saved diff' })).toHaveAttribute('href', original.download_url);
+  const latest = await (await request.get(`${root}/jobs/${job}/workspace-diff`)).json();
+  expect(latest.metadata.state_producer.task).toBe(oracle.state_task);
+  expect(latest.metadata.source).toEqual(original.metadata.source);
+  await page.getByRole('button', { name: 'Refresh changes' }).click();
+  await expect(page.getByLabel('Unified diff').last()).toBeVisible();
+  expect(await download(page)).toEqual(Buffer.from(oracle.all));
+  const refreshed = await (await request.get(`${root}/user-inputs/${job}`)).json();
+  expect(refreshed.form.request.documents).toEqual(documents);
+  expect(reads).toHaveLength(2);
+  for (const read of reads) expect(new URL(read).search).toBe('');
+  await page.getByRole('tablist').scrollIntoViewIfNeeded();
+  await capture(page, info, 'saved-diff-unchanged-handoffs.png');
+});
+
 test('v2 opens saved bytes directly and preserves documents, discussion, settings and original contribution', async ({ page, request }, info) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
   const oracle = await (await request.get('/fixture/v2')).json();
