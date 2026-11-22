@@ -207,6 +207,7 @@ export async function getJobChaptersDownload(projectId: string, jobId: string, s
 }
 
 export type InputArtifact = {
+  inputOrdinal?: number;
   id?: string;
   name: string;
   sizeBytes: number;
@@ -217,8 +218,13 @@ export type InputArtifact = {
  | { kind: 'value'; contentBinding: string; jobId?: never; taskOrdinal?: never; reason?: never }
  | { kind: 'external' | 'attached' | 'invalid'; reason: string; jobId?: never; taskOrdinal?: never; contentBinding?: never });
 
-export async function getJobInputArtifacts(projectId: string, jobId: string, signal?: AbortSignal): Promise<{ artifacts: InputArtifact[] }> {
-  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/input-artifacts`, { signal });
+export function storedDocumentURL(projectId: string, key: { jobId: string; taskOrdinal: number; name: string }): string {
+  const query = new URLSearchParams({ ordinal: String(key.taskOrdinal), name: key.name });
+  return `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(key.jobId)}/stored-document?${query}`;
+}
+
+export async function getJobInputArtifacts(projectId: string, jobId: string, signal?: AbortSignal, ordinal?: number): Promise<{ artifacts: InputArtifact[] }> {
+  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/input-artifacts${ordinal === undefined ? '' : `?ordinal=${ordinal}`}`, { signal });
   await handleResponse(response, 'Load input artifacts');
   return response.json();
 }

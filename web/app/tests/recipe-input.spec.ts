@@ -946,7 +946,7 @@ test.describe('multi-format review viewers', () => {
     // The observer was the last opened tab; reviewer animations need a foreground tab.
     await page.bringToFront();
     const fetched: string[]=[]; const external: string[]=[];
-    page.on('request',r=>{if(r.url().includes('/documents?'))fetched.push(r.url());if(r.url().includes('blocked.invalid'))external.push(r.url());});
+    page.on('request',r=>{if(r.url().includes('/stored-document?'))fetched.push(r.url());if(r.url().includes('blocked.invalid'))external.push(r.url());});
     await page.goto(`/project/${tenant}/reviews`);
     await expect(page.getByRole('button',{name:'Open Review',exact:true})).toBeVisible();
     expect(fetched).toHaveLength(0);
@@ -976,7 +976,7 @@ test.describe('multi-format review viewers', () => {
     await page.getByText('Side by side',{exact:true}).click();
     await page.keyboard.press('Escape');await expect(page.getByLabel('Side by side diff')).toContainText('+new');
     await page.screenshot({path:testInfo.outputPath('dual-pane.png')});await back();
-    await page.route(/\/documents\?.*document_id=log(?:&|$)/,route=>route.fulfill({status:404,body:'missing document'}),{times:1});
+    await page.route(/\/stored-document\?.*name=checks\.log(?:&|$)/,route=>route.fulfill({status:404,body:'missing document'}),{times:1});
     await read('checks.log');await expect(page.getByText(/Could not load this document/)).toBeVisible();await page.getByRole('button',{name:'Retry',exact:true}).click();await page.getByLabel('Search document').fill('needle');await expect(page.locator('mark')).toHaveText('needle');await back();
     await read('changes.patch');await expect(page.getByLabel('Side by side diff')).toBeVisible();await back();
     for(const [name,id] of [['mock.html','html'],['delayed.html','delayed'],['vector.svg','svg']] as const){
@@ -1060,7 +1060,7 @@ test.describe('multi-format review viewers', () => {
     await read('pictures.md');await expect(page.getByRole('img',{name:'screenshot.png',exact:true})).toBeVisible();
     await expect(page.getByText(/Blocked external or ambiguous image/)).toBeVisible();expect(external).toHaveLength(0);await back();
     await read('evidence.tar.gz');await expect(page.getByText(/Container data/)).toBeVisible();await back();
-    expect(fetched.every(u=>!u.includes('document_id=rollout'))).toBe(true);
+    expect(fetched.every(u=>new URL(u).searchParams.get('name') !== details.form.documents.rollout.stored.key.name)).toBe(true);
     await expect(feedback).toHaveValue('Multi-format feedback');
     expect(details.form.documents.external.stored.key.jobId).not.toBe(jobID);
     for(const id of ['json','patch','png','archive','html','delayed','svg']){
@@ -1132,8 +1132,9 @@ test.describe('nested review gallery', () => {
     });
     const fetched:string[]=[],external:string[]=[];
     page.on('request',request=>{if(request.url().includes('blocked.invalid')) external.push(request.url());});
-    await page.route(`**/api/projects/${tenant}/reviews/${jobID}/documents?*`,async route=>{
-      const id=new URL(route.request().url()).searchParams.get('document_id')!;fetched.push(id);
+    await page.route(`**/api/projects/${tenant}/jobs/fixture-producer/stored-document?*`,async route=>{
+      const name=new URL(route.request().url()).searchParams.get('name')!;
+      const id=name==='captures/gallery.md'?'gallery':`image/${names.indexOf(name.slice('captures/'.length))}`;fetched.push(id);
       await route.fulfill({contentType:id==='gallery'?'text/markdown':'image/png',body:id==='gallery'?source:png});
     });
     await page.setViewportSize({width:1440,height:900});
@@ -1332,7 +1333,7 @@ test.describe('review/v2 continuous discussion',()=>{
     expect(inputReads.every(status=>status===200 || status===204)).toBe(true);
     startWorker();
     await expect(page.getByText('Saved drafts return when you reopen the app.',{exact:true})).toBeVisible({timeout:30000});
-    expect(inputReads).toEqual([200,200]);
+    await expect.poll(() => [...inputReads]).toEqual([200,200]);
     await stopWorker();
     await page.getByRole('button',{name:'Ask a question',exact:true}).click();
     await page.getByLabel('Attach notes',{exact:true}).setInputFiles([
@@ -1343,7 +1344,7 @@ test.describe('review/v2 continuous discussion',()=>{
     await expect(page.getByText('Response pending',{exact:true})).toBeVisible();
     startWorker();
     await expect(page.getByText('Earlier notes keep their original producer references.',{exact:true})).toBeVisible({timeout:30000});
-    expect(inputReads).toEqual([200,200,200]);
+    await expect.poll(() => [...inputReads]).toEqual([200,200,200]);
     await stopWorker();
     const links=page.getByRole('link',{name:'Download notes.md',exact:true});
     await expect(links).toHaveCount(2);
@@ -1445,7 +1446,7 @@ test.describe('story review callout layout', () => {
       await route.fulfill({ response, json: { ...body, form: { ...body.form, title, fields: body.form.fields.map((field: { id: string }) => field.id === 'decision' ? { ...field, question: instruction } : field) } } });
     });
     const documentReads: string[] = [];
-    page.on('request', req => { if (req.url().includes('/documents?')) documentReads.push(req.url()); });
+    page.on('request', req => { if (req.url().includes('/stored-document?')) documentReads.push(req.url()); });
     await page.goto(`/project/${tenant}/jobs/${jobID}/story`);
     const callout = page.locator('.pending-request-callout');
     const more = callout.getByRole('button', { name: 'Show more', exact: true });

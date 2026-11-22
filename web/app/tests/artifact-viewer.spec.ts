@@ -106,7 +106,7 @@ for (const viewport of [{width:1280,height:800},{width:390,height:844}]) {
       await page.setViewportSize(viewport);
       const requested:string[]=[];
       const writes:string[]=[];
-      page.on('request',r=>{if(r.url().includes('/documents?')||r.url().includes('/artifacts/'))requested.push(r.url());if(r.method()!=='GET')writes.push(r.url());});
+      page.on('request',r=>{if(r.url().includes('/stored-document?')||r.url().includes('/artifacts/'))requested.push(r.url());if(r.method()!=='GET')writes.push(r.url());});
       const source='# Bar\n\n[next](foo.md?ignored=1#target-1) [missing](outside.md) [escape](../../escape.md)';
       const target='# Foo\n\n[self](foo.md#target) [missing anchor](#unknown) [same](#target-1) [json](data.json)\n\n'+Array.from({length:35},(_,i)=>`Paragraph ${i}.\n\n`).join('')+'## Target\n\nFirst target.\n\n## Target\n\nSecond target.';
       const keys=[{name:'docs/bar.md',taskOrdinal:1},{name:'docs/foo.md',taskOrdinal:2},{name:'docs/data.json',taskOrdinal:3}];
@@ -114,9 +114,9 @@ for (const viewport of [{width:1280,height:800},{width:390,height:844}]) {
       await page.route('**/api/**',async route=>{
         const url=new URL(route.request().url());
         let body:unknown=[];
-        if(url.pathname.includes('/documents')||url.pathname.includes('/artifacts/')) {
-          const id=url.searchParams.get('document_id');
-          const content=id==='a'||url.pathname.endsWith('docs%2Fbar.md')?source:id==='b/雪'||url.pathname.endsWith('docs%2Ffoo.md')?target:'{"n":42}';
+        if(url.pathname.endsWith('/stored-document')||url.pathname.includes('/artifacts/')) {
+          const name=url.searchParams.get('name');
+          const content=name==='docs/bar.md'||url.pathname.endsWith('docs%2Fbar.md')?source:name==='docs/foo.md'||url.pathname.endsWith('docs%2Ffoo.md')?target:'{"n":42}';
           return route.fulfill({contentType:'text/plain',body:content});
         }
         if(url.pathname==='/api/projects')body=[{tenant_id:'tenant',name:'Tenant'}];
@@ -194,7 +194,7 @@ for (const width of [375, 767, 768, 1280]) {
     const metadata={z:{title:'Overview',description:'Description '.repeat(20),role:'primary',order:10,source_document_ids:['雪/target','missing']},a:{title:'Supporting',role:'supporting',order:0},'雪/target':{title:'Diagnostic',role:'diagnostic',order:2,source_document_ids:['z']}};
     await page.route('**/api/**',async route=>{
       const url=new URL(route.request().url());let body:unknown=[];
-      if(url.pathname.includes('/documents')) {reads.push(url.toString());return route.fulfill({contentType:'text/plain',body:url.searchParams.get('document_id')==='z'?'# Large overview\n\n'+'Review paragraph.\n\n'.repeat(350)+'Last paragraph.':'# Target contents'});}
+      if(url.pathname.endsWith('/stored-document')) {reads.push(url.toString());return route.fulfill({contentType:'text/plain',body:url.searchParams.get('name')==='z.md'?'# Large overview\n\n'+'Review paragraph.\n\n'.repeat(350)+'Last paragraph.':'# Target contents'});}
       if(url.pathname==='/api/projects')body=[{tenant_id:'tenant',name:'Tenant'}];
       else if(url.pathname.endsWith('/user-inputs/pending'))body=[{...jobIdentity,id:'job',request_id:'r',client_payload_revision:1}];
       else if(url.pathname.endsWith('/user-inputs/job'))body={jobId:'job',status:'pending',form:{kind:'review',request_id:'r',overview_document_id:'z',document_metadata:metadata,documents,fields:[{id:'notes',type:'paragraph_text',question:'Notes',required:true}]}};
@@ -220,7 +220,7 @@ for (const width of [375, 767, 768, 1280]) {
       await expect(nav.getByText('Starting document')).toBeVisible();
       await expect(page.getByRole('heading',{name:'Large overview'})).toBeVisible();
       expect(reads.length).toBeGreaterThan(0);
-      expect(reads.every(url=>new URL(url).searchParams.get('document_id')==='z')).toBe(true);
+      expect(reads.every(url=>new URL(url).searchParams.get('name')==='z.md')).toBe(true);
       const initialReads=reads.length;
       const read=page.getByRole('button',{name:'Read Overview',exact:true});await read.focus();await page.keyboard.press('Enter');
       const selected=page.getByRole('region',{name:'Selected document'});
@@ -235,14 +235,14 @@ for (const width of [375, 767, 768, 1280]) {
     } else {
       await expect(page.getByRole('heading',{name:'Large overview'})).toBeVisible();
       expect(reads.length).toBeGreaterThan(0);
-      expect(reads.every(url=>new URL(url).searchParams.get('document_id')==='z')).toBe(true);
+      expect(reads.every(url=>new URL(url).searchParams.get('name')==='z.md')).toBe(true);
       await expect(nav.locator('[aria-current=true]')).toContainText('Overview');
       expect(await nav.locator('.review-document-entry').first().textContent()).toContain('Overview');
       await expect(nav.locator('button').last()).toBeAttached();await nav.locator('button').last().scrollIntoViewIfNeeded();
     }
     const scope=page.getByRole('region',{name:'Selected document'});
     const source=scope.getByRole('link',{name:'Diagnostic · 雪/target.md (雪/target)',exact:true});
-    await expect(source).toHaveAttribute('href',/document_id=%E9%9B%AA%2Ftarget/);
+    await expect(source).toHaveAttribute('href','/api/projects/tenant/jobs/child/stored-document?ordinal=3&name=%E9%9B%AA%2Ftarget.md');
     await expect(scope.getByText('missing (unavailable)')).toBeVisible();
     // Observe the application's event policy, then suppress the browser default in the
     // harness so a background tab/download cannot steal focus from the remaining checks.
@@ -256,7 +256,7 @@ for (const width of [375, 767, 768, 1280]) {
     await source.focus();await page.keyboard.press('Enter');
     await expect(scope.getByRole('heading',{name:'Target contents'})).toBeVisible();
     await expect(scope.getByLabel('Document preview')).toBeFocused();
-    expect(reads.every(url=>url.includes('request_id=r')&&!url.includes('child'))).toBe(true);
+    expect(reads.map(url => new URL(url).pathname)).toEqual(reads.map(() => '/api/projects/tenant/jobs/child/stored-document'));
     await expect(notes).toHaveValue('Keep this draft');
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
     expect(await page.locator('button a, a button').count()).toBe(0);

@@ -38,23 +38,24 @@ type crashConcernRuntime interface {
 }
 
 type Server struct {
-	crashConcern  crashConcernRuntime
-	timing        pendingTiming
-	cfg           Config
-	engine        jobworkflow.Engine
-	jobDeletion   jobdb.JobDeletionRuntime
-	chapters      chapterReader
-	leaseEvents   jobdb.LeaseEventReader
-	workspaceDiff func(string) (jobinspect.WorkspaceDiffAPI, error)
-	router        http.Handler
-	story         storyService
-	inputs        inputRuntime
-	history       input.HistoryService
-	cells         jobdb.CellRuntime
-	configuration jobdb.ConfigurationAdmin
-	secretAdmin   secretAdmin
-	logger        *slog.Logger
-	started       time.Time
+	crashConcern   crashConcernRuntime
+	timing         pendingTiming
+	cfg            Config
+	engine         jobworkflow.Engine
+	jobDeletion    jobdb.JobDeletionRuntime
+	chapters       chapterReader
+	documentClient *http.Client
+	leaseEvents    jobdb.LeaseEventReader
+	workspaceDiff  func(string) (jobinspect.WorkspaceDiffAPI, error)
+	router         http.Handler
+	story          storyService
+	inputs         inputRuntime
+	history        input.HistoryService
+	cells          jobdb.CellRuntime
+	configuration  jobdb.ConfigurationAdmin
+	secretAdmin    secretAdmin
+	logger         *slog.Logger
+	started        time.Time
 }
 
 func normalizeConfig(cfg Config) Config {

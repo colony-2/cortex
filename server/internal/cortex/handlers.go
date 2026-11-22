@@ -412,27 +412,18 @@ func (s *Server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
 	key := jobdb.JobKey{TenantId: s.tenantID(r), JobId: mux.Vars(r)["jobId"]}
 	cancellationAccepted := false
 	if supplied {
-		run, err := s.engine.GetJobRun(r.Context(), jobdb.GetJobRunRequest{JobKey: key})
+		listed, err := s.engine.ListJobs(r.Context(), jobdb.ListJobsRequest{TenantIds: []string{key.TenantId}, JobKeys: []jobdb.JobKey{key}, Stores: []jobdb.JobStore{jobdb.JobStoreActive, jobdb.JobStoreArchived}, IncludeHidden: true})
 		if err != nil {
 			writeError(w, err)
 			return
 		}
-		// Archived runtime rows include completed cancellations. Never replace their
-		// accepted detail, including on a retry from a different browser session.
-		cancellationAccepted = run.Job.ArchivedAt != nil && run.Job.CompletionStatus == "cancelled"
-		if run.Job.ArchivedAt == nil {
-			listed, err := s.engine.ListJobs(r.Context(), jobdb.ListJobsRequest{TenantIds: []string{key.TenantId}, JobKeys: []jobdb.JobKey{key}, IncludeHidden: true})
-			if err != nil {
-				writeError(w, err)
-				return
-			}
-			if len(listed.Jobs) != 1 {
-				writeError(w, jobdb.ErrJobNotFound)
-				return
-			}
-			cancellationAccepted = cancellationAccepted || listed.Jobs[0].CancelRequested
+		if len(listed.Jobs) != 1 || listed.Jobs[0].JobKey != key {
+			writeError(w, jobdb.ErrJobNotFound)
+			return
 		}
-		if run.Job.ArchivedAt == nil && run.Job.Status != jobdb.JobStatusCompleted && run.Job.Status != jobdb.JobStatusCancelled && !cancellationAccepted {
+		job := listed.Jobs[0]
+		cancellationAccepted = (job.ArchivedAt != nil && job.CompletionStatus == "cancelled") || (job.ArchivedAt == nil && job.CancelRequested)
+		if job.ArchivedAt == nil && job.Status != jobdb.JobStatusCompleted && job.Status != jobdb.JobStatusCancelled && !cancellationAccepted {
 			if err := s.engine.CancelJob(r.Context(), jobdb.CancelJob{JobKey: key, Reason: reason}); err != nil {
 				writeError(w, err)
 				return
@@ -461,7 +452,9 @@ func (s *Server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleJobStory(w http.ResponseWriter, r *http.Request) {
-	resp, err := s.story.GetJobRunStory(r.Context(), story.GetJobRunStoryRequest{
+	inventory := &conversationInventory{key: jobdb.JobKey{TenantId: s.tenantID(r), JobId: mux.Vars(r)["jobId"]}}
+	ctx := context.WithValue(r.Context(), inventoryContextKey{}, inventory)
+	resp, err := s.story.GetJobRunStory(ctx, story.GetJobRunStoryRequest{
 		ProjectID: s.tenantID(r),
 		JobID:     mux.Vars(r)["jobId"],
 	})
@@ -469,7 +462,10 @@ func (s *Server) handleJobStory(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, struct {
+		*story.JobRunStory
+		InputArtifacts *[]inputDocument `json:"input_artifacts,omitempty"`
+	}{resp, inventory.rows})
 }
 
 func (s *Server) handleJobOutcome(w http.ResponseWriter, r *http.Request) {
@@ -608,13 +604,13 @@ func writeError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, jobdb.ErrLeasePermissionDenied):
 		writeJSON(w, http.StatusForbidden, errorResponse{Error: "Permission denied", Code: "lease_permission_denied"})
-	case errors.Is(err, story.ErrInvalidRestartBoundary), errors.Is(err, story.ErrInvalidProject):
+	case errors.Is(err, errInputOrdinal), errors.Is(err, story.ErrInvalidRestartBoundary), errors.Is(err, story.ErrInvalidProject):
 		writeHTTPError(w, http.StatusBadRequest, err)
 	case errors.Is(err, story.ErrRestartContextUnavailable):
 		writeHTTPError(w, http.StatusUnprocessableEntity, err)
 	case errors.Is(err, jobdb.ErrJobDeletionUnsupported):
 		writeHTTPError(w, http.StatusNotImplemented, err)
-	case errors.Is(err, recipejob.ErrJobNotFound), errors.Is(err, jobdb.ErrJobNotFound), errors.Is(err, jobdb.ErrGoalNotFound), story.IsNotFound(err):
+	case errors.Is(err, jobdb.ErrChapterNotFound), errors.Is(err, recipejob.ErrJobNotFound), errors.Is(err, jobdb.ErrJobNotFound), errors.Is(err, jobdb.ErrGoalNotFound), story.IsNotFound(err):
 		writeHTTPError(w, http.StatusNotFound, err)
 	case errors.Is(err, jobdb.ErrConflict), errors.Is(err, jobdb.ErrGoalConflict), jobdb.IsConflict(err):
 		writeHTTPError(w, http.StatusConflict, err)

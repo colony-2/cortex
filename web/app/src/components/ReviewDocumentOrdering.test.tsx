@@ -29,7 +29,7 @@ it.each(fixtures.flatMap(fixture => [1280,390].map(width => ({...fixture,width})
   const initial = fixture.expected_initial_document_id;
   if (initial) {
     await screen.findByRole('heading', {name:'Retained document'});
-    expect(new URL(fetcher.mock.calls[0][0]).searchParams.get('document_id')).toBe(initial);
+    expect(new URL(fetcher.mock.calls[0][0]).searchParams.get('name')).toBe(Object.entries(fixture.form.documents).find(([id]) => id === initial)?.[1].stored.key.name);
     expect(selectedId()).toBe(initial);
   } else {
     expect(screen.getByText('No documents attached')).toBeVisible();

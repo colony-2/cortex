@@ -3,9 +3,10 @@ import { object } from '../components/conversationPresentation';
 import { isFinishedJob, jobStatus } from './jobStatus';
 import type { RecipeJob } from '@colony2/shared';
 export type ReviewV2Phase = 'actionable' | 'sending' | 'waiting' | 'sent' | 'other' | 'terminal' | 'unavailable';
+export type RecordedReview = Pick<HistoryDetail, 'request_id' | 'raw_form' | 'raw_accepted_output' | 'actor' | 'accepted_response'>;
 export interface ReviewV2View {
-  request: ReviewV2Request; current?: UserInputDetails; history?: HistoryDetail; phase: ReviewV2Phase;
-  documentHistory?: HistoryDetail;
+  request: ReviewV2Request; current?: UserInputDetails; history?: RecordedReview; phase: ReviewV2Phase;
+  documentHistory?: RecordedReview;
   declarations?: Record<string, ReviewV2Request>; message?: string; conversation: ReviewV2Turn[]; output?: ReviewV2Output; job?: RecipeJob;
 }
 export function reviewV2FromForm(form: unknown): ReviewV2Request | undefined {
@@ -13,7 +14,7 @@ export function reviewV2FromForm(form: unknown): ReviewV2Request | undefined {
   if (object(f.presentation).type !== 'review/v2') return undefined;
   return parseReviewV2(f.request);
 }
-export function reconcileReviewV2(selected: string, current: UserInputDetails | undefined, history: HistoryDetail | undefined, job: RecipeJob | undefined, provisional?: {request: ReviewV2Request; output: ReviewV2Output}, previous?: ReviewV2View, availabilityKnown = true): ReviewV2View {
+export function reconcileReviewV2(selected: string, current: UserInputDetails | undefined, history: RecordedReview | undefined, job: RecipeJob | undefined, provisional?: {request: ReviewV2Request; output: ReviewV2Output}, previous?: ReviewV2View, availabilityKnown = true): ReviewV2View {
   const live = current && reviewV2FromForm(current.form);
   const recorded = history && reviewV2FromForm(history.raw_form);
   const liveMatches=live?.review_id===selected;

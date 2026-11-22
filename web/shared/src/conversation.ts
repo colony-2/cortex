@@ -1,6 +1,6 @@
 import type { RecipeJob } from './types';
 import { API_BASE } from './apiBase';
-import { APIError } from './api';
+import { APIError, type InputArtifact } from './api';
 import { parseJobJSON } from './jobJSON';
 
 export interface HistoryValue { present: boolean; raw?: unknown; source?: string }
@@ -15,6 +15,8 @@ export interface HistoryEntry {
 }
 export interface ConversationSection<T> { availability: 'available' | 'unavailable'; value?: T; diagnostic?: string; observed_at?: string; attempt_ordinal?: number }
 export interface HistoryPage {
+  review_id?: string;
+  input_artifacts?: InputArtifact[];
   activity?: ConversationSection<RecipeJob>; final_documents?: ConversationSection<FinalDocuments>;
   merges?: HistoryMerge[]; events?: HistoryEvent[]; publication_coverage?: string;
   snapshot_revision: number; tenant_id: string; job_id: string; entries: HistoryEntry[];
@@ -43,8 +45,10 @@ async function read<T>(url: string, signal?: AbortSignal): Promise<T> {
   }
   return parseJobJSON(text) as T;
 }
-export async function getConversation(tenant: string, job: string, options: { pageToken?: string; pageSize?: number; signal?: AbortSignal } = {}): Promise<HistoryPage> {
+export async function getConversation(tenant: string, job: string, options: { pageToken?: string; pageSize?: number; includeSections?: boolean; reviewId?: string; signal?: AbortSignal } = {}): Promise<HistoryPage> {
   const query = new URLSearchParams({ page_size: String(options.pageSize ?? 50) });
+  if (options.includeSections === false) query.set('include_sections', 'false');
+  if (options.reviewId) query.set('review_id', options.reviewId);
   if (options.pageToken) query.set('page_token', options.pageToken);
   const page = await read<HistoryPage>(`${base(tenant, job)}?${query}`, options.signal);
   if (page.tenant_id !== tenant || page.job_id !== job || !Array.isArray(page.entries)) throw new Error('History response does not match the selected job');

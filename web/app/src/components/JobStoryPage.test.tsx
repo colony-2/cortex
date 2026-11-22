@@ -1190,6 +1190,21 @@ it('preserves transition decisions in the overview', async () => {
 
 describe('input artifact inventory', () => {
   const artifacts = [{ jobId: 'job', taskOrdinal: 0, name: 'docs/brief.md', sizeBytes: 120 }, { jobId: 'job', taskOrdinal: 0, name: 'a.bin', sizeBytes: 0 }];
+  it('reuses the Trace inventory when opening the Input artifacts tab', async () => {
+    mount('?tab=execution', {...story, input_artifacts: artifacts});
+    await screen.findByText('Recipe metadata');
+    fireEvent.click(screen.getByRole('tab', {name: 'Input artifacts', exact: true}));
+    expect(screen.getByRole('heading', {name: 'Input artifacts (2)'})).toBeVisible();
+    expect(getJobInputArtifacts).not.toHaveBeenCalled();
+  });
+  it('reuses the Conversation inventory when opening the Input artifacts tab', async () => {
+    vi.mocked(getConversation).mockResolvedValueOnce({tenant_id:'tenant',job_id:'job',entries:[],snapshot_token:'s',snapshot_revision:1,observed_at:'now',completeness:'complete',input_artifacts:artifacts});
+    mount('?tab=conversation');
+    await screen.findByText(/End of this retained snapshot/);
+    fireEvent.click(screen.getByRole('tab',{name:'Input artifacts',exact:true}));
+    expect(screen.getByRole('heading',{name:'Input artifacts (2)'})).toBeVisible();
+    expect(getJobInputArtifacts).not.toHaveBeenCalled();
+  });
   it.each([{ saved: artifacts }, { saved: [] }])('ENV-21 IA-016 retains a loaded inventory across Env visits: $saved', async ({ saved }) => {
     vi.mocked(getJobInputArtifacts).mockResolvedValue({ artifacts: saved });
     mount('?tab=input-artifacts');
@@ -1625,6 +1640,16 @@ it('CX-IN-01,08,10 refreshes Inbox snapshots without changing Outbox or structur
   expect(labels.indexOf('Inbox (1)')+1).toBe(labels.indexOf('Outbox (1)'));
   fireEvent.click(inbox);fireEvent.click(await screen.findByRole('button',{name:'guide.md',exact:true}));
   await waitFor(()=>expect(resolveContent).toBeTypeOf('function'));
+  const preview = screen.getByRole('dialog');
+  const refresh = screen.getByRole('button',{name:'reload Refresh',exact:true,hidden:true});
+  let finishRefresh!: () => void;
+  fetch.mockImplementationOnce(() => new Promise(resolve => {finishRefresh = () => resolve({ok:true,json:async()=>fixture()});}));
+  fireEvent.click(refresh);
+  expect(screen.getByRole('tab',{name:'Inbox (1)',hidden:true})).toBe(inbox);
+  expect(screen.getByRole('dialog')).toBe(preview);
+  await act(async()=>finishRefresh());
+  expect(screen.getByRole('dialog')).toBe(preview);
+  expect(fetch.mock.calls.filter(([url])=>url.includes('/artifacts/'))).toHaveLength(1);
   next=fixture('replacement.md');
   fireEvent.click(screen.getByRole('button',{name:'reload Refresh',exact:true,hidden:true}));
   expect(await screen.findByRole('button',{name:'replacement.md',exact:true})).toBeVisible();
@@ -1704,15 +1729,17 @@ describe('page controls refresh the real conversation', () => {
     if(mode === 'failing') fetchMock.mockRejectedValue(new Error('Execution failed'));
     vi.mocked(getJob).mockRejectedValue(new Error('Metadata failed'));
     const initial=vi.mocked(getConversation).mock.calls.length;
-    await tick(5000);expect(getConversation).toHaveBeenCalledTimes(initial+1);
-    await tick(5000);expect(getConversation).toHaveBeenCalledTimes(initial+2);
+    await tick(5000);expect(getConversation).toHaveBeenCalledTimes(initial+(mode === 'hidden' ? 1 : 0));
+    await tick(5000);expect(getConversation).toHaveBeenCalledTimes(initial+(mode === 'hidden' ? 2 : 0));
   });
-  it('CR-011 input activity refreshes history while auto-refresh is disabled',async()=>{
+  it('refreshes history on returning to Conversation after input activity',async()=>{
     await start();
     fireEvent.click(screen.getByRole('switch',{name:'Auto-refresh'}));
     const initial=vi.mocked(getConversation).mock.calls.length;
     inputState.pendingInputs = [{job_id:'another-job',request_id:'new-input'}];
     await act(async()=>{fireEvent.click(screen.getByRole('tab',{name:'Trace',exact:true}));});
+    expect(getConversation).toHaveBeenCalledTimes(initial);
+    await act(async()=>{fireEvent.click(screen.getByRole('tab',{name:'Conversation',exact:true}));});
     expect(getConversation).toHaveBeenCalledTimes(initial+1);
     await tick(10000);expect(getConversation).toHaveBeenCalledTimes(initial+1);
   });

@@ -27,8 +27,9 @@ export async function reviewV2BrowserFixture(page:Page) {
  await page.route('**/user-inputs/one',r=>{state.details++;return r.fulfill(state.pending?{json:{jobId:'one',status:'pending',startTime:'2026-11-16T12:00:00Z',form:{...form(),request:{...state.request,review_id:state.liveReviewId||state.request.review_id}}}}:{status:204,body:''});});
  await page.route('**/jobs/one/conversation?*',r=>r.fulfill(state.historyError?{status:503,json:{error:'History unavailable'}}:{json:{tenant_id:'v2',job_id:'one',snapshot_token:'snapshot',snapshot_revision:1,entries:[entry()],completeness:'complete',activity:{availability:'available',value:activity()}}}));
  await page.route('**/jobs/one/conversation/entry?*',r=>r.fulfill({json:detail()}));
- await page.route('**/jobs/one/conversation/artifact?*',async r=>{
-  const id=new URL(r.request().url()).searchParams.get('artifact_id')!;state.reads.push(id);
+ await page.route('**/jobs/producer/stored-document?*',async r=>{
+  const name=new URL(r.request().url()).searchParams.get('name');
+  const id=Object.keys(state.request.documents).find(id=>state.request.documents[id].stored.key.name===name)!;state.reads.push(id);
   if(state.holds.has(id))await state.holds.get(id);
   try{
    if(state.failures.has(id))return await r.fulfill({status:state.failures.get(id),json:{error:'Could not load this document'}});

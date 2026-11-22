@@ -27,7 +27,7 @@ describe('review documents', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Document options' }));
     fireEvent.click(screen.getByRole('radio', { name: 'Markdown', exact: true }));
     expect(screen.getByLabelText('Markdown source').textContent).toBe(source);
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('request_id=request&document_id=design'), expect.anything());
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/jobs/child/stored-document?ordinal=5&name=design.md'), expect.anything());
   });
 
   it('can retry document failures and handles reviews without documents', async () => {
@@ -62,13 +62,13 @@ describe('SAV-019 review attachment membership', () => {
       zconflict2: {kind:'stored' as const,name:'duplicate.png',stored:{key:{jobId:'child',taskOrdinal:7,name:'different.png'}}},
     };
     const source = '![id](imageID)\n![display](display.png)\n![stored](stored.png)\n![blocked](duplicate.png)';
-    const mock = vi.fn(async (url:string) => String(url).includes('document_id=design') ? new Response(source) : new Response('not raster'));
+    const mock = vi.fn(async (url:string) => String(url).includes('name=design.md') ? new Response(source) : new Response('not raster'));
     vi.stubGlobal('fetch',mock);
     render(<ReviewDocuments projectId="tenant" jobId="job" requestId="request" documents={docs} />);
     // Select design explicitly because document IDs sort independently of insertion order.
     await screen.findByText(/Blocked external or ambiguous image/);
-    await waitFor(()=>expect(mock.mock.calls.filter(c=>String(c[0]).includes('document_id=imageID'))).toHaveLength(3));
-    expect(mock.mock.calls.some(c=>/document_id=zconflict/.test(String(c[0])))).toBe(false);
+    await waitFor(()=>expect(mock.mock.calls.filter(c=>String(c[0]).includes('name=stored.png'))).toHaveLength(3));
+    expect(mock.mock.calls.some(c=>/name=(other|different)/.test(String(c[0])))).toBe(false);
   });
 });
 
@@ -79,20 +79,20 @@ describe('MAL review file navigation', () => {
     z: {kind:'stored' as const,name:'data.json',stored:{key:{jobId:'producer-C',taskOrdinal:3,name:'docs/data.json'}}},
   };
   it('MAL-013,015,021,022,028,031 navigates by canonical path through review-owned encoded IDs', async () => {
-    const mock=vi.fn(async(url:string)=>new Response(url.includes('document_id=a')?'# Bar\n[next](foo.md?ignored=1#target)':url.includes('document_id=z')?'{"n":42}':'# Target\n[self](foo.md#target) [json](data.json) [missing](outside.md)'));
+    const mock=vi.fn(async(url:string)=>new Response(url.includes('name=docs%2Fbar.md')?'# Bar\n[next](foo.md?ignored=1#target)':url.includes('name=docs%2Fdata.json')?'{"n":42}':'# Target\n[self](foo.md#target) [json](data.json) [missing](outside.md)'));
     vi.stubGlobal('fetch',mock);
     render(<ReviewDocuments projectId="tenant" jobId="job" requestId="request" documents={linked}/>);
     fireEvent.click(await screen.findByRole('button',{name:'next'}));
     await screen.findByRole('heading',{name:'Target'});
     expect(screen.getByRole('link',{name:'Download'})).toHaveAttribute('download','foo.md');
-    expect(screen.getByRole('link',{name:'Download'}).getAttribute('href')).toContain('document_id=b%2F%E9%9B%AA');
+    expect(screen.getByRole('link',{name:'Download'}).getAttribute('href')).toContain('name=docs%2Ffoo.md');
     expect(screen.getByRole('button', { name: /foo.md b\/雪/ })).toHaveAttribute('aria-current', 'true');
     fireEvent.click(screen.getByRole('button',{name:'self'}));expect(mock).toHaveBeenCalledTimes(2);
     fireEvent.click(screen.getByRole('button',{name:'missing'}));expect(mock).toHaveBeenCalledTimes(2);
     expect(screen.getByRole('status')).toHaveTextContent('missing');
     fireEvent.click(screen.getByRole('button',{name:'json'}));
     await screen.findByLabelText('Formatted JSON');expect(mock).toHaveBeenCalledTimes(3);
-    for(const [url] of mock.mock.calls) {expect(url).toContain('/projects/tenant/reviews/job/');expect(url).not.toMatch(/producer|ignored/);}
+    for(const [url] of mock.mock.calls) {expect(url).toContain('/projects/tenant/jobs/producer-');expect(url).not.toContain('ignored');}
   });
   it('MAL-023 rejects ambiguous and escaping links without fetching', async () => {
     const mock=vi.fn(async()=>new Response('[ambiguous](same) [escape](../../x.md) [bad](bad%FF)'));
@@ -103,23 +103,23 @@ describe('MAL review file navigation', () => {
   });
   it('MAL-033 keeps failed target selected and retries only its endpoint', async () => {
     let recover=false;
-    const mock=vi.fn(async(url:string)=>url.includes('document_id=a')?new Response('[next](foo.md)'):new Response(recover?'# Recovered':'failure',{status:recover?200:503}));
+    const mock=vi.fn(async(url:string)=>url.includes('name=docs%2Fbar.md')?new Response('[next](foo.md)'):new Response(recover?'# Recovered':'failure',{status:recover?200:503}));
     vi.stubGlobal('fetch',mock);render(<ReviewDocuments projectId="tenant" jobId="job" requestId="r" documents={linked}/>);
     fireEvent.click(await screen.findByRole('button',{name:'next'}));await screen.findByText(/Could not load/);
     expect(screen.getByRole('link',{name:'Download'})).toHaveAttribute('download','foo.md');
     recover=true;fireEvent.click(screen.getByRole('button',{name:'Retry'}));await screen.findByRole('heading',{name:'Recovered'});
-    expect(mock.mock.calls.at(-1)?.[0]).toContain('document_id=b%2F%E9%9B%AA');
+    expect(mock.mock.calls.at(-1)?.[0]).toContain('name=docs%2Ffoo.md');
   });
   it('MAL-032 suppresses pending navigation content after context change', async () => {
     let finish!:(r:Response)=>void;let signal!:AbortSignal;
     const mock=vi.fn(async(url:string,options:RequestInit)=>{
-      if(url.includes('document_id=b')) {signal=options.signal as AbortSignal;return new Promise<Response>(r=>{finish=r;});}
-      return new Response(url.includes('request_id=new')?'# New':'[next](foo.md)');
+      if(url.includes('name=docs%2Ffoo.md')) {signal=options.signal as AbortSignal;return new Promise<Response>(r=>{finish=r;});}
+      return new Response(url.includes('name=new.md')?'# New':'[next](foo.md)');
     });
     vi.stubGlobal('fetch',mock);
     const {rerender}=render(<ReviewDocuments projectId="tenant" jobId="job" requestId="old" documents={linked}/>);
     fireEvent.click(await screen.findByRole('button',{name:'next'}));await screen.findByLabelText('Loading document');
-    rerender(<ReviewDocuments projectId="tenant" jobId="job" requestId="new" documents={linked}/>);
+    rerender(<ReviewDocuments projectId="tenant" jobId="job" requestId="new" documents={{...linked,a:{...linked.a,stored:{key:{...linked.a.stored.key,name:"new.md"}}}}}/>);
     await screen.findByRole('heading',{name:'New'});expect(signal.aborted).toBe(true);
     finish(new Response('# Stale'));await waitFor(()=>expect(screen.queryByRole('heading',{name:'Stale'})).toBeNull());
     expect(screen.queryByRole('status')).toBeNull();
@@ -130,8 +130,8 @@ it('MAL-032 cancels a pending linked target when selecting another document and 
   const docs={a:{kind:'stored' as const,stored:{key:{jobId:'p',taskOrdinal:1,name:'a.md'}}},b:{kind:'stored' as const,stored:{key:{jobId:'p',taskOrdinal:2,name:'b.md'}}},c:{kind:'stored' as const,stored:{key:{jobId:'p',taskOrdinal:3,name:'c.md'}}}};
   let fail!:(e:Error)=>void;let signal!:AbortSignal;
   vi.stubGlobal('fetch',vi.fn((url:string,options:RequestInit)=>{
-    if(url.includes('document_id=b')) {signal=options.signal as AbortSignal;return new Promise<Response>((_,reject)=>{fail=reject;});}
-    return Promise.resolve(new Response(url.includes('document_id=c')?'# Current C':'[next](b.md#stale)'));
+    if(url.includes('name=b.md')) {signal=options.signal as AbortSignal;return new Promise<Response>((_,reject)=>{fail=reject;});}
+    return Promise.resolve(new Response(url.includes('name=c.md')?'# Current C':'[next](b.md#stale)'));
   }));
   render(<ReviewDocuments projectId="tenant" jobId="job" requestId="r" documents={docs}/>);
   fireEvent.click(await screen.findByRole('button',{name:'next'}));await screen.findByLabelText('Loading document');
@@ -163,7 +163,7 @@ describe('CTX-001 cancelled review navigation intent', () => {
     const previousScroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView');
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {configurable:true,value:scroll});
     const mock = vi.fn((url:string, options:RequestInit) => {
-      if (url.includes('document_id=b')) {
+      if (url.includes('name=b.md')) {
         signalB = options.signal as AbortSignal;
         return new Promise<Response>(resolve => { finishB = resolve; });
       }
@@ -213,7 +213,7 @@ describe('CTX-001 cancelled review navigation intent', () => {
 it('CTX-001 MAL-026,028,033 preserves valid target focus and fragment through a retry', async () => {
   const doc = (name:string) => ({kind:'stored' as const,stored:{key:{jobId:'producer',taskOrdinal:1,name}}});
   let recovered = false;
-  const mock = vi.fn(async (url:string) => url.includes('document_id=a')
+  const mock = vi.fn(async (url:string) => url.includes('name=a.md')
     ? new Response('[next](b.md#only-b)')
     : new Response(recovered ? '# Only B' : 'Unavailable', {status:recovered ? 200 : 503}));
   const scroll = vi.fn();
@@ -230,7 +230,7 @@ it('CTX-001 MAL-026,028,033 preserves valid target focus and fragment through a 
     expect(screen.getByLabelText('Document preview')).toHaveFocus();
     expect(scroll).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('status')).toBeNull();
-    expect(mock.mock.calls.at(-1)?.[0]).toContain('document_id=b');
+    expect(mock.mock.calls.at(-1)?.[0]).toContain('name=b.md');
   } finally {
     if (previousScroll) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', previousScroll);
     else delete (HTMLElement.prototype as {scrollIntoView?:unknown}).scrollIntoView;
@@ -248,10 +248,10 @@ describe('RDM metadata catalog', () => {
     const nav=screen.getByRole('navigation',{name:'Review documents'});
     expect([...nav.querySelectorAll('button')].map(b=>b.textContent)).toEqual(['OverviewPrimaryz · z.mdRead this first','Supporting notesSupportingb · b.md','Diagnostic reportDiagnostic雪/target · target.md','a.mda']);
     expect(fetcher.mock.calls).toHaveLength(1);
-    expect(fetcher.mock.calls[0][0]).toContain('document_id=z');
+    expect(fetcher.mock.calls[0][0]).toContain('name=z.md');
     expect(screen.queryByText('Never attached')).toBeNull();
     const source=screen.getByRole('link',{name:'Diagnostic report · target.md (雪/target)'});
-    expect(source.getAttribute('href')).toContain('document_id=%E9%9B%AA%2Ftarget');
+    expect(source.getAttribute('href')).toContain('name=target.md');
     expect(screen.getByText('missing (unavailable)')).toBeInTheDocument();
     expect(screen.getByText('b.md (unavailable)')).toBeInTheDocument();
     expect(screen.getAllByRole('link',{name:'Diagnostic report · target.md (雪/target)'})).toHaveLength(1);
@@ -287,7 +287,7 @@ describe('RDM metadata catalog', () => {
     const fetcher=vi.fn(async()=>new Response('# Loaded'));vi.stubGlobal('fetch',fetcher);
     render(<ReviewDocuments projectId="t" jobId="j" requestId="r" documents={docs} overviewDocumentId={overview} documentMetadata={{b:{order:0}}}/>);
     await screen.findByRole('heading',{name:'Loaded'});
-    expect(fetcher.mock.calls[0][0]).toContain('document_id=a');
+    expect(fetcher.mock.calls[0][0]).toContain('name=a.md');
   });
   it.each([null,'0',-1,1.1,1_000_001])('RDM-010 treats invalid order %s as absent', async order => {
     vi.stubGlobal('fetch',vi.fn(async()=>new Response('# Loaded')));
@@ -336,7 +336,7 @@ describe('RGI attached nested galleries', () => {
   function fixture(source: string) {
     const OriginalURL = URL;
     vi.stubGlobal('URL', class extends OriginalURL { static createObjectURL = vi.fn(()=>'blob:fixture'); static revokeObjectURL = vi.fn(); });
-    const fetcher = vi.fn(async (url: string) => new Response(new URL(url,'http://local').searchParams.get('document_id') === 'gallery' ? source : png));
+    const fetcher = vi.fn(async (url: string) => new Response(new URL(url,'http://local').searchParams.get('name') === 'captures/gallery.md' ? source : png));
     vi.stubGlobal('fetch', fetcher);
     return fetcher;
   }
@@ -349,15 +349,15 @@ describe('RGI attached nested galleries', () => {
     render(<ReviewDocuments {...props} documents={docs}/>);
     await waitFor(()=>expect(screen.getAllByRole('img').filter(el=>el.tagName==='IMG')).toHaveLength(refs.length));
     expect(fetcher).toHaveBeenCalledTimes(refs.length+1);
-    const ids = fetcher.mock.calls.slice(1).map(([url])=>new URL(url,'http://local').searchParams.get('document_id'));
-    expect(ids).toEqual(expect.arrayContaining(['image/0','image/1','image/2','image/3','image/4','image/5','root','space','id/雪']));
-    expect(ids).not.toContain('conflict');
+    const ids = fetcher.mock.calls.slice(1).map(([url])=>new URL(url,'http://local').searchParams.get('name'));
+    expect(ids).toEqual(expect.arrayContaining([...filenames.map(name => 'captures/' + name),'root.png','captures/a 雪.png','elsewhere/id.png']));
+    expect(ids).not.toContain('elsewhere/conflict.png');
     for (const [url] of fetcher.mock.calls) {
-      expect(url).toContain('/projects/tenant/reviews/job/documents?');
-      expect(url).toContain('request_id=request');
-      expect(url).not.toMatch(/producer|artifacts|ignored|fragment/);
+      expect(url).toContain('/projects/tenant/jobs/producer/stored-document?');
+      expect(url).toContain('ordinal=7');
+      expect(url).not.toMatch(/ignored|fragment/);
     }
-    expect(fetcher.mock.calls.some(([url])=>url.includes('document_id=id%2F%E9%9B%AA'))).toBe(true);
+    expect(fetcher.mock.calls.some(([url])=>url.includes('name=elsewhere%2Fid.png'))).toBe(true);
   });
   it('RGI-005–008 blocks collisions, missing, unsafe references and alias bypasses without fetching', async () => {
     const refs = ['duplicate.png','alias.png','missing.png','basename.png','https://blocked.invalid/x','//blocked.invalid/x','/absolute.png','data:image/png;base64,AA','javascript:alert','../../escape.png','bad%FF','a%2fb','a%5Cb','a\\b','#fragment'];
@@ -372,11 +372,11 @@ describe('RGI attached nested galleries', () => {
     const fetcher = fixture('![sibling](image.png)');
     const docs = {gallery:doc('captures/gallery.md','First.md'),second:doc('other/gallery.md','Second.md'),one:doc('captures/image.png'),two:doc('other/image.png')};
     // Both Markdown documents share the same gallery source.
-    fetcher.mockImplementation(async(url:string)=>new Response(['gallery','second'].includes(new URL(url,'http://local').searchParams.get('document_id')!) ? '![sibling](image.png)' : png));
+    fetcher.mockImplementation(async(url:string)=>new Response(new URL(url,'http://local').searchParams.get('name')?.endsWith('/gallery.md') ? '![sibling](image.png)' : png));
     const {rerender}=render(<ReviewDocuments {...props} documents={docs}/>);
-    await waitFor(()=>expect(fetcher.mock.calls.some(([url])=>url.includes('document_id=one'))).toBe(true));
+    await waitFor(()=>expect(fetcher.mock.calls.some(([url])=>url.includes('name=captures%2Fimage.png'))).toBe(true));
     fireEvent.click(screen.getByRole('button',{name:'Second.md second'}));
-    await waitFor(()=>expect(fetcher.mock.calls.some(([url])=>url.includes('document_id=two'))).toBe(true));
+    await waitFor(()=>expect(fetcher.mock.calls.some(([url])=>url.includes('name=other%2Fimage.png'))).toBe(true));
     rerender(<ReviewDocuments {...props} documents={{gallery:docs.gallery,second:docs.second,one:docs.one}}/>);
     await screen.findByText(/Blocked external or ambiguous image/);
     const count=fetcher.mock.calls.length;
@@ -388,7 +388,7 @@ describe('RGI attached nested galleries', () => {
 
 it.each(['fetch-error','not-raster'])('RGI-011 retains inline attachment %s handling', async mode => {
   const doc = (name:string): ReviewDocument => ({kind:'stored',stored:{key:{jobId:'producer',taskOrdinal:1,name}}});
-  const fetcher=vi.fn(async(url:string)=>url.includes('document_id=gallery')
+  const fetcher=vi.fn(async(url:string)=>url.includes('name=captures%2Fgallery.md')
     ? new Response('![image](image.png)')
     : new Response('plain text',{status:mode==='fetch-error'?503:200}));
   vi.stubGlobal('fetch',fetcher);
@@ -426,7 +426,7 @@ describe('CC historical document source', () => {
 
 
 it('RM-001/004/006/007/015 prioritizes the body, hides navigation, and scopes options to the selection', async () => {
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(url.includes('document_id=design') ? '# Authored heading' : '{"next":true}')));
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(url.includes('name=design.md') ? '# Authored heading' : '{"next":true}')));
   const docs = {...documents, json: {kind:'stored' as const,name:'next.json',stored:{key:{jobId:'child',taskOrdinal:6,name:'next.json',sizeBytes:8}}}};
   const {container, rerender} = baseRender(<ReviewDocuments projectId="t" jobId="j" requestId="r" documents={docs}
     documentMetadata={{design:{title:'Selected details',description:'Description below body',role:'primary',source_document_ids:['missing']}}} />);

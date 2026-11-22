@@ -22,8 +22,8 @@ async function fixture(page: Page, count=2, required=false) {
     {id:'other',type:'short_answer',question:'Required context',required:true},
     {id:'attachment',type:'file_upload',question:'Annotations'},
   ]}}}));
-  await page.route('**/reviews/one/documents?*',r=>{
-    const id=new URL(r.request().url()).searchParams.get('document_id');
+  await page.route('**/jobs/one/stored-document?*',r=>{
+    const id=Object.keys(documents).find(id=>documents[id].stored.key.name===new URL(r.request().url()).searchParams.get('name'));
     if(id==='d1') return r.fulfill({contentType:'text/plain',body:('wide'.repeat(150)+'\n').repeat(170)+'SOURCE END'});
     if(id==='d2') return r.fulfill({contentType:'text/plain',body:'--- a/file\n+++ b/file\n@@ -1,151 +1,151 @@\n'+ Array.from({length:150},()=>'-old\n+new').join('\n')+'\n DIFF END'});
     // A passive SVG is deliberately not used for the raster viewer.

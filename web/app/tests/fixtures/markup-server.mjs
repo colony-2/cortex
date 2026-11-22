@@ -31,7 +31,7 @@ createServer(async (request, response) => {
     if(url.pathname.includes('redirect')) { response.writeHead(302,{location:'/api/probe-redirected'}); response.end(); return; }
     response.end('resource sentinel'); return;
   }
-  const name = url.searchParams.get('document_id') || decodeURIComponent(url.pathname.split('/artifacts/')[1] || '');
+  const name = url.searchParams.get('name') || url.searchParams.get('document_id') || decodeURIComponent(url.pathname.split('/artifacts/')[1] || '');
   const value = files.get(name);
   if (!value) { response.writeHead(404); response.end('unavailable'); return; }
   response.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}` });

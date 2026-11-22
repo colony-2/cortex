@@ -9,7 +9,7 @@ vi.mock('./review/document', async importOriginal => ({ ...await importOriginal<
 vi.mock('../utils/promptImages', async importOriginal => ({ ...await importOriginal<typeof import('../utils/promptImages')>(), rasterPreview: vi.fn() }));
 const artifact: InputArtifact = { name: 'pasted.png', sizeBytes: 10, kind: 'stored', contentBinding: 'authorized-binding' };
 it('binds only a unique authorized relative input name and preserves the owning input-document identity', () => {
-  expect(promptImageBinding('tenant', 'owner', 'pasted.png', [artifact])?.url).toContain('/jobs/owner/input-document?binding=authorized-binding');
+  expect(promptImageBinding('tenant', 'owner', 'pasted.png', [artifact])?.url).toContain('/jobs/owner/input-document?binding=authorized-binding&ordinal=0');
   expect(promptImageBinding('tenant', 'owner', 'pasted.png', [artifact, artifact])).toBeUndefined();
   for (const name of ['https://example.com/pasted.png', '//example.com/pasted.png', '/pasted.png', '../pasted.png', 'data:image/png,a', 'blob:x', 'pasted%2epng']) expect(promptImageBinding('t', 'j', name, [{ ...artifact, name }])).toBeUndefined();
   expect(promptImageBinding('t', 'j', 'pasted.png', [{ ...artifact, kind: 'external', reason: 'unavailable' } as InputArtifact])).toBeUndefined();
@@ -17,7 +17,7 @@ it('binds only a unique authorized relative input name and preserves the owning 
 it('renders remote, HTML and ambiguous images as placeholders without image loads', async () => {
   vi.mocked(getJobInputArtifacts).mockResolvedValue({ artifacts: [artifact, artifact] });
   render(<GoalPrompt projectId="t" jobId="j" text={'![bound](pasted.png) ![remote](https://never-fetch.invalid/x.png)\n\n<img src="https://never-fetch.invalid/html.png">'} />);
-  await waitFor(() => expect(getJobInputArtifacts).toHaveBeenCalled());
+  await waitFor(() => expect(getJobInputArtifacts).toHaveBeenCalledWith('t', 'j', expect.any(AbortSignal), 0));
   expect(screen.getByText('Image unavailable: bound')).toBeVisible();
   expect(screen.getByText('Image unavailable: remote')).toBeVisible();
   expect(document.querySelector('img')).toBeNull();

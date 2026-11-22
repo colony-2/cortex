@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { API_BASE } from '@colony2/shared';
+import { API_BASE, storedDocumentURL } from '@colony2/shared';
 import { getJobInputArtifacts, type InputArtifact } from '@colony2/shared/api';
 import { IMAGE_LIMIT, loadDocument } from './review/document';
 import { markdownImages, rasterPreview, safeImageName } from '../utils/promptImages';
@@ -13,8 +13,9 @@ export function promptImageBinding(projectId: string, jobId: string, name: strin
   const artifact = matches[0];
   if (artifact.kind && !['stored', 'value'].includes(artifact.kind)) return undefined;
   const root = `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/`;
-  const url = artifact.contentBinding !== undefined
-    ? `${root}${encodeURIComponent(jobId)}/input-document?binding=${encodeURIComponent(artifact.contentBinding)}`
+  const key = artifact.kind === 'stored' ? artifact.storedKey : undefined;
+  const url = key ? storedDocumentURL(projectId, key) : artifact.contentBinding !== undefined
+    ? `${root}${encodeURIComponent(jobId)}/input-document?binding=${encodeURIComponent(artifact.contentBinding)}&ordinal=0`
     : artifact.jobId !== undefined && artifact.taskOrdinal !== undefined
       ? `${root}${encodeURIComponent(artifact.jobId)}/tasks/${artifact.taskOrdinal}/artifacts/${encodeURIComponent(artifact.name)}` : undefined;
   return url ? { url, name, size: artifact.sizeBytes } : undefined;
@@ -37,24 +38,25 @@ function PromptImage({ binding, alt }: { binding: NonNullable<ReturnType<typeof 
   }, [binding.url, binding.name, binding.size]);
   return <span className="prompt-bound-image">{preview ? <img src={preview} alt={alt} /> : <span className="prompt-image-placeholder">{failed ? 'Image unavailable' : 'Loading image…'}: {alt || binding.name}</span>} <a href={binding.url} download={binding.name} aria-label={`Download ${binding.name}`}>Download original image</a></span>;
 }
-function OwnedPrompt({ projectId, jobId, text }: { projectId: string; jobId: string; text: string }) {
+type PromptProps = { projectId: string; jobId: string; text: string; inventory?: InputArtifact[]; waitingForInventory?: boolean };
+function OwnedPrompt({ projectId, jobId, text, inventory, waitingForInventory }: PromptProps) {
   const [artifacts, setArtifacts] = useState<InputArtifact[]>([]);
   const hasImages = markdownImages(text).length > 0;
   useEffect(() => {
-    if (!hasImages) return;
+    if (!hasImages || inventory || waitingForInventory) return;
     const controller = new AbortController();
-    getJobInputArtifacts(projectId, jobId, controller.signal).then(result => { if (!controller.signal.aborted) setArtifacts(result.artifacts); }).catch(() => {});
+    getJobInputArtifacts(projectId, jobId, controller.signal, 0).then(result => { if (!controller.signal.aborted) setArtifacts(result.artifacts); }).catch(() => {});
     return () => controller.abort();
-  }, [projectId, jobId, hasImages]);
+  }, [projectId, jobId, hasImages, inventory, waitingForInventory]);
   return <div className="job-prompt-markdown"><Markdown remarkPlugins={[remarkGfm]} skipHtml components={{
     a: ({ children, href }) => /^(https?:|mailto:)/i.test(href || '') ? <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> : <span>{children} (link unavailable)</span>,
     img: ({ src, alt }) => {
-      const binding = promptImageBinding(projectId, jobId, src || '', artifacts);
+      const binding = promptImageBinding(projectId, jobId, src || '', inventory ?? artifacts);
       return binding ? <PromptImage key={binding.url} binding={binding} alt={alt || ''} /> : <span className="prompt-image-placeholder">Image unavailable: {alt || 'unbound image'}</span>;
     },
   }}>{text}</Markdown></div>;
 }
-export default function GoalPrompt(props: { projectId: string; jobId: string; text: string }) {
+export default function GoalPrompt(props: PromptProps) {
   // Remount on ownership changes: stale inventory/URLs can never bind another job's prompt.
   return <OwnedPrompt key={JSON.stringify([props.projectId, props.jobId, props.text])} {...props} />;
 }

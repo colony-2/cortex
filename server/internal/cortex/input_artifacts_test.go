@@ -57,7 +57,7 @@ func TestInputArtifactsSelection(t *testing.T) {
 		start := jobdb.Chapter{Ordinal: 7, Body: body, Artifacts: []jobdb.StoredArtifact{{Name: "docs/雪 ?#.md", Size: 120}}}
 		chapters := []jobdb.Chapter{{Ordinal: 1, Body: jobdb.RestartExtraChapter{}, Artifacts: start.Artifacts}, start, {Ordinal: 8, Body: jobdb.ExecutionChapter{}, Artifacts: start.Artifacts}}
 		got, err := inputArtifacts("job", chapters)
-		if err != nil || !reflect.DeepEqual(got, []inputArtifact{{JobID: "job", TaskOrdinal: 7, Name: "docs/雪 ?#.md", SizeBytes: 120}}) {
+		if err != nil || !reflect.DeepEqual(got, []inputArtifact{{JobID: "job", TaskOrdinal: 7, inputOrdinal: 7, Name: "docs/雪 ?#.md", SizeBytes: 120}}) {
 			t.Fatalf("%#v %v", got, err)
 		}
 		if _, err = inputArtifacts("job", append(chapters, start)); err == nil {

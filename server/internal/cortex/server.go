@@ -7,10 +7,12 @@ import (
 	"time"
 
 	"github.com/colony-2/c2j/pkg/input"
+	"github.com/colony-2/c2j/pkg/jobdbschema"
 	"github.com/colony-2/c2j/pkg/ops"
 	"github.com/colony-2/c2j/pkg/story"
 	"github.com/colony-2/c2j/pkg/template/colonycel"
 	workerworkflow "github.com/colony-2/c2j/pkg/worker/workflow"
+	"github.com/colony-2/c2j/pkg/workflowctl"
 	"github.com/colony-2/jobdb/pkg/jobdb"
 	jobworkflow "github.com/colony-2/jobdb/pkg/workflow"
 	"github.com/gorilla/mux"
@@ -32,8 +34,12 @@ func NewServer(cfg Config, engine jobworkflow.Engine) (*Server, error) {
 		return nil, fmt.Errorf("cell registry runtime is required")
 	}
 	projects := &tenantProjectService{defaultTenantID: cfg.DefaultTenantID}
+	storyEngine := engine
+	if e, ok := engine.(jobdbschema.WorkflowEngine); ok {
+		storyEngine = snapshotStoryEngine{e}
+	}
 	storySvc, err := story.New(story.ServiceConfig{
-		Engine: engine,
+		Engine: storyEngine,
 
 		Projects:           projects,
 		CELOptionsProvider: colonycel.NewBuilder(colonycel.Options{}),
@@ -55,25 +61,37 @@ func NewServer(cfg Config, engine jobworkflow.Engine) (*Server, error) {
 		return nil, err
 	}
 
-	runtime, err := input.NewRuntime(ctl, sse)
+	var pending workflowctl.WorkflowControl = ctl
+	var reader input.HistoryReader = ctl
+	var chapters chapterReader
+	if e, ok := engine.(jobdbschema.WorkflowEngine); ok {
+		chapters, _ = e.Registry.(chapterReader)
+		if lookup, ok := chapters.(chapterLookup); ok {
+			pending = pendingTaskControl{ctl, lookup}
+		}
+		if runtime, ok := e.Registry.(jobdb.JobRunReader); ok {
+			reader = conversationHistoryReader{HistoryReader: ctl, runtime: runtime}
+		}
+	}
+	runtime, err := input.NewRuntime(pending, sse)
 	if err != nil {
 		return nil, err
 	}
-
-	history, err := input.NewHistoryService(input.HistoryConfig{Reader: ctl})
+	history, err := input.NewHistoryService(input.HistoryConfig{Reader: reader})
 	if err != nil {
 		return nil, err
 	}
 
 	s := &Server{
-		history: history,
-		inputs:  runtime,
-		cfg:     cfg,
-		engine:  engine,
-		story:   storySvc,
-		cells:   cells,
-		logger:  cfg.Logger,
-		started: time.Now().UTC(),
+		history:  history,
+		chapters: chapters,
+		inputs:   runtime,
+		cfg:      cfg,
+		engine:   engine,
+		story:    storySvc,
+		cells:    cells,
+		logger:   cfg.Logger,
+		started:  time.Now().UTC(),
 	}
 	if cfg.AssistantRuntime != nil {
 		if cfg.Assistant != nil {
@@ -119,6 +137,7 @@ func (s *Server) buildRouter(inputService ops.ManagementService) http.Handler {
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/restart", s.requireJob(s.handleRestartJob)).Methods(http.MethodPost, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/restart-context", s.requireJob(s.handleRestartContext)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/chapters/download", s.requireJob(s.handleChapterDownload)).Methods(http.MethodGet, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/stored-document", s.handleStoredDocument).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/input-document", s.requireArchivedJob(s.handleInputDocument)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/input-artifacts", s.requireArchivedJob(s.handleInputArtifacts)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/conversation", s.requireArchivedJob(s.handleConversation)).Methods(http.MethodGet, http.MethodOptions)

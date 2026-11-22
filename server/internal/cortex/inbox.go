@@ -1,6 +1,7 @@
 package cortex
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"mime"
@@ -11,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/colony-2/c2j/pkg/story"
+	"github.com/colony-2/jobdb/pkg/jobdb"
 	"github.com/gorilla/mux"
 )
 
@@ -37,7 +39,22 @@ func (s *Server) handleInboxValue(w http.ResponseWriter, r *http.Request) {
 		writeHTTPError(w, 400, fmt.Errorf("explicit inbox attempt and binding selectors required"))
 		return
 	}
-	value, err := s.story.GetInboxValue(r.Context(), story.GetInboxValueRequest{ProjectID: s.tenantID(r), JobID: mux.Vars(r)["jobId"], JobAttempt: int(ja), InvocationID: q.Get("invocation_id"), TaskOrdinal: ordinal, TaskAttempt: int(ta), Binding: q.Get("binding")})
+	ctx := r.Context()
+	if reader, ok := s.chapters.(chapterLookup); ok {
+		key := jobdb.JobKey{TenantId: s.tenantID(r), JobId: mux.Vars(r)["jobId"]}
+		ch, err := reader.GetChapter(ctx, jobdb.ChapterRef{JobKey: key, Ordinal: ordinal})
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		// Native execution results contain the complete prepared input and
+		// attempt identity. c2j still validates the selectors and binding.
+		if record, err := chapterRecord(ch); err == nil && record.Kind == "result" {
+			run := jobdb.GetJobRunResponse{Job: jobdb.JobRunSummary{JobKey: key}, Execution: []jobdb.ExecutionHistoryEntry{{Ordinal: ch.Ordinal, Record: record}}}
+			ctx = context.WithValue(ctx, storyRunKey{}, &run)
+		}
+	}
+	value, err := s.story.GetInboxValue(ctx, story.GetInboxValueRequest{ProjectID: s.tenantID(r), JobID: mux.Vars(r)["jobId"], JobAttempt: int(ja), InvocationID: q.Get("invocation_id"), TaskOrdinal: ordinal, TaskAttempt: int(ta), Binding: q.Get("binding")})
 	if err != nil {
 		status, reason := http.StatusInternalServerError, "history_unreadable"
 		var failure *story.InboxError

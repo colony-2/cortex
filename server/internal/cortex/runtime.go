@@ -31,6 +31,7 @@ func NewRemoteServer(cfg Config) (*Server, error) {
 	}
 	server, err := NewServer(cfg, jobdbschema.WorkflowEngine{Engine: engine, Registry: runtime})
 	if err == nil {
+		server.documentClient = client
 		server.jobDeletion = runtime
 		server.chapters = runtime
 		server.leaseEvents = runtime

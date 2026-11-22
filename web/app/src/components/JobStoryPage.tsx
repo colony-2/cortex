@@ -47,7 +47,7 @@ import AttemptTabs from './AttemptTabs';
 import CancelJobButton from './CancelJobButton';
 import JobActionDialog from './JobActionDialog';
 import GoalPrompt from './GoalPrompt';
-import { getJob, getJobInputArtifacts, type InputArtifact } from '@colony2/shared/api';
+import { getJob, getJobInputArtifacts, storedDocumentURL, type InputArtifact } from '@colony2/shared/api';
 import type { RecipeJob } from '@colony2/shared/types';
 import { canArchiveImmediately, isFinishedJob, confirmsRecoveryCompletion, jobStatusPresentation, jobStatusValue } from '../utils/jobStatus';
 import { goalPath } from './JobWaitLinks';
@@ -103,6 +103,7 @@ type JobStatus =
 
 
 interface JobStoryResponse {
+  input_artifacts?: InputArtifact[];
   restart_scopes?: RestartScope[];
   job_id: string;
   invocation_sequence?: number;
@@ -158,15 +159,19 @@ function statusTagColor(status: string): string {
   return colors[status] ?? 'default';
 }
 
-type ArtifactKey = StoredArtifactKey & { id?: string; contentBinding?: string; inputJobId?: string };
+type ArtifactKey = StoredArtifactKey & { id?: string; storedKey?: { jobId: string; taskOrdinal: number; name: string }; contentBinding?: string; inputOrdinal?: number; inputJobId?: string };
+function sortInputArtifacts(rows: InputArtifact[]) {
+  return [...rows].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : (a.taskOrdinal ?? 0) - (b.taskOrdinal ?? 0));
+}
 function inputViewerArtifact(a: InputArtifact, jobId: string): ArtifactKey {
-  return { name: a.name, taskOrdinal: a.taskOrdinal ?? 0, jobId: a.jobId || jobId, id: a.id, contentBinding: a.contentBinding, inputJobId: jobId };
+  return { name: a.name, taskOrdinal: a.taskOrdinal ?? 0, jobId: a.jobId || jobId, id: a.id, storedKey: 'storedKey' in a ? a.storedKey : undefined, contentBinding: a.contentBinding, inputJobId: jobId, inputOrdinal: a.inputOrdinal };
 }
 function artifactRowKey(a: ArtifactKey, jobId: string): string {
   return a.id || JSON.stringify([a.jobId || jobId, a.taskOrdinal, a.name]);
 }
 function artifactUrl(projectId: string, jobId: string, artifact: ArtifactKey): string {
-  if (artifact.contentBinding !== undefined) return `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(artifact.inputJobId || jobId)}/input-document?binding=${encodeURIComponent(artifact.contentBinding)}`;
+  if (artifact.storedKey) return storedDocumentURL(projectId, artifact.storedKey);
+  if (artifact.contentBinding !== undefined) return `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(artifact.inputJobId || jobId)}/input-document?binding=${encodeURIComponent(artifact.contentBinding)}${artifact.inputOrdinal === undefined ? '' : `&ordinal=${artifact.inputOrdinal}`}`;
   return `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(artifact.jobId || jobId)}/tasks/${artifact.taskOrdinal}/artifacts/${encodeURIComponent(artifact.name)}`;
 }
 
@@ -335,17 +340,23 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const activeArtifact = artifactOwner === artifactIdentity ? selectedArtifact : null;
 
   const activeTab = jobDetailTab(searchParams);
-  const loadInputInventory = activeTab !== 'env';
+  const loadInputInventory = activeTab === 'input-artifacts';
   const [inputInventory, setInputInventory] = useState<{ owner: string; artifacts?: InputArtifact[]; error?: string }>();
   const [inputRetry, setInputRetry] = useState(0);
   const inputs = inputInventory?.owner === artifactIdentity ? inputInventory : undefined;
+  const [inventoryObserved, setInventoryObserved] = useState<string>();
+  const promptInventory = useMemo(() => inputs?.artifacts?.filter(a => a.inputOrdinal === 0), [inputs?.artifacts]);
+  const receiveInventory = useCallback((rows?: InputArtifact[]) => {
+    setInventoryObserved(artifactIdentity);
+    if (rows) setInputInventory({ owner: artifactIdentity, artifacts: sortInputArtifacts(rows) });
+  }, [artifactIdentity]);
   useEffect(() => {
-    // Reuse this job's loaded inventory when returning from Env.
+    // Reuse this job's inventory when the tab is reopened.
     if (!loadInputInventory || inputs?.artifacts) return;
     const controller = new AbortController();
     setInputInventory({ owner: artifactIdentity });
     getJobInputArtifacts(projectId, jobId, controller.signal).then(result => {
-      if (!controller.signal.aborted) setInputInventory({ owner: artifactIdentity, artifacts: [...result.artifacts].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : (a.taskOrdinal ?? 0) - (b.taskOrdinal ?? 0)) });
+      if (!controller.signal.aborted) setInputInventory({ owner: artifactIdentity, artifacts: sortInputArtifacts(result.artifacts) });
     }).catch(error => {
       if (!controller.signal.aborted) setInputInventory({ owner: artifactIdentity, error: error instanceof Error ? error.message : String(error) });
     });
@@ -355,6 +366,8 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const [historyRevision, setHistoryRevision] = useState(0);
   const historyRefreshKey = useMemo(() => ({ revision: historyRevision, pendingInputs }), [historyRevision, pendingInputs]);
   const dagIdentity = JSON.stringify([projectId, jobId]);
+  const [relationshipsVisited, setRelationshipsVisited] = useState<string>();
+  useEffect(() => { if (activeTab === 'relationships') setRelationshipsVisited(dagIdentity); }, [activeTab, dagIdentity]);
   const [dagVisited, setDagVisited] = useState<string>();
   useEffect(() => { if (activeTab === 'dag') setDagVisited(dagIdentity); }, [activeTab, dagIdentity]);
   const storyDemand = activeTab === 'execution' || restartOpen;
@@ -469,6 +482,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
       const data = await fetchStory(projectId, jobId);
       if (generation !== storyGeneration.current) return;
       setStory(data);
+      if (data.input_artifacts) receiveInventory(data.input_artifacts);
     } catch (e) {
       if (generation !== storyGeneration.current) return;
       console.error('Failed to load job story', e);
@@ -571,8 +585,11 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     setExpandedKeys(previous => unionKeys(previous, ancestorKeysForKey(key, keyToParent)));
   }, [searchParams, keyToRef, keyToParent, treeModel.legacyKeyToKey]);
 
+  const focusedTask = useRef<string>();
   useEffect(() => {
-    if (!focusTaskOrdinal || !story?.root) return;
+    if (!focusTaskOrdinal || !story?.root) { focusedTask.current = undefined; return; }
+    const focus = JSON.stringify([projectId, jobId, activeTab, focusTaskOrdinal, wantInput]);
+    if (focusedTask.current === focus) return;
     const key = keyForTaskOrdinal(focusTaskOrdinal, keyToRef);
     if (!key) return;
 
@@ -582,9 +599,9 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     const ancestors = ancestorKeysForKey(key, keyToParent);
     setExpandedKeys((prev) => unionKeys(prev, ancestors));
     setSelectedKey(key);
+    focusedTask.current = focus;
     setActiveDetailsTab(wantInput ? 'pending_input' : 'overview');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusTaskOrdinal, story?.root, keyToRef, keyToParent]);
+  }, [projectId, jobId, activeTab, focusTaskOrdinal, wantInput, story?.root, keyToRef, keyToParent]);
 
   useEffect(() => {
     if (refreshTimerRef.current) {
@@ -900,9 +917,9 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         <JobDetailTabs activeTab={activeTab} onChange={selectTab} />
         <div className="job-detail-panels">
         <section role="tabpanel" id="job-panel-conversation" aria-labelledby="job-tab-conversation" hidden={activeTab !== 'conversation'} tabIndex={0} className="job-detail-panel">
-        {job && <section aria-label="Job prompt">
+        {activeTab === 'conversation' && job && <section aria-label="Job prompt">
           <Text strong>Prompt</Text>
-          {prompt ? <GoalPrompt projectId={projectId} jobId={jobId} text={prompt} /> : <p>No prompt recorded for this job.</p>}
+          {prompt ? <GoalPrompt projectId={projectId} jobId={jobId} text={prompt} inventory={promptInventory} waitingForInventory={inventoryObserved !== artifactIdentity} /> : <p>No prompt recorded for this job.</p>}
         </section>}
         {selectedInput.discovery.status === 'unavailable' && pendingInputDetails && requestId === null && <Alert type="warning" showIcon message="Pending request availability is unavailable." description={selectedInput.discovery.error} action={<Button onClick={() => void selectedInput.refresh().catch(() => {})}>Retry</Button>} />}
         {wantInput && requestId === null && !pendingInputLoading && !pendingInputDetails && !pendingInputError && <Alert type={selectedInput.discovery.status === 'unavailable' ? 'warning' : 'info'} showIcon
@@ -940,7 +957,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
             </div>}
           />
         ) : null)}
-        {activeTab !== 'env' && <JobConversation onBack={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('occurrenceId'); next.delete('requestId'); return next; })} tenant={projectId} job={jobId} occurrence={searchParams.get('occurrenceId') ?? undefined}
+        {activeTab === 'conversation' && <JobConversation onInventory={receiveInventory} onBack={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('occurrenceId'); next.delete('requestId'); return next; })} tenant={projectId} job={jobId} occurrence={searchParams.get('occurrenceId') ?? undefined}
           autoRefresh={autoRefresh} refreshIntervalMs={refreshIntervalMs} requestId={searchParams.get('requestId') ?? undefined}
           refreshKey={historyRefreshKey} onOpen={entry => setSearchParams(previous => {
             const next = new URLSearchParams(previous); next.set('occurrenceId', entry); next.set('tab', 'conversation');
@@ -963,7 +980,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         </section>}
         </section>
         <section role="tabpanel" id="job-panel-relationships" aria-labelledby="job-tab-relationships" hidden={activeTab !== 'relationships'} tabIndex={0} className="job-detail-panel">
-        {activeTab !== 'env' && job && <JobRelationships showAttempts projectId={projectId} jobId={jobId!} job={job} currentGoal={currentGoal} />}
+        {(activeTab === 'relationships' || relationshipsVisited === dagIdentity) && job && <JobRelationships showAttempts projectId={projectId} jobId={jobId!} job={job} currentGoal={currentGoal} />}
 
         </section>
         <section role="tabpanel" id="job-panel-input-artifacts" aria-labelledby="job-tab-input-artifacts" hidden={activeTab !== 'input-artifacts'} tabIndex={0} className="job-detail-panel">
@@ -1347,9 +1364,9 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                   },
                   {
                     key: 'inbox',
-                    label: `Inbox${loading ? '' : inboxCount(selectedNode)}`,
-                    children: <InboxPanel key={JSON.stringify([projectId, jobId, selectedKey, selectedRef?.jobAttempt, selectedNode.attempt, storyGeneration.current])}
-                      loading={loading} node={selectedNode} projectId={projectId} jobId={jobId} jobAttempt={selectedRef?.jobAttempt || 1} retry={() => load()} />,
+                    label: `Inbox${inboxCount(selectedNode)}`,
+                    children: <InboxPanel key={JSON.stringify([projectId, jobId, selectedKey, selectedRef?.jobAttempt, selectedNode.attempt, selectedNode.invocation_id, selectedNode.task_ordinal])}
+                      node={selectedNode} projectId={projectId} jobId={jobId} jobAttempt={selectedRef?.jobAttempt || 1} retry={() => load()} />,
                   },
                   {
                     key: 'artifacts',

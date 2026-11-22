@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Card, Typography } from 'antd';
-import { APIError, conversationArtifactURL, getConversation, getConversationEntry, getConversationRequest, stringifyJobJSON, type HistoryDetail, type HistoryEntry, type HistoryPage, type HistoryValue, type HistoryMerge } from '@colony2/shared';
+import { APIError, storedDocumentURL, conversationArtifactURL, getConversation, getConversationEntry, getConversationRequest, stringifyJobJSON, type HistoryDetail, type HistoryEntry, type HistoryPage, type HistoryValue, type HistoryMerge } from '@colony2/shared';
 
 import type { RecipeJob } from '@colony2/shared/types';
 import { isFinishedJob, jobStatusPresentation, jobStatusValue } from '../utils/jobStatus';
@@ -101,7 +101,7 @@ function HistoricalRequest({ tenant, job, entry, legacy, onBack }: { tenant: str
       let page = await getConversation(tenant, job, {signal:abort.signal});
       const snapshot = page.snapshot_token;
       let found = page.entries.some(e => e.entry_id === selected);
-      while (!found && page.next_page_token) { page = await getConversation(tenant, job, {pageToken:page.next_page_token,signal:abort.signal}); found = page.entries.some(e => e.entry_id === selected); }
+      while (!found && page.next_page_token) { page = await getConversation(tenant, job, {pageToken:page.next_page_token,includeSections:false,signal:abort.signal}); found = page.entries.some(e => e.entry_id === selected); }
       if (!found) throw new Error('The selected occurrence is no longer available in retained history.');
       const fresh = await getConversationEntry(tenant, job, selected, {snapshotToken:snapshot,signal:abort.signal});
       if (alive.current && !abort.signal.aborted) setDetail(fresh);
@@ -125,7 +125,7 @@ function HistoricalRequest({ tenant, job, entry, legacy, onBack }: { tenant: str
     {detail.summary.present && <p>{valueText(detail.summary.raw)}</p>}
     {error && <Alert type="warning" message={error} action={<Button onClick={() => {recoveryUsed.current = false; setError(''); setRetry(v => v + 1);}}>Retry request</Button>} />}
     {catalog.limited && <Alert type="info" message="Limited history: the original form or document metadata was not recorded. Available documents and answers are shown below." />}
-    <ReviewDocuments projectId={tenant} jobId={job} requestId={detail.request_id || detail.entry_id} documents={catalog.documents} documentMetadata={catalog.metadata} overviewDocumentId={catalog.overview} source={{identity:JSON.stringify([tenant,job,detail.entry_id,detail.snapshot_token]),url:id => catalog.members[id] ? conversationArtifactURL(tenant,job,detail.entry_id,catalog.members[id],detail.snapshot_token) : '',onError:failure => {void recover(failure);}}} />
+    <ReviewDocuments projectId={tenant} jobId={job} requestId={detail.request_id || detail.entry_id} documents={catalog.documents} documentMetadata={catalog.metadata} overviewDocumentId={catalog.overview} source={{identity:JSON.stringify([tenant,job,detail.entry_id,detail.snapshot_token]),url:id => catalog.documents[id]?.stored ? storedDocumentURL(tenant,catalog.documents[id].stored.key) : catalog.members[id] ? conversationArtifactURL(tenant,job,detail.entry_id,catalog.members[id],detail.snapshot_token) : '',onError:failure => {void recover(failure);}}} />
     {detail.accepted_response.present && <section aria-label="Recorded answers"><Typography.Title level={5}>Accepted response</Typography.Title><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{savedAnswers(Object.keys(form).length ? form : detail.form_fields,detail.accepted_response.raw)}</pre></section>}
     <div className="conversation-line"><Time value={detail.requested_at} /><span>State: {detail.state || 'unknown'}</span><span>{reviewer(detail)}</span>{detail.accepted_response.present && <Time value={{present:!!object(detail.actor.receipt).submitted_at,raw:object(detail.actor.receipt).submitted_at}} reported={detail.actor.provenance === 'reported_receipt'} />}</div>
     {[['Request documents', detail.request_manifest], ['Accepted attachments', detail.response_manifest]].map(([label, members]) => <details key={label as string} open={!Object.keys(catalog.documents).length}>
@@ -149,13 +149,14 @@ export function CurrentActivity({ metadata, freshness }: { metadata?: RecipeJob;
   </Card>;
 }
 type ConversationProps = {
+  onInventory?: (rows: HistoryPage['input_artifacts']) => void;
   tenant: string; job: string; occurrence?: string; requestId?: string; onOpen: (entry: string) => void; onBack?: () => void; refreshKey?: unknown;
   metadata?: RecipeJob; metadataFreshness?: 'loading' | 'loaded' | 'failed'; autoRefresh?: boolean; refreshIntervalMs?: number;
 };
 export default function JobConversation(props: ConversationProps) {
   return <Conversation key={JSON.stringify([props.tenant,props.job])} {...props}/>;
 }
-function Conversation({ tenant, job, occurrence, requestId, onOpen, onBack, refreshKey, autoRefresh = false, refreshIntervalMs = 5000 }: ConversationProps) {
+function Conversation({ tenant, job, onInventory, occurrence, requestId, onOpen, onBack, refreshKey, autoRefresh = false, refreshIntervalMs = 5000 }: ConversationProps) {
   const [page, setPage] = useState<HistoryPage>();
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [error, setError] = useState('');
@@ -174,7 +175,7 @@ function Conversation({ tenant, job, occurrence, requestId, onOpen, onBack, refr
     const abort = new AbortController(); controller.current = abort;
     setBusy(true);
     try {
-      let next = await getConversation(tenant, job, { pageToken: token, signal: abort.signal });
+      let next = await getConversation(tenant, job, { pageToken: token, includeSections: token ? false : undefined, signal: abort.signal });
       if (token && pageRef.current && next.snapshot_token !== pageRef.current.snapshot_token) throw new Error('History snapshot changed during pagination. Use the page Refresh button.');
       const first = next;
       const snapshot = next.snapshot_token;
@@ -184,13 +185,14 @@ function Conversation({ tenant, job, occurrence, requestId, onOpen, onBack, refr
       if (!token) {
         const visibleCount = entriesRef.current.length;
         while (next.next_page_token && refreshed.length < visibleCount) {
-          next = await getConversation(tenant, job, { pageToken: next.next_page_token, signal: abort.signal });
+          next = await getConversation(tenant, job, { pageToken: next.next_page_token, includeSections: false, signal: abort.signal });
           if (next.snapshot_token !== snapshot) throw new Error('History snapshot changed during refresh. Use the page Refresh button.');
           const seen = new Set(refreshed.map(e => e.entry_id));
           refreshed = [...refreshed, ...next.entries.filter(e => !seen.has(e.entry_id))];
         }
       }
       if (abort.signal.aborted || current !== generation.current) return;
+      if (!token) onInventory?.(first.input_artifacts);
       if (background && pageRef.current && stringifyJobJSON(pageRef.current.merges) !== stringifyJobJSON(next.merges)) setActivity(true);
       const merged = {...next, activity: token ? pageRef.current?.activity : first.activity, final_documents: token ? pageRef.current?.final_documents : first.final_documents};
       pageRef.current = merged; setPage(merged); setError('');
@@ -207,9 +209,10 @@ function Conversation({ tenant, job, occurrence, requestId, onOpen, onBack, refr
       });
     } catch (e) {
       if (abort.signal.aborted || current !== generation.current) return;
+      if (!token) onInventory?.(undefined);
       setError(e instanceof APIError && e.code === 'history_snapshot_expired' ? 'History snapshot expired. Use the page Refresh button to restart pagination; the visible entries are retained until refresh succeeds.' : `${String(e)} Use the page Refresh button to try again.`);
     } finally { if (current === generation.current) setBusy(false); }
-  }, [tenant, job]);
+  }, [tenant, job, onInventory]);
   useEffect(() => {
     loadedIdentity.current = identity; entriesRef.current = []; pageRef.current = undefined; setPage(undefined); setEntries([]); setError(''); setActivity(false);
     void load();

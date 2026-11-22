@@ -135,9 +135,9 @@ type producerAccessEngine struct {
 	err error
 }
 
-func (e *producerAccessEngine) GetJobRun(_ context.Context, req jobdb.GetJobRunRequest) (jobdb.GetJobRunResponse, error) {
-	e.key = req.JobKey
-	return jobdb.GetJobRunResponse{}, e.err
+func (e *producerAccessEngine) ListJobs(_ context.Context, req jobdb.ListJobsRequest) (jobdb.ListJobsResponse, error) {
+	e.key = req.JobKeys[0]
+	return jobdb.ListJobsResponse{Jobs: []jobdb.JobSummary{{JobKey: e.key}}}, e.err
 }
 func TestConversationOriginalProducerAuthorization(t *testing.T) {
 	ref := artifacts.NewStoredRef(jobdb.ArtifactKey{JobId: "original-child", TaskOrdinal: 3, Name: "protected.md"})

@@ -31,7 +31,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     if(url.endsWith('/pending')) return new Response(JSON.stringify([{id:'job',cell_id:'cell-1',cell_name:'platform',repo:'github.com/acme/platform',client_payload_revision:1}]));
     if(url.endsWith('/jobs/job')) return new Response(JSON.stringify({job_id:'job',cell_id:'cell-1',cell_name:'platform',repo:'github.com/acme/platform'}));
-    return new Response(`# Body ${new URL(url).searchParams.get('document_id')}`);
+    return new Response(`# Body ${Object.keys(docs).find(id => docs[id].stored.key.name === new URL(url).searchParams.get('name'))}`);
   }));
 });
 afterEach(async () => {

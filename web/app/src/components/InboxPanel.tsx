@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Empty, List, Modal, Space, Spin, Typography } from 'antd';
+import { Alert, Button, Empty, List, Modal, Space, Typography } from 'antd';
 import { inboxValueUrl } from '@colony2/shared/api';
 import { API_BASE } from '@colony2/shared';
 import type { InboxEntry, StoryNode } from '../utils/storyTree';
@@ -17,8 +17,8 @@ export function resolveInboxLink(reference: string, current: InboxEntry, entries
   return result;
 }
 
-export default function InboxPanel({ node, projectId, jobId, jobAttempt, retry, loading = false }: {
-  node: StoryNode; projectId: string; jobId: string; jobAttempt: number; retry: () => void; loading?: boolean;
+export default function InboxPanel({ node, projectId, jobId, jobAttempt, retry }: {
+  node: StoryNode; projectId: string; jobId: string; jobAttempt: number; retry: () => void;
 }) {
   const [selected, setSelected] = useState<InboxEntry>();
   const [intent, setIntent] = useState<NavigationIntent>();
@@ -29,6 +29,17 @@ export default function InboxPanel({ node, projectId, jobId, jobAttempt, retry, 
   useEffect(() => { if (!selected) opener.current?.focus(); }, [selected]);
   const inbox = node.inbox;
   const entries = inbox?.entries || [];
+  // Keep previews through identical snapshots. A changed or removed binding
+  // invalidates the preview and its in-flight content read.
+  useEffect(() => {
+    if (!selected) return;
+    const current = node.inbox?.entries?.find(entry => entry.binding === selected.binding);
+    if (node.inbox?.status !== 'available' || !current || current.content !== selected.content ||
+        current.path !== selected.path || current.source_kind !== selected.source_kind ||
+        current.source_key?.jobId !== selected.source_key?.jobId ||
+        current.source_key?.taskOrdinal !== selected.source_key?.taskOrdinal ||
+        current.source_key?.name !== selected.source_key?.name) setSelected(undefined);
+  }, [node.inbox, selected]);
   const url = (entry: InboxEntry) => {
     if (entry.content === 'stored' && entry.source_key) {
       const key = entry.source_key;
@@ -60,7 +71,6 @@ export default function InboxPanel({ node, projectId, jobId, jobAttempt, retry, 
   };
   const containers = ['recipe', 'sequence', 'op', 'stateMachine', 'state'];
   const unavailable = inbox?.reason || (containers.includes(node.kind) ? 'Inbox does not apply to this node' : 'Recorded inbox metadata unavailable');
-  if (loading) return <Spin aria-label="Loading recorded inbox metadata" />;
   return <Space direction="vertical" style={{width:'100%'}}>
     <Typography.Text type="secondary">Recorded inputs; delivery not verified.</Typography.Text>
     {inbox?.status !== 'available' || (inbox.entries !== null && !Array.isArray(inbox.entries)) ? <Alert type="info" message={inbox?.status === 'not_applicable' || (!inbox && containers.includes(node.kind)) ? 'Inbox does not apply to this node' : unavailable} action={<Button onClick={retry}>Retry</Button>} />

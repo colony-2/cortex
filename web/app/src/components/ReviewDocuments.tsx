@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, Button, Card, Empty, Select, Spin, Tabs, Tag, Typography } from 'antd';
 import { useCompact } from '../hooks/useCompact';
-import { inputActivityService, type ReviewDocument, type ReviewDocumentMetadata } from '@colony2/shared';
+import { inputActivityService, storedDocumentURL, type ReviewDocument, type ReviewDocumentMetadata } from '@colony2/shared';
 import { orderedReviewDocumentIds, startingReviewDocument } from '../utils/reviewDocumentLocation';
 import DocumentOptions from './review/DocumentOptions';
 import DocumentPreview from './review/DocumentPreview';
@@ -39,7 +39,7 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
   const reveal = useRef(false);
   const doc = selected === undefined ? undefined : documents[selected];
   const name = doc?.name || doc?.stored?.key.name || selected || '';
-  const documentURL = (id: string) => source ? source.url(id) : inputActivityService.reviewDocumentURL(projectId, jobId, requestId, id);
+  const documentURL = (id: string) => source ? source.url(id) : documents[id]?.stored ? storedDocumentURL(projectId, documents[id].stored.key) : inputActivityService.reviewDocumentURL(projectId, jobId, requestId, id);
   const path = (id: string) => documents[id]?.stored?.key.name || documents[id]?.name || id;
   const url = selected === undefined ? '' : documentURL(selected);
   const contentKey = selected === undefined ? '' : source?.contentIdentity?.(selected) ?? url;

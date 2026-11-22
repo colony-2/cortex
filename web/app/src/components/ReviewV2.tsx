@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useId } from 'react';
 import { Alert, Button, Input, Tooltip, Typography, type InputRef } from 'antd';
 import { SettingOutlined, ArrowLeftOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { changedReviewSettings, conversationArtifactURL, reviewV2ContributionError, reviewV2DirectionPolicy, createSubmissionId, inputActivityService, stringifyJobJSON, validateReviewScalar, type ReviewV2Request, type ReviewV2Turn, type UserInputDetails } from '@colony2/shared';
+import { changedReviewSettings, storedDocumentURL, reviewV2ContributionError, reviewV2DirectionPolicy, createSubmissionId, inputActivityService, stringifyJobJSON, validateReviewScalar, type RecipeJob, type ReviewV2Request, type ReviewV2Turn, type UserInputDetails } from '@colony2/shared';
 import { reviewV2AnswerPending } from '../utils/reviewV2State';
 import { reviewReturnSearch } from '../utils/reviewFilters';
 import { useReviewV2 } from '../hooks/useReviewV2';
@@ -12,7 +12,6 @@ import ReviewQuestion from './ReviewQuestion';
 import ReviewPaneSeparator from './ReviewPaneSeparator';
 import { automaticDocuments, reviewPaneDefaults, reviewV2Layout, type ReviewSide, type ReviewWidths } from '../utils/reviewV2Layout';
 import ReviewV2Settings from './ReviewV2Settings';
-import { historicalDocuments, historicalTurnAttachments } from './historicalDocuments';
 import { useAssistantSource } from './AssistantContext';
 import './reviewV2.css';
 import ReviewV2Context from './ReviewV2Context';
@@ -54,7 +53,8 @@ export function ReviewV2Discussion({turns,request,attachmentURL,declarations,pen
   </section>;
 }
 export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;job:string;reviewId:string;initial?:UserInputDetails}) {
-  const {view,error,busy,refresh,sending,accepted,failed}=useReviewV2(tenant,job,reviewId,initial);
+  const [contextJob, setContextJob] = useState<RecipeJob>();
+  const {view,error,busy,refresh,sending,accepted,failed}=useReviewV2(tenant,job,reviewId,initial,contextJob);
   const navigate=useNavigate(); const [search]=useSearchParams(); const location=useLocation();
   const reviewsPath=`/project/${encodeURIComponent(tenant)}/reviews${reviewReturnSearch(search)}`;
   const [settingsOpen,setSettingsOpen]=useState(false);
@@ -125,9 +125,7 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
     confirmContribution(view?.output?.receipt);
     for(const turn of view?.conversation??[])if(turn.role==='human')confirmContribution(turn.receipt);
   },[view]);
-  const documentHistory=view?.documentHistory;
-  const catalog=view&&documentHistory?historicalDocuments({...documentHistory,raw_form:{presentation:{type:'review/v2'},request:view.request}}):undefined;
-  const requestDocuments=catalog?.documents??view?.request.documents;
+  const requestDocuments=view?.request.documents;
   const selection=view&&requestDocuments?resolveReviewDocumentLocation(location.search,reviewId,requestDocuments,view.request.document_metadata,view.request.overview_document_id,'review_id'):undefined;
   useEffect(()=>{
     if(selection?.kind!=='selected')return;
@@ -178,7 +176,7 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
   const allowUploads=policy?.allowAttachments??request.directions.some(d=>reviewV2DirectionPolicy(request,d).allowAttachments);
   const contributionError=selected?reviewV2ContributionError(request,selected,feedback,files.length):undefined;
   const draftConflict=(policy?.mode==='forbidden'&&feedback!=='')||(!allowUploads&&files.length>0)?contributionError:undefined;
-  const documents=catalog?.documents??request.documents;
+  const documents=request.documents;
   const ready=phase==='actionable';
   const check=(id:string)=>{
     const selected=request.directions.find(d=>d.id===id);
@@ -243,17 +241,14 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
     {!ready&&<Button loading={busy} disabled={phase==='sending'} onClick={()=>void refresh()}>Refresh</Button>}
     </div>
   </div>;
-  const history=view.history;
-  const source=documentHistory&&catalog?{
-    identity:reviewId,
-    contentIdentity:(id:string)=>stringifyJobJSON(documents[id]?.stored??documents[id])??id,
-    url:(id:string)=>catalog.members[id]?conversationArtifactURL(tenant,job,documentHistory.entry_id,catalog.members[id],documentHistory.snapshot_token):'',
-    onError:()=>{void refresh();},
-  }:{identity:reviewId,contentIdentity:(id:string)=>stringifyJobJSON(documents[id]?.stored??documents[id])??id,url:()=>''};
-  const notes=history?historicalTurnAttachments(history):undefined;
+  const source = {
+    identity: reviewId,
+    contentIdentity: (id: string) => stringifyJobJSON(documents[id]?.stored) ?? id,
+    url: (id: string) => documents[id]?.stored ? storedDocumentURL(tenant, documents[id].stored.key) : '',
+  };
   return <div className="review-page review-v2">
     <div className="review-v2-heading"><Button icon={<ArrowLeftOutlined/>} onClick={()=>navigate(reviewsPath)}>Back to Reviews</Button><a href={`/project/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(job)}/story`}>Job activity</a></div>
-    <ReviewV2Context tenant={tenant} job={job} metadata={view.job}/>
+    <ReviewV2Context tenant={tenant} job={job} metadata={view.job} onMetadata={setContextJob}/>
     <Typography.Title level={2}>{request.title}</Typography.Title>
     {unavailableDocument&&<Alert type="warning" message="The linked document is unavailable. Showing the starting document."/>}
     {!validSelection?<Alert type="warning" message={selection?.kind==='invalid'?'This review link is malformed':'This linked review is unavailable'} action={<Button onClick={()=>navigate({pathname:location.pathname,search:reviewDocumentSearch(location.search,reviewId,undefined,'review_id'),hash:location.hash})}>Open selected review</Button>}/>:<>
@@ -264,7 +259,8 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
     <div ref={workspace} className={`review-v2-layout${layout.stacked?' stacked':''}`} style={{gridTemplateColumns:layout.stacked?'minmax(0,1fr)':`${documentsVisible?`${layout.documents}px 8px `:''}minmax(0,1fr)${discussionVisible?` 8px ${layout.discussion}px`:''}`}}><div className="review-v2-reader"><ReviewDocuments changes={<ReviewChanges projectId={tenant} jobId={job}/>} projectId={tenant} jobId={job} requestId={reviewId} source={source} documents={documents} documentMetadata={request.document_metadata} overviewDocumentId={request.overview_document_id} layout={{navigationVisible:documentsVisible,stacked:layout.stacked,navigationId:documentsId,separator:documentsVisible&&!layout.stacked?separator('documents'):null}} selection={{documentId:selection?.kind==='selected'?selection.documentId:undefined,onSelect:id=>navigate({pathname:location.pathname,search:reviewDocumentSearch(location.search,reviewId,id,'review_id'),hash:location.hash})}}/></div>
       {discussionVisible&&!layout.stacked&&separator('discussion')}
       <ReviewV2Discussion layoutReady={workspaceSize.width>0} id={discussionId} hidden={!discussionVisible} pending={!error&&reviewV2AnswerPending(view)} turns={view.conversation} request={request} declarations={view.declarations} attachmentURL={(turn,index)=>{
-        const match=notes?.[`${turn}/${index}`];return match&&history?conversationArtifactURL(tenant,job,history.entry_id,match.member,history.snapshot_token):'';
+        const ref = view.conversation[turn]?.attachments[index];
+        return ref?.stored ? storedDocumentURL(tenant, ref.stored.key) : '';
       }}/>
     </div>
     {response}</>}

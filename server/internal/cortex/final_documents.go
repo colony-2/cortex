@@ -72,7 +72,7 @@ func (s *Server) handleFinalDocument(w http.ResponseWriter, r *http.Request) {
 			finalDocumentError(w, story.ErrFinalDocumentsUnsupported)
 			return
 		}
-		if _, err = s.engine.GetJobRun(r.Context(), jobdb.GetJobRunRequest{JobKey: jobdb.JobKey{TenantId: s.tenantID(r), JobId: key.JobId}}); err != nil {
+		if err = s.checkProducerVisibility(r.Context(), jobdb.JobKey{TenantId: s.tenantID(r), JobId: key.JobId}); err != nil {
 			writeError(w, err)
 			return
 		}

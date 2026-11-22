@@ -22,7 +22,7 @@ describe('selected review recovery',()=>{
   (shared.inputActivityService as any).publish('tenant',[{cell_id:'cell-1',cell_name:'platform',repo:'github.com/acme/platform',id:'job',client_payload_revision:1}]);
   vi.mocked(shared.inputActivityService.getInputDetails).mockImplementation(()=>new Promise(()=>{}));
   const {result}=renderHook(()=>useReviewV2('tenant','job','review-one'));
-  await act(async()=>{await vi.advanceTimersByTimeAsync(1);});
+  await act(async()=>{await vi.advanceTimersByTimeAsync(5010);});
   expect(result.current.view?.output?.receipt.submission_id).toBe('saved');
   expect(result.current.view?.conversation[0].text).toBe(' exact ');
   expect(result.current.view?.current).toBeUndefined();
@@ -37,23 +37,34 @@ describe('selected review recovery',()=>{
   expect(result.current.view?.conversation[0].text).toBe(' exact ');
   expect(shared.inputActivityService.getInputDetails).toHaveBeenCalledTimes(1);
  });
- it('keeps verified originals while accepted history is delayed and after that refresh fails',async()=>{
+ it('opens a current review without history and keeps its originals while accepted history is delayed and after that refresh fails',async()=>{
   (shared.inputActivityService as any).publish('tenant',[{cell_id:'cell-1',cell_name:'platform',repo:'github.com/acme/platform',id:'job',client_payload_revision:1}]);
   const frozen=detail();frozen.accepted_response={present:false};frozen.raw_accepted_output=undefined;
   vi.mocked(shared.getConversationEntry).mockResolvedValue(frozen);
   vi.mocked(shared.inputActivityService.getInputDetails).mockResolvedValue({jobId:'job',status:'pending',startTime:'now',form} as shared.UserInputDetails);
   const {result}=renderHook(()=>useReviewV2('tenant','job','review-one'));
   await waitFor(()=>expect(result.current.view?.phase).toBe('actionable'));
+  expect(shared.getConversation).not.toHaveBeenCalled();
   let reject!:(reason:Error)=>void;
   vi.mocked(shared.getConversation).mockImplementationOnce(()=>new Promise((_,fail)=>{reject=fail;}));
   act(()=>result.current.accepted(request,{response:{direction:'ask',feedback:'Keep reading.',attachments:[],settings:{}},receipt:{request_id:'native',submission_id:'new'}}));
   expect(result.current.view?.phase).toBe('waiting');
-  expect(result.current.view?.documentHistory).toBe(frozen);
+  expect(result.current.view?.request.documents).toEqual(request.documents);
   expect(result.current.view?.history).toBeUndefined();
   await act(async()=>reject(new Error('History unavailable')));
   expect(result.current.view?.phase).toBe('unavailable');
-  expect(result.current.view?.documentHistory).toBe(frozen);
+  expect(result.current.view?.request.documents).toEqual(request.documents);
   expect(result.current.view?.conversation[0].text).toBe('Keep reading.');
+ });
+ it('reads the selected recorded form and accepted response from one request',async()=>{
+  const saved=detail();
+  vi.mocked(shared.getConversation).mockResolvedValue(page({review_id:'review-one',entries:[
+    {...entry,accepted_response:{present:true,raw:saved.raw_accepted_output}},
+  ]}));
+  const {result}=renderHook(()=>useReviewV2('tenant','job','review-one'));
+  await waitFor(()=>expect(result.current.view?.conversation[0].text).toBe(' exact '));
+  expect(shared.getConversation).toHaveBeenCalledTimes(1);
+  expect(shared.getConversationEntry).not.toHaveBeenCalled();
  });
  it('follows every history page and recovers accepted text during a request gap',async()=>{
   vi.mocked(shared.getConversation).mockImplementation(async(_t,_j,options)=>options?.pageToken?page():page({entries:[{...entry,entry_id:'other',form_fields:{question:'other'}}],next_page_token:'next'}));

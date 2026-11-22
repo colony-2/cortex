@@ -189,8 +189,8 @@ for (const width of [1280,390]) test(`CC-001 CC-009 CC-010 CC-013 CC-014 compact
   if(url.pathname.includes('/reviews/') && /\/documents(?:\/|$)/.test(url.pathname)){pendingURLs.push(request.url());return route.fulfill({status:500});}
   if(url.pathname.endsWith('/conversation'))return route.fulfill({json:{ activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status:'COMPLETED',store:'ARCHIVED'}},final_documents:{availability:'available',value:{job_id:'job',state:'empty'}},tenant_id:'demo',job_id:'job',snapshot_token:'frozen',completeness:'complete',entries:[entry('first'),entry('second',true)]}});
   if(url.pathname.endsWith('/conversation/entry'))return route.fulfill({json:{...entry(url.searchParams.get('entry_id')!,url.searchParams.get('entry_id')==='second'),raw_form:form,snapshot_token:'frozen',completeness:'complete',request_manifest:Object.entries(documents).reverse().map(([id,ref])=>({artifact_id:id,ref,availability:'retained',associations:[{kind:'document',source:`/documents/${id}`}]})),response_manifest:[]}});
-  if(url.pathname.endsWith('/conversation/artifact')){
-   artifactURLs.push(request.url());const id=url.searchParams.get('artifact_id');
+  if(url.pathname.endsWith('/stored-document')){
+   artifactURLs.push(request.url());const id=Object.keys(documents).find(id=>documents[id as keyof typeof documents].stored.key.name===url.searchParams.get('name'));
    if(id==='Picture')return route.fulfill({contentType:'text/plain',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=','base64')});
    return route.fulfill({contentType:'text/plain',body:id==='Overview'?'# Original proposal\n\n[Data](data.json)\n\n![Retained picture](picture.png)':id==='Data'?' {"original":true}':'<!doctype html><html><body><h1>Saved markup</h1></body></html>'});
   }
@@ -219,12 +219,12 @@ for (const width of [1280,390]) test(`CC-001 CC-009 CC-010 CC-013 CC-014 compact
  await expect(reader.getByRole('button',{name:/Submit|Approve|Reject|Cancel job/})).toHaveCount(0);
  await expect(page.getByRole('button',{name:/Cancel job/i})).toHaveCount(0);
  const dataLink=reader.getByRole('link',{name:'Data',exact:true});
- await expect(dataLink).toHaveAttribute('href',/entry_id=first&artifact_id=Data&snapshot_token=frozen/);
+ await expect(dataLink).toHaveAttribute('href',/stored-document\?ordinal=4&name=data.json/);
  await expect(reader.getByText('Loading attached image…')).toHaveCount(0);
  await expect(reader.getByRole('img',{name:'picture.png'})).toBeVisible();
  await reader.screenshot({path:info.outputPath(`overview-${width}.png`)});
  await dataLink.click();await expect(reader.getByLabel('Formatted JSON')).toContainText('"original": true');
- await expect(reader.getByRole('link',{name:'Download',exact:true})).toHaveAttribute('href',/artifact_id=Data&snapshot_token=frozen/);
+ await expect(reader.getByRole('link',{name:'Download',exact:true})).toHaveAttribute('href',/stored-document\?ordinal=4&name=data.json/);
  await page.screenshot({path:info.outputPath(`reader-${width}.png`),animations:'disabled',fullPage:true});
  await expect(reader.getByRole('navigation',{name:'Review documents'})).toBeHidden();
  await reader.getByRole('button',{name:'Show documents',exact:true}).click();
@@ -246,7 +246,7 @@ for (const width of [1280,390]) test(`CC-001 CC-009 CC-010 CC-013 CC-014 compact
  await expect(reader.getByLabel('Recorded answers')).toHaveCount(0);
  expect(mutations).toEqual([]);expect(pendingURLs).toEqual([]);
  expect(artifactURLs.length).toBeGreaterThan(2);
- for(const url of artifactURLs){expect(url).toContain('snapshot_token=frozen');expect(url).toMatch(/entry_id=(first|second)&artifact_id=/);}
+ for(const url of artifactURLs)expect(url).toContain('/jobs/original-producer/stored-document?ordinal=4&name=');
 });
 
 for(const status of [403,404,410,413]) test(`CC-016 document-specific ${status} failure retains review and retry`,async({page})=>{
@@ -255,7 +255,7 @@ for(const status of [403,404,410,413]) test(`CC-016 document-specific ${status} 
  await page.route('**/api/**',async route=>{
   const url=new URL(route.request().url());
   if(url.pathname.endsWith('/conversation/entry'))return route.fulfill({json:{entry_id:'old',kind:'review',title:{present:true,raw:'Saved review'},summary:{present:false},state:'pending',requested_at:{present:false},locator:{invocation_id:'old'},form_fields:{},accepted_response:{present:false},actor:{provenance:'unavailable',legacy_user_id:{present:false}},raw_form:{question:'Retain these instructions',documents:{missing:document}},snapshot_token:'s',completeness:'partial',request_manifest:[{artifact_id:'missing',ref:document,associations:[],availability:'retained'}],response_manifest:[]}});
-  if(url.pathname.endsWith('/conversation/artifact'))return fail?route.fulfill({status,json:{error:'Original bytes unavailable',code:'unavailable'}}):route.fulfill({body:'# Recovered original'});
+  if(url.pathname.endsWith('/stored-document'))return fail?route.fulfill({status,json:{error:'Original bytes unavailable',code:'unavailable'}}):route.fulfill({body:'# Recovered original'});
   return route.fallback();
  });
  await page.goto('/project/demo/jobs/job/story?occurrenceId=old');

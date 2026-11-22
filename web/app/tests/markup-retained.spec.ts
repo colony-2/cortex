@@ -1,3 +1,4 @@
+import { jobIdentity } from './helpers/cells';
 import { test, expect, type Page } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -11,6 +12,7 @@ const diagram=svg('<defs><linearGradient id="g"><stop stop-color="red"/><stop of
 async function settle(page:Page) { await page.evaluate(async()=>{await Promise.all(document.getAnimations().filter(a=>a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})));}); }
 type Files=Record<string,string|Buffer>;
 async function fixture(page:Page,files:Files,viewer:'review'|'story',width=1280) {
+  await page.addInitScript(() => { (window as any).EventSource = class { readyState = 1; close() {} addEventListener() {} removeEventListener() {} }; });
   await page.setViewportSize({width,height:900});
   await page.context().addCookies([{name:'colony2:user:email',value:'reviewer@example.com',url:'http://127.0.0.1:15173'},{name:'preview-secret',value:'parent-cookie-sentinel',url:'http://127.0.0.1:15173'}]);
   await page.addInitScript(()=>{localStorage.setItem('preview-secret','parent-storage-sentinel');(window as any).previewSentinel='untouched';});
@@ -18,12 +20,13 @@ async function fixture(page:Page,files:Files,viewer:'review'|'story',width=1280)
   await page.request.post('http://127.0.0.1:15175/__files',{data:Object.fromEntries(Object.entries(files).map(([name,value])=>[name,Buffer.from(value).toString('base64')]))});
   await page.route('**/api/**',async route=>{
     const url=new URL(route.request().url());
-    if(url.pathname.includes('/documents')||url.pathname.includes('/artifacts/')) {
-      const name=url.searchParams.get('document_id')||decodeURIComponent(url.pathname.split('/artifacts/')[1]);
+    if(url.pathname.endsWith('/stored-document')||url.pathname.includes('/artifacts/')) {
+      const name=url.searchParams.get('name')||decodeURIComponent(url.pathname.split('/artifacts/')[1]);
       return route.fulfill({body:files[name]??'',contentType:'application/octet-stream'});
     }
     let body:unknown=[];
     if(url.pathname==='/api/projects')body=[{tenant_id:'tenant',name:'Tenant'}];
+    else if(url.pathname.endsWith('/user-inputs/pending'))body=viewer==='review'?[{...jobIdentity,id:'job',request_id:'r',client_payload_revision:1}]:[];
     else if(url.pathname.endsWith('/user-inputs/job'))body={jobId:'job',status:'pending',form:{kind:'review',request_id:'r',overview_document_id:names[0],title:'Static preview review',fields:[{id:'notes',question:'Notes',type:'paragraph_text',required:true},{id:'decision',question:'Decision',type:'multiple_choice',required:true,options:[{value:'approve',label:'Approve'},{value:'reject',label:'Reject'}]}],documents:Object.fromEntries(names.map((name,i)=>[name,{kind:'stored',name,stored:{key:{jobId:'producer',taskOrdinal:i+1,name}}}]))}};
     else if(url.pathname.endsWith('/story'))body={job_id:'job',status:'success',root:{id:'root',kind:'opStep',title:'Contents',status:'success',path:[],artifact_keys:names.map((name,i)=>({name,taskOrdinal:i+1}))}};
     else if(url.pathname.endsWith('/jobs/job'))body={job_id:'job',title:'Fixture job',status:'SUCCEEDED'};
@@ -137,8 +140,8 @@ test('HSV-020,028-030 phone selection scrolling failures and draft continuity',a
   await expect.poll(()=>viewport.evaluate(e=>e.scrollLeft)).toBeGreaterThan(0);
   await scope.getByRole('button',{name:'Fit',exact:true}).click();await expect(image).not.toHaveAttribute('width');await download('diagram.svg');await reachable();
   let fail=true;
-  await page.route('**/documents?**',route=>{
-    const name=new URL(route.request().url()).searchParams.get('document_id')!;
+  await page.route('**/stored-document?**',route=>{
+    const name=new URL(route.request().url()).searchParams.get('name')!;
     return fail&&name==='page.html'?route.fulfill({status:503,body:'retry'}):route.fulfill({body:files[name as keyof typeof files]});
   });
   await select('page.html');await expect(scope.getByText(/Could not load this document/)).toBeVisible();await reachable();

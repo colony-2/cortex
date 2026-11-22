@@ -42,10 +42,10 @@ async function fixture(page: Page) {
     } } });
   });
   await page.route('**/reviews/one/respond', route => { state.submits++; return route.fulfill({ json: { ok: true } }); });
-  await page.route('**/reviews/one/documents?*', async route => {
+  await page.route('**/jobs/producer/stored-document?*', async route => {
     const params = new URL(route.request().url()).searchParams;
-    expect(params.get('request_id')).toBe(requestId);
-    const id = params.get('document_id')!;
+    expect(params.get('ordinal')).toBe('1');
+    const id = ids[['plan.md','checks.md','sources.md'].indexOf(params.get('name')!)];
     state.requests.push(id);
     if (state.pending.has(id)) await state.pending.get(id);
     const failure = state.failures.get(id);

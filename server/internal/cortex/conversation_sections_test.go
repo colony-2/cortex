@@ -3,7 +3,10 @@ package cortex
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,7 +26,14 @@ func TestConversationTerminalSections(t *testing.T) {
 	rt, err := sqliteruntime.StartEmbeddedRuntime(ctx)
 	require.NoError(t, err)
 	defer rt.Shutdown()
-	backend := httptest.NewServer(testjobdb.Handler(remote.NewServer(rt.Runtime)))
+	var scans atomic.Int64
+	jobdbHandler := testjobdb.Handler(remote.NewServer(rt.Runtime))
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/chapters") {
+			scans.Add(1)
+		}
+		jobdbHandler.ServeHTTP(w, r)
+	}))
 	defer backend.Close()
 	server, err := NewRemoteServer(Config{WorkingDir: writeC2JConfig(t), JobDBURL: backend.URL})
 	require.NoError(t, err)
@@ -55,8 +65,10 @@ func TestConversationTerminalSections(t *testing.T) {
 			raw, err := json.Marshal(map[string]any{"artifact_refs": refs})
 			require.NoError(t, err)
 			require.NoError(t, lease.Complete(ctx, jobdb.CompleteExecutionRequest{Status: outcome, Chapter: &jobdb.Chapter{Ordinal: 1, TaskType: "recipe", CreatedAt: time.Now().UTC(), Body: jobdb.JobAttemptOutcomeChapter{Outcome: jobdb.ApplicationOutputOutcome{Output: jobdb.ApplicationOutputBytes{Data: raw}}}}}))
+			scans.Store(0)
 			var page struct {
-				Activity struct {
+				Inventory []inputDocument `json:"input_artifacts"`
+				Activity  struct {
 					Availability string
 					Value        recipejob.RecipeJob
 				}
@@ -69,7 +81,8 @@ func TestConversationTerminalSections(t *testing.T) {
 				} `json:"final_documents"`
 			}
 			page = getJSON[struct {
-				Activity struct {
+				Inventory []inputDocument `json:"input_artifacts"`
+				Activity  struct {
 					Availability string
 					Value        recipejob.RecipeJob
 				}
@@ -81,6 +94,8 @@ func TestConversationTerminalSections(t *testing.T) {
 					}
 				} `json:"final_documents"`
 			}](t, base+"/"+outcome+"/conversation")
+			require.EqualValues(t, 1, scans.Load())
+			require.NotNil(t, page.Inventory)
 			require.Equal(t, "available", page.Activity.Availability)
 			require.Equal(t, outcome, page.Activity.Value.CompletionStatus)
 			require.Equal(t, "available", page.Documents.Availability)

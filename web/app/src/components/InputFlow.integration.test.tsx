@@ -364,7 +364,7 @@ describe('MAL review draft preservation', () => {
     }}};
     const getDetails=vi.spyOn(inputActivityService,'getInputDetails').mockResolvedValue(details);
     const submit=vi.spyOn(inputActivityService,'submitReview');
-    const fetcher=vi.fn(async(url:string)=>url.endsWith('/pending')?new Response(JSON.stringify([{...jobIdentity,id:'review-job',client_payload_revision:1}])):url.endsWith('/jobs/review-job')?new Response(JSON.stringify({...jobIdentity,job_id:'review-job',status:'ACTIVE'})):url.includes('/documents?')?new Response(url.includes('document_id=a')?'[next](foo.md)':'# Foo'):new Response('{}',{headers:{'Content-Type':'application/json'}}));
+    const fetcher=vi.fn(async(url:string)=>url.endsWith('/pending')?new Response(JSON.stringify([{...jobIdentity,id:'review-job',client_payload_revision:1}])):url.endsWith('/jobs/review-job')?new Response(JSON.stringify({...jobIdentity,job_id:'review-job',status:'ACTIVE'})):url.includes('/stored-document?')?new Response(url.includes('name=bar.md')?'[next](foo.md)':'# Foo'):new Response('{}',{headers:{'Content-Type':'application/json'}}));
     vi.stubGlobal('fetch',fetcher);
     try {
       render(<MemoryRouter initialEntries={['/project/tenant/reviews/review-job']}><NavigationHarness/><Routes><Route path="/project/:projectId/reviews/:jobId" element={<InputDetailPage projectId="tenant"/>}/></Routes></MemoryRouter>);
@@ -385,7 +385,7 @@ describe('MAL review draft preservation', () => {
         [destination('b')],
       ]);
       expect(screen.getByLabelText('Review URL')).toHaveTextContent('/project/tenant/reviews/review-job?request_id=request-1&document_id=b');
-      expect(fetcher.mock.calls.filter(([url])=>url.includes('/documents?')).every(([url])=>url.includes('request_id=request-1'))).toBe(true);
+      expect(fetcher.mock.calls.filter(([url])=>url.includes('/stored-document?')).map(([url])=>new URL(url).searchParams.get('name'))).toEqual(['bar.md','foo.md','bar.md','foo.md']);
       expect(screen.queryByText('Required')).toBeNull();expect(getDetails).toHaveBeenCalledTimes(1);
     } finally {getDetails.mockRestore();submit.mockRestore();vi.unstubAllGlobals();mockNavigate.mockReset();}
   });

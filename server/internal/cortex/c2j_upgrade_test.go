@@ -159,6 +159,8 @@ outputs:
 		require.NoError(t, err)
 		pending := getJSON[map[string]any](t, base+item.key.JobId+"/story")
 		require.Equal(t, item.key.JobId, pending["job_id"])
+		inventory := getJSON[map[string]any](t, base+item.key.JobId+"/input-artifacts")
+		require.Equal(t, inventory["artifacts"], pending["input_artifacts"])
 		pendingJSON, err := json.Marshal(pending)
 		require.NoError(t, err)
 		require.Contains(t, string(pendingJSON), `"position":1`)

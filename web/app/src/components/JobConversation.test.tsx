@@ -115,15 +115,15 @@ describe('CC compact presentation and saved interpretation', () => {
 describe('CC-017 snapshot recovery', () => {
  const document={kind:'stored',name:'original.md',stored:{key:{jobId:'producer',taskOrdinal:4,name:'original.md',sizeBytes:10}}};
  const detail=(token:string)=>({...entry('selected'),snapshot_token:token,completeness:'complete',raw_form:{question:'Saved instructions',documents:{original:document},document_metadata:{original:{order:0,title:'Original title'}}},request_manifest:[{artifact_id:'artifact',ref:document,associations:[],availability:'retained'}],response_manifest:[]} as any);
- it('relocates exactly the selected occurrence in a fresh snapshot after byte expiry', async()=>{
+ it('reads a stored document even when its history snapshot has expired', async()=>{
   vi.mocked(getConversation).mockResolvedValue({...page([entry('selected')]),snapshot_token:'fresh'});
   vi.mocked(getConversationEntry).mockResolvedValueOnce(detail('expired')).mockResolvedValueOnce(detail('fresh'));
   const transport=vi.fn(async(url:string)=>url.includes('snapshot_token=expired') ? new Response(JSON.stringify({code:'history_snapshot_expired',error:'expired'}),{status:410}) : new Response('# Retained original'));
   vi.stubGlobal('fetch',transport);
   render(<JobConversation tenant="tenant" job="job" occurrence="selected" onOpen={vi.fn()} />);
   await screen.findByRole('heading',{name:'Retained original'});
-  expect(getConversationEntry).toHaveBeenLastCalledWith('tenant','job','selected',expect.objectContaining({snapshotToken:'fresh'}));
-  expect(transport.mock.calls.every(([url])=>url.includes('entry_id=selected&artifact_id=artifact'))).toBe(true);
+  expect(getConversationEntry).toHaveBeenCalledTimes(1);
+  expect(transport.mock.calls.map(([url])=>new URL(url).pathname + new URL(url).search)).toEqual(['/api/projects/tenant/jobs/producer/stored-document?ordinal=4&name=original.md']);
   vi.unstubAllGlobals();
  });
  it('keeps review text and shows unavailable selected occurrence without retry loops', async()=>{
