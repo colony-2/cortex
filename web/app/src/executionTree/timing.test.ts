@@ -34,3 +34,10 @@ it('DAGUI-014,015 independent inputs, reversed root, unknown lifecycle and zero 
   expect(timing({...child,created_at},root,now)).toEqual({submission:'Submitted Unavailable',span:'Age Unavailable'});
  }
 });
+
+it('DU11,12 external jobs use absolute UTC even before the family root; finished spans freeze',()=>{
+ const external={...child,created_at:'2026-11-01T00:00:00Z'};
+ expect(timing(external,undefined,now,true).submission).toBe('Submitted Nov 1, 2026, 00:00 UTC');
+ expect(timing(child,root,now).submission).toBe('Submitted +2m 10s');
+ expect(timing({...external,created_at:'bad'},undefined,now,true).submission).toBe('Submitted Unavailable');
+});

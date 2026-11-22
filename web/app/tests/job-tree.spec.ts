@@ -526,191 +526,78 @@ for (const route of ['tree','story?tab=dag']) for (const width of [1440,390]) {
  });
 }
 
-const waitAt='2026-11-17T00:00:00Z';
-const waitJob=(id:string,condition='complete')=>({target:{jobId:id},condition,state:'PENDING'});
-const waitGoal=(id:string)=>({target:{goalId:id},condition:'success',state:'PENDING'});
-function waitsPage(id:string,dependencies:any[],token='') {
- return {consumer:{tenant_id:'demo',job_id:id},waits:dependencies.length?[{jobKey:{tenantId:'demo',jobId:id},waitId:'prerequisites',state:'PENDING',dependencies}]:[],issues:[],observed_at:waitAt,next_page_token:token,consumer_snapshot:{state:'available',observed_at:waitAt,status:id==='entry'?'PENDING_JOBS':'READY'}};
-}
-async function waitFixture(page:Page,dual=false) {
- await mockCells(page,['platform']);
- await page.route('**/api/projects/demo/jobs/goal-attempt-one',r=>r.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'goal-attempt-one',goal_id:'literal-goal',status:'READY',prompt:'Literal goal attempt',job_type:'generic',store:'ACTIVE',created_at:waitAt}}));
- const consumer={...nodes[2],parent_job_id:undefined,status:'PENDING_JOBS',title:'Publish the reviewed change'};
- const blocker={...nodes[1],job_id:'independent-blocker',parent_job_id:dual?'entry':undefined,status:'ACTIVE',title:'Prepare the shared dependency',archived_at:undefined,store:'ACTIVE'};
- await page.route('**/jobs/*/tree-node',r=>{
-  const id=new URL(r.request().url()).pathname.split('/').at(-2);
-  const node=id==='entry'?consumer:id===blocker.job_id?blocker:undefined;
-  return r.fulfill(node?{json:{node,observed_at:waitAt}}:{status:404,json:{error:'Unavailable'}});
- });
- await page.route('**/jobs/*/tree-children?*',r=>{
-  const id=new URL(r.request().url()).pathname.split('/').at(-2);
-  return r.fulfill({json:{nodes:dual&&id==='entry'?[blocker]:[],observed_at:waitAt}});
- });
- await page.route('**/jobs/*/tree-waits?*',r=>{
-  const id=new URL(r.request().url()).pathname.split('/').at(-2)!;
-  return r.fulfill({json:waitsPage(id,id==='entry'?[waitJob(blocker.job_id),waitGoal('literal-goal')]:[])});
- });
- await page.route('**/jobs?*',r=>{
-  const goal=new URL(r.request().url()).searchParams.get('goal');
-  return r.fulfill({json:{jobs:goal==='literal-goal'?[{...jobIdentity,tenant_id:'demo',job_id:'goal-attempt-one',goal_id:'literal-goal',status:'READY',prompt:'Literal goal attempt',job_type:'generic',store:'ACTIVE',created_at:waitAt}]:[]}});
- });
- return {consumer,blocker};
-}
-for(const width of [1280,390,320]) for(const route of ['tree','story?tab=dag']) {
- test(`WAIT independent job and literal goal, keyboard selection and target navigation ${width} ${route}`,async({page})=>{
-  await page.setViewportSize({width,height:1000});await waitFixture(page);
-  let targetWaitReads=0;page.on('request',r=>{if(r.url().includes('/independent-blocker/tree-waits'))targetWaitReads++;});
-  await page.goto('/project/demo/jobs/entry/'+route);
-  await expect(page.getByText('Wait coverage complete',{exact:false})).toBeVisible();
-  await expect(page.locator('.tree-card')).toHaveCount(1);await expect(page.locator('path[data-parent]')).toHaveCount(0);
-  await expect(page.locator('.tree-wait-reference')).toHaveCount(2);await expect(page.locator('path[data-wait-target]')).toHaveCount(2);
-  await expect(page.locator('.tree-wait-connections')).toContainText('Waits for · complete');
-  await checkWaitGeometry(page);
-  const target=page.getByRole('button',{name:'Job wait target · independent-blocker',exact:true});
-  await target.focus();await page.keyboard.press('Enter');await expect(target).toBeFocused();
-  expect(await target.evaluate(e=>getComputedStyle(e).outlineStyle)).toBe('solid');
-  const pane=page.getByRole('complementary',{name:'Selected wait target'});
-  await expect(pane).toContainText('Waiting job: entry');await expect(pane.getByRole('button',{name:'Cancel job',exact:true})).toHaveCount(0);
-  expect(targetWaitReads).toBe(0); // Selecting a reference is not recursive discovery.
-  await pane.getByRole('button',{name:'Back to waiting job',exact:true}).click();
-  const waits=page.getByRole('region',{name:'Waits for',exact:true});
-  const select=waits.locator('li').first().getByRole('button',{name:'Select target'});
-  await select.focus();await page.keyboard.press('Enter');await expect(select).toBeFocused();
-  await page.getByRole('button',{name:'Fit',exact:true}).click();
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
-  if(width<768) {
-   const graph=await page.getByLabel('Execution diagram').boundingBox(),detail=await pane.boundingBox();expect(detail!.y).toBeGreaterThanOrEqual(graph!.y+graph!.height);
-   for(const control of await waits.locator('button,a').all()) {const box=await control.boundingBox();if(box)expect(box.height).toBeGreaterThanOrEqual(44);}
-  }
-  await page.getByRole('button',{name:'Reveal wait targets'}).focus();await page.keyboard.press('Enter');await expect(target).toBeInViewport();
-  await capture(page,`waits-${width}-${route.startsWith('story')?'embedded':'standalone'}`);
-  const open= pane.getByRole('link',{name:'Open job DAG',exact:true}).first();
-  await expect(open).toHaveAttribute('href','/project/demo/jobs/independent-blocker/tree');
-  await open.focus();await page.keyboard.press('Enter');await expect(page).toHaveURL('/project/demo/jobs/independent-blocker/tree');
-  await expect(page.locator('.tree-card[data-job-id="independent-blocker"]')).toContainText('Prepare the shared dependency');
-  await expect(page.getByRole('link',{name:'Back to waiting job DAG'})).toBeVisible();expect(targetWaitReads).toBe(1);
-  await page.goBack();await expect(page).toHaveURL('/project/demo/jobs/entry/'+route);
-  await page.getByRole('button',{name:'Goal wait target · literal-goal',exact:true}).focus();await page.keyboard.press('Enter');
-  await page.getByRole('button',{name:'Fit',exact:true}).click();await capture(page,`waits-goal-${width}-${route.startsWith('story')?'embedded':'standalone'}`);
-  const goal=page.getByRole('complementary',{name:'Selected wait target'}).getByRole('link',{name:'Open goal',exact:true}).first();
-  await expect(goal).toHaveAttribute('href','/project/demo/goals/literal-goal');await goal.focus();await page.keyboard.press('Enter');
-  await expect(page).toHaveURL('/project/demo/goals/literal-goal');await expect(page.getByRole('region',{name:'Goal overview',exact:true})).toContainText('Literal goal attempt');
- });
-}
-test('WAIT dual runtime/wait role, collapsed reveal, self cycle and child selection retain ancestry',async({page})=>{
- await page.setViewportSize({width:1280,height:1000});await waitFixture(page,true);
- await page.goto('/project/demo/jobs/entry/tree');await expect(page.locator('.tree-wait-reference')).toHaveCount(1);
- const child=page.locator('.tree-card[data-job-id="independent-blocker"]');await expect(child).toContainText('Wait target');
- await expect(page.locator('path[data-parent="entry"][data-child="independent-blocker"]')).toHaveCount(1);
- await expect(page.locator('path[data-wait-target]')).toHaveCount(2);
- await page.getByRole('button',{name:'Toggle branch Publish the reviewed change'}).click();await expect(child).toBeAttached();
- await page.getByRole('button',{name:'Fit',exact:true}).click();await checkWaitGeometry(page);await capture(page,'waits-dual-role-product');
- await child.locator('.tree-card-select').focus();await page.keyboard.press('Enter');
- await expect(page.locator('.tree-wait-reference')).toHaveCount(0);await expect(child).toHaveCount(0); // saved collapse is restored
- await page.getByRole('button',{name:'Find opened job'}).click();
- await page.route('**/jobs/entry/tree-waits?*',r=>r.fulfill({json:waitsPage('entry',[waitJob('entry')])}));
- await page.getByRole('button',{name:'Refresh waits'}).click();
- await expect(page.locator('.tree-wait-reference')).toHaveCount(0);await expect(page.locator('path[data-wait-target]')).toHaveCount(1);
- await expect(page.locator('.tree-card')).toHaveCount(2);await checkWaitGeometry(page);await capture(page,'waits-self-cycle-product');
-});
-test('WAIT partial paging, failed refresh, changed/resolved records and unavailable destination',async({page})=>{
- await waitFixture(page);let mode='partial',reads=0;
- await page.route('**/jobs/entry/tree-waits?*',r=>{
-  reads++;const token=new URL(r.request().url()).searchParams.get('pageToken');
-  if(mode==='error' || mode==='page-error' && token)return r.fulfill({status:403,json:{error:'Private backend detail'}});
-  if(mode==='resolved')return r.fulfill({json:waitsPage('entry',[])});
-  if(mode==='changed')return r.fulfill({json:waitsPage('entry',[waitJob('missing-blocker')])});
-  const result=waitsPage('entry',token?[waitGoal('literal-goal')]:[waitJob('independent-blocker')],token?'':'next');if(token)result.waits[0].waitId='second-wait';return r.fulfill({json:result});
- });
- await page.goto('/project/demo/jobs/entry/tree');
- const waits=page.getByRole('region',{name:'Waits for',exact:true});await expect(waits).toContainText('Partial wait coverage');expect(reads).toBe(1);
- await capture(page,'waits-partial-product');
- mode='page-error';await waits.getByRole('button',{name:'Load more waits'}).focus();await page.keyboard.press('Enter');
- await expect(waits).toContainText('Wait page unavailable');await expect(page.locator('.tree-wait-reference')).toHaveCount(1);
- mode='partial';await waits.getByRole('button',{name:'Retry page'}).focus();await page.keyboard.press('Enter');
- await expect(page.locator('.tree-wait-reference')).toHaveCount(2);expect(reads).toBe(3);
- mode='error';await waits.getByRole('button',{name:'Refresh waits'}).focus();await page.keyboard.press('Enter');
- await expect(waits).toContainText('Previous observation');await expect(waits).toContainText('information unavailable');
- await expect(page.locator('.tree-wait-connections')).toHaveClass(/tree-waits-previous/);await page.getByRole('button',{name:'Fit',exact:true}).click();await capture(page,'waits-previous-product');
- mode='changed';await waits.getByRole('button',{name:'Retry waits'}).focus();await page.keyboard.press('Enter');
- await expect(page.getByRole('button',{name:'Job wait target · missing-blocker'})).toBeAttached();
- await expect(page.getByRole('button',{name:'Goal wait target · literal-goal'})).toHaveCount(0);
- await waits.getByRole('link',{name:'Open job DAG'}).focus();await page.keyboard.press('Enter');
- await expect(page).toHaveURL('/project/demo/jobs/missing-blocker/tree');await expect(page.getByRole('alert')).toContainText('Entry job unavailable');
- await expect(page.getByText('Recorded submission family',{exact:false})).toContainText('missing-blocker');
- await page.getByRole('link',{name:'Back to waiting job DAG'}).click();
- mode='resolved';await page.getByRole('button',{name:'Refresh waits'}).click();
- await expect(waits).toContainText('do not explain the waiting status');await expect(page.locator('.tree-wait-reference')).toHaveCount(0);
- await expect(waits).not.toContainText('Previous observation');
- mode='changed';await page.getByRole('button',{name:'Refresh tree'}).click();
- await expect(page.getByRole('button',{name:'Job wait target · missing-blocker'})).toBeAttached();
-});
-test('WAIT empty continuation, unavailable reads, dense target caps and keyboard graph exchange',async({page})=>{
- await page.setViewportSize({width:320,height:1000});await waitFixture(page);
- let mode='empty';
- await page.route('**/jobs/entry/tree-waits?*',r=>{
-  if(mode==='error')return r.fulfill({status:503,json:{error:'Unavailable'}});
-  if(mode==='dense')return r.fulfill({json:waitsPage('entry',Array.from({length:120},(_,i)=>waitJob('long-independent-target-'+i)))});
-  return r.fulfill({json:waitsPage('entry',[],'more')});
- });
- await page.goto('/project/demo/jobs/entry/tree');const waits=page.getByRole('region',{name:'Waits for',exact:true});
- await expect(waits).toContainText('Partial wait coverage');await expect(waits).not.toContainText('No unresolved');
- mode='error';await waits.getByRole('button',{name:'Refresh waits'}).click();await expect(waits).toContainText('information unavailable');await capture(page,'waits-unavailable-320-product');
- mode='dense';await waits.getByRole('button',{name:'Retry waits'}).click();await expect(page.locator('.tree-wait-reference')).toHaveCount(50);await expect(waits.locator('li')).toHaveCount(100);
- const row=waits.locator('li').filter({hasText:'long-independent-target-99'});await row.getByRole('button',{name:'Show in graph'}).focus();await page.keyboard.press('Enter');
- await expect(page.getByRole('button',{name:'Job wait target · long-independent-target-99',exact:true})).toBeAttached();await expect(page.locator('.tree-wait-reference')).toHaveCount(50);
- await expect(row.getByRole('button',{name:'Reveal in graph'})).toBeFocused();
- await waits.getByRole('button',{name:'Show more loaded targets'}).focus();await page.keyboard.press('Enter');await expect(waits.locator('li')).toHaveCount(120);
- expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
-});
 
-async function checkWaitGeometry(page:Page) {
- const intersections=await page.evaluate(()=>{
-  const cards=[...document.querySelectorAll<HTMLElement>('.tree-card,.tree-wait-reference')].map(e=>e.getBoundingClientRect());
-  const errors:string[]=[];
-  for(const path of document.querySelectorAll<SVGPathElement>('path[data-wait-target]')) {
-   const matrix=path.getScreenCTM()!;
-   for(let distance=0;distance<=path.getTotalLength();distance+=2) {
-    const p=path.getPointAtLength(distance).matrixTransform(matrix);
-    if(cards.some(b=>p.x>b.left+3&&p.x<b.right-3&&p.y>b.top+3&&p.y<b.bottom-3)){errors.push(path.dataset.waitTarget!);break;}
-   }
+const waitAt='2026-11-12T09:00:00Z';
+const waitJob=(id:string,condition='complete')=>({target:{jobId:id},condition,state:'PENDING'});
+function waitsPage(id:string,dependencies:any[]=[],token='') {
+ return {consumer:{tenant_id:'demo',job_id:id},waits:dependencies.length?[{jobKey:{tenantId:'demo',jobId:id},waitId:'prerequisites',state:'PENDING',dependencies}]:[],issues:[],observed_at:waitAt,next_page_token:token,consumer_snapshot:{state:'available',observed_at:waitAt,status:'READY'}};
+}
+async function recursiveFixture(page:Page,{dense=false,cycle=false,partial=false}={}) {
+ await mockCells(page,['platform']);
+ const make=(job_id:string,title:string,parent_job_id?:string)=>({...nodes[2],job_id,title,parent_job_id,cell:'platform',status:'ACTIVE',created_at:waitAt,prompt:'Full dependency prompt 雪 <script>literal</script>'});
+ const records=[make('entry','Publish the reviewed change'),make('dependency','Prepare the shared dependency','outside'),make('nested','Validate nested dependency'),make('child','Build downstream child','nested'),make('leaf','Review downstream leaf'),...(dense?Array.from({length:51},(_,i)=>make('target-'+i,'Independent task '+i)):[])];
+ const links:Record<string,string[]>={entry:['dependency',...(dense?Array.from({length:51},(_,i)=>'target-'+i):[])],dependency:['nested'],child:['leaf'],...(cycle?{leaf:['dependency'],nested:['leaf']}:{}),...(partial?{nested:['missing']}:{})};
+ const reads:string[]=[];
+ await page.route('**/jobs/*/tree-node',r=>{const id=new URL(r.request().url()).pathname.split('/').at(-2)!;reads.push('node:'+id);const node=records.find(n=>n.job_id===id);return r.fulfill(node?{json:{node,observed_at:waitAt}}:{status:404,json:{error:'Unavailable'}});});
+ await page.route('**/jobs/*/tree-children?*',r=>{const id=new URL(r.request().url()).pathname.split('/').at(-2)!;reads.push('children:'+id);return r.fulfill({json:{nodes:records.filter(n=>n.parent_job_id===id),observed_at:waitAt}});});
+ await page.route('**/jobs/*/tree-waits?*',r=>{const id=new URL(r.request().url()).pathname.split('/').at(-2)!;reads.push('waits:'+id);return r.fulfill({json:waitsPage(id,(links[id]||[]).map(id=>waitJob(id)))});});
+ return {records,links,reads};
+}
+for(const width of [1280,390,320])for(const route of ['tree','story?tab=dag']){
+ test(`DB01–05 recursive mixed waits, full details, local routes and keyboard ${width} ${route}`,async({page})=>{
+  await page.setViewportSize({width,height:1000});const f=await recursiveFixture(page,{cycle:true});
+  await page.goto('/project/demo/jobs/entry/'+route);
+  await expect(page.locator('.tree-card')).toHaveCount(5);await expect(page.getByText('Discovering…',{exact:true})).toHaveCount(0);
+  expect(f.reads).not.toContain('node:outside');expect(f.reads.filter(s=>s==='waits:dependency')).toHaveLength(1);
+  await expect(page.getByRole('region',{name:'Discovery coverage'})).toContainText('cycle boundaries');
+  const target=page.locator('[data-job-id="dependency"] .tree-card-select');await expect(target).toContainText('Prepare the shared dependency');await expect(target).toContainText('platform');await expect(target).toContainText('Wait target');await expect(target).toContainText('UTC');
+  const before=f.reads.length;await target.focus();await page.keyboard.press('Enter');await expect(target).toBeFocused();
+  const pane=page.getByRole('complementary',{name:'Selected job details'});await expect(pane).toContainText('Full dependency prompt 雪 <script>literal</script>');await expect(pane).toContainText('Runtime parent');await expect(pane).toContainText('outside');await expect(pane).toContainText('Waiting job: entry');
+  await expect(pane.getByRole('button',{name:'Cancel job',exact:true})).toBeAttached();await expect(pane.getByRole('link',{name:'Open execution',exact:true})).toHaveAttribute('href','/project/demo/jobs/dependency/story');
+  expect(f.reads.length).toBe(before);await expect(page.locator('.tree-card')).toHaveCount(5);
+  await capture(page,`recursive-details-${width}-${route.startsWith('story')?'embedded':'standalone'}`);
+  await page.getByRole('button',{name:'Fit',exact:true}).click();await checkWaitGeometry(page,true);
+  if(width<768){const graph=await page.getByLabel('Execution diagram').boundingBox(),detail=await pane.boundingBox();expect(detail!.y).toBeGreaterThanOrEqual(graph!.y+graph!.height);for(const el of await pane.locator('button,a').all()){const box=await el.boundingBox();if(box)expect(box.height).toBeGreaterThanOrEqual(44);}}
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+  await capture(page,`recursive-${width}-${route.startsWith('story')?'embedded':'standalone'}`);
+  await page.getByRole('button',{name:'Toggle branch Publish the reviewed change'}).click();await page.getByRole('searchbox',{name:'Search loaded jobs'}).fill('Review downstream leaf');await expect(page.locator('[data-job-id="leaf"]')).toBeAttached();expect(f.reads.length).toBe(before);
+  await page.getByRole('button',{name:'Find opened job'}).click();await expect(page.locator('[data-job-id="entry"] .tree-card-select')).toBeFocused();
+ });
+}
+test('DB01 51 independent wait targets are hydrated without the former overlay cap',async({page})=>{
+ const f=await recursiveFixture(page,{dense:true});await page.goto('/project/demo/jobs/entry/tree');await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible({timeout:20000});await expect(page.locator('.tree-card')).toHaveCount(56);
+ expect(f.reads.filter(s=>s.startsWith('node:target-'))).toHaveLength(51);await expect(page.locator('path[data-wait-source="entry"]')).toHaveCount(52);
+});
+test('DB03 ordinary dashed paths use the local column gap despite a tall unrelated branch',async({page})=>{
+ await recursiveFixture(page,{dense:true});await page.goto('/project/demo/jobs/entry/tree');await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible({timeout:20000});
+ const points=await page.locator('path[data-wait-source="dependency"]').first().evaluate((el:SVGPathElement)=>{const p=el.getPointAtLength(0),end=el.getPointAtLength(el.getTotalLength());const ys=Array.from({length:21},(_,i)=>el.getPointAtLength(el.getTotalLength()*i/20).y);return {p:{x:p.x,y:p.y},end:{x:end.x,y:end.y},minY:Math.min(...ys),maxY:Math.max(...ys),d:el.getAttribute('d')};});
+ expect(points.end.x).toBeGreaterThan(points.p.x);expect(points.minY).toBeGreaterThanOrEqual(Math.min(points.p.y,points.end.y));expect(points.maxY).toBeLessThanOrEqual(Math.max(points.p.y,points.end.y));expect(points.d).toMatch(/^M /);await checkWaitGeometry(page);
+});
+test('DB06 failed lookup and failed refresh retain readable branches until verified replacement',async({page})=>{
+ await page.setViewportSize({width:1280,height:1000});await recursiveFixture(page,{partial:true});await page.goto('/project/demo/jobs/entry/tree');await expect(page.getByText('Discovering…',{exact:true})).toHaveCount(0);await expect(page.getByText('Partial discovery',{exact:true})).toBeVisible();
+ const missing=page.getByRole('button',{name:'Job wait target · missing',exact:true});await missing.click();const pane=page.getByRole('complementary',{name:'Selected job details'});await expect(pane).toContainText('Job summary unavailable');await expect(pane).toContainText('Waiting job: nested');await expect(pane.getByRole('button',{name:'Cancel job',exact:true})).toHaveCount(0);await capture(page,'recursive-missing-product');
+ await page.route('**/jobs/missing/tree-node',r=>r.fulfill({json:{node:{...nodes[0],job_id:'missing',title:'Recovered dependency'},observed_at:waitAt}}));await pane.getByRole('button',{name:'Retry summary'}).click();await expect(page.locator('[data-job-id="missing"]')).toContainText('Recovered dependency');
+ await page.locator('[data-job-id="entry"] .tree-card-select').click();await page.route('**/jobs/entry/tree-waits?*',r=>r.fulfill({status:503,json:{error:'Unavailable'}}));await pane.getByRole('button',{name:'Refresh waits'}).click();await expect(pane).toContainText('Previous observation');await expect(page.locator('[data-job-id="dependency"]')).toBeAttached();await capture(page,'recursive-previous-product');
+ await page.route('**/jobs/entry/tree-waits?*',r=>r.fulfill({json:waitsPage('entry')}));await pane.getByRole('button',{name:'Retry waits'}).click();await expect(page.locator('.tree-card')).toHaveCount(1);
+});
+test('DB07 exact wait job DAG and execution return preserve the original destination',async({page})=>{
+ await recursiveFixture(page);await page.goto('/project/demo/jobs/entry/tree');await page.locator('[data-job-id="dependency"] .tree-card-select').click();const pane=page.getByRole('complementary',{name:'Selected job details'});await pane.locator('a[href="/project/demo/jobs/dependency/tree"]').click();await expect(page).toHaveURL('/project/demo/jobs/dependency/tree');await expect(page.getByRole('link',{name:'Back to waiting job DAG'})).toHaveAttribute('href','/project/demo/jobs/entry/story?tab=dag');
+});
+test('DB08 embedded reads start on activation, pause on departure, resume once and reject obsolete pages',async({page})=>{
+ const f=await recursiveFixture(page);let release!:()=>void,reads=0;const gate=new Promise<void>(r=>release=r);
+ await page.route('**/jobs/entry/tree-waits?*',async r=>{const current=++reads;if(current===1)await gate;await r.fulfill({json:waitsPage('entry',current===1?[waitJob('obsolete')]:[waitJob('dependency')])}).catch(()=>{});});
+ await page.goto('/project/demo/jobs/entry/story');expect(f.reads).toEqual([]);await page.getByRole('tab',{name:'DAG',exact:true}).click();await expect.poll(()=>reads).toBe(1);await page.getByRole('tab',{name:'Trace',exact:true}).click();await page.getByRole('tab',{name:'DAG',exact:true}).click();await expect(page.locator('[data-job-id="leaf"]')).toBeAttached();release();await expect(page.getByText('Discovering…',{exact:true})).toHaveCount(0);expect(reads).toBe(2);await expect(page.getByRole('button',{name:'Job wait target · obsolete',exact:true})).toHaveCount(0);const count=f.reads.length;await page.clock.runFor(60000);expect(f.reads.length).toBe(count);
+});
+async function checkWaitGeometry(page:Page,fitted=false){
+ const intersections=await page.evaluate(fitted=>{
+  const cards=[...document.querySelectorAll<HTMLElement>('.tree-card,.tree-wait-reference')].map(e=>e.getBoundingClientRect());const errors:string[]=[];
+  for(const path of document.querySelectorAll<SVGPathElement>('path[data-wait-target]')){const matrix=path.getScreenCTM()!;for(let d=0;d<=path.getTotalLength();d+=3){const p=path.getPointAtLength(d).matrixTransform(matrix);if(cards.some(b=>p.x>b.left+2&&p.x<b.right-2&&p.y>b.top+2&&p.y<b.bottom-2)){errors.push(path.dataset.waitTarget!);break;}}}
+  const canvas=document.querySelector('.tree-canvas')!.getBoundingClientRect(),viewport=document.querySelector('.tree-viewport')!.getBoundingClientRect();
+  for(const el of document.querySelectorAll<SVGGraphicsElement>('.tree-canvas path,.tree-wait-connections text')){
+   const b=el.getBoundingClientRect();
+   if(b.left<canvas.left-1||b.right>canvas.right+1||b.top<canvas.top-1||b.bottom>canvas.bottom+1)errors.push('Clipped route or label: '+el.textContent);
+   if(fitted&&(b.left<viewport.left-1||b.right>viewport.right+1))errors.push('Outside fitted width: '+el.textContent);
   }
   return errors;
- });
- expect(intersections).toEqual([]);
+ },fitted);expect(intersections).toEqual([]);
 }
-
-test('WAIT loading and resolved-reference focus remain usable on a phone',async({page})=>{
- await page.setViewportSize({width:390,height:1000});await waitFixture(page);
- let release!:()=>void, generation=0;
- const gates=[new Promise<void>(resolve=>release=resolve)];
- let resolveNext!:()=>void;gates.push(new Promise<void>(resolve=>resolveNext=resolve));
- await page.route('**/jobs/entry/tree-waits?*',async r=>{
-  const current=generation++;await gates[current];
-  await r.fulfill({json:waitsPage('entry',current?[]:[waitJob('independent-blocker')])}).catch(()=>{});
- });
- await page.goto('/project/demo/jobs/entry/tree');
- await expect(page.getByRole('region',{name:'Waits for'})).toContainText('Loading pending dependencies');
- await capture(page,'waits-loading-phone');release();
- const target=page.getByRole('button',{name:'Job wait target · independent-blocker',exact:true});
- await target.focus();await page.keyboard.press('Enter');
- await page.getByRole('button',{name:'Refresh waits'}).click();await expect(page.getByRole('region',{name:'Waits for'})).toContainText('Previous observation');
- await target.focus();resolveNext();
- await expect(page.getByRole('heading',{name:'Selected job',exact:true})).toBeFocused();
- await expect(page.locator('.tree-wait-reference')).toHaveCount(0);
- await expect(page.getByRole('region',{name:'Waits for'})).toContainText('do not explain the waiting status');
-});
-test('WAIT tab departure resumes one interrupted read and rejects a late dependency observation',async({page})=>{
- await waitFixture(page);let release!:()=>void,reads=0;
- const gate=new Promise<void>(resolve=>release=resolve);
- await page.route('**/jobs/entry/tree-waits?*',async r=>{
-  const current=++reads;if(current===1)await gate;
-  await r.fulfill({json:waitsPage('entry',current===1?[waitJob('obsolete-target')]:[waitGoal('literal-goal')])}).catch(()=>{});
- });
- await page.goto('/project/demo/jobs/entry/story?tab=dag');await expect.poll(()=>reads).toBe(1);
- await page.getByRole('tab',{name:'Trace',exact:true}).click();
- await page.getByRole('tab',{name:'DAG',exact:true}).click();
- await expect(page.getByRole('button',{name:'Goal wait target · literal-goal',exact:true})).toBeAttached();
- expect(reads).toBe(2);release();
- await expect(page.getByRole('button',{name:'Job wait target · obsolete-target',exact:true})).toHaveCount(0);
-});

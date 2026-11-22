@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import type { TreeWaitsResponse } from '@colony2/shared';
-import { graphTargets, legacyRows, normalizeWaits, waitKey, waitPath, waitTargets, WAIT_LIMITS } from './waits';
+import { legacyRows, normalizeWaits, waitKey, waitPath, waitTargets } from './waits';
 export const at='2026-11-17T00:00:00Z';
 export const page = (dependencies: any[] = [], token = ''): TreeWaitsResponse => ({consumer:{tenant_id:'t',job_id:'consumer'},waits:[{jobKey:{tenantId:'t',jobId:'consumer'},waitId:'w',state:'PENDING',dependencies}],observed_at:at,issues:[],next_page_token:token,consumer_snapshot:{state:'available',observed_at:at,status:'PENDING_JOBS'}});
 export const job = (id='independent',condition='complete') => ({target:{jobId:id},condition,state:'PENDING'});
@@ -23,9 +23,7 @@ it('malformed, foreign, future and truncated records cannot establish absence',(
  const capped=normalizeWaits(page(Array.from({length:1200},(_,i)=>job(String(i)))),'t','consumer',1000);
  expect(capped.rows).toHaveLength(1000);expect(capped.issues).toContain('Dependency row limit reached');
 });
-it('caps distinct graph identities and exchanges a loaded target without adding ancestry',()=>{
- const targets=waitTargets(normalizeWaits(page(Array.from({length:100},(_,i)=>job(String(i)))),'t','consumer',1000).rows);
- expect(graphTargets(targets)).toHaveLength(WAIT_LIMITS.targets);
- expect(graphTargets(targets,targets[99].key).at(-1)).toBe(targets[99]);
- expect(graphTargets(targets,targets[99].key)).toHaveLength(50);
+it('retains 51 distinct targets for the shared graph without overlay clipping',()=>{
+ const targets=waitTargets(normalizeWaits(page(Array.from({length:51},(_,i)=>job(String(i)))),'t','consumer',1000).rows);
+ expect(targets).toHaveLength(51);
 });

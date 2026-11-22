@@ -275,6 +275,24 @@ sequence:
         pnpm --filter @colony2/app test src/utils/copyText.test.ts src/components/CopyJobId.test.tsx src/components/JobsListPage.test.tsx src/components/JobActionDialog.test.tsx src/components/JobStoryPage.test.tsx
         bash scripts/verify-browser.sh pnpm --filter @colony2/app test:e2e --config playwright.copy.config.ts
         bash scripts/verify-browser.sh pnpm --filter @colony2/app test:e2e --config playwright.fixtures.config.ts --grep 'copies the title job'
+  # Keep recursive DAG contracts and browser routing failures visible separately.
+  - id: dag-wait-tree-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        pnpm install --frozen-lockfile
+        # Isolate pruned-stream races and cycle-label bounds in verification diagnostics.
+        pnpm --filter @colony2/app test src/executionTree/downward.test.ts src/executionTree/layout.test.ts -t 'after refresh prunes|replaced stream|complete label extents'
+        pnpm --filter @colony2/app test src/executionTree
+        bash scripts/verify-browser.sh pnpm --filter @colony2/app test:e2e --config playwright.tree.config.ts --retries=0
   # Gate the delivered editor identity, semantic Link, images and fresh-empty checks.
   - id: composer-tests
     op: command_execution

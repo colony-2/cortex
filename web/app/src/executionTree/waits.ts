@@ -1,6 +1,6 @@
-import type { TreeWaitsResponse } from '@colony2/shared';
+import type { TreeWaitSnapshot, TreeWaitsResponse } from '@colony2/shared';
 
-export const WAIT_LIMITS = { pages: 10, rows: 1000, targets: 50, arrows: 100, paneRows: 100 };
+export const WAIT_LIMITS = { pages: 10, rows: 1000, paneRows: 100 };
 export interface WaitRow {
   key: string; targetKey: string; kind: 'job' | 'goal'; id: string;
   waitID: string; condition: string; deadline?: string; blockedReason?: string; legacy?: boolean;
@@ -68,10 +68,14 @@ export function waitTargets(rows: WaitRow[]): WaitTarget[] {
   }
   return [...targets.values()];
 }
-export function graphTargets(targets: WaitTarget[], preferred?: string) {
-  const drawn = targets.slice(0, Math.min(WAIT_LIMITS.targets,WAIT_LIMITS.arrows));
-  const chosen = targets.find(t=>t.key===preferred);
-  if (chosen && !drawn.includes(chosen)) drawn[drawn.length-1] = chosen;
-  return drawn;
-}
 export const conditionText = (condition: string) => condition === 'complete' ? 'Completion, regardless of outcome' : condition === 'success' ? 'Successful completion' : 'Condition explanation unavailable';
+
+export interface WaitObservation {
+  rows: WaitRow[]; issues: string[]; loading: boolean; stale: boolean;
+  loaded: boolean; observed?: string; snapshot?: TreeWaitSnapshot; token: string;
+  pages: number; inspected: number; error?: string; stopped?: string;
+}
+export interface WaitController {
+  tenant: string; state: WaitObservation; rows: WaitRow[]; canLoad: boolean;
+  refresh: () => void; load: () => Promise<void>;
+}

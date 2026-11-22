@@ -30,6 +30,7 @@ vi.mock('@colony2/shared', async (importOriginal) => {
  return {
   ...actual,
   getFinalDocuments: vi.fn(), getTreeNode: vi.fn(), getTreeChildren: vi.fn(),
+  getTreeWaits: vi.fn(async (tenant,job)=>({consumer:{tenant_id:tenant,job_id:job},waits:[],issues:[],observed_at:'now',consumer_snapshot:{state:'available',observed_at:'now',status:'READY'}})),
   getConversation: vi.fn().mockRejectedValue(new Error('History unavailable')),
   getConversationRequest: vi.fn().mockRejectedValue(new Error('Request unavailable')),
   getConversationEntry: vi.fn().mockRejectedValue(new Error('Request unavailable')),

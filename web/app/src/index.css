@@ -482,6 +482,9 @@ html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-heig
 .execution-tree button:focus-visible, .execution-tree a:focus-visible { outline: 3px solid #305f9c; outline-offset: 3px; }
 @media (max-width:767px) { .tree-wait-actions > a { min-height:44px; display:inline-flex; align-items:center; } }
 .execution-tree > p, .tree-wait-identity { overflow-wrap: anywhere; }
+.tree-job-wait-target { border-radius: 0; clip-path: polygon(12px 0,calc(100% - 12px) 0,100% 12px,100% calc(100% - 12px),calc(100% - 12px) 100%,12px 100%,0 calc(100% - 12px),0 12px); }
+.tree-job-wait-target:focus-within { clip-path: none; outline: 3px solid #6941a5; outline-offset: 2px; }
+.tree-details dd { white-space: pre-wrap; overflow-wrap: anywhere; }
 /* New goal owns its viewport; other dialogs retain the shared modal sizing. */
 .new-goal-modal-root .ant-modal-wrap { overflow: hidden; }
 .new-goal-composer.ant-modal {

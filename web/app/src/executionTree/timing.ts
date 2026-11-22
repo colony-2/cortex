@@ -23,9 +23,10 @@ export function elapsed(milliseconds: number) {
   }
   return parts.join(' ') || '0s';
 }
-export function timing(node: TreeNode, root: TreeNode | undefined, now: number) {
+export function timing(node: TreeNode, root: TreeNode | undefined, now: number, external = false) {
   const created = timestamp(node.created_at, now), rootCreated = timestamp(root?.created_at, now);
   let submission = 'Submitted Unavailable';
+  if (created !== undefined && external) submission = `Submitted ${new Intl.DateTimeFormat('en-US', {timeZone:'UTC',year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(created)} UTC`;
   if (created !== undefined && rootCreated !== undefined) {
     if (node.job_id === root?.job_id) {
       submission = `Submitted ${new Intl.DateTimeFormat('en-US', {timeZone:'UTC',year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(created)} UTC`;

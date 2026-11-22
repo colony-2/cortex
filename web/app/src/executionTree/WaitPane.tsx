@@ -1,12 +1,12 @@
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
-import type { TreeWaits } from './useTreeWaits';
+import type { WaitController } from './waits';
 import { conditionText, WAIT_LIMITS, waitPath, type WaitTarget } from './waits';
 
 export function TargetLink({tenant,target,returnTo}:{tenant:string;target:WaitTarget;returnTo:string}) {
   return <Link className="compact-touch-link" to={waitPath(tenant,target.kind,target.id)} state={{treeWaitFrom:returnTo}}>{target.kind==='goal'?'Open goal':'Open job DAG'}</Link>;
 }
-export function WaitPane({controller,targets,drawn,selectTarget,showTarget,returnTo}:{controller:TreeWaits;targets:WaitTarget[];drawn:Set<string>;selectTarget:(t:WaitTarget)=>void;showTarget:(t:WaitTarget)=>void;returnTo:string}) {
+export function WaitPane({controller,targets,drawn,selectTarget,showTarget,returnTo}:{controller:WaitController;targets:WaitTarget[];drawn:Set<string>;selectTarget:(t:WaitTarget)=>void;showTarget:(t:WaitTarget)=>void;returnTo:string}) {
   const [count,setCount] = useState(WAIT_LIMITS.paneRows);
   const s = controller.state;
   const rows = controller.rows;
@@ -26,11 +26,11 @@ export function WaitPane({controller,targets,drawn,selectTarget,showTarget,retur
       {complete && !rows.length && <p>{s.snapshot?.status==='PENDING_JOBS'?'Returned dependency details do not explain the waiting status. Refresh to check again.':`No unresolved waits returned at ${s.observed}.`}</p>}
     </div>
     {!!s.error && (s.stale || !s.loaded) && <button onClick={()=>s.stale || !s.loaded?controller.refresh():void controller.load()} disabled={s.loading}>Retry waits</button>}
-    {s.token && !s.stale && !s.stopped && <button onClick={()=>void controller.load()} disabled={!controller.canLoad}>{s.error?'Retry page':'Load more waits'}</button>}
-    {!!targets.length && <p>{drawn.size} of {targets.length} loaded targets drawn{s.token?'; more may exist':''}. References do not load target families.</p>}
+    {s.token && s.error && !s.stale && !s.stopped && <button onClick={()=>void controller.load()} disabled={!controller.canLoad}>{s.error?'Retry page':'Load more waits'}</button>}
+    {!!targets.length && <p>{targets.filter(target=>drawn.has(target.key)).length} of {targets.length} loaded targets drawn{s.token?'; more may exist':''}. Job targets in the opened scope are followed automatically.</p>}
     <ul className="tree-wait-list">{rows.slice(0,count).map(row=>{
       const target = targets.find(t=>t.key===row.targetKey)!;
-      return <li key={row.key} data-wait-ref={row.targetKey}>
+      return <li key={JSON.stringify([row.key,row.targetKey,row.condition,row.deadline,row.blockedReason])} data-wait-ref={row.targetKey}>
         <strong>{row.legacy?'Legacy job wait':row.kind==='goal'?'Goal wait':'Job wait'}</strong>
         <code>{row.id}</code>
         <p>Waits for · {row.condition}</p>

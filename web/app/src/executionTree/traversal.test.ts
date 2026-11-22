@@ -54,7 +54,7 @@ describe('recorded submission tree',()=>{
     expect(t.state.stop).toBe('Elapsed-time limit');expect(t.state.nodes.has('entry')).toBe(true);vi.useRealTimers();
   });
   it('TREE-011 resume resets operation request budget but preserves page cap',async()=>{
-    const source=fixture([n('entry'),n('a','entry'),n('b','a')]);const t=create(source,'entry',{requests:2,pages:2});await t.run();
+    const source=fixture([n('entry'),n('a','entry'),n('b','a')]);const t=create(source,'entry',{requests:2,pages:4});await t.run();
     expect(t.state.stop).toBe('Request limit');await t.run();expect(t.state.nodes.has('b')).toBe(true);expect(t.state.stop).toBe('Page limit');const calls=vi.mocked(source.children).mock.calls.length;await t.run();expect(vi.mocked(source.children).mock.calls.length).toBe(calls);
   });
   it('TREE-019 canceled generation ignores a late response',async()=>{
@@ -63,7 +63,7 @@ describe('recorded submission tree',()=>{
   it('TREE-027 later status observations do not conflict with stable parents',async()=>{
     const source=fixture([n('entry','root'),n('root')],async(_,id)=>page(id==='root'?[{...n('entry','root'),status:'COMPLETED'}]:[]));const t=create(source);await t.run();expect(t.state.nodes.get('entry')?.status).toBe('COMPLETED');expect(t.state.blocked.size).toBe(0);
   });
-  it('production defaults stay bounded',()=>expect(DEFAULT_BUDGETS).toEqual({nodes:1000,ascent:64,depth:64,pages:200,requests:300,milliseconds:30000,concurrency:4}));
+  it('production defaults stay bounded',()=>expect(DEFAULT_BUDGETS).toEqual({nodes:1000,edges:4000,ascent:64,depth:64,pages:200,entries:10000,waitPages:10,waitEntries:1000,requests:300,milliseconds:30000,requestMilliseconds:10000,concurrency:4}));
 });
 
 it('TREE-011 bounds concurrency during descent and retries',async()=>{
