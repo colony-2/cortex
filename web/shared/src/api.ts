@@ -293,3 +293,11 @@ export async function getTreeWaits(tenant: string, job: string, token = '', sign
   }
   return page;
 }
+
+export async function clearCrashConcern(projectId: string, jobId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/clear-crash-concern`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+  });
+  await handleResponse(response, 'Clear crash concern');
+  if (response.status !== 204) throw new APIError('Clear crash concern returned an unexpected response; its outcome is unknown. Refresh status before retrying.', response.status);
+}

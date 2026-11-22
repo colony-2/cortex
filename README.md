@@ -24,6 +24,15 @@ or completed scheduler state. You can submit a restart while cancellation remain
 pending, once the cancellation request itself has finished. Cancellation success and
 restart failure are reported separately; diagnostic text never establishes goal closure.
 
+When a job's **Lease timeline** shows **Crash concern**, workers repeatedly lost
+its lease and automatic execution is paused. Resolve the worker issue, then use
+**Clear crash concern** and confirm the selected tenant and job. Cortex reports
+success with a toast and refreshes current status. Clearing keeps the same job
+and its history; existing waits and scheduling conditions still apply. Restart
+is a separate action that creates a new attempt. Clearing requires a JobDB server
+that supports the operation and permits operator access. If the status refresh
+fails after success, **Refresh status** repeats only the read.
+
 **Retry saved request** resends the saved ID, boundary, goal mode and patch unchanged,
 including after reload or a lost response. It needs no new completion, open-goal or
 sibling-absence check. Current authority and request validation still apply. Refresh

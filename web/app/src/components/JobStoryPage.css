@@ -110,3 +110,11 @@
   .pending-request-layout { flex-direction: column; align-items: stretch; gap: 12px; }
   .pending-request-action { align-self: flex-start; }
 }
+
+.job-crash-concern { margin-bottom: 16px; overflow-wrap: anywhere; }
+.job-crash-concern:empty { margin: 0; }
+.job-crash-concern-content { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.job-crash-concern-content p { flex: 1 1 300px; margin: 0; }
+.job-crash-concern button, .crash-concern-dialog button { min-height: 44px; white-space: normal; }
+
+.crash-concern-dialog .ant-modal-body { overflow-wrap: anywhere; }

@@ -434,6 +434,27 @@ sequence:
         for format in jpg gif webp avif bmp; do
           ffmpeg -v error -f lavfi -i color=c=blue:s=2x2 -frames:v 1 -y "$fixture_dir/sample.$format"
         done
+  - id: crash-concern-recovery-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        # Require assembled-route preflight coverage before the recovery contracts.
+        node scripts/verify-command.mjs bash scripts/go.sh test ./server/internal/cortex -run '^TestClearCrashConcernCORS$' -count=1
+        node scripts/verify-command.mjs bash scripts/go.sh test ./server/internal/cortex -run TestClearCrashConcern -count=1
+        pnpm --filter @colony2/shared test src/api.test.ts
+        pnpm --filter @colony2/app test src/components/JobCrashConcern.test.tsx src/components/JobStoryPage.test.tsx src/components/JobLeaseTimeline.test.tsx
+        # Includes a held metadata refresh to verify trigger focus and stale-action guards.
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.timeline.config.ts --retries=0
   - id: restart-browser-tests
     op: command_execution
     const: true
@@ -448,6 +469,8 @@ sequence:
         set -euo pipefail
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
+        # Every repetition must pass; keep nested confirmation races visible.
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.recovery.config.ts recovery-stage1.spec.ts --grep 'R17 R18' --repeat-each=3 --retries=0
         bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.recovery.config.ts recovery-stage1.spec.ts --retries=0
   # Saved-diff contracts must pass before checking the production review UI.
   - id: workspace-diff-contract-tests

@@ -3,6 +3,7 @@ import { dagReturnPath } from '../executionTree/navigation';
 import { TreeWorkspace } from '../executionTree/TreePage';
 import InboxPanel, { inboxCount } from './InboxPanel';
 import JobLeaseTimeline from './JobLeaseTimeline';
+import JobCrashConcern from './JobCrashConcern';
 import JobConversation from './JobConversation';
 import JobEnvironment from './JobEnvironment';
 import JobDetailTabs, { jobDetailTab, type JobDetailTab } from './JobDetailTabs';
@@ -403,6 +404,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     status: 'loading' | 'loaded' | 'failed'; error?: string;
   }>();
   const metadataGeneration = useRef(0);
+  const crashMutationBusy = useRef(false);
   const metadata = loadedJob?.jobId === jobId && loadedJob.projectId === projectId ? loadedJob : undefined;
   const job = metadata?.job;
   const activityJob = job ?? metadata?.observedJob;
@@ -412,7 +414,8 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const terminalStatus = job ? jobStatusValue(job) : undefined;
   const failed = terminalStatus && ['failed_app', 'failed_system', 'failed_timeout'].includes(terminalStatus);
   const failureDetail = job?.completion_detail?.trim() ? job.completion_detail : undefined;
-  const loadMetadata = async (): Promise<RecipeJob | undefined> => {
+  const loadMetadata = async (force = false): Promise<RecipeJob | undefined> => {
+    if (crashMutationBusy.current && !force) return;
     const generation = ++metadataGeneration.current;
     setLoadedJob(previous => ({ projectId, jobId, status: 'loading',
       job: previous?.projectId === projectId && previous.jobId === jobId ? previous.job : undefined,
@@ -476,6 +479,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   };
 
   useEffect(() => {
+    crashMutationBusy.current = false;
     setLoadedJob(undefined);
     setStory(null);
     setSelectedKey(null);
@@ -888,7 +892,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
             <div>Cell, prompt, and completion information could not be loaded.</div>
             <div>{metadata.error}</div>
           </div>}
-          action={<Button size="small" onClick={loadMetadata}>Retry</Button>} />}
+          action={<Button size="small" onClick={() => void loadMetadata()}>Retry</Button>} />}
         {job && <Tag color={jobStatusPresentation(terminalStatus || 'unknown').color} aria-label="Job status">{jobStatusPresentation(terminalStatus || 'unknown').label}</Tag>}
         {job && <div aria-label="Job cell" style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
           <Text strong>Cell: </Text>{cellLabel(job.cell_name)}
@@ -992,6 +996,9 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
           {(activeTab === 'dag' || dagVisited === dagIdentity) && <TreeWorkspace key={dagIdentity} tenant={projectId} entry={jobId!} active={activeTab === 'dag'} embedded onJobChanged={node => { if (node.tenant_id === projectId && node.job_id === jobId) { void loadMetadata(); void refreshPendingInputs(); } }} />}
         </section>
         <section role="tabpanel" id="job-panel-leases" aria-labelledby="job-tab-leases" hidden={activeTab !== 'leases'} tabIndex={0} className="job-detail-panel">
+          <JobCrashConcern key={JSON.stringify([projectId, jobId])} projectId={projectId} jobId={jobId} job={job} status={metadata?.status}
+            pause={() => { crashMutationBusy.current = true; ++metadataGeneration.current; }}
+            resume={() => { crashMutationBusy.current = false; }} refresh={() => loadMetadata(true)} />
           {activeTab === 'leases' && <JobLeaseTimeline expanded projectId={projectId} jobId={jobId} createdAt={job?.created_at} />}
         </section>
         <section role="tabpanel" id="job-panel-execution" aria-labelledby="job-tab-execution" hidden={activeTab !== 'execution'} tabIndex={0} className="job-detail-panel">

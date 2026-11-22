@@ -8,7 +8,7 @@ import { amendedReviewV2Fixture } from '../../../shared/src/test/reviewV2Fixture
 import JobsListPage from './JobsListPage';
 import * as storyTree from '../utils/storyTree';
 import { jobIdentity, registryCell } from '../test/cellFixtures';
-import { getJob, getJobInputArtifacts, listJobChildren, cancelJob, listJobs, listCells, getCell } from '@colony2/shared/api';
+import { clearCrashConcern, getJob, getJobInputArtifacts, listJobChildren, cancelJob, listJobs, listCells, getCell } from '@colony2/shared/api';
 import type { RecipeJob } from '@colony2/shared/types';
 import DownloadChaptersButton from './DownloadChaptersButton';
 import { inputActivityService, getConversation, getFinalDocuments, getTreeNode, getTreeChildren } from '@colony2/shared';
@@ -46,6 +46,7 @@ vi.mock('@colony2/shared/api', async (importOriginal) => ({
   ...await importOriginal<typeof import('@colony2/shared/api')>(),
   getJob: vi.fn(),
   cancelJob: vi.fn(),
+  clearCrashConcern: vi.fn(),
   getJobInputArtifacts: vi.fn().mockResolvedValue({ artifacts: [] }),
   listJobs: vi.fn().mockResolvedValue({ jobs: [] }),
   listCells: vi.fn(), getCell: vi.fn(),
@@ -90,6 +91,7 @@ function mount(search = '?tab=execution', response: unknown = story) {
   return fetchMock;
 }
 beforeEach(() => {
+  vi.mocked(clearCrashConcern).mockReset().mockResolvedValue(undefined);
   scrollIntoView.mockClear();
   sessionStorage.clear();
   inputActivityService.clearCaches();
@@ -595,9 +597,9 @@ describe('job story context', () => {
   });
   it.each([undefined, '', '  \n '])('shows an empty prompt: %s', async value => {
     vi.mocked(getJob).mockResolvedValue(metadata({ title: value, prompt: value }));
-    mount('');
-    fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
-    await screen.findByText('Development.Design.Task 3.2');
+    await act(async () => { mount(''); });
+    await act(async () => { fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true })); });
+    expect(screen.getByText('Development.Design.Task 3.2')).toBeVisible();
     fireEvent.click(screen.getByRole('tab', { name: 'Conversation', exact: true }));
     expect(screen.getByRole('heading', { name: 'Job Story', exact: true })).toBeVisible();
     expect(screen.getByLabelText('Job cell')).toHaveTextContent(`Cell: ${jobIdentity.cell_name}`); // JC-002
@@ -610,8 +612,8 @@ describe('job story context', () => {
     expect(region).toHaveTextContent('No prompt recorded for this job.');
     expect(region).not.toHaveTextContent('Title is not a prompt');
     expect(region).not.toHaveTextContent('Wrong nested prompt');
-    fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
-    fireEvent.click(await screen.findByText('Development.Design.Task 3.2'));
+    await act(async () => { fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true })); });
+    fireEvent.click(screen.getByText('Development.Design.Task 3.2'));
     expect(region).toHaveTextContent('No prompt recorded for this job.');
   });
   it.each(['failed_app', 'failed_system', 'failed_timeout'].flatMap(completion_status => [
@@ -639,9 +641,10 @@ describe('job story context', () => {
     { completion_status: 'future_outcome' },
   ])('does not invent failures for %j', async overrides => {
     vi.mocked(getJob).mockResolvedValue(metadata({ completion_detail: 'retained failure', ...overrides } as Partial<RecipeJob>));
-    mount('');
-    fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
-    await screen.findByText('Development.Design.Task 3.2');
+    // Settle the mocked reads and tree commit before starting the assertions.
+    await act(async () => { mount(''); });
+    await act(async () => { fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true })); });
+    expect(screen.getByText('Development.Design.Task 3.2')).toBeVisible();
     fireEvent.click(screen.getByRole('tab', { name: 'Conversation', exact: true }));
     expect(screen.queryByText('Job failed')).toBeNull();
     fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
@@ -650,8 +653,8 @@ describe('job story context', () => {
   });
   it('keeps context independent of historical task selection', async () => {
     vi.mocked(getJob).mockResolvedValue(metadata({ cell_name: 'owning-cell', parent: { job_id: 'parent', cell_name: 'parent-cell' }, metadata: { workspace_cell: 'workspace-cell' }, title: 'Current', prompt: 'Current prompt', completion_status: 'failed_app', completion_detail: 'Current failure' }));
-    mount('');
-    fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
+    await act(async () => { mount(''); });
+    await act(async () => { fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true })); });
     fireEvent.click(await screen.findByRole('tab', { name: 'Job attempt 1' }));
     fireEvent.click(screen.getByText('Development.Design.Task 1.2'));
     expect(await screen.findByText('Failure 1.2: temporary directory missing')).toBeVisible();
@@ -673,8 +676,8 @@ describe('job story context', () => {
     const pending = deferred<RecipeJob>();
     vi.mocked(getJob).mockReturnValueOnce(pending.promise);
     mount('');
-    fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
-    await screen.findByText('Development.Design.Task 3.2');
+    await act(async () => { fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true })); });
+    expect(screen.getByText('Development.Design.Task 3.2')).toBeVisible();
     fireEvent.click(screen.getByRole('tab', { name: 'Conversation', exact: true }));
     expect(screen.getByRole('status', { name: 'Job details loading' })).toHaveTextContent('Loading job details...');
     expect(screen.queryByText('No prompt recorded for this job.')).toBeNull();
@@ -2626,4 +2629,60 @@ it('ENV-26 keeps the originating list filters on the Env return link across tab 
   fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
   fireEvent.click(screen.getByRole('tab', { name: 'Env', exact: true }));
   expect(screen.getByRole('link', { name: 'Back to Goals', exact: true })).toHaveAttribute('href', returnTo);
+});
+
+describe('crash concern in lease panel', () => {
+ const concern = {...jobIdentity,tenant_id:'tenant',job_id:'job',status:'CRASH_CONCERN'} as RecipeJob;
+ it('confirms once, uses the success toast, and refreshes even with auto-refresh off',async()=>{
+  const toast=vi.spyOn(message,'success');vi.mocked(getJob).mockResolvedValue(concern);
+  mount('?tab=leases');
+  const toggle=await screen.findByRole('switch',{name:'Auto-refresh'});
+  if(toggle.getAttribute('aria-checked')==='true') fireEvent.click(toggle);
+  expect(screen.getByRole('switch',{name:'Auto-refresh'})).toHaveAttribute('aria-checked','false');
+  fireEvent.click(await screen.findByRole('button',{name:'Clear crash concern',exact:true}));
+  const dialog=await screen.findByRole('dialog');expect(within(dialog).getByText('tenant')).toBeVisible();
+  expect(dialog.querySelectorAll('.ant-modal-footer button')).toHaveLength(1);
+  let finish!:()=>void;vi.mocked(clearCrashConcern).mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+  const confirm=within(dialog).getByRole('button',{name:'Clear crash concern'});
+  fireEvent.click(confirm);fireEvent.click(confirm);
+  expect(clearCrashConcern).toHaveBeenCalledTimes(1);expect(clearCrashConcern).toHaveBeenCalledWith('tenant','job');
+  vi.mocked(getJob).mockResolvedValue({...concern,status:'WAITING'});
+  await act(async()=>{finish();});
+  await waitFor(()=>expect(toast).toHaveBeenCalledWith('Crash concern cleared'));
+  expect(toast).toHaveBeenCalledTimes(1);expect(within(screen.getByLabelText('Crash concern status')).queryByRole('button',{name:'Clear crash concern',exact:true})).toBeNull();toast.mockRestore();
+ });
+ it('separates acknowledged clear from a failed status refresh and retries only the read',async()=>{
+  const toast=vi.spyOn(message,'success');vi.mocked(getJob).mockResolvedValue(concern);mount('?tab=leases');
+  fireEvent.click(await screen.findByRole('button',{name:'Clear crash concern',exact:true}));
+  vi.mocked(getJob).mockRejectedValue(new Error('status offline'));
+  fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button',{name:'Clear crash concern'}));
+  expect(await screen.findByText('Current job status unavailable')).toBeVisible();
+  expect(toast).toHaveBeenCalledTimes(1);
+  vi.mocked(getJob).mockResolvedValue(concern);fireEvent.click(screen.getByRole('button',{name:'Refresh status'}));
+  await screen.findByRole('button',{name:'Clear crash concern',exact:true});expect(clearCrashConcern).toHaveBeenCalledTimes(1);expect(toast).toHaveBeenCalledTimes(1);toast.mockRestore();
+ });
+ it('dismisses without mutation and never offers an action on missing metadata',async()=>{
+  vi.mocked(getJob).mockResolvedValue(concern);mount('?tab=leases');fireEvent.click(await screen.findByRole('button',{name:'Clear crash concern',exact:true}));
+  fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button',{name:'Close'}));expect(clearCrashConcern).not.toHaveBeenCalled();
+ });
+ it('refreshes after an uncertain outcome without a toast or automatic mutation retry',async()=>{
+  const toast=vi.spyOn(message,'success');vi.mocked(getJob).mockResolvedValue(concern);vi.mocked(clearCrashConcern).mockRejectedValue(new Error('connection lost'));mount('?tab=leases');
+  fireEvent.click(await screen.findByRole('button',{name:'Clear crash concern',exact:true}));fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button',{name:'Clear crash concern'}));
+  expect(await screen.findByText(/The clear outcome may be unknown/)).toBeVisible();expect(toast).not.toHaveBeenCalled();expect(clearCrashConcern).toHaveBeenCalledTimes(1);toast.mockRestore();
+ });
+});
+
+it('crash concern: tab changes and ordinary refresh cannot duplicate a pending mutation',async()=>{
+ const concern={...jobIdentity,tenant_id:'tenant',job_id:'job',status:'CRASH_CONCERN'} as RecipeJob;
+ vi.mocked(getJob).mockResolvedValue(concern);const mutation=deferred<void>();vi.mocked(clearCrashConcern).mockReturnValue(mutation.promise);mount('?tab=leases');
+ fireEvent.click(await screen.findByRole('button',{name:'Clear crash concern',exact:true}));const dialog=await screen.findByRole('dialog');fireEvent.click(within(dialog).getByRole('button',{name:'Clear crash concern',exact:true}));const reads=vi.mocked(getJob).mock.calls.length;
+ fireEvent.click(screen.getByRole('tab',{name:'Conversation',exact:true}));fireEvent.click(screen.getByRole('tab',{name:'Lease timeline',exact:true}));
+ fireEvent.click(screen.getByRole('button',{name:/Refresh$/,exact:false}));
+ expect(getJob).toHaveBeenCalledTimes(reads);fireEvent.click(within(dialog).getByRole('button',{name:'Clear crash concern',exact:true}));expect(clearCrashConcern).toHaveBeenCalledTimes(1);
+ vi.mocked(getJob).mockResolvedValue({...concern,status:'ACTIVE'});await act(async()=>mutation.resolve());await waitFor(()=>expect(getJob).toHaveBeenCalledTimes(reads+1));
+});
+it.each(['job','tenant'])('crash concern: mismatched %s metadata withholds mutation and can recover through retry',async mismatch=>{
+ vi.mocked(getJob).mockResolvedValue({...jobIdentity,tenant_id:mismatch==='tenant'?'other':'tenant',job_id:mismatch==='job'?'other':'job',status:'CRASH_CONCERN'} as RecipeJob);mount('?tab=leases');
+ expect(await screen.findByText('Current crash concern status unavailable')).toBeVisible();expect(screen.queryByRole('button',{name:'Clear crash concern'})).toBeNull();
+ vi.mocked(getJob).mockResolvedValue({...jobIdentity,tenant_id:'tenant',job_id:'job',status:'CRASH_CONCERN'} as RecipeJob);fireEvent.click(screen.getByRole('button',{name:'Refresh status'}));expect(await screen.findByRole('button',{name:'Clear crash concern'})).toBeEnabled();expect(clearCrashConcern).not.toHaveBeenCalled();
 });

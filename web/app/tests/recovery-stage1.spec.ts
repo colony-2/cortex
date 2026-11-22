@@ -83,7 +83,11 @@ test('R17 R18 running continuation reaches the service, retains conflict draft a
  // Explicit cancellation stays independent, and a pending cancellation adds no veto.
  await dialog.getByRole('button',{name:'Cancel source',exact:true}).click();
  const confirmation=page.getByRole('dialog',{name:'Cancel job?'});
+ // Ant Design can expose a stable button during the opening prepare frame,
+ // before the zoom animation starts. Wait for the dialog before submitting.
+ await expect(confirmation).not.toHaveClass(/ant-zoom/);
  await confirmation.getByRole('button',{name:'Cancel job',exact:true}).click();
+ await expect.poll(()=>f.cancellations).toEqual(['/api/projects/recovery/jobs/source/cancel']);
  await expect(confirmation).toBeHidden();
  await expect(dialog.getByText('Cancellation requested for this source')).toBeVisible();
  await expect(dialog.getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
@@ -137,7 +141,10 @@ test('R06 R09 denied details permit explicit new goal and lost responses retain 
  const f=await fixture(page);await page.setViewportSize({width:1280,height:1100});
  await page.goto('/project/recovery/jobs/source/story');const dialog=await open(page);await patch(dialog);
  f.cancelError(403);await dialog.getByRole('button',{name:'Cancel source'}).click();
- const confirmation=page.getByRole('dialog',{name:'Cancel job?'});await confirmation.getByRole('button',{name:'Cancel job',exact:true}).click();
+ const confirmation=page.getByRole('dialog',{name:'Cancel job?'});
+ await expect(confirmation).not.toHaveClass(/ant-zoom/);
+ await confirmation.getByRole('button',{name:'Cancel job',exact:true}).click();
+ await expect.poll(()=>f.cancellations).toEqual(['/api/projects/recovery/jobs/source/cancel']);
  const failed=page.getByRole('dialog',{name:'Cancel failed jobs'});
  await expect(failed.getByText(/Controlled cancellation denial/)).toBeVisible();
  await failed.getByRole('button',{name:'Close',exact:true}).last().click();

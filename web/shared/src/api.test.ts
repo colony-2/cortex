@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { submitJob, getJob, listJobs, listCells, getCell, createCell } from './api';
+import { clearCrashConcern, submitJob, getJob, listJobs, listCells, getCell, createCell } from './api';
 import { stringifyJobJSON } from './jobJSON';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -332,4 +332,19 @@ it('ENV-14 preserves additive views and exact opaque data, and accepts older res
   }
   vi.stubGlobal('fetch', vi.fn(async () => new Response('{"job_id":"job","cell_id":"cell-platform","cell_name":"platform","repo":"github.com/acme/platform"}')));
   expect((await getJob('tenant', 'job')).recorded_execution).toBeUndefined();
+});
+
+it('clears an exact encoded target with an empty object and requires 204', async () => {
+ const fetch = vi.fn().mockResolvedValue(new Response(null, {status:204})); vi.stubGlobal('fetch', fetch);
+ await clearCrashConcern('tenant/雪','job ?');
+ expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/projects/tenant%2F%E9%9B%AA/jobs/job%20%3F/clear-crash-concern'), {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+});
+it.each([200,202,400,403,404,409,501,503])('does not acknowledge clear on HTTP %i or retry it',async status => {
+ const fetch=vi.fn().mockResolvedValue(new Response('{"error":"operation diagnostic"}',{status}));vi.stubGlobal('fetch',fetch);
+ await expect(clearCrashConcern('tenant','job')).rejects.toThrow(status<300 ? 'unexpected response' : 'operation diagnostic');
+ expect(fetch).toHaveBeenCalledTimes(1);
+});
+it('preserves a lost-response diagnostic without retrying clear', async()=>{
+ const fetch=vi.fn().mockRejectedValue(new Error('connection lost'));vi.stubGlobal('fetch',fetch);
+ await expect(clearCrashConcern('tenant','job')).rejects.toThrow('connection lost');expect(fetch).toHaveBeenCalledTimes(1);
 });

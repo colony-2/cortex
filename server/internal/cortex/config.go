@@ -1,6 +1,7 @@
 package cortex
 
 import (
+	"context"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -32,7 +33,12 @@ type Config struct {
 	Changes jobinspect.ChangesConfig
 }
 
+type crashConcernRuntime interface {
+	ClearCrashConcern(context.Context, jobdb.ClearCrashConcernRequest) error
+}
+
 type Server struct {
+	crashConcern  crashConcernRuntime
 	timing        pendingTiming
 	cfg           Config
 	engine        jobworkflow.Engine
