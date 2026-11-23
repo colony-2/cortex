@@ -23,7 +23,6 @@ async function filter(page: Page, name: string, selected: string[] | null) {
 }
 
 test.beforeEach(async ({ page, context, baseURL }) => {
-  await page.route('**/assistant/capabilities', route => route.fulfill({ json: { available: false } }));
   await page.route('**/conversation?*', route => route.fulfill({ status: 501, json: { error: 'Fixture has no retained history', code: 'history_unsupported' } }));
   await context.addCookies([{ name: 'colony2:user:email', value: 'phone@example.com', url: baseURL! }]);
   await page.addInitScript(() => {
@@ -38,7 +37,7 @@ test.beforeEach(async ({ page, context, baseURL }) => {
   await mockCells(page, ['platform', 'api']);
   await page.route(/\/api\/projects\/[^/]+\/user-inputs\/pending$/, route => route.fulfill({ json: [] }));
   await page.route(/\/api\/projects\/[^/]+\/jobs(?:\?.*)?$/, route => { const names = new URL(route.request().url()).searchParams.getAll('cellNames'); return route.fulfill({ json: { jobs: jobs.filter(job => !names.length || names.includes(job.cell_name)) } }); });
-  await page.route(/\/api\/projects\/[^/]+\/jobs\/[^/?]+$/, route => {
+  await page.route(url => /^\/api\/projects\/[^/]+\/jobs\/[^/]+$/.test(url.pathname), route => {
     const id = new URL(route.request().url()).pathname.split('/').pop();
     return route.fulfill({ json: { ...jobs.find(job => job.job_id === id), tenant_id: 'phone' } });
   });

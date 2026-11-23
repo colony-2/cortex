@@ -1,4 +1,3 @@
-import { useAssistantSource } from './AssistantContext';
 import { useCompact } from '../hooks/useCompact';
 import ReviewJobContext from './ReviewJobContext';
 import { useEffect, useRef, useState } from 'react';
@@ -42,7 +41,6 @@ function InputRequestPage({ projectId }: InputDetailPageProps) {
   const [jobRetry, setJobRetry] = useState(0);
   const [jobChecking, setJobChecking] = useState(true);
   const reviews = details?.form.kind === 'review';
-  useAssistantSource(reviews && jobId && details.form.request_id ? { kind: 'review', job_id: jobId, request_id: details.form.request_id } : undefined);
   const loading = jobChecking || selectedInput.loading || selectedInput.discovery.status === 'loading';
   const [submitting, setSubmitting] = useState(false);
   const [cancelling, setCancelling] = useState(false);

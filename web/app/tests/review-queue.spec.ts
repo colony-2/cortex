@@ -3,9 +3,6 @@ import { jobIdentity, mockCells } from './helpers/cells';
 
 // These flows include real focus/tooltip transitions, reloads, and form submission.
 test.setTimeout(90_000);
-test.beforeEach(async ({ page }) => {
- await page.route('**/assistant/capabilities', route => route.fulfill({ json: { available: false } }));
-});
 
 for (const width of [1440, 390]) test(`PR-009,013,014 queue at ${width}px`, async ({ page, context, baseURL }, testInfo) => {
  await page.setViewportSize({width,height:900});

@@ -1,7 +1,12 @@
 import { defineConfig } from '@playwright/test';
 import fixtures from './playwright.fixtures.config';
 
-// Keep the extra hostname and resolver confined to this acceptance check.
+// Playwright also fetches intercepted requests from Node, outside Chromium's resolver.
+const noProxy = (process.env.no_proxy ?? process.env.NO_PROXY ?? '').split(',').filter(Boolean);
+const localBypass = [...new Set([...noProxy, 'cortex-copy.test'])].join(',');
+process.env.no_proxy = localBypass;
+process.env.NO_PROXY = localBypass;
+
 export default defineConfig({
   ...fixtures,
   testMatch: 'job-id-copy.spec.ts',

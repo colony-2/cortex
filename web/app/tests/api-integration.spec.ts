@@ -203,7 +203,10 @@ test('creates a prompt-only goal and restores expanded list state through naviga
   const prompt = Array.from({ length: 85 }, (_, i) => `word${i}`).join(' ');
   await dialog.getByRole('combobox', { name: 'Cell' }).click();
   await page.getByText('platform · github.com/cortex-test/platform', { exact: true }).last().click();
-  await dialog.getByLabel('Prompt').fill(prompt);
+  const editor = dialog.getByRole('textbox', { name: 'Prompt' });
+  await editor.click();
+  await page.keyboard.insertText(prompt);
+  await expect(editor).toHaveText(prompt);
   const submitted = page.waitForResponse(r => r.url().endsWith(`/projects/${tenant}/jobs`) && r.request().method() === 'POST');
   await dialog.getByRole('button', { name: 'Create goal', exact: true }).click();
   const response = await submitted;
@@ -388,7 +391,7 @@ test('wraps long job story context without overflowing its header', async ({ pag
   const title = 'LongTitle'.repeat(65);
   const prompt = 'LongPrompt'.repeat(100) + '\nSecond prompt line';
   const detail = 'LongDiagnostic'.repeat(100) + '\nSecond diagnostic line';
-  await page.route('**/api/projects/layout/jobs/layout-job', route => route.fulfill({ json: {
+  await page.route(url => url.pathname === '/api/projects/layout/jobs/layout-job', route => route.fulfill({ json: {
     ...jobIdentity, tenant_id: 'layout', job_id: 'layout-job', status: 'COMPLETED', store: 'ARCHIVED',
     title, prompt, completion_status: 'failed_app', completion_detail: detail,
   } }));

@@ -19,7 +19,5 @@ export * from './buildInfo';
 
 export * from './conversation';
 
-export * from './assistant';
-
 export * from './reviewV2';
 export * from './pulse';

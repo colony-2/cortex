@@ -48,7 +48,7 @@ test('CC-022 CT-014,015,028–031 real SQLite reviews survive restart, archive a
   await expect(original.getByRole('button', { name: /Submit/ })).toHaveCount(0);
   await expect(reopened.locator(`[data-occurrence="${second.entries[1].entry_id}"]`).first()).toBeVisible();
   const downloadLink = original.getByRole('link', { name: 'Download',exact:true });
-  await expect(downloadLink).toHaveAttribute('href', /snapshot_token=/);
+  await expect(downloadLink).toHaveAttribute('href', '/api/projects/history-browser/jobs/original-producer/stored-document?ordinal=0&name=original.md');
   await expect(reopened.getByRole('button',{name:'Cancel job',exact:true})).toHaveCount(0);
   const [download] = await Promise.all([reopened.waitForEvent('download'), downloadLink.click()]);
   expect(await readFile((await download.path())!, 'utf8')).toBe('Original first review document, retained in SQLite.\n');

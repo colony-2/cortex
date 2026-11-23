@@ -12,7 +12,6 @@ import ReviewQuestion from './ReviewQuestion';
 import ReviewPaneSeparator from './ReviewPaneSeparator';
 import { automaticDocuments, reviewPaneDefaults, reviewV2Layout, type ReviewSide, type ReviewWidths } from '../utils/reviewV2Layout';
 import ReviewV2Settings from './ReviewV2Settings';
-import { useAssistantSource } from './AssistantContext';
 import './reviewV2.css';
 import ReviewV2Context from './ReviewV2Context';
 import { useReviewResponsePane } from '../hooks/useReviewResponsePane';
@@ -104,7 +103,6 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
   const gear=useRef<HTMLButtonElement>(null);
   const fileInput=useRef<HTMLInputElement>(null);
   const current=view?.phase==='actionable'?view.current:undefined;
-  useAssistantSource(current?.form.request_id?{kind:'review',job_id:job,request_id:current.form.request_id}:undefined);
   const latestDraft=useRef({feedback,files});
   latestDraft.current={feedback,files};
   const confirmContribution=(receipt?:Record<string,unknown>)=>{

@@ -362,7 +362,7 @@ for (const width of [1280, 390]) {
   test(`JC-016 long job cell wraps between heading and prompt at ${width}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 900 });
     const cell_name = 'cell' + 'x'.repeat(240);
-    await page.route('**/api/projects/phone/jobs/one', route => route.fulfill({ json: {
+    await page.route(url => url.pathname === '/api/projects/phone/jobs/one', route => route.fulfill({ json: {
       ...jobIdentity, cell_name, job_id: 'one', title: 'Cell wrapping', prompt: 'Job prompt text', status: 'COMPLETED', store: 'ARCHIVED',
     } }));
     await page.goto('/project/phone/jobs/one/story');

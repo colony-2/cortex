@@ -3,7 +3,6 @@ import { test, setNativeZoom, captureNativeZoom } from './helpers/nativeZoom';
 import { jobIdentity, mockCells } from './helpers/cells';
 
 test.beforeEach(async ({page, context, baseURL}) => {
-  await page.route('**/assistant/capabilities', route => route.fulfill({ json: { available: false } }));
   await context.addCookies([{name:'colony2:user:email', value:'review@example.com', url:baseURL!}]);
   await page.addInitScript(() => { (window as any).EventSource = class { readyState=1; close(){} addEventListener(){} removeEventListener(){} }; });
   await page.route('**/api/projects', r => r.fulfill({json:[{...jobIdentity, tenant_id:'phone'}]}));
@@ -47,15 +46,7 @@ async function geometry(page: Page) {
   const result=await page.evaluate(()=>{
     const bar=document.querySelector('.review-actions')!;
     const b=bar.getBoundingClientRect();
-    const launcher=document.querySelector<HTMLButtonElement>('.assistant-launcher')!;
-    const l=launcher.getBoundingClientRect();
-    const blocked=[...document.querySelectorAll('button')].filter(button=>{
-      if (!button.closest('.app-header,.review-actions') && button.textContent?.trim()!=='Cancel job') return false;
-      const c=button.getBoundingClientRect();
-      return c.width>0 && c.height>0 && l.left<c.right && l.right>c.left && l.top<c.bottom && l.bottom>c.top;
-    }).map(button=>button.getAttribute('aria-label') || button.textContent?.trim());
     return {horizontal:document.documentElement.scrollWidth-innerWidth, barBottom:b.bottom,barTop:b.top,height:b.height,reserved:parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--review-action-height')),
-      blockedControls:blocked,launcherReachable:document.elementFromPoint(l.x+l.width/2,l.y+l.height/2)===launcher,
       panes:[...document.querySelectorAll('.review-document-list,.review-document-content,.review-markdown,.review-markdown-source,.review-source-body,.review-diff-scroll,.review-image-scroll')].map(e=>({name:e.className,delta:e.scrollHeight-e.clientHeight})),
       locked:getComputedStyle(document.body).overflowY==='hidden'};
   });
@@ -64,8 +55,6 @@ async function geometry(page: Page) {
   expect(result.barBottom).toBeLessThanOrEqual(await page.evaluate(()=>innerHeight));
   expect(result.barTop).toBeGreaterThanOrEqual(0);
   expect(result.reserved).toBeGreaterThanOrEqual(result.height-1);
-  expect(result.blockedControls).toEqual([]);
-  expect(result.launcherReachable).toBe(true);
   for(const p of result.panes) expect(p.delta,p.name).toBeLessThanOrEqual(1);
   await test.info().attach('geometry',{body:JSON.stringify(result,null,2),contentType:'application/json'});
   }).toPass({timeout:15000});

@@ -25,8 +25,7 @@ func TestOwnedMethodSetsExcludeGoalAttachment(t *testing.T) {
 	for _, value := range []any{
 		Server{}, nativeSubmitter{}, archivedJobReader{}, leaseEventsRuntime{}, leaseEventsEngine{}, leaseCountingReader{}, leaseCountingEngine{}, retainedWaitEngine{}, retirementResponseEngine{},
 		childrenRuntimeEngine{}, childrenErrorEngine{}, historicalSummaryEngine{}, compactListEngine{},
-		assistantControlLister{}, assistantFacadeService{}, assistantCaptureEngine{}, assistantBoundaryFixture{},
-		assistantLifecycleFixture{}, assistantLostSubmissionReceipt{}, producerAccessEngine{}, priorAttemptEngine{},
+		producerAccessEngine{}, priorAttemptEngine{},
 		inboxReadEngine{}, finalRetainedEngine{}, reviewArtifactEngine{}, inputStreamEngine{},
 		failingGoalEngine{}, failingArchiveRuntime{}, failingCancellationEngine{}, treeDeadlineEngine{},
 		timingEngine{}, timingRuntime{}, rootErrorEngine{}, publicationRecordReader{}, contextInspectionService{}, replayForwardService{},

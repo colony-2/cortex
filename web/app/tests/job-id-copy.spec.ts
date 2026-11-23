@@ -8,7 +8,6 @@ async function fixture(page: Page, context: BrowserContext, origin: string, jobI
   await page.route('**/api/projects', response => response.fulfill({ json: [{ tenant_id: 'copy', name: 'Copy test' }] }));
   await page.route('**/api/projects/copy/user-inputs/pending', response => response.fulfill({ json: [] }));
   await page.route('**/api/projects/copy/user-inputs/stream', response => response.fulfill({ contentType: 'text/event-stream', body: 'data: []\n\n' }));
-  await page.route('**/api/projects/copy/assistant/capabilities', response => response.fulfill({ json: { available: false } }));
   await mockCells(page, ['platform']);
   const job = { ...jobIdentity, job_id: jobId, goal_id: 'different-goal', prompt: title, status: 'READY', store: 'ACTIVE', created_at: '2026-11-12T00:00:00Z' };
   let listReads = 0; let detailReads = 0;

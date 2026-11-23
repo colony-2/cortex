@@ -273,7 +273,7 @@ test('CV-009 CV-010 CV-013 page refresh retains the conversation observation and
   page.on('crash', () => { console.error('Activity browser crashed'); });
   let status = 'ACTIVE';
   let failed = false;
-  await page.route('**/api/projects/demo/jobs/job', route => failed ? route.fulfill({status:503,json:{error:'Fixture metadata unavailable'}}) : route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',title:'Conversation fixture',status,store:'ACTIVE'}}));
+  await page.route(url => url.pathname === '/api/projects/demo/jobs/job', route => failed ? route.fulfill({status:503,json:{error:'Fixture metadata unavailable'}}) : route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',title:'Conversation fixture',status,store:'ACTIVE'}}));
   await page.route('**/conversation?*',route=>failed?route.fulfill({status:503,json:{error:'Unavailable conversation'}}):route.fulfill({json:{...terminalConversation({job_id:'job',state:'empty'}),activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status,store:status==='COMPLETED'?'ARCHIVED':'ACTIVE'}}}}));
   await Promise.all([page.waitForResponse(response => new URL(response.url()).pathname === '/api/projects/demo/jobs/job'),page.goto('/project/demo/jobs/job/story')]);
   await expect(page.getByRole('heading', {name:'Job Story: Conversation fixture'})).toBeVisible();
@@ -354,7 +354,7 @@ test('CX-001 automatic completion supersedes an in-flight pre-publication snapsh
   let releaseOld!: () => void;
   const oldRead = new Promise<void>(resolve => { releaseOld = resolve; });
   const merge = {entry_id:'final-merge',tenant_id:'demo',job_id:'job',job_attempt:1,task_attempt:1,invocation_id:'merge/final',result_ordinal:2,operation:'merge:merge',evidence_availability:'recorded',candidate_sha:'abcdef0123456789',candidate_subject:'Final automatically observed publication',publication_branch:'refs/heads/main',publication_disposition:'published'};
-  await page.route('**/api/projects/demo/jobs/job', route => route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',title:'Conversation fixture',status:terminal?'COMPLETED':'ACTIVE',store:terminal?'ARCHIVED':'ACTIVE'}}));
+  await page.route(url => url.pathname === '/api/projects/demo/jobs/job', route => route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',title:'Conversation fixture',status:terminal?'COMPLETED':'ACTIVE',store:terminal?'ARCHIVED':'ACTIVE'}}));
   await page.route('**/conversation?*', async route => {
     const final = terminal;
     if (holdNext && !held) { held = true; await oldRead; }
@@ -384,7 +384,7 @@ test('CV-009 CV-010 CV-013 current activity tail uses conversation and retains s
   page.on('crash', () => { console.error('Activity browser crashed'); });
   let status = 'ACTIVE';
   let failed = false;
-  await page.route('**/api/projects/demo/jobs/job',route=>route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',title:'Conversation fixture',status,store:status==='COMPLETED'?'ARCHIVED':'ACTIVE',completion_status:status==='COMPLETED'?'success':undefined}}));
+  await page.route(url => url.pathname === '/api/projects/demo/jobs/job',route=>route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',title:'Conversation fixture',status,store:status==='COMPLETED'?'ARCHIVED':'ACTIVE',completion_status:status==='COMPLETED'?'success':undefined}}));
   await page.route('**/conversation?*',route=>failed ? route.fulfill({status:503,json:{error:'Fixture conversation unavailable'}}) : route.fulfill({json:{tenant_id:'demo',job_id:'job',entries:[],snapshot_token:'snapshot',completeness:'complete',activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status,store:status==='COMPLETED'?'ARCHIVED':'ACTIVE',completion_status:status==='COMPLETED'?'success':undefined}},final_documents:{availability:'available',value:{job_id:'job',state:status==='COMPLETED'?'empty':'pending'}}}}));
   await page.goto('/project/demo/jobs/job/story');
   await expect(page.getByRole('heading', {name:'Job Story: Conversation fixture'})).toBeVisible();
@@ -544,7 +544,7 @@ for (const width of [1440, 390]) test(`JS-001,002,026–028 safe full prompt and
   await page.setViewportSize({width,height:900});
   const prompt='# Release plan\n\n'+('A complete paragraph explaining the requested work. '.repeat(20))+'\n\n- Preserve history\n- Keep retries\n\n```text\n'+('long-token-'.repeat(80))+'\n```\n\n<img src="https://bad.example/raw.png">\n\n![remote](https://bad.example/remote.png) [unsafe](javascript:alert(1))\n\n## Ending content';
   const remote:string[]=[]; page.on('request',request=>{if(request.url().includes('bad.example'))remote.push(request.url());});
-  await page.route('**/api/projects/demo/jobs/job',route=>route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',goal_id:'goal',title:'Review a complete saved prompt '+ 'long-title-'.repeat(12),prompt,status:'RUNNING',store:'ACTIVE'}}));
+  await page.route(url => url.pathname === '/api/projects/demo/jobs/job',route=>route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',goal_id:'goal',title:'Review a complete saved prompt '+ 'long-title-'.repeat(12),prompt,status:'RUNNING',store:'ACTIVE'}}));
   await page.goto('/project/demo/jobs/job/story');
   await expect(page.getByRole('heading',{name:'Ending content'})).toBeVisible();
   const actions=page.getByRole('group',{name:'Job actions'});
@@ -565,7 +565,7 @@ for (const width of [1440, 390]) test(`JS-001,002,026–028 safe full prompt and
 test('JS-015,020–023 AR-010,011 Archive retries retain cancellation and return to Goals', async ({page}, info) => {
   let deletes=0, storyReads=0;
   const payloads:unknown[]=[];
-  await page.route('**/api/projects/demo/jobs/job',async route=>{
+  await page.route(url => url.pathname === '/api/projects/demo/jobs/job',async route=>{
     if(route.request().method()==='DELETE'){
       deletes++;payloads.push(route.request().postDataJSON());
       return deletes===1?route.fulfill({status:503,json:{error:'Archive failed after cancellation',code:'archive_failed_after_cancel'}}):route.fulfill({status:204});
@@ -598,7 +598,7 @@ test('JS-015,020–023 AR-010,011 Archive retries retain cancellation and return
 test('JS-010,036,037 header Restart submits before Trace and retries the saved request', async ({page}, info) => {
   let storyReads=0, restarts=0;
   const payloads:unknown[]=[];
-  await page.route('**/api/projects/demo/jobs/job',route=>route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',title:'Restart fixture',prompt:'Restart before loading Trace.',status:'RUNNING',store:'ACTIVE'}}));
+  await page.route(url => url.pathname === '/api/projects/demo/jobs/job',route=>route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',title:'Restart fixture',prompt:'Restart before loading Trace.',status:'RUNNING',store:'ACTIVE'}}));
   await page.route('**/api/projects/demo/jobs/job/story',route=>{storyReads++;return route.fulfill({json:{job_id:'job',status:'completed',restart_scopes:[{scope_id:'recorded',chapter_ordinal:3,title:'Recorded restart'}],root:null}});});
   await page.route('**/api/projects/demo/jobs/job/restart',route=>{
     restarts++;payloads.push(route.request().postDataJSON());

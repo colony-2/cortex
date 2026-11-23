@@ -34,11 +34,15 @@ async function fixtures(page: Page, baseURL: string) {
     if (url.pathname === '/api/projects') return route.fulfill({json:[{id:'demo',name:'Demo',tenant_id:'demo'}]});
     if (url.pathname.endsWith('/user-inputs/pending')) return route.fulfill({json:pendingReview ? [{...jobIdentity,id:'evidence-105',client_payload_revision:1,request_id:'review-evidence'}] : []});
     if (url.pathname.endsWith('/respond')) {const body = route.request().postData() || ''; const match = body.match(/name="submission"\r\n\r\n([^\r]+)\r\n/); if (!match) throw new Error('Missing multipart submission'); submissions.push(JSON.parse(match[1])); return route.fulfill({json:{ok:true}});}
-    if (url.pathname.endsWith('/documents')) return route.fulfill({body:'# Release evidence\nAPI checks passed. Navigation evidence is ready.',contentType:'text/markdown'});
+    if (url.pathname === '/api/projects/demo/jobs/release-104/stored-document') {
+      expect(url.searchParams.get('ordinal')).toBe('3');
+      expect(url.searchParams.get('name')).toBe('release-evidence.md');
+      return route.fulfill({body:'# Release evidence\nAPI checks passed. Navigation evidence is ready.',contentType:'text/markdown'});
+    }
     if (url.pathname.includes('/user-inputs/evidence-105')) return route.fulfill({json:{jobId:'evidence-105',status:'pending',startTime:'2026-11-07T00:00:00Z',form:{kind:'review',request_id:'review-evidence',title:'Review release evidence',fields:[
       {id:'decision',type:'multiple_choice',question:'Review release evidence and approve or request changes.',required:true,options:[{value:'approve',label:'Approve'},{value:'request_changes',label:'Request changes'}]},
       {id:'feedback',type:'paragraph_text',question:'What should change?',required:false},
-    ],documents:{'release-evidence.md':{name:'release-evidence.md',stored:{key:{name:'release-evidence.md',sizeBytes:80}}}}}}});
+    ],documents:{'release-evidence.md':{kind:'stored',name:'release-evidence.md',stored:{key:{jobId:'release-104',taskOrdinal:3,name:'release-evidence.md',sizeBytes:80}}}}}}});
     const match=url.pathname.match(/\/jobs\/([^/]+)(?:\/(.*))?$/);
     if (match) {
       const id=decodeURIComponent(match[1]), suffix=match[2];

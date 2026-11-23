@@ -514,7 +514,6 @@ for (const cellName of ['self', 'platform']) {
 
 test.beforeEach(async ({ page }) => {
   await mockCells(page, ['platform', 'alpha', 'beta', 'gamma', 'self']);
-  await page.route('**/assistant/capabilities', route => route.fulfill({ json: { available: false } }));
   await page.route('**/api/projects', route => route.fulfill({ json: [{ tenant_id: 'default' }] }));
   await page.route('**/user-inputs/pending', route => route.fulfill({ json: [] }));
   await page.addInitScript(() => {

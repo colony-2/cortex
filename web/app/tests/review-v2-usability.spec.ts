@@ -7,10 +7,8 @@ async function geometry(page:Page){
  await expect.poll(()=>page.evaluate(()=>{
   const pane=document.querySelector('.review-v2-response')!;const box=pane.getBoundingClientRect();const viewport=window.visualViewport;
   const bottom=viewport?viewport.height+viewport.offsetTop:innerHeight;
-  const launcher=document.querySelector('.assistant-launcher')!;const l=launcher.getBoundingClientRect();
-  const assistantClear=Array.from(document.querySelectorAll('.app-header button,.review-v2-response button')).every(control=>{const c=control.getBoundingClientRect();return !c.width||!c.height||l.left>=c.right||l.right<=c.left||l.top>=c.bottom||l.bottom<=c.top;});
-  return {assistantClear,overflow:document.documentElement.scrollWidth>innerWidth+1,fixed:getComputedStyle(pane).position==='fixed',bounded:box.height<=.75*(viewport?.height??innerHeight)+1,bottom:Math.abs(box.bottom-bottom)<2,reserved:parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--review-action-height'))>=box.height-1};
- })).toEqual({assistantClear:true,overflow:false,fixed:true,bounded:true,bottom:true,reserved:true});
+  return {overflow:document.documentElement.scrollWidth>innerWidth+1,fixed:getComputedStyle(pane).position==='fixed',bounded:box.height<=.75*(viewport?.height??innerHeight)+1,bottom:Math.abs(box.bottom-bottom)<2,reserved:parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--review-action-height'))>=box.height-1};
+ })).toEqual({overflow:false,fixed:true,bounded:true,bottom:true,reserved:true});
 }
 async function screenshot(page:Page,name:string){await page.screenshot({path:test.info().outputPath(name),fullPage:false});}
 

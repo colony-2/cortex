@@ -11,7 +11,6 @@ test.beforeEach(async ({ page, context, baseURL }) => {
   });
   await page.route('**/api/projects', route => route.fulfill({ json: [{ ...jobIdentity, tenant_id: 'composer' }] }));
   await mockCells(page, ['platform']);
-  await page.route('**/assistant/capabilities', route => route.fulfill({ json: { available: false } }));
   await page.route('**/user-inputs/pending', route => route.fulfill({ json: [] }));
   await page.route(/\/api\/projects\/composer\/jobs(?:\?.*)?$/, route => route.fulfill({ json: { jobs: [] } }));
 });

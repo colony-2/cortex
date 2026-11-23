@@ -90,7 +90,7 @@ An accepted continuing contribution shows “Response pending” after the unans
 
 A successful response is only acceptance of that contribution. It does not prove publication or job success. An ambiguous submission triggers reconciliation, never an automatic repost. Submission IDs provide correlation, not an exactly-once guarantee.
 
-Originals and earlier notes resolve through selected retained manifest membership, including cross-job producers; arbitrary artifact keys or URLs cannot become review documents. Contextual Assistant capture uses only the current request's originals and is unavailable during a gap. That Assistant remains separate from the recipe's answering intermediary.
+Originals and earlier notes resolve through selected retained manifest membership, including cross-job producers; arbitrary artifact keys or URLs cannot become review documents.
 
 ## Local verification
 

@@ -5,7 +5,6 @@ const captures = process.env.NAV_EVIDENCE_DIR || '/tmp/cortex-navigation-capture
 mkdirSync(captures, { recursive: true });
 import { mockCells } from './helpers/cells';
 test.beforeEach(async ({ page, context, baseURL }) => {
-  await page.route('**/assistant/capabilities', route => route.fulfill({ json: { available: false } }));
   await context.addCookies([{ name: 'colony2:user:email', value: 'nav@example.com', url: baseURL! }]);
   await page.addInitScript(() => { if (!(window as any).navStreams) (window as any).EventSource = class { close() {} addEventListener() {} removeEventListener() {} }; });
   await page.route('**/api/projects', route => route.fulfill({ json: [{ tenant_id: 'navigation' }] }));

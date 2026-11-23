@@ -20,17 +20,15 @@ const defaultTenantID = "1"
 const DefaultPulseURL = "http://localhost:8080"
 
 type Config struct {
-	Addr             string
-	JobDBURL         string
-	PulseURL         string
-	WorkingDir       string
-	DefaultTenantID  string
-	CORSOrigins      []string
-	StaticFS         fs.FS
-	HTTPClient       *http.Client
-	Logger           *slog.Logger
-	Assistant        *AssistantIntegration
-	AssistantRuntime *AssistantRuntimeConfig
+	Addr            string
+	JobDBURL        string
+	PulseURL        string
+	WorkingDir      string
+	DefaultTenantID string
+	CORSOrigins     []string
+	StaticFS        fs.FS
+	HTTPClient      *http.Client
+	Logger          *slog.Logger
 	// Deprecated: retained for Go configuration compatibility; saved diff reads do not reconstruct Git history.
 	Changes jobinspect.ChangesConfig
 }
