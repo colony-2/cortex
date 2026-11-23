@@ -11,6 +11,7 @@ import DiffView from './DiffView';
 import ImageView from './ImageView';
 import MarkupView from './MarkupView';
 import HTMLView from './HTMLView';
+import MarkdownTable from './MarkdownTable';
 import type { HTMLContext } from './htmlPreparation';
 import { artifactHeadingIds, resolveArtifactLink, type PreviewNavigation, type NavigationIntent } from './artifactLinks';
 
@@ -26,7 +27,7 @@ function AttachedImage({ id, name, url, onError }: { id: string; name: string; u
 }
 export type PreviewAttachment = { key: string; name: string; url: string; onError?: (error: unknown) => void };
 export type ResolvePreviewAttachment = (reference: string) => PreviewAttachment | undefined;
-interface Props { htmlContext?: HTMLContext; reviewOptions?: { storedBytes?: number }; markdownSource?: boolean; setMarkdownSource?: (source: boolean) => void; data: DocumentData; name: string; dual: boolean; setDual: (value: boolean) => void; resolveAttachment?: ResolvePreviewAttachment; navigation?: PreviewNavigation; navigationIntent?: NavigationIntent }
+interface Props { htmlContext?: HTMLContext; reviewOptions?: { storedBytes?: number; scrollMarkdownTables?: boolean }; markdownSource?: boolean; setMarkdownSource?: (source: boolean) => void; data: DocumentData; name: string; dual: boolean; setDual: (value: boolean) => void; resolveAttachment?: ResolvePreviewAttachment; navigation?: PreviewNavigation; navigationIntent?: NavigationIntent }
 export default function DocumentPreview({ htmlContext, reviewOptions, data, name, markdownSource = false, setMarkdownSource, dual, setDual, resolveAttachment, navigation, navigationIntent }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const [linkNotice, setLinkNotice] = useState('');
@@ -76,6 +77,7 @@ export default function DocumentPreview({ htmlContext, reviewOptions, data, name
       : format === 'html' ? <HTMLView key={name} data={data} name={name} context={htmlContext} />
       : format === 'svg' ? <MarkupView key={name} data={data} name={name} />
       : format === 'markdown' && !markdownSource && structured ? <article tabIndex={0} className="review-markdown" aria-label="Rendered document"><Markdown remarkPlugins={[remarkGfm, artifactHeadingIds]} skipHtml components={{
+        ...(reviewOptions?.scrollMarkdownTables ? { table: MarkdownTable } : {}),
         p: ({ children }) => <div className="review-markdown-paragraph">{children}</div>,
         a: ({ children, href }) => {
           // href has already passed react-markdown's default URL sanitization.

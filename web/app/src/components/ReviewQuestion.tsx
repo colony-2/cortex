@@ -1,5 +1,6 @@
 import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import MarkdownTable from './review/MarkdownTable';
 
 type Node = { type: string; value?: string; children?: Node[] };
 // Preserve authored prose breaks without interpreting newlines inside fenced
@@ -23,6 +24,7 @@ function proseBreaks() {
 
 // Stable component types preserve links and keyboard focus across layout changes.
 const components: Components = {
+  table: MarkdownTable,
   a: ({ children, href }) => /^(https?:|mailto:)/i.test(href || '')
     ? <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
     : <span>{children} (link unavailable)</span>,

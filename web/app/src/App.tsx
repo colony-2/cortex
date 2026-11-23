@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { BrowserRouter, Link, matchPath, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { CloudServerOutlined, FileSearchOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MenuOutlined, OrderedListOutlined, PlayCircleOutlined, SettingOutlined } from '@ant-design/icons';
 import { Alert, Badge, Button, Drawer, Empty, Input, Layout, Menu, Spin, Tooltip, Typography } from 'antd';
 import {
@@ -59,12 +59,19 @@ function initialTenantId(search: string, pathname: string, defaultTenantId: stri
 }
 
 const navigationPreference = 'cortex:desktop-navigation-collapsed';
+const reviewDetailPath = '/project/:projectId/reviews/:jobId';
+const isStoryInput = (selectors: URLSearchParams) => selectors.has('occurrenceId') || selectors.has('requestId');
 export function readNavigationPreference(): boolean {
   try { return localStorage.getItem(navigationPreference) === 'true'; } catch { return false; }
 }
 
 export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
   const compact = useCompact();
+  const location = useLocation();
+  const selectors = new URLSearchParams(location.search);
+  const reviewOpen = !!matchPath(reviewDetailPath, location.pathname) && selectors.has('review_id') && !isStoryInput(selectors);
+  const openReviewPath = reviewOpen ? location.pathname : null;
+  const useNavigationDrawer = compact || reviewOpen;
   const [collapsed, setCollapsed] = useState(readNavigationPreference);
   const toggleNavigation = () => setCollapsed(previous => {
     const next = !previous;
@@ -74,13 +81,12 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
   const [focusedNavigation, setFocusedNavigation] = useState<string>();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
-  useEffect(() => { if (!compact) setMenuOpen(false); }, [compact]);
+  useEffect(() => { setMenuOpen(false); }, [useNavigationDrawer, openReviewPath]);
   const closeMenu = () => {
     setMenuOpen(false);
     requestAnimationFrame(() => menuButton.current?.focus({ preventScroll: true }));
   };
   const [authenticated, setAuthenticated] = useState(isAuthenticated());
-  const location = useLocation();
   const navigate = useNavigate();
   const [tenantId, setTenantId] = useState(() => initialTenantId(location.search, location.pathname, defaultTenantId));
   const [tenantDraft, setTenantDraft] = useState(tenantId);
@@ -134,7 +140,7 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
     setAuthenticated(false);
   };
 
-  const rail = !compact && collapsed;
+  const rail = !useNavigationDrawer && collapsed;
   const navigation = (
     <Menu className="shell-navigation" onClick={closeMenu} mode="inline"
       inlineCollapsed={rail} selectedKeys={[navKey]}
@@ -173,7 +179,7 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
       <span id="navigation-review-count" className="sr-only">{reviewCountKnown ? `${pendingCount} pending reviews` : 'Pending review count unavailable'}</span>
       <Header className="app-header">
         <div className="app-brand">
-          {compact && <Button ref={menuButton} aria-label="Open navigation" aria-expanded={menuOpen} icon={<MenuOutlined />} onClick={() => setMenuOpen(true)} />}
+          {useNavigationDrawer && <Button ref={menuButton} aria-label="Open navigation" aria-expanded={menuOpen} icon={<MenuOutlined />} onClick={() => setMenuOpen(true)} />}
           <Typography.Text strong>cortex</Typography.Text>
         </div>
         <div className="tenant-control">
@@ -183,7 +189,7 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
         <AccountMenu onLogout={handleLogout} />
       </Header>
       <Layout className="app-body">
-        {compact ? <Drawer title="Navigation" width="min(320px, 100%)" open={menuOpen} onClose={closeMenu} afterOpenChange={open => {
+        {useNavigationDrawer ? <Drawer title="Navigation" width="min(320px, 100%)" open={menuOpen} onClose={closeMenu} afterOpenChange={open => {
           // rc-drawer restores its captured element after this callback. Restore
           // our explicit opener afterwards, including interrupted animations.
           if (!open) queueMicrotask(() => menuButton.current?.focus({ preventScroll: true }));
@@ -203,7 +209,7 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
             <Route path="/project/:projectId/jobs/:jobId/story" element={<StoryRoute fallbackProjectId={tenantId} />} />
             <Route path="/reviews" element={<PendingInputsListPage projectId={tenantId} />} />
             <Route path="/project/:projectId/reviews" element={<ReviewsRoute fallbackProjectId={tenantId} />} />
-            <Route path="/project/:projectId/reviews/:jobId" element={<InputRoute fallbackProjectId={tenantId} />} />
+            <Route path={reviewDetailPath} element={<InputRoute fallbackProjectId={tenantId} />} />
             <Route path="/cells" element={<CellsList key={tenantId} projectId={tenantId} />} />
             <Route path="/project/:projectId/cells/:cellId" element={<CellRoute fallbackProjectId={tenantId} />} />
             <Route path="/project/:projectId/cells" element={<CellsRoute fallbackProjectId={tenantId} />} />
@@ -237,7 +243,7 @@ function InputRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
   const { jobId } = useParams();
   const location = useLocation();
   const selectors = new URLSearchParams(location.search);
-  if (selectors.has('occurrenceId') || selectors.has('requestId')) return <Navigate replace to={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId!)}/story${location.search}`} />;
+  if (isStoryInput(selectors)) return <Navigate replace to={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId!)}/story${location.search}`} />;
   return <InputDetailPage key={JSON.stringify([projectId, jobId])} projectId={projectId} />;
 }
 

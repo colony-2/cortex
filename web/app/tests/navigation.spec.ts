@@ -59,6 +59,37 @@ test('collapsed links, tooltips, selection and responsive return', async ({ page
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
+test('compact drawer stays open on browser history between non-review pages', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/project/navigation/goals');
+  const opener = page.getByRole('button', { name: 'Open navigation' });
+  const drawer = page.getByRole('dialog', { name: 'Navigation' });
+
+  await opener.click();
+  await drawer.getByRole('link', { name: 'Cells', exact: true }).click();
+  await expect(page).toHaveURL(/\/project\/navigation\/cells$/);
+  await expect(drawer).toBeHidden();
+  await opener.click();
+  await expect(drawer).toBeVisible();
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/project\/navigation\/goals$/);
+  await expect(drawer.locator('.ant-menu-item-selected')).toHaveAttribute('aria-label', 'Goals');
+  await expect(opener).toHaveAttribute('aria-expanded', 'true');
+  await expect(drawer).toBeVisible();
+
+  await page.goForward();
+  await expect(page).toHaveURL(/\/project\/navigation\/cells$/);
+  await expect(drawer.locator('.ant-menu-item-selected')).toHaveAttribute('aria-label', 'Cells');
+  await expect(opener).toHaveAttribute('aria-expanded', 'true');
+  await expect(drawer).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('compact-drawer-after-forward.png'), animations: 'disabled' });
+
+  await page.keyboard.press('Escape');
+  await expect(drawer).toBeHidden();
+  await expect(opener).toBeFocused();
+});
+
 for (const collapsed of [false, true]) {
   test(`all destinations retain mouse, keyboard, touch and modified links (${collapsed})`, async ({ page, context }) => {
     await page.goto('/project/navigation/goals');

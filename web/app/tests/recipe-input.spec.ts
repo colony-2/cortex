@@ -1195,7 +1195,7 @@ test.describe('review/v2 continuous discussion',()=>{
     await expect(page).toHaveURL(new RegExp(`/reviews/${jobID}\\?review_id=`));
     await expect(page.getByText('Original material remains readable while questions are answered.',{exact:true})).toBeVisible();
     await page.screenshot({path:testInfo.outputPath('review-v2-direct-reader-phone.png'),fullPage:true});
-    await page.setViewportSize({width:1440,height:900});
+    await page.setViewportSize({width:1320,height:900});
     await page.getByRole('button',{name:'Show documents',exact:true}).click();
     await page.getByRole('button',{name:'Recovery notes',exact:false}).first().click();
     const original=page.getByRole('heading',{name:'Recovery',exact:true});

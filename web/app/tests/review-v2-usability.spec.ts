@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { test, setNativeZoom, captureNativeZoom } from './helpers/nativeZoom';
 import { authorizeV2, reviewV2BrowserFixture, v2Path, v2Ids, v2Selected, v2Catalog } from './helpers/reviewV2';
 
@@ -77,10 +77,10 @@ test('N04/R05 duplicate links fail closed and another retained review cannot ans
  await page.getByRole('button',{name:'Open selected review'}).click();await v2Selected(page,0);
  f.state.liveReviewId='another-review';await page.reload();await v2Selected(page,0);await expect(page.locator('.review-v2-response')).toContainText('Another request is now pending');await expect(page.getByRole('button',{name:'Approve direction',exact:true})).toHaveCount(0);expect(f.state.submits).toHaveLength(0);
 });
-for(const width of [1680,1560,320,390])test(`L01–05 wide navigation, inline previews and fixed composer at ${width}px`,async({page})=>{
+for(const width of [1680,1320,320,390])test(`L01–05 wide navigation, inline previews and fixed composer at ${width}px`,async({page})=>{
  await page.setViewportSize({width,height:900});await reviewV2BrowserFixture(page);await page.goto(v2Path);await v2Selected(page,0);await geometry(page);
- if(width===1680){await expect(page.getByRole('navigation',{name:'Review documents'})).toBeVisible();expect(await page.locator('.review-reading-track').evaluate(el=>el.clientWidth)).toBeGreaterThanOrEqual(720);await screenshot(page,'v2-wide-reading.png');await page.getByRole('navigation',{name:'Review documents'}).getByRole('button').first().focus();await page.setViewportSize({width:1560,height:900});await expect(page.getByRole('navigation',{name:'Review documents'})).toBeHidden();await expect(page.getByRole('button',{name:'Show documents',exact:true})).toBeFocused();await page.setViewportSize({width:1680,height:900});await expect(page.getByRole('navigation',{name:'Review documents'})).toBeVisible();}
- else{await expect(page.getByRole('navigation',{name:'Review documents'})).toBeHidden();if(width===1560){expect(await page.locator('.review-reading-track').evaluate(el=>el.clientWidth)).toBeGreaterThanOrEqual(720);await screenshot(page,'v2-near-fit-reading.png');}}
+ if(width===1680){await expect(page.getByRole('navigation',{name:'Review documents'})).toBeVisible();expect(await page.locator('.review-reading-track').evaluate(el=>el.clientWidth)).toBeGreaterThanOrEqual(720);await screenshot(page,'v2-wide-reading.png');await page.getByRole('navigation',{name:'Review documents'}).getByRole('button').first().focus();await page.setViewportSize({width:1320,height:900});await expect(page.getByRole('navigation',{name:'Review documents'})).toBeHidden();await expect(page.getByRole('button',{name:'Show documents',exact:true})).toBeFocused();await page.setViewportSize({width:1680,height:900});await expect(page.getByRole('navigation',{name:'Review documents'})).toBeVisible();}
+ else{await expect(page.getByRole('navigation',{name:'Review documents'})).toBeHidden();if(width===1320){expect(await page.locator('.review-reading-track').evaluate(el=>el.clientWidth)).toBeGreaterThanOrEqual(720);await screenshot(page,'v2-near-fit-reading.png');}}
  await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)').fill('Can you confirm the response stays in view?');
  await page.getByLabel('Attach notes').setInputFiles({name:'my-review.md',mimeType:'text/markdown',buffer:Buffer.from('notes')});await geometry(page);
  await page.locator('.review-selected-details').scrollIntoViewIfNeeded();
@@ -269,12 +269,12 @@ test('B10/B14 clamping, stacking, successor continuity and navigation reset pres
  const saved={documents:await widthOf(page,'.review-navigation-track'),discussion:await widthOf(page,'.review-v2-discussion')};
  // An explicit choice survives every width and same-review successor.
  await page.getByRole('button',{name:'Hide documents',exact:true}).click();await ensureDocuments(page);
- await page.setViewportSize({width:1150,height:1000});
+ await page.setViewportSize({width:1001,height:1000});
  await expect.poll(() => widthOf(page,'.review-v2-discussion')).toBeLessThan(saved.discussion);
  await expect(page.locator('.review-v2-layout')).not.toHaveClass(/stacked/);await geometry(page);
  const clampedDiscussion=await widthOf(page,'.review-v2-discussion'),clampedDocuments=await widthOf(page,'.review-navigation-track');
  await dragPane(page,'documents',-32);expect(await widthOf(page,'.review-v2-discussion')).toBe(clampedDiscussion);saved.documents=clampedDocuments-32;expect(await widthOf(page,'.review-navigation-track')).toBe(saved.documents);
- await page.setViewportSize({width:1050,height:1000});await expect(page.locator('.review-v2-layout')).toHaveClass(/stacked/);await expect(page.getByRole('separator')).toHaveCount(0);await expect(page.getByRole('navigation',{name:'Review documents'})).toBeVisible();await geometry(page);
+ await page.setViewportSize({width:980,height:1000});await expect(page.locator('.review-v2-layout')).toHaveClass(/stacked/);await expect(page.getByRole('separator')).toHaveCount(0);await expect(page.getByRole('navigation',{name:'Review documents'})).toBeVisible();await geometry(page);
  await page.setViewportSize({width:1920,height:1000});await expect(docsSeparator(page)).toHaveAttribute('aria-valuenow',String(saved.documents));await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow',String(saved.discussion));
  await page.getByRole('button',{name:'Ask a question',exact:true}).click();
  await page.getByLabel('Question or requested change (required)').fill('Continue');
@@ -302,11 +302,164 @@ test('B11 initial final question reveal does not steal focus and older reading p
  await discussion.evaluate(el=>{el.scrollTop=250;});await page.getByRole('button',{name:'Hide discussion',exact:true}).click();await page.getByRole('button',{name:'Show discussion',exact:true}).click();expect(await discussion.evaluate(el=>el.scrollTop)).toBe(250);
 });
 
-for(const width of [320,390,1050])test(`B12/13 long formatted question, code and tables remain reachable at ${width}px`,async({page})=>{
+for(const width of [320,390,980])test(`B12/13 long formatted question, code and tables remain reachable at ${width}px`,async({page})=>{
  await page.setViewportSize({width,height:900});const f=await reviewV2BrowserFixture(page);f.state.request.question=formattedQuestion+'\n\n'+('Long question paragraph with more review instructions.\n\n'.repeat(30))+'```text\n'+('very_long_value_'.repeat(50))+'\n```\n\n| '+('Wide column '.repeat(20))+' | Result |\n| --- | --- |\n| value | passes |\n\nFINAL QUESTION CONTENT';
  await page.goto(v2Path);await v2Selected(page,0);await ensureDocuments(page);
  await expect(page.getByRole('separator')).toHaveCount(0);await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)').fill('Reach the final content');await geometry(page);
  const resultCell=discussionPane(page).getByRole('table').last().getByRole('columnheader',{name:'Result',exact:true});expect(await resultCell.evaluate(el=>el.getBoundingClientRect().width)).toBeGreaterThanOrEqual(96);
  const tail=discussionPane(page).getByText('FINAL QUESTION CONTENT',{exact:true});await tail.scrollIntoViewIfNeeded();await expect(tail).toBeInViewport();const bounds=(await tail.boundingBox())!,response=(await page.locator('.review-v2-response').boundingBox())!;expect(bounds.y+bounds.height).toBeLessThanOrEqual(response.y+1);
  await expect(page.getByRole('button',{name:'Send · Ask a question'})).toBeInViewport();await geometry(page);await screenshot(page,`v2-long-question-${width}.png`);
+});
+
+function selectedReview(reviewId: string) {
+  return `${v2Path}?${new URLSearchParams({ review_id: reviewId })}`;
+}
+
+for (const width of [1920, 2560]) test(`review workspace and composer fill ${width}px and the drawer restores the desktop shell`, async ({page}) => {
+  await page.setViewportSize({width, height: 1050});
+  await page.addInitScript(() => localStorage.setItem('cortex:desktop-navigation-collapsed', 'true'));
+  const fixture = await reviewV2BrowserFixture(page);
+  const target = selectedReview(fixture.state.request.review_id);
+  await page.goto(target);
+  await v2Selected(page, 0);
+  const opener = page.getByRole('button', {name: 'Open navigation'});
+  await expect(opener).toBeVisible();
+  await expect(page.locator('.desktop-navigation')).toHaveCount(0);
+  await page.getByRole('button', {name: 'Ask a question', exact: true}).click();
+  for (const selector of ['.review-v2-layout', '.review-v2-response-inner', '#review-v2-feedback']) {
+    const bounds = await page.locator(selector).boundingBox();
+    const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+    expect(bounds!.x).toBeCloseTo(24, 0);
+    expect(bounds!.x + bounds!.width).toBeCloseTo(clientWidth - 24, 0);
+  }
+  await geometry(page);
+  if (width === 2560) await screenshot(page, 'review-full-width-2560.png');
+
+  await opener.focus();
+  await page.keyboard.press('Enter');
+  const drawer = page.getByRole('dialog', {name: 'Navigation'});
+  await expect(drawer.getByRole('link', {name: 'Reviews'})).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(drawer).toBeHidden();
+  await expect(opener).toBeFocused();
+  await page.keyboard.press('Enter');
+  const reviews = drawer.getByRole('menuitem', {name: 'Reviews'});
+  await reviews.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/project\/v2\/reviews$/);
+  await expect(page.getByRole('heading', {name: 'Reviews', exact: true})).toBeVisible();
+  await expect(drawer).toBeHidden();
+  await expect(page.getByRole('button', {name: 'Expand navigation'})).toBeVisible();
+
+  await page.goto(target);
+  await v2Selected(page, 0);
+  await page.getByRole('button', {name: 'Back to Reviews'}).click();
+  await expect(page.getByRole('heading', {name: 'Reviews', exact: true})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Expand navigation'})).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('cortex:desktop-navigation-collapsed'))).toBe('true');
+  await page.goto(`${target}&requestId=native-one`);
+  await expect(page).toHaveURL(/\/project\/v2\/jobs\/one\/story\?/);
+  await expect(page.getByRole('button', {name: 'Expand navigation'})).toBeVisible();
+});
+
+const longHeader = 'A longer heading that wraps at spaces when the available pane becomes narrow';
+const tableFixture = [
+  `| abcd | ${longHeader} |\n| ---: | :--- |\n| Entry | Ready |`,
+  '| Status | Group | Area | Owner | Release | Notes | Decision | Last column |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| Ready | Design | Documents | Review | Current | None | Proceed | Visible at the end |',
+].join('\n\n');
+
+async function headerLines(header: Locator) {
+  return header.evaluate(element => {
+    const text = element.firstChild!;
+    const range = document.createRange();
+    const lines = new Map<number, string>();
+    [...text.textContent!].forEach((character, index) => {
+      range.setStart(text, index);
+      range.setEnd(text, index + 1);
+      const {top} = range.getBoundingClientRect();
+      lines.set(top, (lines.get(top) ?? '') + character);
+    });
+    return [...lines.values()].map(line => line.trim());
+  });
+}
+
+async function swipeTable(page: Page, table: Locator) {
+  const bounds = (await table.boundingBox())!;
+  const x = bounds.x + bounds.width - 12;
+  const y = bounds.y + 14;
+  const session = await page.context().newCDPSession(page);
+  try {
+    await session.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [{x, y}]});
+    for (let step = 1; step <= 8; step++) {
+      await session.send('Input.dispatchTouchEvent', {type: 'touchMove', touchPoints: [{x: x - (bounds.width - 24) * step / 8, y}]});
+    }
+    await session.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
+  } finally {
+    await session.detach();
+  }
+}
+
+for (const width of [1040, 390]) test.describe(`review Markdown tables at ${width}px`, () => {
+  test.use({hasTouch: width === 390});
+  test('keep words intact and scroll wide tables without moving the page', async ({page}) => {
+    await page.setViewportSize({width, height: 900});
+    const fixture = await reviewV2BrowserFixture(page);
+    fixture.state.request.question = `## Current question\n\n${tableFixture}`;
+    await page.route('**/jobs/producer/stored-document?*', route => route.fulfill({
+      contentType: 'text/markdown', body: `# Review table example\n\n${tableFixture}`,
+    }));
+    await page.goto(selectedReview(fixture.state.request.review_id));
+    await v2Selected(page, 0);
+    if (width !== 390) {
+      await ensureDocuments(page);
+      await expect(page.getByRole('separator')).toHaveCount(2);
+    }
+
+    for (const [surface, root] of [
+      ['attachment', page.getByLabel('Rendered document')],
+      ['question', discussionPane(page).locator('.review-v2-question-markdown')],
+    ] as const) {
+      const regions = root.getByRole('region', {name: 'Markdown table'});
+      await expect(regions).toHaveCount(2);
+      const small = regions.first();
+      await small.scrollIntoViewIfNeeded();
+      const short = small.getByRole('columnheader', {name: 'abcd', exact: true});
+      const long = small.getByRole('columnheader', {name: longHeader, exact: true});
+      expect(await headerLines(short)).toEqual(['abcd']);
+      const lines = await headerLines(long);
+      expect(lines.length).toBeGreaterThan(1);
+      expect(lines.join(' ')).toBe(longHeader);
+      expect((await short.boundingBox())!.width).toBeLessThan((await long.boundingBox())!.width);
+      await expect(short).toHaveCSS('text-align', 'right');
+      expect(await small.evaluate(el => el.scrollWidth)).toBe(await small.evaluate(el => el.clientWidth));
+      if (width === 390) await screenshot(page, `review-${surface}-table-390.png`);
+
+      const wide = regions.last();
+      const lastColumn = wide.getByRole('columnheader', {name: 'Last column', exact: true});
+      await wide.scrollIntoViewIfNeeded();
+      const offset = () => wide.evaluate(el => el.scrollLeft);
+      const lastColumnVisible = () => lastColumn.evaluate(el => el.getBoundingClientRect().right <= el.closest('.review-table-scroll')!.getBoundingClientRect().right + 1);
+      expect(await offset()).toBe(0);
+      expect(await lastColumnVisible()).toBe(false);
+      if (width !== 390) {
+        await small.focus();
+        await page.keyboard.press('Tab');
+        await expect(wide).toBeFocused();
+        await expect(wide.locator(':scope:focus-visible')).toHaveCount(1);
+        await expect(wide).toHaveCSS('outline-width', '2px');
+        await wide.scrollIntoViewIfNeeded();
+      }
+      const position = () => page.evaluate(() => [window.scrollX, window.scrollY]);
+      const before = await position();
+      if (width === 390) {
+        for (let attempt = 0; attempt < 4 && !await lastColumnVisible(); attempt++) await swipeTable(page, wide);
+      } else {
+        for (let step = 0; step < 30; step++) await page.keyboard.press('ArrowRight');
+      }
+      await expect.poll(offset).toBeGreaterThan(0);
+      await expect.poll(lastColumnVisible).toBe(true);
+      expect(await position()).toEqual(before);
+      await geometry(page);
+    }
+  });
 });

@@ -539,7 +539,7 @@ sequence:
         set -euo pipefail
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
-        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.review-history.config.ts review-v2-usability.spec.ts input-discovery.spec.ts
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.review-history.config.ts review-v2-usability.spec.ts input-discovery.spec.ts --retries=0
   # Catch discovery regressions separately while retaining both upstream browser shards.
   - id: input-discovery-browser-regressions
     op: command_execution
@@ -555,7 +555,7 @@ sequence:
         set -euo pipefail
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
-        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.review-history.config.ts job-relationships.spec.ts mobile.spec.ts navigation.spec.ts review-document-history.spec.ts review-queue.spec.ts review-scroll.spec.ts story-scroll.spec.ts --grep 'REL-|JS-024|phone review|badges update|H[0-9]|PR-009|Reviews controls|REV-|RC-|RM-|JS-SC-003 wheel|JS-SC-004 trusted' --retries=0 --global-timeout=1500000
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.review-history.config.ts job-relationships.spec.ts mobile.spec.ts navigation.spec.ts review-document-history.spec.ts review-queue.spec.ts review-scroll.spec.ts story-scroll.spec.ts --grep 'REL-|JS-024|phone review|badges update|H[0-9]|PR-009|Reviews controls|REV-|RC-|RM-|JS-SC-003 wheel|JS-SC-004 trusted|compact drawer stays open on browser history' --retries=0 --global-timeout=1500000
   # Keep the complete general suite, but give each half a fresh execution window
   # and fresh servers. Both sequential shards must pass before runtime checks.
   - id: browser-tests-shard-1
