@@ -11,7 +11,7 @@ function referenceIdentity(value: unknown): string | undefined {
   if (ref.kind === 'attached' && typeof ref.name === 'string') return stringifyJobJSON(['attached',ref.name]);
   return undefined;
 }
-export function historicalDocuments(detail: HistoryDetail) {
+export function historicalDocuments(detail: Pick<HistoryDetail, 'raw_form' | 'request_manifest'>) {
   const rawForm = object(detail.raw_form);
   const structured = object(rawForm.presentation).type === 'review/v2';
   const form = structured ? object(rawForm.request) : rawForm, originals = object(form.documents);

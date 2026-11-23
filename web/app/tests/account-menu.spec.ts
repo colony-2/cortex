@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { accountUIBuildEnvironment } from './helpers/uiBuild';
+import { openTenantSwitcher } from './helpers/inbox';
 const screenshotDir = process.env.CORTEX_SCREENSHOT_DIR;
 const email = 'a.very.long.account.address.for.cortex.build.reports.and.support@example.com';
 const metadata = { libraries: { c2j: { module: 'github.com/colony-2/c2j', version: 'v7.8.9', commit: '2222222222222222222222222222222222222222' }, jobdb: { module: 'github.com/colony-2/jobdb', version: 'v4.5.6', commit: '3333333333333333333333333333333333333333' } } };
@@ -44,14 +45,15 @@ test('account menu, metadata recovery, identity and compact layout', async ({ pa
   await expect(page.getByRole('dialog').locator(':focus')).toHaveCount(1);await page.keyboard.press('Escape');
  }
  await page.setViewportSize({ width: 390, height: 844 });
- await expect(page.getByRole('searchbox', { name: 'Tenant ID' })).toBeVisible();
+ await expect(page.getByRole('searchbox', { name: 'Tenant ID' })).toHaveCount(0);
  await account.click();await expect(page.getByText(email, { exact: true })).toBeVisible();
  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
  await page.getByRole('menuitem', { name: 'About', exact: true }).click();await expect(dialog.getByText('v7.8.9')).toBeVisible();
  await shot('compact-about');
  expect(await dialog.evaluate(el => el.getBoundingClientRect().right <= innerWidth)).toBeTruthy();
  await expect(page.getByRole('dialog').locator(':focus')).toHaveCount(1);await page.keyboard.press('Escape');
- await page.getByRole('searchbox', { name: 'Tenant ID' }).fill('2');await page.getByRole('button', { name: 'Use', exact: true }).click();await expect(page).toHaveURL(/project\/2\/jobs/);
+ const tenantField = await openTenantSwitcher(page);
+ await expect(tenantField).toBeFocused();await tenantField.fill('2');await tenantField.press('Enter');await expect(page).toHaveURL(/project\/2\/jobs/);
  await page.setViewportSize({ width: 1440, height: 900 });
  await account.click();await page.getByRole('menuitem', { name: 'Logout' }).click();
  await expect(page.getByPlaceholder('Email address')).toBeVisible();await expect(dialog).not.toBeVisible();

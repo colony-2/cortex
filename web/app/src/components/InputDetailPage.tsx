@@ -1,3 +1,4 @@
+import { clearReviewDraft } from '../hooks/useReviewDraft';
 import { useCompact } from '../hooks/useCompact';
 import ReviewJobContext from './ReviewJobContext';
 import { useEffect, useRef, useState } from 'react';
@@ -95,6 +96,7 @@ export function InputRequestReader({ projectId, embedded = false, metadata }: In
     try {
       if (details?.form.kind === 'review') {
         await inputActivityService.submitReview(projectId, jobId, details.form.request_id!, response);
+        clearReviewDraft(requestIdentity);
       } else {
         await inputActivityService.submitResponse(projectId, jobId, response);
       }

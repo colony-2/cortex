@@ -24,7 +24,7 @@ func submitPrimaryFixture(t *testing.T, s *Server, tenant, id, cell, goal string
 	if err != nil {
 		t.Fatalf("fixture %s/%s: %v", tenant, id, err)
 	}
-	key, err := recipejob.SubmitRecipeJob(ctx, recipejob.BuildStartJobRequest{TenantID: tenant, JobID: id, GoalID: goal, Target: target, Recipe: "smoke", Inputs: inputs}, nativeSubmitter{s.engine})
+	key, err := recipejob.SubmitRecipeJob(ctx, recipejob.BuildStartJobRequest{TenantID: tenant, JobID: id, GoalID: goal, Target: target, Recipe: "smoke", Inputs: inputs}, nativeSubmitter{Engine: s.engine})
 	if err != nil {
 		t.Fatalf("fixture %s/%s: %v", tenant, id, err)
 	}

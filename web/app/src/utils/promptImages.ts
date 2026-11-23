@@ -70,17 +70,22 @@ export class DraftImages {
     });
     validateGoalAttachments([...this.explicit(), ...this.files(), ...staged.map(item => item.file)]);
     this.staged = staged;
-    staged.forEach(item => {
-      this.entries.set(item.file.name, item);
-      void rasterPreview(item.file, item.controller.signal).then(preview => {
-        if (this.disposed || this.entries.get(item.file.name) !== item) URL.revokeObjectURL(preview);
-        else { Object.assign(item, { status: 'ready', preview }); this.changed(); }
-      }, reason => {
-        if (!this.disposed && this.entries.get(item.file.name) === item) { Object.assign(item, { status: 'invalid', error: (reason as Error).message }); this.changed(); }
-      });
-    });
+    staged.forEach(item => this.add(item));
     this.changed();
     return { images: staged.map(item => ({ src: item.file.name, alt: item.original.name || 'Pasted image' })) };
+  }
+  restore(files: readonly File[]) {
+    files.forEach(file => this.add({ file, original: file, status: 'pending', controller: new AbortController() }));
+    if (files.length) this.changed();
+  }
+  private add(item: DraftImage) {
+    this.entries.set(item.file.name, item);
+    void rasterPreview(item.file, item.controller.signal).then(preview => {
+      if (this.disposed || this.entries.get(item.file.name) !== item) URL.revokeObjectURL(preview);
+      else { Object.assign(item, { status: 'ready', preview }); this.changed(); }
+    }, reason => {
+      if (!this.disposed && this.entries.get(item.file.name) === item) { Object.assign(item, { status: 'invalid', error: (reason as Error).message }); this.changed(); }
+    });
   }
   finish(outcome: ReviewImagePasteOutcome) {
     const batch = this.staged;

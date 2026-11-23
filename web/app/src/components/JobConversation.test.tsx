@@ -1,7 +1,8 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import JobConversation, { HistoryPair, CurrentActivity, MergeCard } from './JobConversation';
+import JobConversation, { HistoryPair, CurrentActivity, FoldedConversationTimeline, MergeCard } from './JobConversation';
 import { APIError, getConversation, getConversationEntry, type HistoryEntry } from '@colony2/shared';
+import { reviewV2Fixture } from '../../../shared/src/test/reviewV2Fixture';
 vi.mock('@colony2/shared', async () => ({ ...await vi.importActual('@colony2/shared'), getConversation: vi.fn(), getConversationEntry: vi.fn() }));
 const entry = (id = 'one'): HistoryEntry => ({entry_id:id,kind:'review',title:{present:true,raw:'Original review'},summary:{present:false},state:'answered',requested_at:{present:false},locator:{invocation_id:'invoke'},form_fields:{question:'Proceed?'},accepted_response:{present:true,raw:{decision:'approve',feedback:'Keep original'}},response_source:'autofill',actor:{provenance:'reported_receipt',receipt:{actor:{kind:'human',id:'caller'}},legacy_user_id:{present:false}}});
 const page = (entries = [entry()], next?: string) => ({tenant_id:'tenant',job_id:'job',entries,snapshot_revision:1,snapshot_token:'snapshot',observed_at:'now',completeness:'partial',next_page_token:next});
@@ -306,13 +307,13 @@ it('CV-030 ignores a late refresh that would restore an obsolete live tail',asyn
  expect(screen.queryByLabelText('Current job activity')).not.toBeInTheDocument();
 });
 
-it('CV-008 keeps coverage and paging before activity and final endings',async()=>{
+it('CV-008 keeps paging before activity and omits coverage copy',async()=>{
  vi.mocked(getConversation).mockResolvedValue({...page([],'next'),publication_coverage:'partial',activity:{availability:'available',value:{tenant_id:'tenant',job_id:'job',status:'ACTIVE',store:'ACTIVE'} as any}});
  let refresh=0; const view=render(<JobConversation tenant="tenant" job="job" onOpen={vi.fn()}/>);
  const more=await screen.findByRole('button',{name:'Load more events'});
  const tail=screen.getByLabelText('Current job activity');
  expect(more.compareDocumentPosition(tail)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
- expect(screen.getByText(/Publication coverage/).compareDocumentPosition(tail)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(screen.queryByText(/Publication coverage|History coverage/)).not.toBeInTheDocument();
 });
 it('CV-029 unavailable sections preserve readable history without inferred status',async()=>{
  vi.mocked(getConversation).mockResolvedValue({...page(),activity:{availability:'unavailable'},final_documents:{availability:'unavailable'}});
@@ -337,7 +338,7 @@ it('CV-012 announces new merge-only activity during background refresh',async()=
  const view=render(<JobConversation tenant="tenant" job="job" onOpen={vi.fn()}/>);
  await screen.findByText('No retained events in this history.');
  view.rerender(<JobConversation tenant="tenant" job="job" refreshKey={1} onOpen={vi.fn()}/>);
- expect(await screen.findByText('New conversation activity available')).toBeInTheDocument();
+ expect(await screen.findByText('New thread activity available')).toBeInTheDocument();
  expect(screen.getByLabelText('Verified publication')).toHaveTextContent('New publication');
 });
 
@@ -347,16 +348,58 @@ it.each([undefined,null,''])('CV-003 CV-032 missing subject %s uses the explicit
 });
 
 describe('inbox folded history', () => {
+ it('labels a review, a submitted question, and its answer in the follow-up review discussion', () => {
+  const request = reviewV2Fixture();
+  request.documents = {};
+  delete request.document_metadata;
+  delete request.overview_document_id;
+  const question = 'What survives a restart?';
+  const answer = 'The original attachments remain available.';
+  const first = {
+    ...entry('first'),
+    form_fields: { presentation: { type: 'review/v2' }, request },
+    accepted_response: { present: true, raw: { response: { direction: 'ask', feedback: question } } },
+    review_attachments: { request: [], response: [] },
+  };
+  const followUp = {
+    ...first, entry_id: 'follow-up', accepted_response: { present: false },
+    form_fields: { ...first.form_fields, request: { ...request, conversation: [
+      { role: 'human', direction: 'ask', text: question, attachments: [], receipt: {} },
+      { role: 'agent', text: answer, attachments: [] },
+    ] } },
+  };
+  const { container } = render(<FoldedConversationTimeline entries={[first, followUp]} onOpen={vi.fn()} tenant="tenant" job="job" />);
+  const labels = container.querySelectorAll('.inbox-history-message > summary .thread-message-label');
+  expect(Array.from(labels, label => label.textContent)).toEqual(['Review', 'Question', 'Review']);
+  const discussion = within(screen.getByRole('region', { name: 'Discussion' }));
+  expect(within(discussion.getByText(question).closest('article')!).getByText('Question', { exact: true })).toBeVisible();
+  expect(within(discussion.getByText(answer).closest('article')!).getByText('Answer', { exact: true })).toBeVisible();
+  expect(getConversationEntry).not.toHaveBeenCalled();
+ });
+
+ it.each([['success', 'Completion'], ['failed_timeout', 'Failure'], ['cancelled', 'Cancellation']])(
+  'labels a terminal job with status %s as %s', async (completion_status, label) => {
+   vi.mocked(getConversation).mockResolvedValue(page([]));
+   const metadata = { status: 'COMPLETED', store: 'ARCHIVED', completion_status } as import('@colony2/shared').RecipeJob;
+   render(<JobConversation tenant="tenant" job="job" folded onOpen={vi.fn()} metadata={metadata} />);
+   const completion = within(await screen.findByRole('region', { name: 'Job completion' }));
+   expect(completion.getByText(label, { selector: '.thread-message-label' })).toBeVisible();
+  },
+ );
+
  it('folds each retained message and hides the middle of long conversations', async () => {
   const { FoldedConversationTimeline } = await import('./JobConversation');
-  const entries = ['first', 'second', 'third', 'last'].map(id => ({ ...entry(id), title: { present: true, raw: id } }));
+  const entries = ['first', 'second', 'third', 'last'].map(id => ({ ...entry(id), kind: 'ordinary', title: { present: true, raw: id } }));
   const { container } = render(<FoldedConversationTimeline page={page(entries)} entries={entries} cellName="platform" onOpen={vi.fn()} />);
-  expect(screen.getByText('2 earlier events')).toBeVisible();
+  expect(screen.getByText('2 earlier messages')).toBeVisible();
   expect(container.querySelectorAll('.inbox-history-message')).toHaveLength(4);
-  expect(container.querySelectorAll('.inbox-history-message[open]')).toHaveLength(0);
-  fireEvent.click(screen.getByText('platform · first'));
+  expect(container.querySelectorAll('.inbox-history-message[open]')).toHaveLength(1);
+  expect(container.querySelector('.inbox-history-message[open]')).toHaveTextContent('last');
+  expect(container.querySelector('.inbox-history-message[open] summary .thread-message-label')).toHaveTextContent('Question');
+  expect(container.querySelector('.inbox-history-message[open] .conversation-response .thread-message-label')).toHaveTextContent('Answer');
+  fireEvent.click(screen.getByText('first', { selector: '.thread-message-subject' }));
   expect(container.querySelector('.inbox-history-message')).toHaveAttribute('open');
-  fireEvent.click(screen.getByText('2 earlier events'));
+  fireEvent.click(screen.getByText('2 earlier messages'));
   expect(container.querySelector('.inbox-history-middle')).toHaveAttribute('open');
  });
  it('omits the open pending request from prior context and tolerates an absent title', async () => {
@@ -364,7 +407,7 @@ describe('inbox folded history', () => {
   const current = { ...entry('current'), request_id: 'native', accepted_response: { present: false } };
   const previous = { ...entry('previous'), title: undefined } as unknown as HistoryEntry;
   render(<FoldedConversationTimeline entries={[previous, current]} currentRequestId="native" onOpen={vi.fn()} />);
-  expect(screen.getByText('Cell · review request')).toBeVisible();
+  expect(screen.getByText('Proceed?', { selector: '.thread-message-subject' })).toBeVisible();
   expect(occurrence('current')).toBeNull();
   expect(occurrence('previous')).toBeInTheDocument();
  });

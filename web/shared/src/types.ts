@@ -79,6 +79,7 @@ export interface RecipeJob {
   status: RecipeJobStatus;
   completion_status?: string;
   completion_detail?: string;
+  cancelled_by?: string;
   store: 'ACTIVE' | 'ARCHIVED';
   job_type: string;
   recipe: string;

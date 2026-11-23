@@ -1,3 +1,5 @@
+import { object, valueText } from './conversationPresentation';
+import { messagePreview, readInboxSort, threadTitle } from '../utils/jobInbox';
 import { useInboxReadReceipt, useOptionalJobInbox } from '../hooks/useJobInbox';
 import { InputRequestReader } from './InputDetailPage';
 import ReviewV2 from './ReviewV2';
@@ -52,7 +54,7 @@ import JobActionDialog from './JobActionDialog';
 import GoalPrompt from './GoalPrompt';
 import { getJob, getJobInputArtifacts, storedDocumentURL, type InputArtifact } from '@colony2/shared/api';
 import type { RecipeJob } from '@colony2/shared/types';
-import { canArchiveImmediately, isFinishedJob, confirmsRecoveryCompletion, jobStatusPresentation, jobStatusValue } from '../utils/jobStatus';
+import { canArchiveImmediately, isFinishedJob, confirmsRecoveryCompletion, filterStatuses, jobStatus, jobStatusValue } from '../utils/jobStatus';
 import { buildStoryTree, storyAttempts, storyNodeName, type ArtifactKey as StoredArtifactKey, type StoryNode, type StoryKind, type StoryNodeRef } from '../utils/storyTree';
 import { adaptInputFormConfig } from '../utils/formAdapter';
 import type { RestartScope } from '@colony2/shared';
@@ -124,9 +126,9 @@ function formatDuration(started?: string | null, finished?: string | null): stri
 
 function statusTagColor(status: string): string {
   const colors: Record<string, string> = {
-    running: 'blue',
+    running: filterStatuses.ACTIVE.color,
     completed: 'green',
-    succeeded: 'green',
+    succeeded: filterStatuses.success.color,
     failed: 'red',
     canceled: 'default',
     terminated: 'default',
@@ -261,7 +263,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   // Node/tab selections must retain the originating goal/list entry.
   const setSearchParams: typeof setURLSearchParams = (next, options) =>
     setURLSearchParams(next, { state: location.state, ...options });
-  const { pendingInputs, refresh: refreshPendingInputs, setCurrentProjectId } = useInputActivity();
+  const { pendingInputs, currentProjectId, refresh: refreshPendingInputs, setCurrentProjectId } = useInputActivity();
 
   useEffect(() => {setCurrentProjectId(projectId);}, [projectId, setCurrentProjectId]);
 
@@ -319,9 +321,13 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const activeArtifact = artifactOwner === artifactIdentity ? selectedArtifact : null;
 
   const activeTab = jobDetailTab(searchParams);
-  const loadInputInventory = activeTab === 'input-artifacts';
+  const [loadedThread, setLoadedThread] = useState<string>();
+  const threadVisited = loadedThread === artifactIdentity;
+  useEffect(() => { if (activeTab === 'conversation') setLoadedThread(artifactIdentity); }, [activeTab, artifactIdentity]);
   const [inputInventory, setInputInventory] = useState<{ owner: string; artifacts?: InputArtifact[]; error?: string }>();
   const [inputRetry, setInputRetry] = useState(0);
+  const [openedOriginal, setOpenedOriginal] = useState<string>();
+  const openOriginal = useCallback(() => setOpenedOriginal(artifactIdentity), [artifactIdentity]);
   const inputs = inputInventory?.owner === artifactIdentity ? inputInventory : undefined;
   const [inventoryObserved, setInventoryObserved] = useState<string>();
   const promptInventory = useMemo(() => inputs?.artifacts?.filter(a => a.inputOrdinal === 0), [inputs?.artifacts]);
@@ -329,9 +335,10 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     setInventoryObserved(artifactIdentity);
     if (rows) setInputInventory({ owner: artifactIdentity, artifacts: sortInputArtifacts(rows) });
   }, [artifactIdentity]);
+  const fallbackInputInventory = openedOriginal === artifactIdentity && inventoryObserved === artifactIdentity && !inputs?.artifacts;
   useEffect(() => {
-    // Reuse this job's inventory when the tab is reopened.
-    if (!loadInputInventory || inputs?.artifacts) return;
+    // Older history responses can omit the inventory. Read it once for this thread.
+    if (!fallbackInputInventory) return;
     const controller = new AbortController();
     setInputInventory({ owner: artifactIdentity });
     getJobInputArtifacts(projectId, jobId, controller.signal).then(result => {
@@ -340,35 +347,45 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
       if (!controller.signal.aborted) setInputInventory({ owner: artifactIdentity, error: error instanceof Error ? error.message : String(error) });
     });
     return () => controller.abort();
-  }, [projectId, jobId, artifactIdentity, inputRetry, loadInputInventory]);
+  }, [projectId, jobId, artifactIdentity, inputRetry, fallbackInputInventory]);
 
   const [historyRevision, setHistoryRevision] = useState(0);
   const pendingHistoryRevision = stringifyJobJSON(pendingInputs.filter(input => input.id === jobId));
   const historyRefreshKey = useMemo(() => ({ revision: historyRevision, pending: pendingHistoryRevision }), [historyRevision, pendingHistoryRevision]);
   const dagIdentity = JSON.stringify([projectId, jobId]);
-  const [relationshipsVisited, setRelationshipsVisited] = useState<string>();
-  useEffect(() => { if (activeTab === 'relationships') setRelationshipsVisited(dagIdentity); }, [activeTab, dagIdentity]);
   const [dagVisited, setDagVisited] = useState<string>();
   useEffect(() => { if (activeTab === 'dag') setDagVisited(dagIdentity); }, [activeTab, dagIdentity]);
   const storyDemand = activeTab === 'execution' || restartOpen;
   const storyWanted = useRef(storyDemand);
   storyWanted.current = storyDemand;
-  const requestId = searchParams.has('occurrenceId') ? searchParams.get('occurrenceId') : searchParams.get('requestId');
+  const threadSelection = useRef<{ owner: string; params: URLSearchParams }>();
+  if (activeTab === 'conversation') threadSelection.current = { owner: artifactIdentity, params: searchParams };
+  const savedThreadParams = threadSelection.current?.owner === artifactIdentity ? threadSelection.current.params : undefined;
+  const threadParams = activeTab === 'conversation' ? searchParams : savedThreadParams ?? searchParams;
+  const threadRequestId = threadParams.get('occurrenceId') ?? threadParams.get('requestId');
+  const requestId = searchParams.get('occurrenceId') ?? searchParams.get('requestId');
   const selectTab = (tab: JobDetailTab) => setSearchParams(previous => {
     const next = new URLSearchParams(previous);
     next.set('tab', tab);
-    next.delete('requestId');
-    next.delete('occurrenceId');
-    next.delete('input');
+    for (const key of ['requestId', 'occurrenceId', 'input']) {
+      const value = tab === 'conversation' ? savedThreadParams?.get(key) : null;
+      if (value != null) next.set(key, value);
+      else next.delete(key);
+    }
     return next;
   });
   const wantInput = searchParams.get('input') === '1';
+  const threadWantsInput = threadParams.get('input') === '1';
   const taskOrdinalParamRaw = searchParams.get('taskOrdinal');
   const taskOrdinalParam = taskOrdinalParamRaw ? Number(taskOrdinalParamRaw) : null;
 
-  const selectedInput = useCurrentInput(projectId, jobId, activeTab !== 'env' && requestId === null);
+  const selectedInput = useCurrentInput(projectId, jobId, (activeTab !== 'runtime' || threadVisited) && requestId === null);
   const isPendingInput = !!selectedInput.version;
   const pendingInputDetails = selectedInput.details ?? (selectedInput.discovery.status !== 'current' || wantInput ? selectedInput.readableDetails : undefined);
+  const pendingForm = pendingInputDetails?.form;
+  const pendingIsReview = pendingForm?.kind === 'review' || object(pendingForm?.presentation).type === 'review/v2';
+  const reviewRequest = object(pendingForm?.request);
+  const pendingLabel = messagePreview(pendingForm?.title || pendingForm?.question || valueText(reviewRequest.title || reviewRequest.question || ''));
   const pendingInputError = selectedInput.error;
   const pendingInputLoading = selectedInput.loading || (wantInput && selectedInput.discovery.status === 'loading');
 
@@ -390,6 +407,8 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const goalsHome = `/project/${encodeURIComponent(projectId)}/jobs`;
   const suppliedReturn = location.state?.inboxReturnTo || location.state?.goalsReturnTo || location.state?.returnTo;
   const inboxQuery = new URLSearchParams([...searchParams].filter(([key]) => ['inbox', 'cellId', 'q'].includes(key)));
+  const inboxSort = readInboxSort(searchParams.get('sort'));
+  if (inboxSort) inboxQuery.set('sort', inboxSort);
   const filterSearch = inboxQuery.size ? '?' + inboxQuery : '';
   const returnTo = typeof suppliedReturn === 'string' && suppliedReturn.split('?')[0] === goalsHome
     ? suppliedReturn : `${goalsHome}${inboxQuery.size ? '?' + inboxQuery : ''}`;
@@ -397,18 +416,19 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     jobId: string; projectId: string; job?: RecipeJob; observedJob?: RecipeJob;
     status: 'loading' | 'loaded' | 'failed'; error?: string;
   }>();
-  useInboxReadReceipt(projectId, jobId, loadedJob?.projectId === projectId && loadedJob?.jobId === jobId && loadedJob?.status === 'loaded');
+  useInboxReadReceipt(projectId, loadedJob?.projectId === projectId && loadedJob?.jobId === jobId && loadedJob?.status === 'loaded' ? loadedJob.job : undefined);
   const metadataGeneration = useRef(0);
   const crashMutationBusy = useRef(false);
   const metadata = loadedJob?.jobId === jobId && loadedJob.projectId === projectId ? loadedJob : undefined;
   const job = metadata?.job;
   const activityJob = job ?? metadata?.observedJob;
   const activityStatus = activityJob ? jobStatusValue(activityJob) : undefined;
-  const jobTitle = typeof job?.title === 'string' && job.title.trim() ? job.title : undefined;
   const prompt = job?.prompt?.trim() ? job.prompt : undefined;
+  const submittedBy = job?.metadata?.cortex_submitted_by;
+  const sender = typeof submittedBy === 'string' && submittedBy.trim() ? submittedBy : 'Unknown';
   const terminalStatus = job ? jobStatusValue(job) : undefined;
-  const failed = terminalStatus && ['failed_app', 'failed_system', 'failed_timeout'].includes(terminalStatus);
-  const failureDetail = job?.completion_detail?.trim() ? job.completion_detail : undefined;
+  const pendingReview = isPendingInput || (currentProjectId === projectId && pendingInputs.some(input => input.id === jobId));
+  const displayStatus = job && jobStatus(job, pendingReview);
   const loadMetadata = async (force = false): Promise<RecipeJob | undefined> => {
     if (crashMutationBusy.current && !force) return;
     const generation = ++metadataGeneration.current;
@@ -831,12 +851,45 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     }
   };
 
+  const initialMessage = job ? {
+    sender, subject: messagePreview(prompt) || 'Original message', onExpand: openOriginal, showAttachments: threadParams.get('tab') === 'input-artifacts',
+    node: <>
+      <section aria-label="Job prompt">
+        {prompt ? <GoalPrompt projectId={projectId} jobId={jobId} text={prompt} inventory={promptInventory}
+          waitingForInventory={!inputs?.artifacts && !inputs?.error} /> : <p>No prompt recorded for this job.</p>}
+      </section>
+      {inputs?.error ? <Alert type="warning" message="Unable to load attachments" description={inputs.error}
+        action={<Button onClick={() => setInputRetry(value => value + 1)}>Retry</Button>} />
+        : !inputs?.artifacts ? <Text type="secondary">Checking attachments…</Text>
+        : inputs.artifacts.length > 0 && <section className="thread-attachments input-artifacts" aria-label="Input attachments">
+          <h4>Attachments ({inputs.artifacts.length})</h4>
+          <List size="small" dataSource={inputs.artifacts} renderItem={artifact => (
+            <List.Item key={artifact.id || JSON.stringify([projectId, artifact.jobId, artifact.taskOrdinal, artifact.name])}>
+              <div className="input-artifact-description">
+                {artifact.reason ? <Text>{artifact.name}</Text> : <Button type="link" className="input-artifact-name"
+                  onClick={() => openArtifact(inputViewerArtifact(artifact, jobId), inputs.artifacts!.filter(a => !a.reason).map(a => inputViewerArtifact(a, jobId)))}>{artifact.name}</Button>}
+                {artifact.binding !== undefined && <div><Text type="secondary">Binding: {artifact.binding}</Text></div>}
+                {artifact.sources && <div><Text type="secondary">{artifact.sources.join(' · ')}</Text></div>}
+                {artifact.reason && <div><Text type="secondary">{artifact.reason}</Text></div>}
+              </div>
+              {!artifact.reason && <Space><Text type="secondary">{artifact.sizeBytes >= 0 ? artifactSize(artifact.sizeBytes) : 'Size unknown'}</Text>
+                <Button aria-label={`Download ${artifact.name}`} icon={<DownloadOutlined />} onClick={() => downloadArtifact(inputViewerArtifact(artifact, jobId))} /></Space>}
+            </List.Item>
+          )} />
+        </section>}
+    </>,
+  } : undefined;
+
   return (
     <div className="app-page job-story-page inbox-story" style={{ padding: 20 }}>
       <Space direction="vertical" style={{ width: '100%' }} size="small">
         <div className="job-story-header" data-testid="job-story-header">
-          <div className="inbox-story-subject"><Link className="inbox-back" aria-label="Back to inbox" to={returnTo}>←</Link><Title level={3} style={{ margin: 0 }}>{(jobTitle || 'Job conversation')}</Title></div>
-          <div className="inbox-story-meta">{job && <><span aria-label="Job cell">{cellLabel(job.cell_name)}</span><Tag color={jobStatusPresentation(terminalStatus || 'unknown').color} aria-label="Job status">{jobStatusPresentation(terminalStatus || 'unknown').label}</Tag></>}</div>
+          <div className="inbox-story-subject">
+            <Link className="inbox-back" aria-label="Back to inbox" to={returnTo}>←</Link>
+            <Title level={3} title={job && threadTitle(job)} style={{ margin: 0 }}>{job ? threadTitle(job) : 'Thread'}</Title>
+            {job && displayStatus && <div className="inbox-story-meta"><span aria-label="Job cell" title={cellLabel(job.cell_name)}>{cellLabel(job.cell_name)}</span>
+              <Tag color={displayStatus.color} aria-label="Job status">{displayStatus.label}</Tag></div>}
+          </div>
           <details className="inbox-story-more"><summary>More actions</summary><div className="job-story-actions" role="group" aria-label="Job actions" onClickCapture={event => {
             if (!(event.target as HTMLElement).closest('button:not([role="switch"]), a')) return;
             const menu = event.currentTarget.closest('details');
@@ -848,8 +901,8 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
             (event.target.closest('button, a, .ant-select') || event.target).scrollIntoView({ block: 'nearest', inline: 'nearest' });
           }}>
 
-            <Link className="compact-touch-link" to={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId || '')}/story?tab=dag`} state={location.state}>DAG</Link>
-            {treeReturnTo && <Link className="compact-touch-link" to={treeReturnTo}>Return to DAG</Link>}
+            <Link className="compact-touch-link" to={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId || '')}/story?tab=dag`} state={location.state}>Graph</Link>
+            {treeReturnTo && <Link className="compact-touch-link" to={treeReturnTo}>Return to Graph</Link>}
             {(terminalStatus ? !isFinishedJob(job!) : story?.status === 'running') ? (
               <Space>
                 <Text type="secondary">Auto-refresh</Text>
@@ -884,73 +937,42 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
             <div>{metadata.error}</div>
           </div>}
           action={<Button size="small" onClick={() => void loadMetadata()}>Retry</Button>} />}
-        {job?.launch_id && <div><Text strong>Last recorded launch ID </Text><Link to={launchPath(projectId, job.launch_id, {jobId})}>{job.launch_id}</Link></div>}
         <JobDetailTabs activeTab={activeTab} onChange={selectTab} />
         <div className="job-detail-panels">
         <section role="tabpanel" id="job-panel-conversation" aria-labelledby="job-tab-conversation" hidden={activeTab !== 'conversation'} tabIndex={0} className="job-detail-panel">
-        {activeTab === 'conversation' && job && <details className="inbox-original"><summary>Original request</summary><section aria-label="Job prompt">
-          {prompt ? <GoalPrompt projectId={projectId} jobId={jobId} text={prompt} inventory={promptInventory} waitingForInventory={inventoryObserved !== artifactIdentity} /> : <p>No prompt recorded for this job.</p>}
-        </section></details>}
-        {selectedInput.discovery.status === 'unavailable' && pendingInputDetails && requestId === null && <Alert type="warning" showIcon message="Pending request availability is unavailable." description={selectedInput.discovery.error} action={<Button onClick={() => void selectedInput.refresh().catch(() => {})}>Retry</Button>} />}
-        {wantInput && requestId === null && !pendingInputLoading && !pendingInputDetails && !pendingInputError && <Alert type={selectedInput.discovery.status === 'unavailable' ? 'warning' : 'info'} showIcon
+        {selectedInput.discovery.status === 'unavailable' && pendingInputDetails && threadRequestId === null && <Alert type="warning" showIcon message="Pending request availability is unavailable." description={selectedInput.discovery.error} action={<Button onClick={() => void selectedInput.refresh().catch(() => {})}>Retry</Button>} />}
+        {threadWantsInput && threadRequestId === null && !pendingInputLoading && !pendingInputDetails && !pendingInputError && <Alert type={selectedInput.discovery.status === 'unavailable' ? 'warning' : 'info'} showIcon
           message={selectedInput.discovery.status === 'unavailable' ? 'Pending request availability is unavailable.' : 'No outstanding input request.'}
           action={<Button onClick={() => void selectedInput.refresh().catch(() => {})}>{selectedInput.discovery.status === 'unavailable' ? 'Retry' : 'Refresh'}</Button>} />}
-        {activeTab === 'conversation' && <JobConversation folded currentRequestId={pendingInputDetails?.form.request_id} cellName={job?.cell_name} onInventory={receiveInventory} onBack={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('occurrenceId'); next.delete('requestId'); return next; })} tenant={projectId} job={jobId} occurrence={searchParams.get('occurrenceId') ?? undefined}
-          autoRefresh={autoRefresh} refreshIntervalMs={refreshIntervalMs} requestId={searchParams.get('requestId') ?? undefined}
+        {(activeTab === 'conversation' || threadVisited) && <JobConversation folded metadata={job}
+          initial={initialMessage}
+          currentIsReview={pendingIsReview || threadParams.has('review_id')}
+          currentRequestLabel={pendingLabel} openCurrent={threadWantsInput || threadParams.has('review_id')} currentRequestId={threadRequestId === null ? pendingInputDetails?.form.request_id : undefined} cellName={job?.cell_name} onInventory={receiveInventory} onBack={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('occurrenceId'); next.delete('requestId'); return next; })} tenant={projectId} job={jobId} occurrence={threadParams.get('occurrenceId') ?? undefined}
+          autoRefresh={autoRefresh && activeTab === 'conversation'} refreshIntervalMs={refreshIntervalMs} requestId={threadParams.get('requestId') ?? undefined}
           refreshKey={historyRefreshKey} onOpen={entry => setSearchParams(previous => {
             const next = new URLSearchParams(previous); next.set('occurrenceId', entry); next.set('tab', 'conversation');
             next.delete('requestId'); next.delete('input'); return next;
-          })} />}
-        {activeTab === 'conversation' && requestId === null && !searchParams.has('occurrenceId') && (searchParams.get('review_id')
-          ? <ReviewV2 key={JSON.stringify([projectId,jobId,searchParams.get('review_id')])} tenant={projectId} job={jobId} reviewId={searchParams.get('review_id')!} embedded metadata={job} />
-          : (pendingInputDetails || pendingInputLoading || pendingInputError) && <InputRequestReader key={JSON.stringify([projectId,jobId,pendingInputDetails?.form.request_id])} projectId={projectId} embedded metadata={job} />)}
-        {job && terminalStatus && (job.store === 'ARCHIVED' || isFinishedJob(job)) && <section aria-label="Job completion">
-          <Title level={3}>Completion</Title>
-        {failed && <Alert type="error" showIcon
-          message={terminalStatus === 'failed_timeout' ? 'Job timed out' : 'Job failed'}
-          description={<div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{failureDetail || 'No failure details recorded for this job.'}</div>} />}
-          {!failed && <><Text strong>{jobStatusPresentation(terminalStatus || 'unknown').label}</Text>
-            <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{failureDetail || 'No completion details recorded for this job.'}</Typography.Paragraph></>}
-        </section>}
+          })}>
+          {threadRequestId === null && !threadParams.has('occurrenceId') && (threadParams.get('review_id')
+            ? <ReviewV2 key={JSON.stringify([projectId,jobId,threadParams.get('review_id')])} tenant={projectId} job={jobId} reviewId={threadParams.get('review_id')!} embedded metadata={job} />
+            : (pendingInputDetails || pendingInputLoading || pendingInputError) && <InputRequestReader key={JSON.stringify([projectId,jobId,pendingInputDetails?.form.request_id])} projectId={projectId} embedded metadata={job} />)}
+        </JobConversation>}
         </section>
-        <section role="tabpanel" id="job-panel-relationships" aria-labelledby="job-tab-relationships" hidden={activeTab !== 'relationships'} tabIndex={0} className="job-detail-panel">
-        {(activeTab === 'relationships' || relationshipsVisited === dagIdentity) && job && <JobRelationships showAttempts projectId={projectId} jobId={jobId!} job={job} currentGoal={currentGoal} />}
-
-        </section>
-        <section role="tabpanel" id="job-panel-input-artifacts" aria-labelledby="job-tab-input-artifacts" hidden={activeTab !== 'input-artifacts'} tabIndex={0} className="job-detail-panel">
-        <section className="input-artifacts-disclosure">
-          <h2>{`Input artifacts${inputs?.artifacts ? ` (${inputs.artifacts.length})` : ''}`}</h2>
-          <Card size="small" variant="borderless" className="input-artifacts">
-            {inputs?.error ? <Alert type="error" message="Unable to load input artifacts" description={inputs.error} action={<Button onClick={() => setInputRetry(value => value + 1)}>Retry</Button>} />
-              : !inputs?.artifacts ? <Text>Loading input artifacts</Text>
-              : inputs.artifacts.length === 0 ? <Text>No input artifacts</Text>
-              : <List dataSource={inputs.artifacts} renderItem={artifact => (
-                <List.Item key={artifact.id || JSON.stringify([projectId, artifact.jobId, artifact.taskOrdinal, artifact.name])}>
-                  <div className="input-artifact-description">
-                    {artifact.reason ? <Text>{artifact.name}</Text> : <Button type="link" className="input-artifact-name" onClick={() => openArtifact(inputViewerArtifact(artifact, jobId), inputs.artifacts!.filter(a => !a.reason).map(a => inputViewerArtifact(a, jobId)))}>{artifact.name}</Button>}
-                    {artifact.binding !== undefined && <div><Text>Binding: {artifact.binding}</Text></div>}
-                    {artifact.sources && <div><Text type="secondary">{artifact.sources.join(' · ')}</Text></div>}
-                    {artifact.reason && <div><Text>{artifact.reason}</Text></div>}
-                  </div>
-                  {!artifact.reason && <Space><Text type="secondary">{artifact.sizeBytes >= 0 ? artifactSize(artifact.sizeBytes) : 'Size unknown'}</Text>
-                    <Button aria-label={`Download ${artifact.name}`} icon={<DownloadOutlined />} onClick={() => downloadArtifact(inputViewerArtifact(artifact, jobId))}>Download</Button></Space>}
-                </List.Item>
-              )} />}
-          </Card>
-        </section>
-
-        </section>
-        <section role="tabpanel" id="job-panel-env" aria-labelledby="job-tab-env" hidden={activeTab !== 'env'} tabIndex={0} className="job-detail-panel">
-          {activeTab === 'env' && job && <JobEnvironment job={job} />}
-        </section>
-        <section role="tabpanel" id="job-panel-dag" aria-labelledby="job-tab-dag" hidden={activeTab !== 'dag'} tabIndex={0} className="job-detail-panel">
-          {(activeTab === 'dag' || dagVisited === dagIdentity) && <TreeWorkspace key={dagIdentity} tenant={projectId} entry={jobId!} active={activeTab === 'dag'} embedded onJobChanged={node => { if (node.tenant_id === projectId && node.job_id === jobId) { void loadMetadata(); void refreshPendingInputs(); } }} />}
-        </section>
-        <section role="tabpanel" id="job-panel-leases" aria-labelledby="job-tab-leases" hidden={activeTab !== 'leases'} tabIndex={0} className="job-detail-panel">
-          <JobCrashConcern key={JSON.stringify([projectId, jobId])} projectId={projectId} jobId={jobId} job={job} status={metadata?.status}
+        <section role="tabpanel" id="job-panel-runtime" aria-labelledby="job-tab-runtime" hidden={activeTab !== 'runtime'} tabIndex={0} className="job-detail-panel">
+          {activeTab === 'runtime' && job && <>
+            {job.launch_id && <div><Text strong>Last recorded launch ID </Text><Link to={launchPath(projectId, job.launch_id, {jobId})}>{job.launch_id}</Link></div>}
+            <JobEnvironment job={job} />
+          </>}
+          <JobCrashConcern key={dagIdentity} projectId={projectId} jobId={jobId} job={job} status={metadata?.status}
             pause={() => { crashMutationBusy.current = true; ++metadataGeneration.current; }}
             resume={() => { crashMutationBusy.current = false; }} refresh={() => loadMetadata(true)} />
-          {activeTab === 'leases' && <JobLeaseTimeline expanded projectId={projectId} jobId={jobId} createdAt={job?.created_at} />}
+          {activeTab === 'runtime' && <JobLeaseTimeline expanded projectId={projectId} jobId={jobId} createdAt={job?.created_at} />}
+        </section>
+        <section role="tabpanel" id="job-panel-dag" aria-labelledby="job-tab-dag" hidden={activeTab !== 'dag'} tabIndex={0} className="job-detail-panel">
+          {(activeTab === 'dag' || dagVisited === dagIdentity) && <>
+            <TreeWorkspace key={dagIdentity} tenant={projectId} entry={jobId!} active={activeTab === 'dag'} embedded onJobChanged={node => { if (node.tenant_id === projectId && node.job_id === jobId) { void loadMetadata(); void refreshPendingInputs(); } }} />
+            {job && <JobRelationships showAttempts projectId={projectId} jobId={jobId!} job={job} currentGoal={currentGoal} />}
+          </>}
         </section>
         <section role="tabpanel" id="job-panel-execution" aria-labelledby="job-tab-execution" hidden={activeTab !== 'execution'} tabIndex={0} className="job-detail-panel">
         {activeTab === 'execution' && <>
@@ -959,7 +981,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
           <Card size="small" variant="borderless">
             <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small">
               <Descriptions.Item label="Status">
-                {story?.status ? (
+                {pendingReview && terminalStatus === 'READY' && displayStatus ? <Tag color={displayStatus.color}>{displayStatus.label}</Tag> : story?.status ? (
                   <Tag color={statusTagColor(story.status)}>{story.status.toUpperCase()}</Tag>
                 ) : (
                   terminalStatus || '-'

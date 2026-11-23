@@ -58,7 +58,7 @@ for (const width of [320,390,768,1440]) test(`inbox and Compose fit long content
   for(const name of ['Cancel','Archive']){
     const trigger=page.getByRole('button',{name:`${name} selected`,exact:true});await trigger.click();
     const dialog=page.getByRole('dialog');
-    await expect(dialog.getByRole('button',{name:`${name} 3 jobs`,exact:true})).toBeVisible();
+    await expect(dialog.getByRole('button',{name:`${name} ${name === 'Cancel' ? 2 : 3} jobs`,exact:true})).toBeVisible();
     await dialog.getByRole('button',{name:'Keep jobs'}).click();await expect(trigger).toBeFocused();
   }
   const composer=await openCompose(page,'api');
@@ -68,11 +68,12 @@ for (const width of [320,390,768,1440]) test(`inbox and Compose fit long content
   const send=composer.getByRole('button',{name:'Send',exact:true});await send.scrollIntoViewIfNeeded();
   await expect(send).toBeInViewport({ratio:1});
   await composer.getByRole('button',{name:'Close composer'}).click();
-  await openCompose(page);
+  await inboxFolder(page, 'Drafts');
+  await page.getByRole('list', { name: 'Drafts' }).getByRole('button', { name: /Build a reliable dashboard/ }).click();
   await expect(composer.getByLabel('Message',{exact:true})).toHaveText(prompt);
-  await composer.getByRole('button',{name:'Discard'}).click();await openCompose(page);
+  await composer.getByRole('button',{name:'Discard draft',exact:true}).click();await openCompose(page);
   await expect(composer.getByLabel('Message',{exact:true})).toHaveText('');
-  await composer.getByRole('button',{name:'Discard'}).click();
+  await composer.getByRole('button',{name:'Discard draft',exact:true}).click();
   await context.clearCookies();await page.reload();
   await expect(page.getByPlaceholder('Email address')).toBeVisible();await noOverflow(page);
 });
@@ -112,7 +113,7 @@ test.describe('native browser zoom',()=>{
     for(const id of ['one','two','three']) await page.getByRole('checkbox',{name:`Select job ${id}`,exact:true}).check();
     for(const name of ['Cancel','Archive']){
       const trigger=page.getByRole('button',{name:`${name} selected`});await trigger.click();const dialog=page.getByRole('dialog');
-      const confirm=dialog.getByRole('button',{name:`${name} 3 jobs`,exact:true});await confirm.scrollIntoViewIfNeeded();await expect(confirm).toBeInViewport({ratio:1});await noOverflow(page);
+      const confirm=dialog.getByRole('button',{name:`${name} ${name === 'Cancel' ? 2 : 3} jobs`,exact:true});await confirm.scrollIntoViewIfNeeded();await expect(confirm).toBeInViewport({ratio:1});await noOverflow(page);
       await dialog.getByRole('button',{name:'Keep jobs'}).click();await expect(trigger).toBeFocused();
     }
     await page.goto('/project/phone/jobs/one/story');
@@ -126,7 +127,7 @@ test.describe('native browser zoom',()=>{
 for(const width of [320,390,768,1440]) test(`ENV exact-job tab retains full requirements through failed Trace at ${width}px`,async({page},info)=>{
   await page.setViewportSize({width,height:1000});const reads=await routeEnvironment(page);
   await page.goto('/project/env/jobs/long/story?tab=env');
-  await expect(page.getByRole('tab',{name:'Env',exact:true})).toHaveAttribute('aria-selected','true');
+  await expect(page.getByRole('tab',{name:'Execution',exact:true})).toHaveAttribute('aria-selected','true');
   await expect(page.getByText(longBase,{exact:true})).toBeVisible();
   await expect(page.getByText('0.5 cores',{exact:true})).toBeVisible();
   await expect(page.getByText('512 MiB',{exact:true})).toBeVisible();
@@ -134,7 +135,7 @@ for(const width of [320,390,768,1440]) test(`ENV exact-job tab retains full requ
   expect(reads.some(path=>/\/(story|input-artifacts|conversation)$/.test(path))).toBe(false);
   await noOverflow(page);await captureEnvironment(page,info,`env-${width}`);
   await page.getByRole('tab',{name:'Trace',exact:true}).click();await expect(page.getByText('Failed to load job story',{exact:true})).toBeVisible();
-  await page.getByRole('tab',{name:'Env',exact:true}).click();await expect(page.getByText(longBase,{exact:true})).toBeVisible();await noOverflow(page);
+  await page.getByRole('tab',{name:'Execution',exact:true}).click();await expect(page.getByText(longBase,{exact:true})).toBeVisible();await noOverflow(page);
 });
 test('phone story stacks panels, provides selected details access, and preserves node selection on resize', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });

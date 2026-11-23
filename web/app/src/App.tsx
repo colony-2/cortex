@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { BrowserRouter, Link, matchPath, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { CloudServerOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MenuOutlined, SettingOutlined } from '@ant-design/icons';
+import { CloudServerOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MenuOutlined, SearchOutlined, SettingOutlined } from '@ant-design/icons';
 import { Alert, Button, Drawer, Empty, Input, Layout, Spin, Tooltip, Typography } from 'antd';
 import {
   InputActivityProvider,
@@ -23,7 +23,11 @@ import { useCompact } from './hooks/useCompact';
 import AccountMenu from './components/AccountMenu';
 import LoginPage from './components/LoginPage';
 import InboxNavigation from './components/InboxNavigation';
+import { createRequestId } from '@colony2/shared/cellProtocol';
+import { useSavedMessageDrafts } from './hooks/useMessageDrafts';
+import { useSavedReviewDrafts } from './hooks/useReviewDraft';
 import ComposeJob from './components/ComposeJob';
+import InboxDraftsPage from './components/InboxDraftsPage';
 import { JobInboxProvider } from './hooks/useJobInbox';
 import './inbox.css';
 
@@ -65,6 +69,8 @@ function initialTenantId(search: string, pathname: string, defaultTenantId: stri
 
 const reviewDetailPath = '/project/:projectId/reviews/:jobId';
 const isStoryInput = (selectors: URLSearchParams) => selectors.has('occurrenceId') || selectors.has('requestId');
+const sidebarWidth = 256;
+const railWidth = 76;
 
 export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
   const location = useLocation();
@@ -84,31 +90,45 @@ function InboxShell({ defaultTenantId }: { defaultTenantId: string }) {
   const reviewOpen = !!matchPath(reviewDetailPath, location.pathname) && selectors.has('review_id') && !isStoryInput(selectors);
   const openReviewPath = reviewOpen ? location.pathname : null;
   const useNavigationDrawer = compact || reviewOpen;
-  const story = /\/jobs\/[^/]+\/story$/.test(location.pathname);
-  const [navigationChoice, setNavigationChoice] = useState<{path: string; expanded: boolean}>();
-  const collapsed = navigationChoice?.path === location.pathname ? !navigationChoice.expanded : story;
-  const toggleNavigation = () => setNavigationChoice({path: location.pathname, expanded: collapsed});
-  const [composeOpen, setComposeOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [composers, setComposers] = useState<string[]>([]);
+  const [sendingComposers, setSendingComposers] = useState<Set<string>>(() => new Set());
+  const [activeComposer, setActiveComposer] = useState<string>();
+  const composerDock = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const dock = composerDock.current;
+    const active = dock?.querySelector('.inbox-composer.active');
+    if (!dock || !active || dock.scrollWidth <= dock.clientWidth) return;
+    const offset = active.getBoundingClientRect().right - dock.getBoundingClientRect().right;
+    if (offset > 0) dock.scrollLeft += offset;
+  }, [activeComposer]);
+  const openComposer = (id: string) => {
+    setComposers(previous => previous.includes(id) ? previous : [...previous, id]);
+    setActiveComposer(id);
+  };
+  const closeComposer = (id: string) => {
+    setComposers(previous => previous.filter(value => value !== id));
+    setActiveComposer(previous => previous === id ? undefined : previous);
+  };
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   useEffect(() => { setMenuOpen(false); }, [useNavigationDrawer, openReviewPath]);
   const closeMenu = () => {
+    if (!useNavigationDrawer) return;
     setMenuOpen(false);
     requestAnimationFrame(() => menuButton.current?.focus({ preventScroll: true }));
   };
   const [authenticated, setAuthenticated] = useState(isAuthenticated());
   const navigate = useNavigate();
-  const [tenantId, setTenantId] = useState(() => initialTenantId(location.search, location.pathname, defaultTenantId));
-  const [tenantDraft, setTenantDraft] = useState(tenantId);
+  const tenantId = initialTenantId(location.search, location.pathname, defaultTenantId);
   const { setCurrentProjectId } = useInputActivity();
-
-  useEffect(() => {
-    const selectedTenant = initialTenantId(location.search, location.pathname, defaultTenantId);
-    if (selectedTenant !== tenantId) {
-      setTenantId(selectedTenant);
-      setTenantDraft(selectedTenant);
-    }
-  }, [location.search, location.pathname, tenantId, defaultTenantId]);
+  const messageDrafts = useSavedMessageDrafts(tenantId);
+  const reviewDrafts = useSavedReviewDrafts(tenantId);
+  const showDrafts = selectors.get('inbox') === 'drafts';
+  const showThreadList = !showDrafts && !!(matchPath('/jobs', location.pathname) || matchPath('/project/:projectId/jobs', location.pathname));
+  const searchQuery = selectors.get('q') ?? '';
+  const [searchDraft, setSearchDraft] = useState(searchQuery);
+  useEffect(() => setSearchDraft(searchQuery), [location.pathname, searchQuery]);
 
   useEffect(() => {
     setCurrentProjectId(tenantId);
@@ -129,10 +149,15 @@ function InboxShell({ defaultTenantId }: { defaultTenantId: string }) {
     return <LoginPage onLogin={() => setAuthenticated(true)} />;
   }
 
-  const applyTenant = () => {
-    const next = tenantDraft.trim() || defaultTenantId;
-    setTenantId(next);
-    navigate(`/project/${encodeURIComponent(next)}/jobs`);
+  const applyTenant = (tenant: string) => {
+    navigate(`/project/${encodeURIComponent(tenant.trim() || defaultTenantId)}/jobs`);
+  };
+
+  const searchThreads = (query: string) => {
+    const params = showThreadList ? new URLSearchParams(location.search) : new URLSearchParams();
+    if (query) params.set('q', query);
+    else params.delete('q');
+    navigate({ pathname: showThreadList ? location.pathname : `/project/${encodeURIComponent(tenantId)}/jobs`, search: params.toString() }, { replace: showThreadList });
   };
 
   const handleLogout = () => {
@@ -141,22 +166,31 @@ function InboxShell({ defaultTenantId }: { defaultTenantId: string }) {
   };
 
   const rail = !useNavigationDrawer && collapsed;
-  const navigation = <InboxNavigation rail={rail} onCompose={() => setComposeOpen(true)} onNavigate={closeMenu}
-    onExpand={() => setNavigationChoice({path: location.pathname, expanded: true})} />;
+  const navigation = <InboxNavigation rail={rail} draftCount={messageDrafts.length + reviewDrafts.length} onCompose={() => openComposer(createRequestId())} onNavigate={closeMenu}
+    onExpand={() => setCollapsed(false)} />;
+  const draftsPage = <InboxDraftsPage tenant={tenantId} messages={messageDrafts} reviews={reviewDrafts} sending={sendingComposers}
+    openComposer={openComposer} closeComposer={closeComposer} />;
   return (
-    <Layout className="app-shell">
+    <Layout className={`app-shell${rail ? ' inbox-rail' : ''}`}
+      style={{ '--inbox-sidebar-width': useNavigationDrawer ? 'auto' : `${rail ? railWidth : sidebarWidth}px` } as CSSProperties}>
       <Header className="app-header">
         <div className="app-brand">
-          {useNavigationDrawer && <Button ref={menuButton} aria-label="Open navigation" aria-expanded={menuOpen} icon={<MenuOutlined />} onClick={() => setMenuOpen(true)} />}
+          <Button type="text" className="inbox-navigation-toggle" ref={menuButton}
+            aria-label={useNavigationDrawer ? 'Open navigation' : rail ? 'Expand navigation' : 'Collapse navigation'}
+            aria-expanded={useNavigationDrawer ? menuOpen : !rail}
+            icon={useNavigationDrawer ? <MenuOutlined /> : rail ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            onClick={() => useNavigationDrawer ? setMenuOpen(true) : setCollapsed(value => !value)} />
           <Typography.Text strong>cortex</Typography.Text>
         </div>
-        <div className="tenant-control">
-          <Typography.Text type="secondary">Tenant</Typography.Text>
-          <Input.Search aria-label="Tenant ID" value={tenantDraft} onChange={event => setTenantDraft(event.target.value)} onSearch={applyTenant} enterButton="Use" />
+        <Input className="inbox-thread-search" prefix={<SearchOutlined aria-hidden />} type="search" aria-label="Search threads" placeholder="Search threads"
+          allowClear value={showThreadList ? searchQuery : searchDraft}
+          onChange={event => showThreadList ? searchThreads(event.target.value) : setSearchDraft(event.target.value)}
+          onPressEnter={() => { if (!showThreadList && searchDraft.trim()) searchThreads(searchDraft.trim()); }} />
+        <div className="inbox-header-actions">
+          <Tooltip title="Runners"><Link className="inbox-settings" aria-label="Runners" to={`/project/${encodeURIComponent(tenantId)}/runners`}><CloudServerOutlined /></Link></Tooltip>
+          <Tooltip title="Settings"><Link className="inbox-settings" aria-label="Settings" to={`/project/${encodeURIComponent(tenantId)}/admin`}><SettingOutlined /></Link></Tooltip>
+          <AccountMenu tenant={tenantId} onSwitchTenant={applyTenant} onLogout={handleLogout} />
         </div>
-        <Tooltip title="Runners"><Link className="inbox-settings" aria-label="Runners" to={`/project/${encodeURIComponent(tenantId)}/runners`}><CloudServerOutlined /></Link></Tooltip>
-        <Tooltip title="Settings"><Link className="inbox-settings" aria-label="Settings" to={`/project/${encodeURIComponent(tenantId)}/admin`}><SettingOutlined /></Link></Tooltip>
-        <AccountMenu onLogout={handleLogout} />
       </Header>
       <Layout className="app-body">
         {useNavigationDrawer ? <Drawer title="Navigation" width="min(320px, 100%)" open={menuOpen} onClose={closeMenu} afterOpenChange={open => {
@@ -164,15 +198,12 @@ function InboxShell({ defaultTenantId }: { defaultTenantId: string }) {
           // our explicit opener afterwards, including interrupted animations.
           if (!open) queueMicrotask(() => menuButton.current?.focus({ preventScroll: true }));
         }}>{navigation}</Drawer>
-          : <Sider className="desktop-navigation" width={256} collapsedWidth={76} collapsed={rail} collapsible
-            theme="light" trigger={<button className="navigation-toggle" aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
-              aria-expanded={!collapsed}>{collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}</button>}
-            onCollapse={toggleNavigation}>{navigation}</Sider>}
+          : <Sider className="desktop-navigation" width={sidebarWidth} collapsedWidth={railWidth} collapsed={rail} theme="light" trigger={null}>{navigation}</Sider>}
         <Content className="app-content">
           <Routes key={initialTenantId(location.search, location.pathname, defaultTenantId)}>
             <Route path="/" element={<Navigate to={`/project/${tenantId}/jobs`} replace />} />
-            <Route path="/jobs" element={<JobsListPage key={tenantId} projectId={tenantId} />} />
-            <Route path="/project/:projectId/jobs" element={<JobsRoute fallbackProjectId={tenantId} />} />
+            <Route path="/jobs" element={showDrafts ? draftsPage : <JobsListPage key={tenantId} projectId={tenantId} />} />
+            <Route path="/project/:projectId/jobs" element={showDrafts ? draftsPage : <JobsRoute fallbackProjectId={tenantId} />} />
             <Route path="/project/:projectId/goals" element={<Navigate to={`/project/${encodeURIComponent(tenantId)}/jobs`} replace />} />
             <Route path="/project/:projectId/goals/:goalId" element={<Alert type="info" message="Goal links have been retired" description={<Link to={`/project/${encodeURIComponent(tenantId)}/jobs`}>Open All jobs</Link>} />} />
             <Route path="/project/:projectId/jobs/:jobId/tree" element={<TreePage />} />
@@ -189,7 +220,17 @@ function InboxShell({ defaultTenantId }: { defaultTenantId: string }) {
           </Routes>
         </Content>
       </Layout>
-      <ComposeJob key={JSON.stringify([tenantId, getUserEmail()])} open={composeOpen} onClose={() => setComposeOpen(false)} />
+      {!!composers.length && <div ref={composerDock} className="inbox-composer-dock">
+        {composers.map(id => <ComposeJob key={id} id={id} open active={id === (activeComposer ?? composers[composers.length - 1])}
+          onActivate={() => setActiveComposer(id)} onClose={() => closeComposer(id)} onRemove={() => closeComposer(id)} onSendingChange={sending => {
+            setSendingComposers(previous => {
+              const next = new Set(previous);
+              if (sending) next.add(id);
+              else next.delete(id);
+              return next;
+            });
+          }} />)}
+      </div>}
     </Layout>
   );
 }

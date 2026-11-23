@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { jobIdentity, mockCells } from './helpers/cells';
+import { openTenantSwitcher } from './helpers/inbox';
 
 // These flows include real focus/tooltip transitions, reloads, and form submission.
 test.setTimeout(90_000);
@@ -179,7 +180,7 @@ for (const width of [1440, 390]) test(`Reviews controls and return navigation at
  // A tenant change starts with its own default view and hides old rows.
  await page.route('**/api/projects/other/jobs?*', route => route.fulfill({ json: { jobs: [] } }));
  await mockCells(page, ['platform']);
- await page.getByRole('searchbox',{name:'Tenant ID',exact:true}).fill('other');
+ await (await openTenantSwitcher(page)).fill('other');
  await page.getByRole('button',{name:'Use',exact:true}).click();
  await expect(page).toHaveURL(/\/project\/other\/jobs$/);
  // The retained Reviews route is directly addressable; the inbox replaces its sidebar entry.

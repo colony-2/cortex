@@ -72,7 +72,7 @@ async function selectStoryTab(page: Page, name: string) {
   if (await tab.getAttribute('aria-selected') !== 'true') await tab.click();
 }
 async function initiallyVisible(page:Page) {
-  await selectStoryTab(page, 'Relationships');
+  await selectStoryTab(page, 'Graph');
   await expect(related(page).getByRole('heading',{name:'Related jobs and goals'})).toBeVisible();
   await expect(disclosure(page)).toHaveCount(0);
   await expect(related(page).getByRole('button',{name:'Refresh relationships',exact:true})).toBeVisible();
@@ -97,7 +97,7 @@ test('REL-001,010,011,012,030,033,038 story links navigate to correct identities
   await expect(related(page)).toBeHidden();
   await selectStoryTab(page, 'Trace');
   await page.getByText('Compatibility checks',{exact:true}).first().click();
-  await selectStoryTab(page, 'Relationships');
+  await selectStoryTab(page, 'Graph');
   expect(inspections).toEqual(['evidence-105', 'evidence-105']); // Existing development StrictMode replay.
   await capture(page,'story-desktop-restored.png');
   await related(page).getByRole('link',{name:'Job · Check API compatibility'}).click();
@@ -210,7 +210,7 @@ for(const width of [1440,390,320]) test(`REL-040,041,042 story direct content an
   await expect(related(page).getByRole('link',{name:'Job · Check API compatibility'})).toBeVisible();
   await selectStoryTab(page, 'Trace');
   await page.getByText('Compatibility checks',{exact:true}).first().click();
-  await selectStoryTab(page, 'Relationships');
+  await selectStoryTab(page, 'Graph');
   expect(childRequests).toBe(requests);
   if(width===390) await capture(page,'story-mobile-direct.png');
   await page.reload();
@@ -248,6 +248,6 @@ for(const width of [1280,390]) test(`JS-024,025,035,037 pages other attempts, re
   await attempts.getByRole('link',{name:'Archived earlier attempt'}).click();
   await expect(page).toHaveURL(/\/jobs\/check-api-106\/story/);
   await expect(page.getByRole('link',{name:'Back to inbox',exact:true})).toHaveAttribute('href','/project/demo/jobs');
-  await page.getByRole('tab',{name:'Relationships',exact:true}).click();
+  await page.getByRole('tab',{name:'Graph',exact:true}).click();
   await expect(attempts.getByRole('link',{name:'Goal · goal-api',exact:true})).toBeVisible();
 });

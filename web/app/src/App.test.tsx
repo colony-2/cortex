@@ -31,13 +31,13 @@ it('shows pending counts without changing them on navigation width changes', () 
 });
 it('never shows another tenant count as current or empty', () => {
   activity.currentProjectId='other'; activity.pendingInputs=[{id:'one',cell_id:'cell-platform'}]; render(shell());
-  expect(screen.getByRole('link',{name:'All',exact:true})).toHaveTextContent('?');
+  expect(screen.getByRole('link',{name:'Waiting',exact:true})).toHaveTextContent('?');
 });
-it('starts stories narrow and preserves mounted review text through width toggles', () => {
+it('starts stories expanded and preserves mounted review text through width toggles', () => {
   render(shell('/project/navigation/jobs/one/story'));
   fireEvent.change(screen.getByLabelText('Review draft'),{target:{value:'Unsent feedback'}});
-  fireEvent.click(screen.getByRole('button',{name:'Expand navigation'}));
   fireEvent.click(screen.getByRole('button',{name:'Collapse navigation'}));
+  fireEvent.click(screen.getByRole('button',{name:'Expand navigation'}));
   expect(screen.getByLabelText('Review draft')).toHaveValue('Unsent feedback');
 });
 it('explains retired goal links and offers All instead of opening an arbitrary job', () => {

@@ -139,6 +139,7 @@ export default function LeaseTable({
       rowKey="id"
       columns={columns}
       dataSource={leases}
+      showSorterTooltip={{ styles: { root: { pointerEvents: 'none' } } }}
       pagination={false}
       scroll={{ x: 'max-content' }}
       expandable={{

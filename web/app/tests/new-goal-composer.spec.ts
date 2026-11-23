@@ -28,7 +28,7 @@ test('CX-01 CX-02 CX-03 desktop size and phone takeover preserve one draft acros
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/project/composer/jobs');
   await openCompose(page);
-  const dialog = page.getByRole('region', { name: 'Compose job' });
+  const dialog = page.getByRole('region', { name: 'New message' });
   await expect(dialog).toBeVisible();
   expect((await dialog.boundingBox())!.width).toBe(560);
   await expect(dialog.getByRole('radio')).toHaveCount(0);
@@ -70,7 +70,7 @@ test('CX-04 CX-06 long content scrolls under reachable actions and Escape restor
   await page.goto('/project/composer/jobs');
   await openCompose(page);
   const opener = page.getByRole('button', { name: 'Open navigation', exact: true });
-  const dialog = page.getByRole('region', { name: 'Compose job' });
+  const dialog = page.getByRole('region', { name: 'New message' });
   await dialog.getByLabel('Message', { exact: true }).fill('A long prompt\n'.repeat(90));
   const footer = dialog.locator('footer');
   const header = dialog.locator('header');
@@ -90,7 +90,7 @@ test('simulated keyboard viewport shrink and pan retain reachable actions and th
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/project/composer/jobs');
   await openCompose(page);
-  const dialog = page.getByRole('region', { name: 'Compose job' });
+  const dialog = page.getByRole('region', { name: 'New message' });
   await dialog.getByLabel('Message', { exact: true }).fill('Keep this draft while the keyboard is open.');
   await page.evaluate(() => {
     Object.defineProperty(visualViewport, 'height', { configurable: true, value: 400 });
@@ -338,7 +338,7 @@ test('submission freezes rich editor, source mode, paste, toolbar and attachment
   });
   await dialog.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(prompt).toHaveAttribute('contenteditable', 'false');
-  for (const name of ['Markdown source', 'Bold', 'Attach files', 'Discard']) await expect(dialog.getByRole('button', { name, exact: true })).toBeDisabled();
+  for (const name of ['Markdown source', 'Bold', 'Attach files', 'Discard draft']) await expect(dialog.getByRole('button', { name, exact: true })).toBeDisabled();
   await pasteImage(page); await expect(prompt.locator('img')).toHaveCount(0);
   release(); await expect(dialog.getByText(/Unfreeze/)).toBeVisible();
   await expect(prompt).toHaveAttribute('contenteditable', 'true');
@@ -400,7 +400,7 @@ test('pending image references block submission and a discarded draft ignores la
   });
   await dialog.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(dialog.getByText(/Wait for pasted images/)).toBeVisible(); expect(submissions).toBe(0);
-  await dialog.getByRole('button', { name: 'Discard', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Discard draft', exact: true }).click();
   await expect(dialog).toBeHidden();
   await openCompose(page);
   await page.evaluate(() => (window as any).releaseImageValidation());
@@ -433,7 +433,7 @@ test('RC-06 RC-08 prompt errors, focus, touch sizes and simulated safe areas rem
   await expect(dialog.locator('.inbox-compose-body')).toHaveCSS('padding-left', '20px');
   await expect(dialog.locator('footer')).toHaveCSS('padding-bottom', '30px');
   await prompt.fill('Retain draft across landscape');
-  await dialog.getByRole('button', { name: 'Discard', exact: true }).focus();
+  await dialog.getByRole('button', { name: 'Discard draft', exact: true }).focus();
   // Compose is a nonmodal inbox surface; Tab can reach the rest of the app.
   await page.keyboard.press('Tab');
   await dialog.getByRole('button', { name: 'Bold', exact: true }).focus();
@@ -643,7 +643,7 @@ test.describe('RC-09 native desktop zoom', () => {
     await page.goto('/project/composer/jobs');
     await setNativeZoom(page, 2);
     await openCompose(page);
-    const dialog = page.getByRole('region', { name: 'Compose job' });
+    const dialog = page.getByRole('region', { name: 'New message' });
     const prompt = dialog.getByRole('textbox', { name: 'Message', exact: true });
     const text = 'A substantial prompt\n'.repeat(35);
     await prompt.fill(text);

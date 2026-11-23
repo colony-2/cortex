@@ -12,9 +12,10 @@ export default function JobExecutionRequirements({ job, projectId, navigationSta
   const summary = requirementSummary(job);
   if (!summary) return null;
   const query = new URLSearchParams(jobFilterSearch(params));
-  query.set('tab', 'env');
+  query.set('tab', 'runtime');
   return <Link className="job-requirements-summary" to={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(job.job_id)}/story?${query}`}
+    title={summary}
     state={{ ...navigationState, goalsReturnTo: navigationState?.goalsReturnTo || location.pathname + location.search }}>
-    {summary}
+    <span>{summary}</span>
   </Link>;
 }

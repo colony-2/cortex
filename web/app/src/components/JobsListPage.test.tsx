@@ -5,6 +5,8 @@ import { JobInboxProvider } from '../hooks/useJobInbox';
 import JobsListPage from './JobsListPage';
 import { registryCell } from '../test/cellFixtures';
 import { listJobs, listCells, getJob } from '@colony2/shared/api';
+import { getUserEmail } from '@colony2/shared';
+import { inboxReadKey } from '../utils/jobInboxData';
 const activity = vi.hoisted(() => ({ pendingInputs: [{ id:'one',cell_id:'cell-platform',requested_at:'2026-11-21T12:00:00Z' }], discoveryStatus:'current', currentProjectId:'tenant', refresh: vi.fn() }));
 vi.mock('@colony2/shared', async original => ({ ...await original<typeof import('@colony2/shared')>(), useInputActivity: () => activity }));
 vi.mock('@colony2/shared/api', async original => ({ ...await original<typeof import('@colony2/shared/api')>(), listJobs:vi.fn(), listCells:vi.fn(), getJob:vi.fn() }));
@@ -18,7 +20,7 @@ it('renders individual job rows without goal grouping and opens exact Conversati
   expect(links[1]).toHaveAttribute('href','/project/tenant/jobs/two/story');
   expect(screen.getByText('Update unavailable')).toBeVisible();
   fireEvent.click(links[0]);
-  await waitFor(()=>expect(links[0].querySelector('.inbox-unread-dot')).toBeNull());
+  expect(localStorage.getItem(inboxReadKey(getUserEmail() ?? '', 'tenant', 'one'))).not.toBeNull();
 });
 it('renders only explicitly hidden jobs in Archive and always as read', async () => {
   mount('/project/tenant/jobs?inbox=archive');
@@ -26,10 +28,13 @@ it('renders only explicitly hidden jobs in Archive and always as read', async ()
   expect(links[0]).toHaveAttribute('href','/project/tenant/jobs/hidden/story?inbox=archive');
   expect(document.querySelector('.inbox-job-row.unread')).toBeNull();
 });
-it('searches the complete loaded inbox and leaves source pending counts alone', async () => {
-  mount();await screen.findAllByRole('link',{name:'platform: Same title'});
-  fireEvent.change(screen.getByRole('textbox',{name:'Search jobs'}),{target:{value:'absent'}});
+it('searches subsequent visible pages and leaves source pending counts alone', async () => {
+  vi.mocked(listJobs).mockReset().mockResolvedValueOnce({ jobs: [jobs[0]] as any, next_page_token: 'next' })
+    .mockResolvedValueOnce({ jobs: [{ ...jobs[1], title: 'Older match' }] as any });
+  mount('/project/tenant/jobs?q=Older');
+  expect(await screen.findByRole('link', { name: 'platform: Older match' })).toBeVisible();
   expect(screen.queryByRole('link',{name:'platform: Same title'})).toBeNull();
+  expect(vi.mocked(listJobs).mock.calls.map(([, options]) => options?.pageToken)).toEqual([undefined, 'next']);
   expect(activity.pendingInputs).toHaveLength(1);
 });
 it('retains visible rows if refresh fails', async () => {
@@ -47,7 +52,7 @@ it('selects jobs independently of opening their stories and clears selection on 
   expect(screen.getAllByLabelText('Unread')).toHaveLength(2);
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select all jobs' }));
   expect(screen.getByText('2 selected')).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all jobs' }));
   expect(screen.queryByText('2 selected')).toBeNull();
   expect(screen.getByRole('checkbox', { name: 'Select job two' })).not.toBeChecked();
 });
@@ -59,7 +64,7 @@ it('ENV-15–17 retains per-job requirement summaries and replaces removed execu
   const summary=await screen.findByRole('link',{name:'req: linux 4c/8g'});
   const url=new URL(summary.getAttribute('href')!,'http://localhost');
   expect(url.pathname).toBe('/project/tenant/jobs/one/story');
-  expect(url.searchParams.get('tab')).toBe('env');
+  expect(url.searchParams.get('tab')).toBe('runtime');
   expect(summary.closest('a.inbox-job-link')).toBeNull();
   for(const status of ['in_flight','not_waiting']) {
     job={...job,execution:{status,source:'unavailable',published:false},recorded_execution:{status:'specified',source:'submission',published:false,demand:{effective:{base:status}}}};

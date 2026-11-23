@@ -2,6 +2,7 @@ package cortex
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -74,9 +75,16 @@ type conversationHistoryReader struct {
 	runtime jobdb.JobRunReader
 }
 
+type retainedSnapshotOnly struct{}
+
 func (r conversationHistoryReader) GetJobRun(ctx context.Context, req jobdb.GetJobRunRequest) (jobdb.GetJobRunResponse, error) {
+	// c2j's detail API always checks live actionability after resolving an
+	// entry. A read of an existing snapshot needs no live job state.
+	if ctx.Value(retainedSnapshotOnly{}) != nil {
+		return jobdb.GetJobRunResponse{}, input.ErrHistoryUnsupported
+	}
 	capture, _ := ctx.Value(inventoryContextKey{}).(*conversationInventory)
-	if capture == nil || req.JobKey != capture.key {
+	if r.runtime == nil || capture == nil || req.JobKey != capture.key {
 		return r.HistoryReader.GetJobRun(ctx, req)
 	}
 	return capture.readRun(ctx, r.runtime, req)
@@ -149,11 +157,17 @@ func (s *Server) handleConversation(w http.ResponseWriter, r *http.Request) {
 		Activity       *conversationSection `json:"activity,omitempty"`
 		FinalDocuments *conversationSection `json:"final_documents,omitempty"`
 		*input.JobInputStoryPage
+		Entries             []conversationEntry       `json:"entries"`
 		Merges              []input.HistoryMergeEntry `json:"merges"`
 		Events              []input.HistoryEvent      `json:"events"`
 		PublicationCoverage string                    `json:"publication_coverage"`
 	}
-	result := conversationPage{InputArtifacts: inventory.rows, JobInputStoryPage: page, Merges: []input.HistoryMergeEntry{}, Events: []input.HistoryEvent{}, PublicationCoverage: "recorded"}
+	entries, err := s.conversationEntries(ctx, page, r.URL.Query().Get("include_review_attachments") == "true")
+	if err != nil {
+		historyError(w, err)
+		return
+	}
+	result := conversationPage{InputArtifacts: inventory.rows, JobInputStoryPage: page, Entries: entries, Merges: []input.HistoryMergeEntry{}, Events: []input.HistoryEvent{}, PublicationCoverage: "recorded"}
 	if r.URL.Query().Get("include_sections") != "false" {
 		activity, documents := s.conversationSections(r, inventory)
 		result.Activity, result.FinalDocuments = &activity, &documents
@@ -180,13 +194,61 @@ func (s *Server) handleConversation(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+type conversationEntry struct {
+	input.JobInputStoryEntry
+	ReviewAttachments *conversationReviewAttachments `json:"review_attachments,omitempty"`
+}
+
+type conversationReviewAttachments struct {
+	Request  []input.HistoryArtifactMember `json:"request"`
+	Response []input.HistoryArtifactMember `json:"response"`
+}
+
+func (s *Server) conversationEntries(ctx context.Context, page *input.JobInputStoryPage, includeReviewAttachments bool) ([]conversationEntry, error) {
+	entries := make([]conversationEntry, 0, len(page.Entries))
+	for _, entry := range page.Entries {
+		row := conversationEntry{JobInputStoryEntry: entry}
+		if includeReviewAttachments {
+			var presentation struct{ Type string }
+			_ = json.Unmarshal(entry.FormFields["presentation"], &presentation)
+			if entry.Kind == "review" || presentation.Type == "review/v2" {
+				detail, err := s.retainedConversationEntry(ctx, input.GetJobInputStoryEntryRequest{
+					TenantID: page.TenantID, JobID: page.JobID, EntryID: entry.EntryID, SnapshotToken: page.SnapshotToken,
+				})
+				if err != nil {
+					return nil, err
+				}
+				row.ReviewAttachments = &conversationReviewAttachments{Request: detail.RequestManifest, Response: detail.ResponseManifest}
+			}
+		}
+		entries = append(entries, row)
+	}
+	return entries, nil
+}
+
+func (s *Server) retainedConversationEntry(ctx context.Context, req input.GetJobInputStoryEntryRequest) (*input.JobInputStoryEntryDetail, error) {
+	if req.SnapshotToken == "" {
+		// A standalone entry or artifact link may need to establish a snapshot.
+		page, err := s.history.ListJobInputStory(ctx, input.ListJobInputStoryRequest{TenantID: req.TenantID, JobID: req.JobID, PageSize: 1})
+		if err != nil {
+			return nil, err
+		}
+		req.SnapshotToken = page.SnapshotToken
+	}
+	detail, err := s.history.GetJobInputStoryEntry(context.WithValue(ctx, retainedSnapshotOnly{}, true), req)
+	if err == nil {
+		detail.Actionability = input.HistoryActionability{Observation: "read_only", ObservedAt: detail.ObservedAt}
+	}
+	return detail, err
+}
+
 func (s *Server) handleConversationEntry(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if s.history == nil {
 		historyError(w, input.ErrHistoryUnsupported)
 		return
 	}
-	entry, err := s.history.GetJobInputStoryEntry(r.Context(), input.GetJobInputStoryEntryRequest{TenantID: s.tenantID(r), JobID: mux.Vars(r)["jobId"], EntryID: r.URL.Query().Get("entry_id"), SnapshotToken: r.URL.Query().Get("snapshot_token")})
+	entry, err := s.retainedConversationEntry(r.Context(), input.GetJobInputStoryEntryRequest{TenantID: s.tenantID(r), JobID: mux.Vars(r)["jobId"], EntryID: r.URL.Query().Get("entry_id"), SnapshotToken: r.URL.Query().Get("snapshot_token")})
 	if err != nil {
 		historyError(w, err)
 		return
@@ -216,7 +278,7 @@ func (s *Server) handleConversationArtifact(w http.ResponseWriter, r *http.Reque
 	// coordinates through the authorized engine; no arbitrary reference is accepted.
 	// Recheck original producer access in the request context even for a cached
 	// snapshot. Membership tokens identify bytes; they never grant read authority.
-	detail, err := s.history.GetJobInputStoryEntry(r.Context(), input.GetJobInputStoryEntryRequest{TenantID: s.tenantID(r), JobID: mux.Vars(r)["jobId"], EntryID: r.URL.Query().Get("entry_id"), SnapshotToken: r.URL.Query().Get("snapshot_token")})
+	detail, err := s.retainedConversationEntry(r.Context(), input.GetJobInputStoryEntryRequest{TenantID: s.tenantID(r), JobID: mux.Vars(r)["jobId"], EntryID: r.URL.Query().Get("entry_id"), SnapshotToken: r.URL.Query().Get("snapshot_token")})
 	if err != nil {
 		historyError(w, err)
 		return
@@ -249,7 +311,7 @@ func (s *Server) handleConversationArtifact(w http.ResponseWriter, r *http.Reque
 		historyError(w, input.ErrHistoryArtifactNotFound)
 		return
 	}
-	artifact, err := s.history.OpenJobInputStoryArtifact(r.Context(), input.OpenJobInputStoryArtifactRequest{TenantID: s.tenantID(r), JobID: mux.Vars(r)["jobId"], EntryID: r.URL.Query().Get("entry_id"), ArtifactID: r.URL.Query().Get("artifact_id"), SnapshotToken: r.URL.Query().Get("snapshot_token")})
+	artifact, err := s.history.OpenJobInputStoryArtifact(r.Context(), input.OpenJobInputStoryArtifactRequest{TenantID: s.tenantID(r), JobID: mux.Vars(r)["jobId"], EntryID: r.URL.Query().Get("entry_id"), ArtifactID: r.URL.Query().Get("artifact_id"), SnapshotToken: detail.SnapshotToken})
 	if err != nil {
 		historyError(w, err)
 		return
@@ -295,7 +357,7 @@ func (s *Server) conversationSections(r *http.Request, inventory *conversationIn
 	if err != nil {
 		return unavailable, unavailable
 	}
-	activity := conversationSection{Availability: "available", Value: before, ObservedAt: time.Now().UTC()}
+	activity := conversationSection{Availability: "available", Value: withExecutionRequirements(before), ObservedAt: time.Now().UTC()}
 	if before.Status != jobdb.JobStatusCompleted && before.Store != jobdb.JobStoreArchived {
 		return activity, conversationSection{Availability: "available", Value: map[string]string{"job_id": key.JobId, "state": "pending"}, ObservedAt: time.Now().UTC()}
 	}
@@ -324,7 +386,7 @@ func (s *Server) conversationSections(r *http.Request, inventory *conversationIn
 	if err != nil {
 		return unavailable, unavailable
 	}
-	activity.Value = after
+	activity.Value = withExecutionRequirements(after)
 	activity.AttemptOrdinal = nil
 	later := run
 	if reader, ok := s.chapters.(chapterLookup); ok && inventory.run != nil {

@@ -63,7 +63,7 @@ export function useReviewV2(tenant: string, job: string, selected: string, initi
         }
         if (abort.signal.aborted || !active.current || turn !== generation.current) return;
         const jobValue = page?.activity?.availability === 'available' ? page.activity.value : undefined;
-        const limitations = [page?.completeness && !['complete','recorded'].includes(page.completeness) ? `History coverage: ${page.completeness}.` : '', page?.activity?.availability !== 'available' ? 'Job status is unavailable.' : '', ...(page?.diagnostics ?? []).map(d=>d.message)];
+        const limitations = [page?.activity?.availability !== 'available' ? 'Job status is unavailable.' : '', ...(page?.diagnostics ?? []).map(d=>d.message)];
         retained.current = {detail, job: jobValue, declarations, limitations: limitations.filter(Boolean).join(' ')};
         setHistoryVersion(value => value + 1);
       } catch (e) {

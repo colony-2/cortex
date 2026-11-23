@@ -76,11 +76,13 @@ func TestConversationSQLiteReopening(t *testing.T) {
 	}
 	var server *Server
 	var runtime *input.Runtime
+	var reader *countingHistoryReader
 	setup := func() {
 		engine, e := workflow.NewEngineBuilder().WithRuntime(rt).BuildEngine()
 		require.NoError(t, e)
 		ctl := &c2workflow.SWFWorkflowControl{Engine: engine}
-		history, e := input.NewHistoryService(input.HistoryConfig{Reader: ctl})
+		reader = &countingHistoryReader{HistoryReader: ctl}
+		history, e := input.NewHistoryService(input.HistoryConfig{Reader: conversationHistoryReader{HistoryReader: reader}})
 		require.NoError(t, e)
 		runtime, e = input.NewRuntime(ctl, nil)
 		require.NoError(t, e)
@@ -142,14 +144,28 @@ func TestConversationSQLiteReopening(t *testing.T) {
 	require.NoError(t, err)
 	setup()
 	var paged input.JobInputStoryPage
-	require.NoError(t, json.Unmarshal([]byte(read("tenant", "?page_size=1", 200)), &paged))
+	var reviewPage struct {
+		input.JobInputStoryPage
+		Entries []conversationEntry `json:"entries"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(read("tenant", "?page_size=1&include_review_attachments=true", 200)), &reviewPage))
+	paged = reviewPage.JobInputStoryPage
 	require.NotEmpty(t, paged.NextPageToken)
+	require.Equal(t, 1, reader.runReads, "the thread and attachment manifests share one JobDB run read")
+	require.Len(t, reviewPage.Entries, 1)
+	require.Equal(t, firstID, reviewPage.Entries[0].EntryID)
+	manifests := reviewPage.Entries[0].ReviewAttachments
+	require.NotNil(t, manifests)
+	require.Len(t, manifests.Request, 1)
+	require.NotEmpty(t, manifests.Response)
 	beforeReads, err := server.engine.GetJobRun(ctx, jobdb.GetJobRunRequest{JobKey: handle.JobKey})
 	require.NoError(t, err)
 	var later input.JobInputStoryEntryDetail
-	require.NoError(t, json.Unmarshal([]byte(read("tenant", "/entry?entry_id="+url.QueryEscape(second.Entries[1].EntryID), 200)), &later))
+	require.NoError(t, json.Unmarshal([]byte(read("tenant", "/entry?entry_id="+url.QueryEscape(second.Entries[1].EntryID)+"&snapshot_token="+url.QueryEscape(paged.SnapshotToken), 200)), &later))
 	require.Equal(t, "review-two", later.RequestID)
 	require.Equal(t, "pending", later.State)
+	require.Equal(t, "read_only", later.Actionability.Observation)
+	require.Equal(t, 1, reader.runReads, "cached detail must skip the live actionability read")
 	var detail input.JobInputStoryEntryDetail
 	require.NoError(t, json.Unmarshal([]byte(read("tenant", "/entry?entry_id="+url.QueryEscape(firstID), 200)), &detail))
 	require.Equal(t, "review-one", detail.RequestID)
@@ -157,7 +173,11 @@ func TestConversationSQLiteReopening(t *testing.T) {
 	require.False(t, detail.Actionability.Actionable)
 	require.Len(t, detail.RequestManifest, 1)
 	memberQuery := "/artifact?entry_id=" + url.QueryEscape(firstID) + "&artifact_id=" + url.QueryEscape(detail.RequestManifest[0].ArtifactID)
+	require.Equal(t, 2, reader.runReads, "a standalone detail captures one snapshot")
+	require.Equal(t, "first original document", read("tenant", memberQuery+"&snapshot_token="+url.QueryEscape(paged.SnapshotToken), 200))
+	require.Equal(t, 2, reader.runReads, "opening a cached attachment needs only its bytes")
 	require.Equal(t, "first original document", read("tenant", memberQuery, 200))
+	require.Equal(t, 3, reader.runReads, "a standalone attachment reuses the snapshot obtained for the membership lookup")
 	require.NotEmpty(t, detail.ResponseManifest)
 	attachmentQuery := "/artifact?entry_id=" + url.QueryEscape(firstID) + "&artifact_id=" + url.QueryEscape(detail.ResponseManifest[0].ArtifactID)
 	require.Equal(t, "accepted response attachment", read("tenant", attachmentQuery, 200))
@@ -201,6 +221,16 @@ func TestConversationSQLiteReopening(t *testing.T) {
 	require.Equal(t, "first original document", read("tenant", memberQuery, 200))
 	require.Equal(t, "accepted response attachment", read("tenant", attachmentQuery, 200))
 	t.Log("CT-029 bounded retained SQLite restart/archive reopening passed; protected lifetime remains upstream-dependent")
+}
+
+type countingHistoryReader struct {
+	input.HistoryReader
+	runReads int
+}
+
+func (r *countingHistoryReader) GetJobRun(ctx context.Context, req jobdb.GetJobRunRequest) (jobdb.GetJobRunResponse, error) {
+	r.runReads++
+	return r.HistoryReader.GetJobRun(ctx, req)
 }
 
 func withHistoryVars(r *http.Request, tenant, job string) *http.Request {

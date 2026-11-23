@@ -134,7 +134,7 @@ function RecordedLeases({ tenant, launch, jobId }: { tenant: string; launch: str
     {
       ...textColumn<JobLeaseEvent>('Job ID', 'job', (r) => r.jobKey.jobId),
       render: (_, r) => (
-        <Link to={jobStoryPath(r.jobKey.tenantId, r.jobKey.jobId) + '?tab=leases'}>{r.jobKey.jobId}</Link>
+        <Link to={jobStoryPath(r.jobKey.tenantId, r.jobKey.jobId) + '?tab=runtime'}>{r.jobKey.jobId}</Link>
       ),
     },
     textColumn<JobLeaseEvent>('Cell', 'cell', (r) => r.cell),

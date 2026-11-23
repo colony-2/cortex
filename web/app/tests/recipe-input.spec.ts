@@ -12,7 +12,7 @@ import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 
 async function openPendingInput(page: Page) {
-  await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+  await page.getByRole('tab', { name: 'Thread', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Submit', exact: true })).toBeVisible();
 }
 
@@ -280,7 +280,7 @@ for (const multiField of [false, true]) {
         output: multiField ? { answer, decision: 'approve' } : { answer },
       });
       if (!multiField) await page.goto(`/project/${tenant}/jobs/${jobID}/story`);
-      await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+      await page.getByRole('tab', { name: 'Thread', exact: true }).click();
       await expect(page.getByRole('region', { name: 'Job completion', exact: true })).toContainText('Succeeded');
       await page.setViewportSize({ width: 1440, height: 900 });
       await page.goto(`/project/${tenant}/jobs`);
@@ -295,7 +295,7 @@ for (const multiField of [false, true]) {
         await stopWorker();
         const storyResponse = page.waitForResponse(r => r.url().endsWith(`/jobs/${jobID}/story`));
         await page.locator(`.inbox-job-link[href*="/jobs/${jobID}/story"]`).click();
-        await expect(page.getByRole('tab', { name: 'Conversation', exact: true })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByRole('tab', { name: 'Thread', exact: true })).toHaveAttribute('aria-selected', 'true');
         await page.getByRole('tab', { name: 'Trace', exact: true }).click();
         const story = await (await storyResponse).json();
         expect(story.restart_scopes.length).toBeGreaterThan(0);
@@ -488,7 +488,7 @@ for (const multiField of [false, true]) {
           if (failure.op === 'test') {
             await page.goto(`/project/${tenant}/jobs/${failedJob}/story?tab=execution`);
             await expect(page.getByRole('dialog')).toHaveCount(0);
-            await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+            await page.getByRole('tab', { name: 'Thread', exact: true }).click();
             await expect(page.getByRole('region', { name: 'Job completion', exact: true })).toContainText('test failed');
             await page.screenshot({ path: testInfo.outputPath('restart-worker-failure.png'), fullPage: true });
           }
@@ -598,7 +598,7 @@ test.describe('sequential prompts', () => {
     await expect.poll(async () => (await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`)).json(), {
       timeout: 30_000,
     }).toMatchObject({ status: 'completed', output: { answer, reviewer } });
-    await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+    await page.getByRole('tab', { name: 'Thread', exact: true }).click();
     await expect(page.getByRole('region', { name: 'Job completion', exact: true })).toContainText('Succeeded');
     await expect(observer.getByText('No pending reviews')).toBeVisible();
   });

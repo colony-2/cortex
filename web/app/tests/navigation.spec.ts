@@ -4,6 +4,7 @@ import { mkdirSync } from 'node:fs';
 const captures = process.env.NAV_EVIDENCE_DIR || '/tmp/cortex-navigation-captures';
 mkdirSync(captures, { recursive: true });
 import { cellFixture } from './helpers/cells';
+import { openTenantSwitcher } from './helpers/inbox';
 test.beforeEach(async ({ context, baseURL }) => {
   // Modified links open new tabs; shell fixtures and streams must cover those too.
   await context.addCookies([{ name: 'colony2:user:email', value: 'nav@example.com', url: baseURL! }]);
@@ -27,7 +28,7 @@ const inboxes = (page: import('@playwright/test').Page) => desktop(page).getByRo
 test('NAV desktop geometry retains page state and uses a route-local navigation choice', async ({ page }) => {
   await page.goto('/project/navigation/jobs');
   await expect(desktop(page)).toHaveCSS('width', '256px');
-  const search = page.getByRole('textbox', { name: 'Search jobs' });
+  const search = page.getByRole('searchbox', { name: 'Search threads' });
   await search.fill('Retain this');
   await search.evaluate(element => { (element as any).__navigationMount = 'original'; });
   const before = (await page.locator('.app-content').boundingBox())!;
@@ -122,6 +123,8 @@ for (const collapsed of [false, true]) test(`NAV all destinations retain mouse, 
   // Native links participate in normal Tab navigation.
   await inboxes(page).getByRole('link', { name: 'platform', exact: true }).focus();
   await page.keyboard.press('Tab');
+  await expect(inboxes(page).getByRole('link', { name: 'All', exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
   await expect(inboxes(page).getByRole('link', { name: 'Archive', exact: true })).toBeFocused();
   expect(await inboxes(page).locator('a').evaluateAll(links => links.every(link => link.tabIndex === 0))).toBe(true);
   await expect(page.getByRole('link', { name: 'Settings', exact: true })).toHaveAttribute('href', '/project/navigation/admin');
@@ -129,14 +132,13 @@ for (const collapsed of [false, true]) test(`NAV all destinations retain mouse, 
 
 test('NAV Space toggles once and tenant and retired-link routes keep current destinations', async ({ page }) => {
   await page.goto('/project/navigation/jobs');
-  await expect(page.locator('.app-header .navigation-toggle')).toHaveCount(0);
-  const toggle = page.locator('.navigation-toggle');
+  const toggle = page.locator('.app-header .inbox-navigation-toggle');
   await expect(toggle).toHaveText('');
   await expect(toggle.locator('[aria-label="menu-fold"]')).toHaveCount(1);
   await toggle.focus(); await page.keyboard.press('Space');
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await expect(toggle.locator('[aria-label="menu-unfold"]')).toHaveCount(1);
-  await page.getByRole('searchbox', { name: 'Tenant ID' }).fill('second');
+  await (await openTenantSwitcher(page)).fill('second');
   await page.getByRole('button', { name: 'Use', exact: true }).click();
   await expect(page).toHaveURL('/project/second/jobs');
   await expect(desktop(page)).toHaveCSS('width', '256px');
@@ -177,7 +179,7 @@ test('NAV badges update through activity events in both widths', async ({ page }
   await page.goto('/project/navigation/goals');
   await expect.poll(() => page.evaluate(() => (window as any).navStreams.length)).toBeGreaterThan(0);
   const navigation = page.locator('.desktop-navigation').getByRole('navigation', { name: 'Inboxes' });
-  const all = navigation.getByRole('link', { name: 'All', exact: true });
+  const waiting = navigation.getByRole('link', { name: 'Waiting', exact: true });
   const cell = navigation.getByRole('link', { name: 'platform', exact: true });
   for (const collapsed of [false, true]) {
     if (collapsed) await page.getByRole('button', { name: 'Collapse navigation' }).click();
@@ -193,7 +195,7 @@ test('NAV badges update through activity events in both widths', async ({ page }
       if (count) await expect(cell.locator('.inbox-badge')).toHaveAttribute('aria-label', `${count} pending responses`);
       await expect(navigation.getByRole('link', { name: 'Archive', exact: true }).locator('.inbox-badge')).toHaveCount(0);
       await expect(page.locator('.desktop-navigation')).toHaveCSS('width', collapsed ? '76px' : '256px');
-      const badge = all.locator('.inbox-badge');
+      const badge = waiting.locator('.inbox-badge');
       if (!count) { await expect(badge).toHaveCount(0); continue; }
       await expect(badge).toHaveCount(1);
       await expect(badge).toHaveAttribute('aria-label', `${count} pending responses`);
@@ -220,12 +222,13 @@ for (const collapsed of [false, true]) test(`NAV scroll, short desktop and drawe
   for (const [width, height] of [[768, 260], [1280, 300], [767, 800], [390, 844]]) {
     await page.setViewportSize({ width, height });
     await page.evaluate(() => scrollTo(0, 0));
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     if (width >= 768) {
       await expect(trigger).toBeInViewport({ ratio: 1 });
       for (const [name] of destinations) {
         const link = inboxes(page).getByRole('link', { name, exact: true });
-        await link.scrollIntoViewIfNeeded();
+        await link.evaluate(element => element.scrollIntoView({ block: 'nearest' }));
+        await expect(link).toBeInViewport({ ratio: 0.95 });
         const bounds = (await link.boundingBox())!;
         expect(bounds.y).toBeGreaterThanOrEqual(-1);
         expect(bounds.y + bounds.height).toBeLessThanOrEqual(height + 1);
@@ -287,7 +290,7 @@ for (const collapsed of [false, true]) test(`NAV login and tenant switching rema
   await page.getByPlaceholder('Email address').fill('returning@example.com');
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(desktop(page)).toHaveCSS('width', '256px');
-  await page.getByRole('searchbox', { name: 'Tenant ID' }).fill('tenant-two');
+  await (await openTenantSwitcher(page)).fill('tenant-two');
   await page.getByRole('button', { name: 'Use', exact: true }).click();
   await expect(page).toHaveURL('/project/tenant-two/jobs');
   await expect(inboxes(page).getByRole('link', { name: 'All', exact: true })).toHaveAttribute('href', '/project/tenant-two/jobs');

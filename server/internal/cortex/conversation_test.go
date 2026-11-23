@@ -41,7 +41,7 @@ func (h *historyStub) ListJobInputStory(_ context.Context, r input.ListJobInputS
 }
 func (h *historyStub) GetJobInputStoryEntry(_ context.Context, r input.GetJobInputStoryEntryRequest) (*input.JobInputStoryEntryDetail, error) {
 	h.detail = r
-	return &input.JobInputStoryEntryDetail{JobInputStoryEntry: input.JobInputStoryEntry{EntryID: r.EntryID}, RequestManifest: []input.HistoryArtifactMember{{ArtifactID: "member", Ref: func() artifacts.Ref {
+	return &input.JobInputStoryEntryDetail{JobInputStoryEntry: input.JobInputStoryEntry{EntryID: r.EntryID}, SnapshotToken: r.SnapshotToken, RequestManifest: []input.HistoryArtifactMember{{ArtifactID: "member", Ref: func() artifacts.Ref {
 		if h.ref != nil {
 			return *h.ref
 		}
@@ -80,7 +80,7 @@ func TestConversationTypedAdapter(t *testing.T) {
 	t.Run("CT-014 exact detail without a prior page", func(t *testing.T) {
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, httptest.NewRequest("GET", "/tenant/job/entry?entry_id=old%2F%3F", nil))
-		if w.Code != 200 || h.detail.EntryID != "old/?" || h.detail.SnapshotToken != "" {
+		if w.Code != 200 || h.detail.EntryID != "old/?" || h.detail.SnapshotToken != "opaque+/=" || h.list.PageSize != 1 {
 			t.Fatalf("%d %+v", w.Code, h.detail)
 		}
 	})

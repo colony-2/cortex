@@ -17,8 +17,9 @@ import ReviewV2Context from './ReviewV2Context';
 import { useReviewDraft, useReviewDraftRef } from '../hooks/useReviewDraft';
 import { useReviewResponsePane } from '../hooks/useReviewResponsePane';
 import { resolveReviewDocumentLocation, reviewDocumentSearch } from '../utils/reviewDocumentLocation';
+import ThreadMessageLabel, { reviewContributionLabel } from './ThreadMessageLabel';
 
-export function ReviewV2Discussion({turns,request,attachmentURL,declarations,pending=false,id,hidden=false,layoutReady=true}: {id?:string;hidden?:boolean;layoutReady?:boolean;turns:ReviewV2Turn[];request:ReviewV2Request;declarations?:Record<string,ReviewV2Request>;pending?:boolean;attachmentURL?:(turn:number,index:number)=>string}) {
+export function ReviewV2Discussion({turns,request,attachmentURL,declarations,pending=false,id,hidden=false,layoutReady=true,showMessageLabels=false}: {id?:string;hidden?:boolean;layoutReady?:boolean;turns:ReviewV2Turn[];request:ReviewV2Request;declarations?:Record<string,ReviewV2Request>;pending?:boolean;attachmentURL?:(turn:number,index:number)=>string;showMessageLabels?:boolean}) {
   const [visible,setVisible]=useState(20);
   const root=useRef<HTMLElement>(null);
   const readingPosition=useRef<number>();
@@ -40,15 +41,22 @@ export function ReviewV2Discussion({turns,request,attachmentURL,declarations,pen
     {turns.slice(-visible).map((turn,index)=>{
       const actual=turns.length>visible?turns.length-visible+index:index;
       const frozen=turn.role==='human'&&typeof turn.receipt?.request_id==='string'?declarations?.[turn.receipt.request_id]:undefined;
+      const frozenDirection=frozen?.directions.find(d=>d.id===turn.direction);
+      const direction=frozen?frozenDirection:request.directions.find(d=>d.id===turn.direction);
+      const heading=<>
+        <strong>{turn.role==='human'?'Reviewer':'Agent'}</strong>
+        {showMessageLabels&&<ThreadMessageLabel label={turn.role==='agent'?'Answer':reviewContributionLabel(direction)}/>}
+        {turn.direction&&<span> · {frozenDirection?.label??turn.direction}</span>}
+      </>;
       return <article key={actual} className={`review-v2-turn ${turn.role}`}>
-        <strong>{turn.role==='human'?'Reviewer':'Agent'}</strong>{turn.direction&&<span> · {frozen?.directions.find(d=>d.id===turn.direction)?.label??turn.direction}</span>}
+        {showMessageLabels?<span className="thread-message-meta">{heading}</span>:heading}
         <p style={{whiteSpace:'pre-wrap'}}>{turn.text||'No written feedback'}</p>
         {Object.entries(turn.settings??{}).map(([id,value])=><p key={id}>{frozen?.settings?.find(s=>s.id===id)?.label??id}: <code>{JSON.stringify(value)}</code></p>)}
         {turn.attachments.map((ref,i)=>{const url=attachmentURL?.(actual,i);return <p key={i}>{url?<a href={url} download>Download {(ref.name||ref.stored.key.name).split('/').pop()}</a>:<span>{(ref.name||ref.stored.key.name).split('/').pop()} (retained download unavailable)</span>}</p>;})}
       </article>;
     })}
     {pending&&<p role="status" className="review-v2-pending">Response pending</p>}
-    {request.question.trim()&&<ReviewQuestion question={request.question}/>}
+    {request.question.trim()&&<ReviewQuestion question={request.question} showMessageLabel={showMessageLabels}/>}
     {!turns.length&&!request.question.trim()&&<p>No questions yet. You can ask about the material before choosing a direction.</p>}
   </section>;
 }
@@ -59,12 +67,16 @@ export default function ReviewV2({tenant,job,reviewId,initial,embedded=false,met
   const reviewsPath=`/project/${encodeURIComponent(tenant)}/reviews${reviewReturnSearch(search)}`;
   const [settingsOpen,setSettingsOpen]=useState(false);
   const draftIdentity=JSON.stringify([tenant,job,reviewId]);
+  useReviewDraft(draftIdentity, 'review-kind', 'review_id');
   const [drafts,setDrafts]=useReviewDraft<Record<string,unknown>>(draftIdentity,'settings',{});
   const [draftNotice,setDraftNotice]=useState('');
   const [direction,setDirection]=useReviewDraft<string|undefined>(draftIdentity,'direction',undefined);
   const [feedback,setFeedback]=useReviewDraft(draftIdentity,'feedback','');
   const [files,setFiles]=useReviewDraft<File[]>(draftIdentity,'files',[]);
   const [composerOpen,setComposerOpen]=useReviewDraft(draftIdentity,'composer',false);
+  useEffect(() => {
+    if (location.state?.openReviewDraft) setComposerOpen(true);
+  }, [location.key]);
   const pane=useRef<HTMLDivElement>(null);
   const workspace=useRef<HTMLDivElement>(null);
   const [workspaceSize,setWorkspaceSize]=useState({width:0,narrow:false});
@@ -258,7 +270,7 @@ export default function ReviewV2({tenant,job,reviewId,initial,embedded=false,met
     </div>
     <div ref={workspace} className={`review-v2-layout${layout.stacked?' stacked':''}`} style={{gridTemplateColumns:layout.stacked?'minmax(0,1fr)':`${documentsVisible?`${layout.documents}px 8px `:''}minmax(0,1fr)${discussionVisible?` 8px ${layout.discussion}px`:''}`}}><div className="review-v2-reader"><ReviewDocuments changes={<ReviewChanges projectId={tenant} jobId={job}/>} projectId={tenant} jobId={job} requestId={reviewId} source={source} documents={documents} documentMetadata={request.document_metadata} overviewDocumentId={request.overview_document_id} layout={{navigationVisible:documentsVisible,stacked:layout.stacked,navigationId:documentsId,separator:documentsVisible&&!layout.stacked?separator('documents'):null}} selection={{documentId:selection?.kind==='selected'?selection.documentId:undefined,onSelect:id=>navigate({pathname:location.pathname,search:reviewDocumentSearch(location.search,reviewId,id,'review_id'),hash:location.hash})}}/></div>
       {discussionVisible&&!layout.stacked&&separator('discussion')}
-      <ReviewV2Discussion layoutReady={workspaceSize.width>0} id={discussionId} hidden={!discussionVisible} pending={!error&&reviewV2AnswerPending(view)} turns={view.conversation} request={request} declarations={view.declarations} attachmentURL={(turn,index)=>{
+      <ReviewV2Discussion layoutReady={workspaceSize.width>0} id={discussionId} hidden={!discussionVisible} pending={!error&&reviewV2AnswerPending(view)} turns={view.conversation} request={request} declarations={view.declarations} showMessageLabels={embedded} attachmentURL={(turn,index)=>{
         const ref = view.conversation[turn]?.attachments[index];
         return ref?.stored ? storedDocumentURL(tenant, ref.stored.key) : '';
       }}/>

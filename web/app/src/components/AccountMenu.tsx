@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Dropdown, Modal, Typography } from 'antd';
+import { Alert, Button, Dropdown, Input, Modal, Typography, type InputRef } from 'antd';
 import { InfoCircleOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import { getBuildInformation, getUserEmail, type BuildIdentity, type BuildInformation } from '@colony2/shared';
 declare const __CORTEX_UI_BUILD__: BuildIdentity;
@@ -33,39 +33,63 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
     {error && <Alert type="error" showIcon message={error} action={<Button onClick={() => { closeButton.current?.focus(); setAttempt(value => value + 1); }}>Retry</Button>} />}
   </Modal>;
 }
-export default function AccountMenu({ onLogout }: { onLogout: () => void }) {
+export default function AccountMenu({ tenant, onSwitchTenant, onLogout }: { tenant: string; onSwitchTenant: (tenant: string) => void; onLogout: () => void }) {
   const [open, setOpen] = useState(false);
   const [about, setAbout] = useState(false);
+  const [tenantDraft, setTenantDraft] = useState<string>();
   const button = useRef<HTMLButtonElement>(null);
+  const tenantInput = useRef<InputRef>(null);
   const popup = useRef<HTMLDivElement>(null);
+  const editingTenant = tenantDraft !== undefined;
   useEffect(() => {
     if (!open) return;
     let frame: number;
     const focusMenu = () => {
+      if (editingTenant && tenantInput.current) { tenantInput.current.focus({ preventScroll: true }); return; }
       const item = popup.current?.querySelector<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])');
-      if (item && item.getClientRects().length) item.focus();
+      if (item && item.getClientRects().length) item.focus({ preventScroll: true });
       else frame = requestAnimationFrame(focusMenu);
     };
     // Wait for the popup to be mounted and visible; cancel before a closed
     // popup can steal focus back from the trigger or the About dialog.
     frame = requestAnimationFrame(focusMenu);
     return () => cancelAnimationFrame(frame);
-  }, [open]);
+  }, [open, editingTenant]);
+  const closeMenu = () => { setOpen(false); setTenantDraft(undefined); };
   const closeAbout = () => { setAbout(false); requestAnimationFrame(() => button.current?.focus()); };
   return <>
     <Dropdown popupRender={menu => <div ref={popup} onKeyDownCapture={event => {
+      if (event.key === 'Tab' && editingTenant) event.stopPropagation();
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
-        setOpen(false);
+        closeMenu();
         requestAnimationFrame(() => button.current?.focus());
       }
-    }}>{menu}</div>} open={open} onOpenChange={setOpen} trigger={['click']} overlayClassName="account-dropdown" menu={{ items: [
+    }}>{editingTenant ? <form className="account-tenant-form" onSubmit={event => {
+      event.preventDefault();
+      closeMenu();
+      onSwitchTenant(tenantDraft);
+      requestAnimationFrame(() => button.current?.focus({ preventScroll: true }));
+    }}>
+      <label htmlFor="account-tenant-id">Tenant ID</label>
+      <div><Input ref={tenantInput} id="account-tenant-id" type="search" value={tenantDraft} onChange={event => setTenantDraft(event.target.value)} />
+        <Button htmlType="submit" type="primary">Use</Button></div>
+    </form> : menu}</div>} open={open} onOpenChange={(visible, info) => {
+      if (visible) setOpen(true);
+      else if (info.source !== 'menu') closeMenu();
+    }} trigger={['click']} overlayClassName="account-dropdown" menu={{ items: [
       { key: 'email', label: <span className="account-email">{getUserEmail()}</span>, disabled: true },
       { type: 'divider' },
       { key: 'about', icon: <InfoCircleOutlined aria-hidden />, label: 'About' },
+      { key: 'tenant', label: 'Switch tenant' },
       { key: 'logout', icon: <LogoutOutlined aria-hidden />, label: 'Logout' },
-    ], onClick: ({ key }) => { setOpen(false); if (key === 'about') setAbout(true); if (key === 'logout') { setAbout(false); onLogout(); } } }}>
+    ], onClick: ({ key }) => {
+      if (key === 'tenant') { setTenantDraft(tenant); return; }
+      closeMenu();
+      if (key === 'about') setAbout(true);
+      if (key === 'logout') { setAbout(false); onLogout(); }
+    } }}>
       <Button ref={button} className="account-button" aria-label="User account" aria-haspopup="menu" aria-expanded={open} onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); setOpen(true); } }} icon={<UserOutlined />} />
     </Dropdown>
     {about && <AboutDialog onClose={closeAbout} />}

@@ -36,7 +36,7 @@ test.beforeEach(async ({ page, context, baseURL }) => {
 test('CT-001–007 default, panel visibility, keyboard navigation and URL restoration', async ({ page }, info) => {
   await page.goto('/project/demo/jobs/job/story?tenantId=demo&filter=mine');
   const tabs = page.getByRole('tablist', { name: 'Job detail' });
-  const conversation = tabs.getByRole('tab', { name: 'Conversation', exact: true });
+  const conversation = tabs.getByRole('tab', { name: 'Thread', exact: true });
   await expect(conversation).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('heading', { name: 'Conversation fixture' })).toBeVisible();
   await expect(page.getByLabel('Job cell')).toBeVisible();
@@ -47,7 +47,7 @@ test('CT-001–007 default, panel visibility, keyboard navigation and URL restor
   await expect(page.getByRole('region', { name: 'Job completion' })).not.toContainText('Merge status');
   await expect(page.getByRole('tree')).toHaveCount(0);
   await page.screenshot({ path: info.outputPath('conversation.png'), animations:'disabled',fullPage: true });
-  for (const label of ['Trace', 'Relationships', 'Input artifacts', 'Lease timeline', 'Conversation']) {
+  for (const label of ['Trace', 'Graph', 'Execution', 'Thread']) {
     await tabs.getByRole('tab', { name: label, exact: true }).click();
     await expect(page.locator('.job-detail-panel:visible')).toHaveCount(1);
     await expect(page.getByRole('tabpanel', { name: label, exact: true })).toBeVisible();
@@ -55,14 +55,14 @@ test('CT-001–007 default, panel visibility, keyboard navigation and URL restor
   }
   await conversation.focus();
   await page.keyboard.press('ArrowRight');
-  await expect(tabs.getByRole('tab', { name: 'Relationships', exact: true })).toBeFocused();
-  expect(await tabs.getByRole('tab', { name: 'Relationships', exact: true }).evaluate(element => getComputedStyle(element).outlineStyle)).toBe('solid');
+  await expect(tabs.getByRole('tab', { name: 'Execution', exact: true })).toBeFocused();
+  expect(await tabs.getByRole('tab', { name: 'Execution', exact: true }).evaluate(element => getComputedStyle(element).outlineStyle)).toBe('solid');
   await page.keyboard.press('End');
   await expect(tabs.getByRole('tab', { name: 'Trace', exact: true })).toBeFocused();
   await page.reload();
   await expect(tabs.getByRole('tab', { name: 'Trace', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.goBack();
-  await expect(tabs.getByRole('tab', { name: 'Relationships', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(tabs.getByRole('tab', { name: 'Execution', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.goForward();
   await expect(tabs.getByRole('tab', { name: 'Trace', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.goto('/project/demo/jobs/job/story?tab=invalid&nodeId=root');
@@ -86,7 +86,7 @@ test('CT-007 narrow tabs scroll without horizontal page overflow', async ({ page
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
   await tabs.getByRole('tab', { name: 'Trace', exact: true }).focus();
   await page.keyboard.press('Home');
-  await expect(tabs.getByRole('tab', { name: 'Conversation', exact: true })).toBeFocused();
+  await expect(tabs.getByRole('tab', { name: 'Thread', exact: true })).toBeFocused();
   await page.screenshot({ path: info.outputPath('conversation-narrow.png'), animations:'disabled',fullPage: true });
 });
 
@@ -100,9 +100,9 @@ test('CT-014,021,031 retained answers and exact earlier review stay selected thr
   });
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url());
-    if (url.pathname.endsWith('/conversation')) return route.fulfill({ json: { activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status:'COMPLETED',store:'ARCHIVED'}},final_documents:{availability:'available',value:{job_id:'job',state:'empty'}}, tenant_id: 'demo', job_id: 'job', entries: [entry('first', stage > 0), ...(stage ? [entry('second', stage > 1)] : [])], snapshot_token: 'snapshot', completeness: 'partial' } });
+    if (url.pathname.endsWith('/conversation')) return route.fulfill({ json: { activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status:stage>1?'COMPLETED':'READY',store:stage>1?'ARCHIVED':'ACTIVE',completion_status:stage>1?'success':undefined,completion_detail:stage>1?'Persisted completion':undefined}},final_documents:{availability:'available',value:{job_id:'job',state:'empty'}}, tenant_id: 'demo', job_id: 'job', entries: [entry('first', stage > 0), ...(stage ? [entry('second', stage > 1)] : [])], snapshot_token: 'snapshot', completeness: 'partial' } });
     if (url.pathname.endsWith('/final-documents')) return route.fulfill({json:{job_id:'job',manifest_id:'none',state:'absent',documents:[]}});
-    if (url.pathname.endsWith('/conversation/entry')) return route.fulfill({ json: { ...entry('first', true), snapshot_token: 'snapshot', completeness: 'partial', request_manifest: [{ artifact_id: 'original', availability: 'retained', ref: {}, associations: [] }], response_manifest: [], actionability: { actionable: false, observation: 'live' } } });
+    if (url.pathname.endsWith('/conversation/entry')) return route.fulfill({ json: { ...entry(url.searchParams.get('entry_id')!, stage > 0 && url.searchParams.get('entry_id') === 'first'), snapshot_token: 'snapshot', completeness: 'partial', request_manifest: [{ artifact_id: 'original', availability: 'retained', ref: {}, associations: [] }], response_manifest: [], actionability: { actionable: false, observation: 'live' } } });
     if (url.pathname.endsWith('/jobs/job')) return route.fulfill({ json: { ...jobIdentity, tenant_id: 'demo', job_id: 'job', title: 'Conversation fixture', prompt: 'The original request', status: stage > 1 ? 'COMPLETED' : 'READY', store: stage > 1 ? 'ARCHIVED' : 'ACTIVE', completion_status: stage > 1 ? 'success' : '', completion_detail: stage > 1 ? 'Persisted completion' : '' } });
     return route.fallback();
   });
@@ -113,14 +113,15 @@ test('CT-014,021,031 retained answers and exact earlier review stay selected thr
   await expect(page.getByRole('region', { name: 'Job completion' })).toHaveCount(0);
   stage = 1;
   await (await storyAction(page, 'Refresh')).click();
-  await expect(page.locator('[data-occurrence="second"]')).toBeAttached();
+  await expect(page.locator('.inbox-history-message[data-occurrence="second"]')).toBeAttached();
   await expandHistory(page);
-  await expect(page.locator('[data-occurrence="second"]')).toBeVisible();
+  await expect(page.locator('.inbox-history-message[data-occurrence="second"]')).toBeVisible();
   await expect(page.locator('.conversation-answer').first()).toBeVisible();
-  await page.getByRole('button', { name: 'Open review' }).first().click();
-  await expect(page).toHaveURL(/occurrenceId=first/);
-  const recorded = page.getByRole('region', { name: 'Recorded request', exact: true });
-  await expect(recorded).toHaveAttribute('data-occurrence', 'first');
+  const deepLink = new URL(page.url());
+  deepLink.searchParams.set('occurrenceId', 'first');
+  await page.goto(deepLink.href);
+  const recorded = page.locator('section[aria-label="Recorded request"][data-occurrence="first"]').first();
+  await expect(recorded).toBeVisible();
   await expect(recorded.getByRole('link', { name: 'Download original' })).toHaveAttribute('href', /entry_id=first&artifact_id=original/);
   await expect(recorded.getByRole('button', { name: /Submit/ })).toHaveCount(0);
   await page.reload();
@@ -135,6 +136,7 @@ test('CT-014,021,031 retained answers and exact earlier review stay selected thr
 
 
 test('CT-021 automatic polling and input activity preserve historical selection, scroll and focus', async ({ page }, info) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
   await page.clock.install();
   let revision = 0;
   const entry = (id: string) => ({
@@ -156,27 +158,27 @@ test('CT-021 automatic polling and input activity preserve historical selection,
   const link = recorded.getByRole('link', { name: 'Download original' });
   await expect(link).toBeVisible();
   await link.focus();
-  await page.evaluate(() => window.scrollBy(0, -200));
+  await page.evaluate(() => window.scrollTo(0, Math.min(200, document.documentElement.scrollHeight - innerHeight)));
   const scrollBefore = await page.evaluate(() => window.scrollY);
   expect(scrollBefore).toBeGreaterThan(0);
   revision = 1;
   await page.clock.runFor(5100);
-  await expect(page.locator('[data-occurrence="arrival-1"]')).toBeAttached();
+  await expect(page.locator('.inbox-history-message[data-occurrence="arrival-1"]').first()).toBeAttached();
   await expect(link).toBeFocused();
   expect(Math.abs(await page.evaluate(() => window.scrollY) - scrollBefore)).toBeLessThanOrEqual(1);
-  await expect(page.getByRole('tab', { name: 'Conversation', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Thread', exact: true })).toHaveAttribute('aria-selected', 'true');
   expect(new URL(page.url()).searchParams.get('occurrenceId')).toBe('first');
-  await expect(page.getByText('New conversation activity available')).toBeAttached();
+  await expect(page.getByText('New thread activity available')).toBeAttached();
 
   // Send the actual event consumed by InputActivityProvider before the next
   // polling interval. Its new snapshot must refresh history without navigation.
   revision = 2;
   await page.evaluate(() => (window as any).historyInputStream.dispatchEvent(new MessageEvent('inputs_changed', { data: JSON.stringify({ inputs: [] }) })));
-  await expect(page.locator('[data-occurrence="arrival-2"]')).toBeAttached();
+  await expect(page.locator('.inbox-history-message[data-occurrence="arrival-2"]').first()).toBeAttached();
   await expect(link).toBeFocused();
   expect(Math.abs(await page.evaluate(() => window.scrollY) - scrollBefore)).toBeLessThanOrEqual(1);
   expect(new URL(page.url()).searchParams.get('occurrenceId')).toBe('first');
-  const activity = page.getByText('New conversation activity available');
+  const activity = page.getByText('New thread activity available');
   await activity.scrollIntoViewIfNeeded();
   await page.screenshot({path:info.outputPath('historical-activity-desktop.png'),animations:'disabled'});
   await page.setViewportSize({width:390,height:844});
@@ -190,13 +192,21 @@ for (const width of [1280,390]) test(`CC-001 CC-009 CC-010 CC-013 CC-014 compact
  const documents={Overview:doc('overview.md'),Data:doc('data.json'),Picture:doc('picture.png'),Markup:doc('page.html')};
  const form={kind:'review',title:'1p review request',fields:[{id:'choice',type:'multiple_choice',required:true,question:'Review the proposal and leave your decision.',options:[{value:'revise',label:'Changes Requested'}]},{id:'feedback',type:'paragraph_text',question:'Comments'}],documents,document_metadata:{Overview:{order:0,title:'Proposal overview',role:'primary',description:'Saved review proposal',source_document_ids:['Data']},Data:{order:1,title:'Original data'},Picture:{order:2},Markup:{order:3}},overview_document_id:'Overview'};
  const entry=(id:string,pending=false)=>({entry_id:id,request_id:'reused-request',kind:'review',title:{present:true,raw:'1p review request'},summary:{present:false},state:pending?'pending':'answered',requested_at:{present:true,raw:'2025-01-02T14:30:00Z'},locator:{invocation_id:id},form_fields:form,accepted_response:{present:!pending,raw:{fields:{choice:'revise',feedback:'Some comments left by j@j.com. '+ 'Full feedback. '.repeat(50)}}},response_source:'external_submission',actor:{provenance:'submission_receipt',receipt:{submitted_at:'2025-01-02T14:35:00Z',actor:{id:'j@j.com',kind:'human'}},legacy_user_id:{present:false}}});
- const mutations:string[]=[], pendingURLs:string[]=[], artifactURLs:string[]=[];
+ const mutations:string[]=[], pendingURLs:string[]=[], artifactURLs:string[]=[], detailURLs:string[]=[];
+ const requestManifest=Object.entries(documents).reverse().map(([id,ref])=>({artifact_id:id,ref,availability:'retained',associations:[{kind:'document',source:`/documents/${id}`}]}));
  await page.route('**/api/**',async route=>{
   const request=route.request(),url=new URL(request.url());
   if(request.method()!=='GET'){mutations.push(request.url());return route.fulfill({status:500});}
   if(url.pathname.includes('/reviews/') && /\/documents(?:\/|$)/.test(url.pathname)){pendingURLs.push(request.url());return route.fulfill({status:500});}
-  if(url.pathname.endsWith('/conversation'))return route.fulfill({json:{ activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status:'COMPLETED',store:'ARCHIVED'}},final_documents:{availability:'available',value:{job_id:'job',state:'empty'}},tenant_id:'demo',job_id:'job',snapshot_token:'frozen',completeness:'complete',entries:[entry('first'),entry('second',true)]}});
-  if(url.pathname.endsWith('/conversation/entry'))return route.fulfill({json:{...entry(url.searchParams.get('entry_id')!,url.searchParams.get('entry_id')==='second'),raw_form:form,snapshot_token:'frozen',completeness:'complete',request_manifest:Object.entries(documents).reverse().map(([id,ref])=>({artifact_id:id,ref,availability:'retained',associations:[{kind:'document',source:`/documents/${id}`}]})),response_manifest:[]}});
+  if(url.pathname.endsWith('/conversation')) {
+   expect(url.searchParams.get('include_review_attachments')).toBe('true');
+   const review_attachments={request:requestManifest,response:[]};
+   return route.fulfill({json:{ activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status:'COMPLETED',store:'ARCHIVED'}},final_documents:{availability:'available',value:{job_id:'job',state:'empty'}},tenant_id:'demo',job_id:'job',snapshot_token:'frozen',completeness:'complete',entries:[{...entry('first'),review_attachments},{...entry('second',true),review_attachments}]}});
+  }
+  if(/\/conversation\/(entry|artifact)$/.test(url.pathname)) {
+   detailURLs.push(request.url());
+   return route.fulfill({status:410,json:{code:'history_snapshot_expired',error:'Snapshot expired'}});
+  }
   if(url.pathname.endsWith('/stored-document')){
    artifactURLs.push(request.url());const id=Object.keys(documents).find(id=>documents[id as keyof typeof documents].stored.key.name===url.searchParams.get('name'));
    if(id==='Picture')return route.fulfill({contentType:'text/plain',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=','base64')});
@@ -205,63 +215,42 @@ for (const width of [1280,390]) test(`CC-001 CC-009 CC-010 CC-013 CC-014 compact
   return route.fallback();
  });
  await page.goto('/project/demo/jobs/job/story?filter=mine');
- const retainedCards=page.locator('[aria-label="Recorded request step"], [aria-label="Accepted response"]');
- await expect(retainedCards).toHaveCount(3);
- await expect(retainedCards.first()).toBeHidden();
- const messages = page.locator('.inbox-history-message');
- for (const message of await messages.all()) {
-  const summary = message.locator(':scope > summary');
+ const messages = page.locator('.inbox-history-message:not([aria-label="Job completion"])');
+ await expect(messages).toHaveCount(3);
+ await page.locator('.inbox-history-middle > summary').click();
+ for (const summary of await messages.locator(':scope > summary').all()) {
   const height = await summary.evaluate(el => el.getBoundingClientRect().height);
-  expect(height).toBeGreaterThanOrEqual(width < 768 ? 44 : 32); expect(height).toBeLessThanOrEqual(60);
+  expect(height).toBeGreaterThanOrEqual(width < 768 ? 44 : 32);
  }
- if(width===390 && process.env.CORTEX_INBOX_REPAIR_CAPTURE) await page.screenshot({path:`${process.env.CORTEX_INBOX_REPAIR_CAPTURE}/conversation-folded-phone.png`,animations:'disabled'});
  await expandHistory(page);
- for(const card of await retainedCards.all()){
-  const height=await card.evaluate(el=>el.getBoundingClientRect().height);
-  expect(height).toBeLessThanOrEqual(width < 768 ? 120 : 100);expect(height).toBeGreaterThan(60);
-  const rows=await card.locator('.conversation-line, .conversation-answer, .conversation-expand').evaluateAll(elements=>elements.map(el=>({top:el.getBoundingClientRect().top,bottom:el.getBoundingClientRect().bottom})));
-  expect(rows.length).toBeGreaterThanOrEqual(2);expect(rows.length).toBeLessThanOrEqual(3);
-  for(let i=1;i<rows.length;i++)expect(rows[i].top).toBeGreaterThanOrEqual(rows[i-1].bottom);
- }
- await expect(page.locator('.conversation-answer')).toContainText('Changes Requested');
- await expect(page.locator('.conversation-step').first()).toContainText('2025');
+ const reader=page.getByRole('region',{name:'Recorded request',exact:true});
+ const first=reader.filter({has:page.getByLabel('Recorded answers',{exact:true})});
+ await expect(first.getByRole('heading',{name:'Original proposal'})).toBeVisible();
+ await expect(first.getByRole('img',{name:'picture.png'})).toBeVisible();
+ await expect(first.getByLabel('Review context')).toContainText('Review the proposal');
+ await expect(first.getByLabel('Recorded answers')).toContainText('Changes Requested');
+ await expect(first.getByRole('button',{name:/Submit|Approve|Reject|Cancel job/})).toHaveCount(0);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
  await page.screenshot({path:info.outputPath(`compact-${width}.png`),animations:'disabled',fullPage:true});
- await page.getByRole('button',{name:'Open review',exact:true}).first().click();
- const reader=page.getByRole('region',{name:'Recorded request',exact:true});
- await expect(reader.getByRole('heading',{name:'Original proposal'})).toBeVisible();
- await expect(reader.getByRole('img',{name:'picture.png'})).toBeVisible();
- await expect(reader.getByLabel('Review context')).toContainText('Review the proposal');
- await expect(reader.getByLabel('Recorded answers')).toContainText('Changes Requested');
- await expect(reader.getByRole('button',{name:/Submit|Approve|Reject|Cancel job/})).toHaveCount(0);
- await expect(page.getByRole('button',{name:/Cancel job/i})).toHaveCount(0);
- const dataLink=reader.getByRole('link',{name:'Data',exact:true});
+ const dataLink=first.getByRole('link',{name:'Data',exact:true});
  await expect(dataLink).toHaveAttribute('href',/stored-document\?ordinal=4&name=data.json/);
- await expect(reader.getByText('Loading attached image…')).toHaveCount(0);
- await expect(reader.getByRole('img',{name:'picture.png'})).toBeVisible();
- await reader.screenshot({path:info.outputPath(`overview-${width}.png`)});
- await dataLink.click();await expect(reader.getByLabel('Formatted JSON')).toContainText('"original": true');
- await expect(reader.getByRole('link',{name:'Download',exact:true})).toHaveAttribute('href',/stored-document\?ordinal=4&name=data.json/);
+ await expect(first.getByText('Loading attached image…')).toHaveCount(0);
+ await expect(first.getByRole('img',{name:'picture.png'})).toBeVisible();
+ await first.screenshot({path:info.outputPath(`overview-${width}.png`)});
+ await dataLink.click();await expect(first.getByLabel('Formatted JSON')).toContainText('"original": true');
+ await expect(first.getByRole('link',{name:'Download',exact:true})).toHaveAttribute('href',/stored-document\?ordinal=4&name=data.json/);
  await page.screenshot({path:info.outputPath(`reader-${width}.png`),animations:'disabled',fullPage:true});
- await expect(reader.getByRole('navigation',{name:'Review documents'})).toBeHidden();
- await reader.getByRole('button',{name:'Show documents',exact:true}).click();
- if(width===1280) await reader.getByRole('button',{name:/page.html/}).click();
- else await reader.getByRole('button',{name:'Read page.html',exact:true}).click();
- await expect(reader.locator('iframe[title="Interactive HTML preview: page.html"]')).toHaveAttribute('sandbox','allow-scripts');
- await expect(reader.frameLocator('iframe').getByRole('heading',{name:'Saved markup'})).toBeVisible();
- await reader.getByRole('region',{name:'Selected document',exact:true}).screenshot({path:info.outputPath(`historical-html-${width}.png`)});
- const back=reader.getByRole('button',{name:'Back to conversation'});
- // Allow Chromium's iframe hit-test surface to catch up after scrolling from
- // the distant preview to the reader header before dispatching a pointer click.
- await back.scrollIntoViewIfNeeded();
- await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
- await back.click();
- await expect(page).not.toHaveURL(/occurrenceId=/);
- expect(new URL(page.url()).searchParams.get('filter')).toBe('mine');
- await expandHistory(page);
- await page.getByRole('button',{name:'Open review',exact:true}).last().click();
- await expect(reader.getByRole('heading',{name:'Original proposal'})).toBeVisible();
- await expect(reader.getByLabel('Recorded answers')).toHaveCount(0);
+ await expect(first.getByRole('navigation',{name:'Review documents'})).toBeHidden();
+ await first.getByRole('button',{name:'Show documents',exact:true}).click();
+ if(width===1280) await first.getByRole('button',{name:/page.html/}).click();
+ else await first.getByRole('button',{name:'Read page.html',exact:true}).click();
+ await expect(first.locator('iframe[title="Interactive HTML preview: page.html"]')).toHaveAttribute('sandbox','allow-scripts');
+ await expect(first.frameLocator('iframe').getByRole('heading',{name:'Saved markup'})).toBeVisible();
+ await first.getByRole('region',{name:'Selected document',exact:true}).screenshot({path:info.outputPath(`historical-html-${width}.png`)});
+ const second=reader.filter({hasText:'State: pending'});
+ await expect(second.getByRole('heading',{name:'Original proposal'})).toBeVisible();
+ await expect(second.getByLabel('Recorded answers')).toHaveCount(0);
+ expect(detailURLs).toEqual([]);
  expect(mutations).toEqual([]);expect(pendingURLs).toEqual([]);
  expect(artifactURLs.length).toBeGreaterThan(2);
  for(const url of artifactURLs)expect(url).toContain('/jobs/original-producer/stored-document?ordinal=4&name=');
@@ -328,16 +317,17 @@ test('CV-002 CV-003 CV-005 CV-020 merge ordering and final document viewer',asyn
     return route.fulfill({contentType:'text/plain',body:url.searchParams.get('alias')==='report.md'?'# Final report\n\n[Read notes](notes.md)\n\nOnly declared terminal documents.':'# Supporting notes\n\nOriginal child document.'});
   });
   await page.goto('/project/demo/jobs/job/story');
-  await expect(page.getByLabel('Verified publication')).toHaveCount(2);
+  const summaries = page.locator('.inbox-history-message:not([aria-label="Job completion"]) > summary .thread-message-subject');
+  await expect(summaries).toHaveCount(4);
+  await expect(summaries).toHaveText([/Approve publication/, /Finish conversation events/, /Approved after publication/, /Recorded commit/]);
+  await expect(page.locator('.inbox-history-message > summary .thread-message-label')).toHaveText(['Review', 'Merge', 'Feedback', 'Merge', 'Completion']);
   await expandHistory(page);
-  const cards=page.locator('[aria-label="Recorded request step"],[aria-label="Verified publication"],[aria-label="Accepted response"]');
-  await expect(cards).toHaveCount(4);
-  expect(await cards.evaluateAll(nodes=>nodes.map(n=>n.getAttribute('aria-label')))).toEqual(['Recorded request step','Verified publication','Accepted response','Verified publication']);
+  await expect(page.getByLabel('Verified publication')).toHaveCount(2);
   await expect(page.getByText('Commit message not recorded',{exact:true}).first()).toBeVisible();
   await expect(page.getByText('Publication confirmed — already present',{exact:true})).toBeVisible();
   await page.screenshot({path:info.outputPath('merge-events-desktop.png'),animations:'disabled',fullPage:true});
   const activate=page.getByRole('link',{name:'report.md',exact:true});await activate.click();
-  const viewer=page.getByRole('dialog',{name:'Returned document viewer'});
+  const viewer=page.getByRole('dialog',{name:'Attachment viewer'});
   await expect(viewer.getByRole('heading',{name:'Final report',exact:true})).toBeVisible();
   await expect(viewer.getByRole('link',{name:'Download',exact:true})).toHaveAttribute('href',/manifest_id=final-one/);
   await page.screenshot({path:info.outputPath('returned-document-viewer-desktop.png'),animations:'disabled',fullPage:false});
@@ -355,9 +345,9 @@ for(const status of [403,404]) test(`CV-021 final document ${status} leaves othe
   await page.route('**/conversation?*',route=>route.fulfill({json:terminalConversation({job_id:'job',manifest_id:'errors',state:'present',documents:['missing.md','good.md'].map(alias=>({alias,resolution:'stored',producer:{jobId:'producer',taskOrdinal:1,name:alias},ref:{},raw:{}}))})}));
   await page.route('**/final-documents/document?*',route=>new URL(route.request().url()).searchParams.get('alias')==='missing.md'?route.fulfill({status,json:{error:status===403?'Producer access denied':'Bytes not retained'}}):route.fulfill({body:'# Available final document',contentType:'text/plain'}));
   await page.goto('/project/demo/jobs/job/story');
-  const list=page.getByLabel('Returned documents',{exact:true});
+  const list=page.getByLabel('Attachments',{exact:true});
   await list.getByRole('link',{name:'missing.md',exact:true}).click();
-  const viewer=page.getByRole('dialog',{name:'Returned document viewer'});
+  const viewer=page.getByRole('dialog',{name:'Attachment viewer'});
   await expect(viewer.getByRole('alert')).toContainText(status===403?'Producer access denied':'Bytes not retained');
   await expect(viewer).not.toContainText(/expired/i);
   await viewer.getByRole('button',{name:'Close',exact:true}).click();
@@ -388,7 +378,7 @@ test('CX-001 automatic completion supersedes an in-flight pre-publication snapsh
   // history response at the pre-completion snapshot while metadata completes.
   await expect.poll(() => held, {timeout:15000}).toBe(true);
   terminal = true;
-  await expect(page.getByLabel('Verified publication')).toHaveCount(1);
+  await expect(page.locator('.inbox-history-message > summary').filter({has:page.locator('.thread-message-sender').getByText('Publication', { exact:true })})).toHaveCount(1);
   await expandHistory(page);
   await expect(page.getByLabel('Verified publication')).toContainText(merge.candidate_subject);
   await expect(page.getByLabel('Current job activity')).toHaveCount(0);
@@ -439,7 +429,7 @@ for(const width of [1280,390]) test(`CV-002 CV-020 CV-022 terminal publications 
  const reads:string[]=[];
  await page.route('**/final-documents/document?*',r=>{const url=new URL(r.request().url());reads.push(url.search);expect(url.searchParams.get('manifest_id')).toBe('manifest-one');return r.fulfill({contentType:'application/octet-stream',body:url.searchParams.get('alias')==='report.md'?'# Returned report\n\n[Data](data.json)':'{"retained":true}'});});
  await page.goto('/project/demo/jobs/job/story');
- await expect(page.getByLabel('Verified publication')).toHaveCount(1);
+ await expect(page.locator('.inbox-history-message > summary').filter({has:page.locator('.thread-message-sender').getByText('Publication', { exact:true })})).toHaveCount(1);
  await expandHistory(page);
  await expect(page.getByLabel('Verified publication')).toContainText('Add conversation publication cards');
  const link=page.getByRole('link',{name:'report.md',exact:true});await link.click();
@@ -500,7 +490,7 @@ test('CV-022 CV-030 changed attempt aborts old preview and ignores late bytes',a
  await expect.poll(()=>failures.length).toBeGreaterThan(0);
 });
 
-test('CV-028 conversation refresh and Retry use no status or listing enrichment',async({page})=>{
+test('CV-028 thread refresh uses the existing observation without a document listing',async({page})=>{
  let available=false;
  let conversations=0;
  const statusReads:string[]=[],listReads:string[]=[];
@@ -512,17 +502,18 @@ test('CV-028 conversation refresh and Retry use no status or listing enrichment'
   return r.fulfill({json:body});
  });
  await page.goto('/project/demo/jobs/job/story');
- await expect(page.getByText('Returned documents unavailable')).toBeVisible();
+ await expect(page.getByRole('region', { name: 'Job completion' })).toBeVisible();
+ await expect(page.getByLabel('Attachments', { exact: true })).toHaveCount(0);
  await page.waitForLoadState('networkidle');
  const initial=statusReads.length;
  const initialConversations=conversations;
  await (await storyAction(page, 'Refresh')).click();
  await expect.poll(()=>conversations).toBe(initialConversations+1);
  available=true;
- await page.getByLabel('Returned documents',{exact:true}).getByRole('button',{name:'Retry',exact:true}).click();
- await expect(page.getByText('No returned documents')).toBeVisible();
- expect(conversations).toBe(initialConversations+2);
- expect(statusReads.length).toBe(initial+1);
+ await (await storyAction(page, 'Refresh')).click();
+ await expect.poll(()=>conversations).toBe(initialConversations+2);
+ await expect(page.getByLabel('Attachments', { exact: true })).toHaveCount(0);
+ expect(statusReads.length).toBe(initial+2);
  expect(listReads).toEqual([]);
 });
 
@@ -661,7 +652,7 @@ for(const width of [1440,390]) test(`JS-004,005,010,036 summary deep link and sh
   await expect(page.getByText('42',{exact:true})).toBeVisible();
   await expect(page.getByText('The story API returned no steps for this finished job.')).toBeVisible();
   await page.screenshot({path:info.outputPath(`trace-summary-${width}.png`),fullPage:true,animations:'disabled'});
-  for(const tab of ['Conversation','Relationships','Input artifacts','DAG','Lease timeline','Trace']){
+  for(const tab of ['Thread','Execution','Graph','Trace']){
     await page.getByRole('tab',{name:tab,exact:true}).click();
     const opener=await storyAction(page, 'Restart');
     await opener.click();

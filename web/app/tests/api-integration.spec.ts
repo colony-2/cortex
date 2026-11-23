@@ -1,4 +1,4 @@
-import { storyAction, originalRequest, inboxFolder, openCompose } from './helpers/inbox';
+import { storyAction, originalRequest, inboxFolder, openCompose, openTenantSwitcher } from './helpers/inbox';
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { spawn, execFileSync } from 'node:child_process';
@@ -208,7 +208,7 @@ test('Compose submits a prompt-only job and retains inbox context through reload
   await page.getByRole('link', { name: 'Back to inbox' }).click();
   await inboxFolder(page, 'platform');
   await expect(page).toHaveURL(url => url.searchParams.get('cellId') === cell.id);
-  await page.getByRole('textbox', {name:'Search jobs'}).fill('word84');
+  await page.getByRole('searchbox', { name: 'Search threads' }).fill('word84');
   // Router navigation settles after input; save the filtered URL for every return path.
   await expect(page).toHaveURL(url => url.searchParams.get('cellId') === cell.id && url.searchParams.get('q') === 'word84');
   const inboxURL = page.url();
@@ -216,7 +216,7 @@ test('Compose submits a prompt-only job and retains inbox context through reload
   await row.click();
   await expect(await originalRequest(page)).toHaveText(prompt);
   await page.goBack(); await expect(page).toHaveURL(inboxURL);
-  await expect(page.getByRole('textbox', {name:'Search jobs'})).toHaveValue('word84');
+  await expect(page.getByRole('searchbox', { name: 'Search threads' })).toHaveValue('word84');
   await page.goForward(); await expect(await originalRequest(page)).toHaveText(prompt);
   await page.reload(); await expect(await originalRequest(page)).toHaveText(prompt);
   await page.getByRole('link', { name: 'Back to inbox' }).click();
@@ -236,7 +236,8 @@ test('keeps deep-linked tenant, navigation, and live input activity in sync', as
   await page.goto(`/project/${tenant}/cells`);
   expect((await streamResponse).status()).toBe(200);
   expect((await pendingResponse).status()).toBe(200);
-  await expect(page.getByLabel('Tenant ID')).toHaveValue(tenant);
+  await expect(await openTenantSwitcher(page)).toHaveValue(tenant);
+  await page.keyboard.press('Escape');
   await expect(page).toHaveTitle(`cortex: tenant ${tenant}`);
   const rows = page.locator('.ant-table-tbody > tr[data-row-key]');
   await expect(rows).toHaveCount(2);
@@ -247,7 +248,7 @@ test('keeps deep-linked tenant, navigation, and live input activity in sync', as
   await expect(page).toHaveURL(new RegExp(`/project/${tenant}/reviews$`));
   await expect(page.getByText('No pending reviews')).toBeVisible();
 
-  await page.getByLabel('Tenant ID').fill('browser-other');
+  await (await openTenantSwitcher(page)).fill('browser-other');
   await page.getByRole('button', { name: 'Use', exact: true }).click();
   await expect(page).toHaveURL(/\/project\/browser-other\/jobs$/);
   await expect(page).toHaveTitle('cortex: tenant browser-other');
@@ -267,7 +268,8 @@ test('opens the tenant from the server connection config without a URL override'
   expect((await jobs).status()).toBe(200);
   expect((await stream).status()).toBe(200);
   await expect(page).toHaveURL(new RegExp(`/project/${tenant}/jobs$`));
-  await expect(page.getByLabel('Tenant ID')).toHaveValue(tenant);
+  await expect(await openTenantSwitcher(page)).toHaveValue(tenant);
+  await page.keyboard.press('Escape');
   await expect(page.getByRole('heading', { name: 'All', exact: true })).toBeVisible();
   await page.goto(`/project/${tenant}/reviews`);
   await expect(page.getByText('No pending reviews')).toBeVisible();

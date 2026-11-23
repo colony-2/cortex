@@ -205,3 +205,41 @@ func TestCancellationArchivePartialFailure(t *testing.T) {
 		t.Fatalf("accepted reason overwritten: %#v", run.Job)
 	}
 }
+
+func TestThreadRecordsSubmitterAndCanceller(t *testing.T) {
+	srv, err := NewUITestServer(Config{WorkingDir: writeC2JConfig(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	base := ts.URL + "/api/projects/a"
+	postJSON[jobdb.Cell](t, base+"/cells", map[string]string{"name": "self", "repo": "github.com/acme/boo-self"})
+
+	send := func(path, email, payload string, wantStatus int) {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, base+path, strings.NewReader(payload))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Cookie", "colony2:user:email="+email)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != wantStatus {
+			t.Fatalf("POST %s returned %d, want %d", path, resp.StatusCode, wantStatus)
+		}
+	}
+	send("/jobs", "author%40example.com", `{"job_id":"thread","recipe":"smoke","cell":"self"}`, http.StatusCreated)
+	send("/jobs/thread/cancel", "reviewer%40example.com", `{"reason":"Stopping the run"}`, http.StatusNoContent)
+	send("/jobs/thread/cancel", "second%40example.com", `{"reason":"Different reason"}`, http.StatusNoContent)
+
+	job := getJSON[jobWithExecutionRequirements](t, base+"/jobs/thread")
+	if !strings.Contains(string(job.Metadata), `"cortex_submitted_by":"author@example.com"`) ||
+		job.CancelledBy != "reviewer@example.com" || job.CompletionDetail != "Stopping the run" {
+		t.Fatalf("unexpected thread attribution: %s, %q, %q", job.Metadata, job.CancelledBy, job.CompletionDetail)
+	}
+}

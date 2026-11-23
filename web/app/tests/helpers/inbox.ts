@@ -32,12 +32,17 @@ export async function inboxFolder(page: Page, name: string) {
   if (await drawer.isVisible()) await drawer.click();
   await page.getByRole('navigation', { name: 'Inboxes' }).getByRole('link', { name, exact: true }).click();
 }
+export async function openTenantSwitcher(page: Page) {
+  await page.getByRole('button', { name: 'User account' }).click();
+  await page.getByRole('menuitem', { name: 'Switch tenant' }).click();
+  return page.getByRole('searchbox', { name: 'Tenant ID' });
+}
 export async function openCompose(page: Page, recipient?: string) {
   await expect(page.getByRole('banner')).toBeVisible();
   const drawer = page.getByRole('button', { name: 'Open navigation', exact: true });
   if (await drawer.isVisible()) await drawer.click();
-  await page.getByRole('button', { name: 'Compose', exact: true }).click();
-  const composer = page.getByRole('region', { name: 'Compose job', exact: true });
+  await page.getByRole('button', { name: 'New message', exact: true }).click();
+  const composer = page.getByRole('region', { name: 'New message', exact: true });
   await expect(composer).toBeVisible();
   if (recipient) {
     await composer.getByRole('combobox', { name: 'Recipient cell' }).click();

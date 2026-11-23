@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -24,9 +25,25 @@ import (
 )
 
 // Project the native submission handle without another read for goal identity.
-type nativeSubmitter struct{ jobworkflow.Engine }
+type nativeSubmitter struct {
+	jobworkflow.Engine
+	reportedEmail string
+}
 
 func (s nativeSubmitter) SubmitJobRef(ctx context.Context, job jobdb.SubmitJob) (jobref.Ref, error) {
+	if s.reportedEmail != "" {
+		metadata := make(map[string]json.RawMessage)
+		if len(job.Metadata) > 0 {
+			if err := json.Unmarshal(job.Metadata, &metadata); err != nil {
+				return jobref.Ref{}, err
+			}
+		}
+		if metadata == nil {
+			metadata = make(map[string]json.RawMessage)
+		}
+		metadata["cortex_submitted_by"], _ = json.Marshal(s.reportedEmail)
+		job.Metadata, _ = json.Marshal(metadata)
+	}
 	handle, err := s.SubmitJob(ctx, job)
 	if err != nil {
 		return jobref.Ref{}, err
@@ -181,7 +198,7 @@ func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 		Recipe:    req.Recipe,
 		Inputs:    req.Inputs,
 		Artifacts: artifacts,
-	}, nativeSubmitter{s.engine})
+	}, nativeSubmitter{Engine: s.engine, reportedEmail: reportedJobActor(r)})
 	if err != nil {
 		writeError(w, err)
 		return
@@ -393,6 +410,34 @@ func cancellationReason(w http.ResponseWriter, r *http.Request) (string, bool, b
 	return reason, supplied, true
 }
 
+// JobDB persists the first cancellation reason as the terminal detail. Keep
+// the actor on that same record so another client can read it after completion.
+const cortexCancellationPrefix = "Cortex cancellation by "
+
+func reportedJobActor(r *http.Request) string {
+	email, err := url.PathUnescape(reportedEmailCookie(r))
+	if err != nil || strings.ContainsAny(email, "\r\n") {
+		return ""
+	}
+	return strings.TrimSpace(email)
+}
+
+func attributedCancellation(r *http.Request, reason string) string {
+	if email := reportedJobActor(r); email != "" {
+		return cortexCancellationPrefix + email + "\n\n" + reason
+	}
+	return reason
+}
+
+func cancellationMessage(detail string) (actor string, reason string) {
+	if body, ok := strings.CutPrefix(detail, cortexCancellationPrefix); ok {
+		if email, text, found := strings.Cut(body, "\n\n"); found && email != "" && !strings.ContainsAny(email, "\r\n") {
+			return email, text
+		}
+	}
+	return "", detail
+}
+
 func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 	reason, _, valid := cancellationReason(w, r)
 	if !valid {
@@ -400,7 +445,7 @@ func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 	}
 	err := s.engine.CancelJob(r.Context(), jobdb.CancelJob{
 		JobKey: jobdb.JobKey{TenantId: s.tenantID(r), JobId: mux.Vars(r)["jobId"]},
-		Reason: reason,
+		Reason: attributedCancellation(r, reason),
 	})
 	if err != nil {
 		writeError(w, err)
@@ -433,7 +478,7 @@ func (s *Server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
 		job := listed.Jobs[0]
 		cancellationAccepted = (job.ArchivedAt != nil && job.CompletionStatus == "cancelled") || (job.ArchivedAt == nil && job.CancelRequested)
 		if job.ArchivedAt == nil && job.Status != jobdb.JobStatusCompleted && job.Status != jobdb.JobStatusCancelled && !cancellationAccepted {
-			if err := s.engine.CancelJob(r.Context(), jobdb.CancelJob{JobKey: key, Reason: reason}); err != nil {
+			if err := s.engine.CancelJob(r.Context(), jobdb.CancelJob{JobKey: key, Reason: attributedCancellation(r, reason)}); err != nil {
 				writeError(w, err)
 				return
 			}

@@ -10,7 +10,7 @@ const job: RecipeJob = {
 
 describe('job display status', () => {
   it.each([
-    ['success', 'Succeeded', 'green'],
+    ['success', 'Succeeded', 'purple'],
     ['failed_app', 'Failed (application)', 'red'],
     ['failed_system', 'Failed (system)', 'red'],
     ['failed_timeout', 'Timed out', 'red'],
@@ -23,7 +23,8 @@ describe('job display status', () => {
   });
 
   it('keeps running and retrying jobs active even if an old completion field is present', () => {
-    expect(jobStatus({ ...job, status: 'ACTIVE', store: 'ACTIVE', completion_status: 'failed_system' }).label).toBe('Running');
+    expect(jobStatus({ ...job, status: 'ACTIVE', store: 'ACTIVE', completion_status: 'failed_system' })).toEqual({ label: 'Running', color: 'green' });
+    expect(jobStatus({ ...job, status: 'PENDING_JOBS', store: 'ACTIVE' })).toEqual({ label: 'Waiting for jobs', color: 'lime' });
     expect(jobStatus({ ...job, status: 'AWAITING_FUTURE', store: 'ACTIVE', completion_status: 'failed_app' }).label).toBe('Scheduled');
   });
 

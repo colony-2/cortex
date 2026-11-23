@@ -275,7 +275,7 @@ func TestC2JUpgradeSelectedGoalDenial(t *testing.T) {
 				})
 			}
 			target := recipejob.ResolvedTarget{CellName: "test", CellRepo: "example.test/test", RepositorySource: "https://example.test/test", TenantID: "selection", DefaultRef: cellref.DefaultRef}
-			_, err = recipejob.SubmitRecipeJob(ctx, recipejob.BuildStartJobRequest{TenantID: "selection", JobID: "denied", GoalID: seed.GoalID, Target: target, Recipe: "smoke"}, nativeSubmitter{engine})
+			_, err = recipejob.SubmitRecipeJob(ctx, recipejob.BuildStartJobRequest{TenantID: "selection", JobID: "denied", GoalID: seed.GoalID, Target: target, Recipe: "smoke"}, nativeSubmitter{Engine: engine})
 			require.Error(t, err)
 			jobs, err := rt.ListJobs(ctx, jobdb.ListJobsRequest{TenantIds: []string{"selection"}})
 			require.NoError(t, err)

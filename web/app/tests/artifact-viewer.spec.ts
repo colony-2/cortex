@@ -1,3 +1,4 @@
+import { originalRequest } from './helpers/inbox';
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { jobIdentity } from './helpers/cells';
@@ -323,14 +324,15 @@ for (const width of [1280, 390]) {
       await route.fulfill({ json: body });
     });
     await page.goto('/project/tenant/jobs/job/story');
-    await page.getByRole('tab', { name: 'Input artifacts', exact: true }).click();
-    await expect(page.getByText('Input artifacts (5)', { exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: 'Thread', exact: true }).click();
+    await originalRequest(page);
+    await expect(page.getByText('Attachments (5)', { exact: true })).toBeVisible();
     // The dev app uses StrictMode, which may repeat the initial effect.
     const loadedInventoryRequests = inventoryRequests;
     await capture(`input-artifacts-${width}.png`, true);
     const runSummary = page.locator('.story-summary-disclosure');
-    const inputPane = page.locator('.input-artifacts-disclosure');
-    await expect(inputPane.getByRole('heading', { name: 'Input artifacts (5)', exact: true })).toBeVisible();
+    const inputPane = page.getByRole('region', { name: 'Input attachments' });
+    await expect(inputPane.getByRole('heading', { name: 'Attachments (5)', exact: true })).toBeVisible();
     await expect(inputPane.locator(':scope > summary')).toHaveCount(0);
     await expect(inputPane).not.toHaveAttribute('open');
     await expect(page.getByRole('button', { name: longName, exact: true })).toBeVisible();
@@ -342,16 +344,17 @@ for (const width of [1280, 390]) {
       await expect(page.getByRole('tab', { name: 'Trace', exact: true })).toHaveAttribute('aria-selected', 'true');
       await expect(page.getByRole('alert').filter({ hasText: 'Failed to load job story' })).toBeVisible();
       await expect(page.getByRole('button', { name: longName, exact: true })).not.toBeVisible();
-      await page.getByRole('tab', { name: 'Input artifacts', exact: true }).click();
+      await page.getByRole('tab', { name: 'Thread', exact: true }).click();
+      await originalRequest(page);
       await expect(page.getByRole('button', { name: longName, exact: true })).toBeVisible();
     }
     await capture(`input-panes-direct-${width}.png`, true);
     // Keyboard selection of the tabs exposes content without a second activation.
-    await page.getByRole('tab', { name: 'Input artifacts', exact: true }).focus();
+    await page.getByRole('tab', { name: 'Thread', exact: true }).focus();
     await page.keyboard.press('End');
     await expect(page.getByRole('tab', { name: 'Trace', exact: true })).toBeFocused();
     await expect(runSummary.getByRole('heading', { name: 'Run Summary', exact: true })).toBeVisible();
-    for (const name of ['Lease timeline', 'DAG', 'Env', 'Input artifacts']) {
+    for (const name of ['Lease timeline', 'DAG', 'Env', 'Relationships', 'Thread']) {
       await page.keyboard.press('ArrowLeft');
       const tab = page.getByRole('tab', { name, exact: true });
       await expect(tab).toBeFocused();
@@ -422,7 +425,7 @@ for (const width of [1280,390]) {
       await route.fulfill({json:body});
     });
     await page.goto('/project/tenant/jobs/job/story?tab=input-artifacts');
-    await expect(page.getByRole('heading',{name:'Input artifacts (6)'})).toBeVisible();
+    await expect(page.getByRole('heading',{name:'Attachments (6)'})).toBeVisible();
     await expect(page.getByText('External reference — content not loaded')).toBeVisible();
     await expect(page.getByText('Attachment · Document')).toBeVisible();
     expect(await page.getByRole('button',{name:'Download external.md'}).count()).toBe(0);

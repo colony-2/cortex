@@ -4,8 +4,8 @@ import { jobIdentity } from './helpers/cells';
 
 const job = { ...jobIdentity, tenant_id: 'tenant', job_id: 'job', goal_id: 'goal', title: 'Inspect lease history', prompt: 'Keep ordinary job details usable', status: 'READY', store: 'ACTIVE', job_type: 'recipe', recipe:'build', created_at: '2026-11-07T00:00:00.000000001Z' };
 const pane = (page:Page) => page.getByRole('region',{name:'Lease timeline',exact:true});
-const timeline = (page:Page) => page.getByRole('tab',{name:'Lease timeline',exact:true}).or(pane(page).getByRole('button',{name:'Timeline',exact:true}));
-const leaveTimeline = async (page:Page) => { const tab=page.getByRole('tab',{name:'Conversation',exact:true}); if(await tab.count()) await tab.click(); else await timeline(page).click(); };
+const timeline = (page:Page) => page.getByRole('tab',{name:'Execution',exact:true}).or(pane(page).getByRole('button',{name:'Timeline',exact:true}));
+const leaveTimeline = async (page:Page) => { const tab=page.getByRole('tab',{name:'Thread',exact:true}); if(await tab.count()) await tab.click(); else await timeline(page).click(); };
 async function fixtures(page: Page) {
   if (process.env.CORTEX_DEBUG_BROWSER) {
     page.on('console', message => console.log('CONSOLE',message.type(),message.text()));
@@ -106,7 +106,7 @@ for(const [status,code] of [[403,'forbidden'],[401,'authentication_required'],[5
     await surface(page,'detail'); expect(fixture.requests).toHaveLength(0); await timeline(page).click();
     await expect(pane(page).getByRole('alert')).toContainText(code);
     await expect(pane(page).getByText('No retained lease events are available.')).toHaveCount(0);
-    await page.getByRole('tab',{name:'Conversation',exact:true}).click();
+    await page.getByRole('tab',{name:'Thread',exact:true}).click();
     await page.locator('.inbox-original > summary').click();
     await expect(page.getByText('Keep ordinary job details usable',{exact:true}).first()).toBeVisible();
     await timeline(page).click();
@@ -161,7 +161,7 @@ test('navigation cancels the pending read and the destination starts closed',asy
 for (const width of [1280,390]) {
  test(`crash concern ${width}px: confirmation, focus, pending guard, toast and exact refresh`,async({page})=>{
   await page.setViewportSize({width,height:900});const f=await fixtures(page);f.setJob('CRASH_CONCERN');f.setResponder(async route=>route.fulfill({json:{events:[leaseEvent('9',{workerId:'worker-1'}),leaseEvent('2',{workerId:'worker-2'})]}}));await surface(page,'story');await timeline(page).click();
-  const panel=page.getByRole('tabpanel',{name:'Lease timeline',exact:true});
+  const panel=page.getByRole('tabpanel',{name:'Execution',exact:true});
   const trigger=panel.getByRole('button',{name:'Clear crash concern',exact:true});await expect(trigger).toBeVisible();
   expect((await trigger.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   const warning=panel.getByText('Crash concern',{exact:true});await expect(warning).toBeVisible();
@@ -200,7 +200,7 @@ for (const width of [1280,390]) {
 }
 test('crash concern remains independent of history failure and reports status failure after success',async({page})=>{
  const f=await fixtures(page);f.setJob('CRASH_CONCERN');f.setResponder(async route=>route.fulfill({status:503,json:{error:'history offline'}}));
- await surface(page,'story');await timeline(page).click();const panel=page.getByRole('tabpanel',{name:'Lease timeline',exact:true});
+ await surface(page,'story');await timeline(page).click();const panel=page.getByRole('tabpanel',{name:'Execution',exact:true});
  await expect(pane(page).getByRole('alert')).toContainText('history offline');await panel.getByRole('button',{name:'Clear crash concern',exact:true}).click();
  f.setClear(async route=>{f.setDetail(async r=>r.fulfill({status:503,json:{error:'status offline'}}));await route.fulfill({status:204});});
  await page.getByRole('dialog').getByRole('button',{name:'Clear crash concern',exact:true}).click();await expect(page.getByText('Crash concern cleared',{exact:true})).toBeVisible();
@@ -211,7 +211,7 @@ test('crash concern remains independent of history failure and reports status fa
 test('crash concern conflict refreshes status without losing readable history or retrying mutation',async({page})=>{
  const f=await fixtures(page);f.setJob('CRASH_CONCERN');f.setClear(async route=>route.fulfill({status:409,json:{error:'job has a live lease'}}));await surface(page,'story');await timeline(page).click();
  await expect(pane(page).locator('tr.ant-table-row')).toHaveCount(1);
- await page.getByRole('tabpanel',{name:'Lease timeline',exact:true}).getByRole('button',{name:'Clear crash concern',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'Clear crash concern',exact:true}).click();
+ await page.getByRole('tabpanel',{name:'Execution',exact:true}).getByRole('button',{name:'Clear crash concern',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'Clear crash concern',exact:true}).click();
  await expect(page.getByText('Could not confirm clearing',{exact:true})).toBeVisible();await expect(page.getByText(/job has a live lease/)).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(pane(page).locator('tr.ant-table-row')).toHaveCount(1);
  expect(f.mutations).toHaveLength(1);expect(f.requests).toHaveLength(1);await expect(page.getByText('Crash concern cleared',{exact:true})).toHaveCount(0);
 });
@@ -241,7 +241,9 @@ test('follows a lease to its Pulse provider, log and job-filtered launches', asy
   await page.route('**/api/projects/tenant/runner-launches?**', route =>
     route.fulfill({json: {events: [leaseEvent('2', {workerId: 'old-launch', eventType: 'lease_acquired'})]}}));
   await page.goto('/project/tenant/jobs/job/story?tab=leases');
-  await expect(page.getByText('Last recorded launch ID')).toBeVisible();
+  const execution = page.getByRole('tabpanel', {name: 'Execution'});
+  await expect(execution.getByText('Last recorded launch ID')).toBeVisible();
+  await expect(execution.getByRole('link', {name: 'launch-1'}).first()).toHaveAttribute('href', /\/runners\/launches\/launch-1/);
   await pane(page).getByRole('link', {name: 'launch-1'}).click();
   await expect(page.getByRole('heading', {name: 'Launch launch-1'})).toBeVisible();
   await expect(page.locator('pre.runner-log')).toHaveText('ready');

@@ -1,61 +1,87 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { matchPath, useLocation } from 'react-router-dom';
 import { getUserEmail, useInputActivity } from '@colony2/shared';
+import type { RecipeJobSummary } from '@colony2/shared/types';
 import { useCells } from './useCells';
-import { loadJobInbox, inboxReadKey, inboxRevision, type InboxJob } from '../utils/jobInboxData';
-import { inboxPendingCounts, rankInboxCells } from '../utils/jobInbox';
+import { inboxReadKey, inboxRevision, type InboxJob } from '../utils/jobInboxData';
+import { inboxPendingCounts, rankInboxCells, readInboxSort } from '../utils/jobInbox';
+import { useInboxJobs } from './useInboxJobs';
+
+const noPending: ReturnType<typeof useInputActivity>['pendingInputs'] = [];
 
 function useInboxValue(tenant: string) {
   const [turn, setTurn] = useState(0);
-  const registry = useCells(tenant, 'ALL', turn);
+  const registry = useCells(tenant, 'ALL');
   const activity = useInputActivity();
-  const [snapshot, setSnapshot] = useState<{ tenant: string; jobs: InboxJob[] }>();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>();
+  const { pathname, search } = useLocation();
+  const params = new URLSearchParams(search);
+  const folder = params.get('inbox');
+  const cellId = params.get('cellId');
+  const onList = !!(matchPath('/jobs', pathname) || matchPath('/project/:projectId/jobs', pathname));
+  const waiting = onList && folder === 'waiting';
+  const pending = activity.currentProjectId === tenant ? activity.pendingInputs : noPending;
+  const [allJobs, setAllJobs] = useState<InboxJob[]>([]);
+  const knownJobs = [...allJobs, ...pending];
+  const cellFolder = onList && folder === 'cell';
+  const observedCell = cellFolder ? knownJobs.find(job => job.cell_id === cellId && job.cell_name) : undefined;
+  const cell = cellFolder ? registry.cells.find(cell => cell.id === cellId)
+    ?? (observedCell && { id: observedCell.cell_id, name: observedCell.cell_name }) : undefined;
+  const pagedFolder = !onList || waiting || folder === 'drafts' ? undefined : folder === 'cell' || folder === 'archive' ? folder : 'all';
+  // Search and explicit sorts need the whole folder until JobDB offers those queries.
+  const complete = !!(params.get('q')?.trim() || readInboxSort(params.get('sort')));
+  const page = useInboxJobs(tenant, pagedFolder, cell, complete, turn);
+  useEffect(() => {
+    if (pagedFolder === 'all' && page.loaded) setAllJobs(page.jobs);
+  }, [pagedFolder, page.jobs, page.loaded]);
+
+  const counts = inboxPendingCounts(tenant, { tenantId: activity.currentProjectId ?? '', status: activity.discoveryStatus, inputs: pending });
+  const pendingJobs = useMemo(() => pending.filter(input => !input.tenant_id || input.tenant_id === tenant).map(input => ({
+    ...input, tenant_id: tenant, job_id: input.id, status: input.status ?? 'READY', store: input.store ?? 'ACTIVE',
+    job_type: input.job_type ?? 'recipe', recipe: input.recipe ?? '', created_at: input.created_at ?? '',
+    available_at: input.available_at ?? '', inboxArchived: false,
+  } satisfies InboxJob)), [pending, tenant]);
+  const cellUnavailable = pagedFolder === 'cell' && !cell && !registry.loading;
+  const jobs = waiting ? pendingJobs : page.jobs;
+  const loading = waiting ? counts.status === 'loading' : page.loading || pagedFolder === 'cell' && !cell && registry.loading;
+  const error = waiting ? undefined : cellUnavailable ? registry.error || 'This cell is unavailable.' : page.error;
   const [readTurn, setReadTurn] = useState(0);
   const user = getUserEmail() ?? '';
-  useEffect(() => {
-    let current = true;
-    setLoading(true); setError(undefined);
-    loadJobInbox(tenant, () => !current).then(jobs => { if (current) setSnapshot({ tenant, jobs }); })
-      .catch(reason => { if (current) setError(reason instanceof Error ? reason.message : String(reason)); })
-      .finally(() => { if (current) setLoading(false); });
-    return () => { current = false; };
-  }, [tenant, turn]);
   useEffect(() => {
     const changed = () => setReadTurn(value => value + 1);
     window.addEventListener('storage', changed);
     return () => window.removeEventListener('storage', changed);
   }, []);
-  const jobs = snapshot?.tenant === tenant ? snapshot.jobs : [];
-  const pending = activity.currentProjectId === tenant ? activity.pendingInputs : [];
-  const counts = inboxPendingCounts(tenant, { tenantId: activity.currentProjectId ?? '', status: activity.discoveryStatus, inputs: pending });
+  // The sidebar can prioritize cells from loaded All pages without a separate tenant scan.
   const totals = new Map<string, number>();
-  for (const job of jobs) if (!job.inboxArchived) totals.set(job.cell_id, (totals.get(job.cell_id) ?? 0) + 1);
+  for (const job of allJobs) totals.set(job.cell_id, (totals.get(job.cell_id) ?? 0) + 1);
   const cells = new Map(registry.cells.map(cell => [cell.id, { ...cell, unarchivedJobs: totals.get(cell.id) ?? 0 }]));
-  for (const job of jobs) if (!cells.has(job.cell_id)) cells.set(job.cell_id, {
+  for (const job of knownJobs) if (job.cell_id && job.cell_name && !cells.has(job.cell_id)) cells.set(job.cell_id, {
     id: job.cell_id, tenantId: tenant, name: job.cell_name, repo: job.repo, state: 'RETIRED', description: '', metadata: {}, aliases: [], revision: '', createdAt: '', updatedAt: '', unarchivedJobs: totals.get(job.cell_id) ?? 0,
   });
-  const ranked = rankInboxCells([...cells.values()].filter(cell => cell.state === 'ACTIVE' || cell.unarchivedJobs > 0));
-  const revision = (job: InboxJob) => {
+  const ranked = rankInboxCells([...cells.values()].filter(cell => cell.state === 'ACTIVE' || cell.unarchivedJobs > 0
+    || (counts.status === 'current' && counts.byCell.has(cell.id)) || cell.id === cellId));
+  const revision = (job: RecipeJobSummary) => {
     const request = pending.find(input => input.id === job.job_id);
     return inboxRevision(job, request?.requested_at, request?.request_id);
   };
   const memory = useState(() => new Map<string, string>())[0];
-  const isUnread = (job: InboxJob) => {
+  const isUnread = (job: RecipeJobSummary & { inboxArchived?: boolean }) => {
     if (job.inboxArchived) return false;
     const key = inboxReadKey(user, tenant, job.job_id);
     let seen = memory.get(key);
     try { seen = localStorage.getItem(key) ?? seen; } catch { /* Session-only fallback. */ }
     return seen !== revision(job);
   };
-  const markRead = (job: InboxJob) => {
+  const markRead = (job: RecipeJobSummary) => {
     const key = inboxReadKey(user, tenant, job.job_id), value = revision(job);
     memory.set(key, value);
     try { localStorage.setItem(key, value); } catch { /* Session-only fallback. */ }
     setReadTurn(value => value + 1);
   };
-  return { tenant, jobs, loading, error, loaded: snapshot?.tenant === tenant, registry, ranked, pending, counts, isUnread, markRead, readTurn,
-    refresh: () => { setTurn(value => value + 1); void activity.refresh(); } };
+  return { tenant, jobs, loading, error, loaded: waiting ? counts.status === 'current' : page.loaded,
+    nextPageToken: page.nextPageToken, loadMore: page.loadMore, retry: cellUnavailable ? registry.reload : page.retry,
+    registry, ranked, pending, counts, isUnread, markRead, readTurn,
+    refresh: () => { if (cellUnavailable) registry.reload(); setTurn(value => value + 1); void activity.refresh(); } };
 }
 const Context = createContext<ReturnType<typeof useInboxValue> | null>(null);
 export function JobInboxProvider({ tenant, children }: { tenant: string; children: ReactNode }) {
@@ -72,10 +98,9 @@ export function useOptionalJobInbox() {
 
 // Standalone story tests and embedders need no inbox provider. Acknowledgement
 // happens only after job metadata is readable, including direct story links.
-export function useInboxReadReceipt(tenant: string, jobId: string | undefined, readable: boolean) {
+export function useInboxReadReceipt(tenant: string, job: RecipeJobSummary | undefined) {
   const inbox = useContext(Context);
-  const job = inbox?.tenant === tenant ? inbox.jobs.find(row => row.job_id === jobId) : undefined;
-  const request = inbox?.pending.find(row => row.id === jobId);
+  const request = inbox?.pending.find(row => row.id === job?.job_id);
   const revision = job ? inboxRevision(job, request?.requested_at, request?.request_id) : undefined;
-  useEffect(() => { if (readable && job && inbox?.isUnread(job)) inbox.markRead(job); }, [tenant, jobId, readable, revision]);
+  useEffect(() => { if (job && inbox?.tenant === tenant && inbox.isUnread(job)) inbox.markRead(job); }, [tenant, job?.job_id, revision]);
 }

@@ -14,7 +14,7 @@ it('DAG-05,06,07 retains presentation while paused, and isolates keyed tenant/jo
  vi.mocked(getTreeChildren).mockResolvedValue({nodes:[],observed_at:'now'});
  const view = (tenant:string, entry:string, active=true) => <StrictMode><MemoryRouter><TreeWorkspace key={JSON.stringify([tenant,entry])} tenant={tenant} entry={entry} active={active} embedded /></MemoryRouter></StrictMode>;
  const {rerender} = render(view('t','one'));
- await screen.findByText('Discovery finished:',{exact:false});
+ await screen.findByText('Discovery finished',{exact:false});
  fireEvent.change(screen.getByRole('searchbox'),{target:{value:'saved'}});
  fireEvent.click(screen.getByRole('button',{name:'Zoom in'}));
  const count=vi.mocked(getTreeNode).mock.calls.length;
@@ -46,7 +46,7 @@ it.each(['entry','ancestor','children'])('DAGUI-020,022 automatically resumes in
  const {rerender}=render(view(true));await waitFor(()=>expect(paused).toBe(true));
  fireEvent.change(screen.getByRole('searchbox'),{target:{value:'saved'}});
  rerender(view(false));rerender(view(true));
- await screen.findByText('Discovery finished:',{exact:false});
+ await screen.findByText('Discovery finished',{exact:false});
  finish(stage==='children'?{nodes:[{...entry,job_id:'stale'}],observed_at:'old'}:{node:{...entry,job_id:'stale'},observed_at:'old'});
  await Promise.resolve();
  expect(screen.getByRole('searchbox')).toHaveValue('saved');
@@ -77,7 +77,7 @@ it('DAGUI-016 visible clock advances ages, suspends inactive, recomputes on retu
  vi.mocked(getTreeNode).mockResolvedValue({node:{tenant_id:'t',job_id:'live',job_type:'recipe',status:'READY',created_at:'2026-11-12T09:00:10Z'},observed_at:'now'});
  vi.mocked(getTreeChildren).mockImplementation(async(_,id)=>({nodes:id==='live'?[{tenant_id:'t',job_id:'done',parent_job_id:'live',job_type:'generic',status:'COMPLETED',created_at:'2026-11-12T09:01:48Z',archived_at:'2026-11-12T09:07:20Z'}]:[],observed_at:'now'}));
  const view=(active:boolean)=><MemoryRouter><TreeWorkspace tenant="t" entry="live" active={active} /></MemoryRouter>;
- const {rerender,unmount}=render(view(true));await screen.findByText('Discovery finished:',{exact:false});
+ const {rerender,unmount}=render(view(true));await screen.findByText('Discovery finished',{exact:false});
  expect(screen.getByText('Age 18m 32s')).toBeInTheDocument();
  clock+=1000;act(()=>tick());
  expect(screen.getByText('Age 18m 33s')).toBeInTheDocument();
@@ -123,7 +123,7 @@ it.each([
   visibility.mockReturnValue('visible');
   if(initial==='hidden document') fireEvent(document,new Event('visibilitychange'));
   else rerender(view(true));
-  await screen.findByText('Discovery finished:',{exact:false});
+  await screen.findByText('Discovery finished',{exact:false});
   expect(screen.getByRole('region',{name:'Discovery coverage'})).toHaveTextContent('4 loaded jobs');
   expect(vi.mocked(getTreeNode).mock.calls.map(call=>call[1])).toEqual(['opened','middle','root']);
   expect(screen.getByRole('button',{name:'Family root · Unknown cell'})).toBeInTheDocument();
@@ -159,7 +159,7 @@ it('MRV-002 starts one entry read under StrictMode, aborts on departure and auto
  expect(signal.aborted).toBe(true);
  expect(getTreeNode).toHaveBeenCalledTimes(1);
  rerender(view(true));
- await screen.findByText('Discovery finished:',{exact:false});
+ await screen.findByText('Discovery finished',{exact:false});
  expect(getTreeNode).toHaveBeenCalledTimes(2);
  expect(getTreeChildren).toHaveBeenCalledTimes(1);
  await act(async () => { releaseOld({node:{tenant_id:'t',job_id:'obsolete',job_type:'recipe',status:'READY'},observed_at:'old'}); });
@@ -178,7 +178,7 @@ it('MRV-002 does not start a queued discovery after leaving the tab', async () =
  await act(async () => {});
  expect(getTreeNode).not.toHaveBeenCalled();
  rerender(view(true));
- await screen.findByText('Discovery finished:',{exact:false});
+ await screen.findByText('Discovery finished',{exact:false});
  expect(getTreeNode).toHaveBeenCalledTimes(1);
 });
 
@@ -217,7 +217,7 @@ it('cancels the captured child, locks through reconciliation, preserves context 
  vi.mocked(getTreeChildren).mockImplementation(async(_,id)=>({nodes:id==='opened'?[child]:[],observed_at:'old'}));
  const changed=vi.fn();
  render(<MemoryRouter><TreeWorkspace tenant="t" entry="opened" embedded onJobChanged={changed} /></MemoryRouter>);
- await screen.findByText('Discovery finished:',{exact:false});
+ await screen.findByText('Discovery finished',{exact:false});
  fireEvent.click(screen.getByRole('button',{name:'Selected child · Unknown cell'}));
  fireEvent.change(screen.getByRole('searchbox'),{target:{value:'Selected'}});
  fireEvent.click(screen.getByRole('button',{name:'Zoom in'}));
@@ -241,7 +241,7 @@ it('cancels the captured child, locks through reconciliation, preserves context 
  expect(screen.getByRole('searchbox')).toHaveValue('Selected');expect(screen.getByLabelText('Zoom',{exact:true})).toHaveTextContent('120%');
  expect(changed).toHaveBeenCalledWith(expect.objectContaining({tenant_id:'t',job_id:'child',completion_status:'cancelled'}));
  fireEvent.click(screen.getByRole('button',{name:'Refresh tree'}));
- await screen.findByText('Discovery finished:',{exact:false});
+ await screen.findByText('Discovery finished',{exact:false});
  fireEvent.click(screen.getByRole('button',{name:'Selected child · Unknown cell'}));
  expect(screen.getByRole('complementary')).toHaveTextContent('Cancelled');
  expect(screen.getByRole('button',{name:'Selected child · Unknown cell'})).toHaveTextContent('Cancelled');
@@ -264,7 +264,7 @@ it('keeps failed cancellation retries tied to the captured job and message', asy
  expect(cancelJob).toHaveBeenNthCalledWith(2,'t','child','saved message');
  expect(screen.getByRole('complementary')).toHaveTextContent('Cancellation requested');
  fireEvent.click(screen.getByRole('button',{name:'Refresh tree'}));
- await screen.findByText('Discovery finished:',{exact:false});
+ await screen.findByText('Discovery finished',{exact:false});
  expect(screen.getByRole('complementary')).toHaveTextContent('Cancellation requested');
 });
 
@@ -299,7 +299,7 @@ it('DU03,04,06 context-only selection reads direct waits; unavailable summaries 
  vi.mocked(getTreeNode).mockImplementation(async(_,id)=>{if(id==='target'&&!available)throw Error();return {node:records.find(n=>n.job_id===id)!,observed_at:at};});
  vi.mocked(getTreeChildren).mockImplementation(async(_,id)=>({nodes:records.filter(n=>n.parent_job_id===id),observed_at:at}));
  vi.mocked(getTreeWaits).mockImplementation(async(tenant,id)=>({consumer:{tenant_id:tenant,job_id:id},waits:id==='parent'?[{jobKey:{tenantId:tenant,jobId:id},waitId:'w',state:'PENDING',dependencies:[{target:{jobId:'target'},condition:'complete',state:'PENDING'}]}]:[],issues:[],observed_at:at,consumer_snapshot:{state:'available',observed_at:at,status:'READY'}}));
- render(<MemoryRouter><TreeWorkspace tenant="t" entry="entry"/></MemoryRouter>);await screen.findByText('Discovery finished:',{exact:false});expect(vi.mocked(getTreeWaits).mock.calls.some(c=>c[1]==='parent')).toBe(false);
+ render(<MemoryRouter><TreeWorkspace tenant="t" entry="entry"/></MemoryRouter>);await screen.findByText('Discovery finished',{exact:false});expect(vi.mocked(getTreeWaits).mock.calls.some(c=>c[1]==='parent')).toBe(false);
  fireEvent.click(screen.getByRole('button',{name:'Untitled job · Unknown cell'}));
  const missing=await screen.findByRole('button',{name:'Job wait target · target'});await waitFor(()=>expect(screen.getByRole('region',{name:'Discovery coverage'})).toHaveTextContent('Partial discovery'));
  fireEvent.click(missing);const pane=screen.getByRole('complementary');expect(pane).toHaveTextContent('complete');expect(within(pane).queryByRole('button',{name:'Cancel job'})).toBeNull();

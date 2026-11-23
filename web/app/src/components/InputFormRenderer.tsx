@@ -52,6 +52,7 @@ export default function InputFormRenderer({
   // Context is accepted for future use (display/telemetry) even if not rendered currently.
   void context;
   const [antForm] = Form.useForm();
+  useReviewDraft(form.kind === 'review' ? draftIdentity : undefined, 'review-kind', 'input_request_id');
   const [fileList, setFileList] = useReviewDraft<Record<string, UploadFile[]>>(draftIdentity, 'legacy-files', {});
   const [validationError, setValidationError] = useState(false);
   const [draftValues, setDraftValues] = useReviewDraft<Record<string, unknown>>(draftIdentity, 'legacy-values', {});

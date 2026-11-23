@@ -28,12 +28,14 @@ test('CC-022 CT-014,015,028–031 real SQLite reviews survive restart, archive a
   const firstID = initial.entries[0].entry_id;
   await page.goto('/project/history-browser/jobs/reviews/story');
   await expect(page.locator(`[data-occurrence="${firstID}"]`).first()).toBeVisible();
-  await expect(page.getByText(/State: pending/)).toBeVisible();
+  const current = page.locator(`.inbox-history-message[data-occurrence="${firstID}"]`);
+  await expect(current).toHaveAttribute('open', '');
+  await expect(current.getByRole('heading', { name: 'first-review' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Job completion' })).toHaveCount(0);
   await accept('first-review', 'Approved first original');
-  await expect(page.getByLabel('Accepted response', {exact:true})).toContainText('Approved first original');
   const second = await list();
   expect(second.entries).toHaveLength(2);
+  expect(second.entries[0].accepted_response.present).toBe(true);
   expect(second.entries[1].request_id).toBe('second-review');
 
   // Closing the page also closes its SSE stream before the SQLite connection
@@ -46,7 +48,7 @@ test('CC-022 CT-014,015,028–031 real SQLite reviews survive restart, archive a
   await expect(original.getByLabel('Recorded answers')).toContainText('Approved first original');
   await expect(original.getByLabel('Rendered document')).toContainText('Original first review document, retained in SQLite.');
   await expect(original.getByRole('button', { name: /Submit/ })).toHaveCount(0);
-  await expect(reopened.locator(`[data-occurrence="${second.entries[1].entry_id}"]`).first()).toBeVisible();
+  await expect(reopened.locator(`.inbox-history-message[data-occurrence="${second.entries[1].entry_id}"]`).first()).toBeAttached();
   const downloadLink = original.getByRole('link', { name: 'Download',exact:true });
   await expect(downloadLink).toHaveAttribute('href', '/api/projects/history-browser/jobs/original-producer/stored-document?ordinal=0&name=original.md');
   await expect(reopened.getByRole('button',{name:'Cancel job',exact:true})).toHaveCount(0);
@@ -68,12 +70,18 @@ test('CC-022 CT-014,015,028–031 real SQLite reviews survive restart, archive a
   await expect(original.getByLabel('Recorded answers')).toContainText('Approved first original');
   expect(new URL(reopened.url()).searchParams.get('occurrenceId')).toBe(firstID);
   // CV-025: real SQLite records, Cortex adapters and authorized byte reads.
+  const publication = reopened.locator('summary').filter({
+    has: reopened.locator('.thread-message-sender').getByText('Publication', { exact: true }),
+  });
+  const earlier = reopened.locator('.inbox-history-middle:not([open])').filter({ has: publication });
+  if (await earlier.count()) await earlier.locator(':scope > summary').click();
+  if (!(await publication.evaluate(node => (node.parentElement as HTMLDetailsElement).open))) await publication.click();
   await expect(reopened.getByLabel('Verified publication')).toContainText('Commit message not recorded');
   await reopened.screenshot({path:info.outputPath('native-subjectless-publication.png'),animations:'disabled',fullPage:true});
-  const finalList = reopened.getByLabel('Returned documents',{exact:true});
+  const finalList = reopened.getByLabel('Attachments',{exact:true});
   await expect(finalList.getByRole('link',{name:'report.md',exact:true})).toBeVisible();
   await finalList.getByRole('link',{name:'report.md',exact:true}).click();
-  const viewer = reopened.getByRole('dialog',{name:'Returned document viewer'});
+  const viewer = reopened.getByRole('dialog',{name:'Attachment viewer'});
   await expect(viewer.getByRole('heading',{name:'Final retained report',exact:true})).toBeVisible();
   await viewer.screenshot({path:info.outputPath('native-final-document-viewer.png'),animations:'disabled'});
   await viewer.getByRole('link',{name:'Original notes',exact:true}).click();

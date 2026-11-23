@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { jobIdentity, mockCells } from './helpers/cells';
-import { storyLink } from './helpers/inbox';
+import { originalRequest, storyLink } from './helpers/inbox';
 const at='2026-11-09T00:00:00Z';
 const nodes=[
  {tenant_id:'demo',job_id:'root',job_type:'recipe',cell:'cortex',status:'ACTIVE',title:'Plan the DAG improvements',created_at:'2026-11-12T08:58:00Z'},
@@ -35,7 +35,7 @@ test.beforeEach(async({page})=>{
 test('TREE-001,012,013,014,017,020,021,030 diagram and loaded search preserve entry route',async({page})=>{
  await page.goto('/project/demo/jobs/entry/tree');
  await expect(page.getByRole('region',{name:'Discovery coverage'})).toContainText('4 loaded jobs');
- await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
+ await expect(page.getByText('Discovery finished',{exact:false})).toBeVisible();
  await expect(page.locator('path[data-parent="middle"][data-child="entry"]')).toHaveCount(1);
  await expect(page.locator('path[data-parent="root"]')).toHaveCount(2);
  const diagram=page.getByLabel('Execution diagram');
@@ -57,7 +57,7 @@ test('TREE-001,012,013,014,017,020,021,030 diagram and loaded search preserve en
 });
 test('TREE-015,016 generic summary and keyboard mobile graph',async({page})=>{
  await page.setViewportSize({width:390,height:844});await page.goto('/project/demo/jobs/entry/tree');
- await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
+ await expect(page.getByText('Discovery finished',{exact:false})).toBeVisible();
  const outline=page.getByLabel('Execution diagram');const middle=outline.getByRole('button',{name:'Validate compact records · jobdb',exact:false});await middle.focus();await page.keyboard.press('Enter');
  const details=page.getByRole('complementary',{name:'Selected job details'});await expect(details).toContainText('Generic job summary');await expect(details.getByRole('link',{name:'Open execution'})).toHaveCount(0);
  await expect(middle).toHaveAttribute('aria-pressed','true');await expect(page.getByLabel('Execution diagram')).toBeVisible();
@@ -73,16 +73,16 @@ test('TREE-009,012 failure keeps entry and retry recovers',async({page})=>{
 });
 test('TREE-008 unavailable entry offers retry and back with no fabricated graph',async({page})=>{
  missing=true;await page.goto('/project/demo/jobs/entry/tree');await expect(page.getByRole('alert')).toContainText('Entry job unavailable');await expect(page.getByLabel('Execution diagram')).toHaveCount(0);
- await expect(page.getByRole('link',{name:'Back to jobs'})).toHaveAttribute('href','/project/demo/goals');missing=false;await page.getByRole('button',{name:'Retry entry'}).click();await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();await expect(page.getByLabel('Execution diagram')).toBeVisible();
+ await expect(page.getByRole('link',{name:'Back to jobs'})).toHaveAttribute('href','/project/demo/jobs');missing=false;await page.getByRole('button',{name:'Retry entry'}).click();await expect(page.getByText('Discovery finished',{exact:false})).toBeVisible();await expect(page.getByLabel('Execution diagram')).toBeVisible();
 });
 
 test('TREE-015,018 story opens and returns to original tree entry',async({page})=>{
  await page.goto('/project/demo/jobs/entry/tree');
- await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
+ await expect(page.getByText('Discovery finished',{exact:false})).toBeVisible();
  await page.getByRole('complementary',{name:'Selected job details'}).getByRole('link',{name:'Open execution'}).click();
  await expect(page).toHaveURL(/entry\/story$/);
- await expect(await storyLink(page,'DAG')).toHaveAttribute('href','/project/demo/jobs/entry/story?tab=dag');
- const returnLink = await storyLink(page,'Return to DAG');
+ await expect(await storyLink(page,'Graph')).toHaveAttribute('href','/project/demo/jobs/entry/story?tab=dag');
+ const returnLink = await storyLink(page,'Return to Graph');
  if(process.env.CORTEX_TREE_SCREENSHOTS){mkdirSync(process.env.CORTEX_TREE_SCREENSHOTS,{recursive:true});await page.screenshot({path:process.env.CORTEX_TREE_SCREENSHOTS+'/dag-story-menu.png',fullPage:true,animations:'disabled'});}
  await returnLink.click();
  await expect(page.locator('.inbox-story-more')).toHaveJSProperty('open',false);
@@ -129,14 +129,18 @@ test('DAG-01,02,04,05,08,15 embedded DAG discovers lazily and retains local stat
  let discoveries = 0;
  page.on('request', r => { if (/tree-(node|children)/.test(r.url())) discoveries++; });
  await page.goto('/project/demo/jobs/entry/story');
- await expect(page.getByRole('tab',{name:'Conversation',exact:true})).toHaveAttribute('aria-selected','true');
+ await expect(page.getByRole('tab',{name:'Thread',exact:true})).toHaveAttribute('aria-selected','true');
  expect(discoveries).toBe(0);
- await page.getByRole('tab',{name:'DAG',exact:true}).click();
+ await page.getByRole('tab',{name:'Graph',exact:true}).click();
  await expect(page).toHaveURL(/story\?tab=dag$/);
- await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
+ await expect(page.getByText('Discovery finished',{exact:false})).toBeVisible();
  expect(discoveries).toBeGreaterThan(0);
- const panel = page.getByRole('tabpanel',{name:'DAG',exact:true});
- await expect(panel.getByRole('heading',{name:'DAG',exact:true})).toHaveCount(0);
+ const panel = page.getByRole('tabpanel',{name:'Graph',exact:true});
+ await expect(panel.getByRole('group',{name:'Graph zoom'}).getByRole('button')).toHaveCount(3);
+ await expect(panel.getByText('Recorded submission family', {exact:false})).toHaveCount(0);
+ const relationships = panel.getByRole('region', { name: 'Related jobs and goals' });
+ await expect(relationships).toBeVisible();
+ expect(await relationships.evaluate(element => !!(element.compareDocumentPosition(element.parentElement!.querySelector('.tree-workspace')!) & Node.DOCUMENT_POSITION_PRECEDING))).toBe(true);
  await expect(panel.getByRole('link',{name:'Back to jobs'})).toHaveCount(0);
  await panel.getByLabel('Execution diagram').getByRole('button',{name:'Review graph changes · root',exact:false}).click();
  await expect(page).toHaveURL(/entry\/story\?tab=dag$/);
@@ -149,7 +153,7 @@ test('DAG-01,02,04,05,08,15 embedded DAG discovers lazily and retains local stat
  const count=discoveries;
  await page.getByRole('tab',{name:'Trace',exact:true}).click();
  await page.goBack();
- await expect(page.getByRole('tab',{name:'DAG',exact:true})).toHaveAttribute('aria-selected','true');
+ await expect(page.getByRole('tab',{name:'Graph',exact:true})).toHaveAttribute('aria-selected','true');
  await expect(panel.getByLabel('Zoom',{exact:true})).toHaveText('120%');
  await expect(panel.getByRole('searchbox')).toHaveValue('c2j');
  expect(await panel.getByLabel('Execution diagram').evaluate(e=>({left:e.scrollLeft,top:e.scrollTop}))).toEqual(scroll);
@@ -178,8 +182,8 @@ test('DAG-06 interrupted entry aborts on tab departure and resumes', async ({pag
  await expect(page.locator('#job-panel-dag .tree-coverage')).toContainText('Partial discovery');
  expect(calls).toBe(1);
  resumed=true;
- await page.getByRole('tab',{name:'DAG',exact:true}).click();
- await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
+ await page.getByRole('tab',{name:'Graph',exact:true}).click();
+ await expect(page.getByText('Discovery finished',{exact:false})).toBeVisible();
  release();
  await expect(page.getByRole('region',{name:'Discovery coverage'})).toContainText('4 loaded jobs');
  expect(calls).toBe(initialCalls+1);
@@ -188,21 +192,21 @@ test('DAG-06 interrupted entry aborts on tab departure and resumes', async ({pag
 
 test('DAG-07 identity changes dispose loaded state; DAG-09,10 recipe returns target original entry',async({page})=>{
  await page.goto('/project/demo/jobs/entry/story?tab=dag');
- await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
+ await expect(page.getByText('Discovery finished',{exact:false})).toBeVisible();
  await page.getByLabel('Execution diagram').getByRole('button',{name:'Plan the DAG improvements · cortex',exact:false}).click();
  await page.getByRole('complementary',{name:'Selected job details'}).getByRole('link',{name:'Open execution'}).click();
  await expect(page).toHaveURL(/root\/story$/);
- await (await storyLink(page,'DAG')).click();
+ await (await storyLink(page,'Graph')).click();
  await expect(page.locator('.inbox-story-more')).toHaveJSProperty('open',false);
  await expect(page.getByRole('region',{name:'Discovery coverage'})).toContainText('4 loaded jobs');
  await expect(page.getByRole('complementary',{name:'Selected job details'}).locator('dd').nth(1)).toHaveText('root');
  await expect(page.getByLabel('Zoom',{exact:true})).toHaveText('100%');
- await (await storyLink(page,'Return to DAG')).click();
+ await (await storyLink(page,'Return to Graph')).click();
  await expect(page).toHaveURL(/entry\/story\?tab=dag$/);
  await expect(page.getByRole('region',{name:'Discovery coverage'})).toContainText('4 loaded jobs');
 });
 
- test('DAG-17,18 Run Summary in Trace and Input artifacts show directly in the browser',async({page})=>{
+ test('DAG-17,18 shows the run summary in Trace and attachments in the thread',async({page})=>{
   await page.goto('/project/demo/jobs/entry/story?tab=summary');
   const summary=page.getByRole('tabpanel',{name:'Trace',exact:true});
   await expect(summary.getByRole('heading',{name:'Run Summary'})).toBeVisible();
@@ -211,19 +215,19 @@ test('DAG-07 identity changes dispose loaded state; DAG-09,10 recipe returns tar
   await expect(summary.getByRole('tree')).toBeVisible();
   await expect(page.getByRole('tab',{name:'Summary',exact:true})).toHaveCount(0);
   if(process.env.CORTEX_TREE_SCREENSHOTS) await page.screenshot({path:process.env.CORTEX_TREE_SCREENSHOTS+'/summary-direct.png',fullPage:true});
-  await page.getByRole('tab',{name:'Input artifacts',exact:true}).click();
-  const inputs=page.getByRole('tabpanel',{name:'Input artifacts',exact:true});
-  await expect(inputs.getByText('No input artifacts')).toBeVisible();
-  await expect(inputs.locator('details')).toHaveCount(0);
+  await page.getByRole('tab',{name:'Thread',exact:true}).click();
+  await expect(await originalRequest(page)).toBeVisible();
+  await expect(page.getByText('Checking attachments…')).toHaveCount(0);
+  await expect(page.getByRole('region',{name:'Input attachments'})).toHaveCount(0);
   if(process.env.CORTEX_TREE_SCREENSHOTS) await page.screenshot({path:process.env.CORTEX_TREE_SCREENSHOTS+'/input-artifacts-direct.png',fullPage:true});
  });
 
 test('DAG-09,10 generic entry keeps standalone return navigation',async({page})=>{
  await page.goto('/project/demo/jobs/middle/tree');
- await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
+ await expect(page.getByText('Discovery finished',{exact:false})).toBeVisible();
  await page.getByLabel('Execution diagram').getByRole('button',{name:'Build the readable family graph · c2j',exact:false}).click();
  await page.getByRole('complementary',{name:'Selected job details'}).getByRole('link',{name:'Open execution'}).click();
- const returnLink = await storyLink(page,'Return to DAG');
+ const returnLink = await storyLink(page,'Return to Graph');
  await expect(returnLink).toHaveAttribute('href','/project/demo/jobs/middle/tree');
  await returnLink.click();
  await expect(page).toHaveURL('/project/demo/jobs/middle/tree');
@@ -284,7 +288,7 @@ for(const size of [{width:1600,height:1000},{width:390,height:844}]) {
   await page.setViewportSize(size);
   let reads=0;page.on('request',r=>{if(/tree-(node|children)/.test(r.url()))reads++;});
   await page.goto('/project/demo/jobs/entry/tree');
-  await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
+  await expect(page.getByText('Discovery finished',{exact:false})).toBeVisible();
   const entry=page.locator('.tree-card[data-job-id="entry"]'),root=page.locator('.tree-card[data-job-id="root"]');
   const details=page.getByRole('complementary');
   await expect(entry.locator('.tree-card-select')).toHaveAttribute('aria-pressed','true');
@@ -337,14 +341,14 @@ test('DAGUI-019,024 ancestor retry keeps honest unavailable timing and recovers 
  // Keep the fixture unavailable until the manual retry can actually start.
  const resume=page.getByRole('button',{name:'Resume discovery'});
  await expect(resume).toBeEnabled();blocked=false;await resume.click();
- await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();await expect(entry).toContainText('Submitted +2m 10s');
+ await expect(page.getByText('Discovery finished',{exact:false})).toBeVisible();await expect(entry).toContainText('Submitted +2m 10s');
 });
 test('DAGUI-027 bounded long Unicode and multiline text, missing optional fields, unavailable timing',async({page})=>{
  await page.route('**/jobs/entry/tree-node',r=>r.fulfill({json:{node:{...nodes[2],title:'Long title 雪 🌳\n'.repeat(80),prompt:'full prompt'},observed_at:at}}));
  await page.route('**/jobs/middle/tree-children?*',r=>r.fulfill({json:{nodes:[],observed_at:at}}));
  await page.route('**/jobs/root/tree-node',r=>r.fulfill({json:{node:{...nodes[0],created_at:undefined},observed_at:at}}));
  await page.goto('/project/demo/jobs/entry/tree');
- await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
+ await expect(page.getByText('Discovery finished',{exact:false})).toBeVisible();
  await checkGeometry(page);
  await expect(page.locator('.tree-card[data-job-id="entry"] strong')).toHaveText('Long title 雪 🌳\n'.repeat(80).trim());
  await expect(page.locator('.tree-card[data-job-id="entry"]')).toContainText('Submitted Unavailable');
@@ -368,8 +372,8 @@ for(const stage of ['ancestor','child-page']) {
   await page.goto('/project/demo/jobs/entry/story?tab=dag');await expect.poll(()=>pending).toBe(1);
   const entry=page.locator('.tree-card[data-job-id="entry"]');await entry.locator('.tree-card-select').click();
   await page.getByRole('tab',{name:'Trace',exact:true}).click();resumed=true;
-  await page.getByRole('tab',{name:'DAG',exact:true}).click();
-  await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
+  await page.getByRole('tab',{name:'Graph',exact:true}).click();
+  await expect(page.getByText('Discovery finished',{exact:false})).toBeVisible();
   await expect(page.getByRole('region',{name:'Discovery coverage'})).toContainText('4 loaded jobs');
   await expect(entry.locator('.tree-card-select')).toHaveAttribute('aria-pressed','true');
   expect(pending).toBe(2);if(stage==='child-page')expect(cursors).toEqual(['','next','next']);
@@ -396,7 +400,7 @@ for(const size of [{width:1600,height:1000},{width:390,height:844}]) {
    document.dispatchEvent(new Event('visibilitychange'));
   },value);
   await visibility('visible');
-  await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
+  await expect(page.getByText('Discovery finished',{exact:false})).toBeVisible();
   await expect(page.getByRole('region',{name:'Discovery coverage'})).toContainText('4 loaded jobs');
   await expect(page.locator('.tree-card[data-job-id="root"]')).toHaveCount(1);
   await expect(page.locator('.tree-card[data-job-id="middle"]')).toHaveCount(1);
@@ -407,7 +411,7 @@ for(const size of [{width:1600,height:1000},{width:390,height:844}]) {
   await capture(page,`initial-visibility-${size.width}`);
   const completedReads=reads;
   await visibility('hidden');await visibility('visible');
-  await expect(page.getByRole('button',{name:'Resume discovery'})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Resume discovery'})).toHaveCount(0);
   expect(reads).toBe(completedReads);
  });
 }
@@ -421,7 +425,7 @@ for (const route of ['tree','story?tab=dag']) for (const width of [1440,390]) {
    return r.fulfill({json:{nodes:nodes.filter(n=>n.parent_job_id===id).map(n=>n.job_id==='entry'?{...n,status:'ACTIVE'}:n),observed_at:at}});
   });
   await page.goto('/project/demo/jobs/entry/'+route);
-  await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
+  await expect(page.getByText('Discovery finished',{exact:false})).toBeVisible();
   const details=page.getByRole('complementary',{name:'Selected job details'});
   await expect(details.locator('.tree-detail-status')).toHaveText('Running');
   const actions=details.getByRole('group',{name:'Selected job actions'});
@@ -490,7 +494,7 @@ for (const route of ['tree','story?tab=dag']) for (const width of [1440,390]) {
    submitted=true;await r.fulfill({status:204});
   });
   await page.goto('/project/demo/jobs/entry/'+route);
-  await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
+  await expect(page.getByText('Discovery finished',{exact:false})).toBeVisible();
   const card=page.locator('.tree-card[data-job-id="middle"]');
   await card.locator('.tree-card-select').click();
   const details=page.getByRole('complementary',{name:'Selected job details'});
@@ -530,7 +534,7 @@ for (const route of ['tree','story?tab=dag']) for (const width of [1440,390]) {
   expect(mutations).toHaveLength(1);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
   await page.getByRole('button',{name:'Refresh tree'}).click();
-  await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
+  await expect(page.getByText('Discovery finished',{exact:false})).toBeVisible();
   await card.locator('.tree-card-select').click();await expect(details).toContainText('Cancelled');
  });
 }
@@ -574,11 +578,11 @@ for(const width of [1280,390,320])for(const route of ['tree','story?tab=dag']){
  });
 }
 test('DB01 51 independent wait targets are hydrated without the former overlay cap',async({page})=>{
- const f=await recursiveFixture(page,{dense:true});await page.goto('/project/demo/jobs/entry/tree');await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible({timeout:20000});await expect(page.locator('.tree-card')).toHaveCount(56);
+ const f=await recursiveFixture(page,{dense:true});await page.goto('/project/demo/jobs/entry/tree');await expect(page.getByText('Discovery finished',{exact:false})).toBeVisible({timeout:20000});await expect(page.locator('.tree-card')).toHaveCount(56);
  expect(f.reads.filter(s=>s.startsWith('node:target-'))).toHaveLength(51);await expect(page.locator('path[data-wait-source="entry"]')).toHaveCount(52);
 });
 test('DB03 ordinary dashed paths use the local column gap despite a tall unrelated branch',async({page})=>{
- await recursiveFixture(page,{dense:true});await page.goto('/project/demo/jobs/entry/tree');await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible({timeout:20000});
+ await recursiveFixture(page,{dense:true});await page.goto('/project/demo/jobs/entry/tree');await expect(page.getByText('Discovery finished',{exact:false})).toBeVisible({timeout:20000});
  const points=await page.locator('path[data-wait-source="dependency"]').first().evaluate((el:SVGPathElement)=>{const p=el.getPointAtLength(0),end=el.getPointAtLength(el.getTotalLength());const ys=Array.from({length:21},(_,i)=>el.getPointAtLength(el.getTotalLength()*i/20).y);return {p:{x:p.x,y:p.y},end:{x:end.x,y:end.y},minY:Math.min(...ys),maxY:Math.max(...ys),d:el.getAttribute('d')};});
  expect(points.end.x).toBeGreaterThan(points.p.x);expect(points.minY).toBeGreaterThanOrEqual(Math.min(points.p.y,points.end.y));expect(points.maxY).toBeLessThanOrEqual(Math.max(points.p.y,points.end.y));expect(points.d).toMatch(/^M /);await checkWaitGeometry(page);
 });
@@ -590,12 +594,12 @@ test('DB06 failed lookup and failed refresh retain readable branches until verif
  await page.route('**/jobs/entry/tree-waits?*',r=>r.fulfill({json:waitsPage('entry')}));await pane.getByRole('button',{name:'Retry waits'}).click();await expect(page.locator('.tree-card')).toHaveCount(1);
 });
 test('DB07 exact wait job DAG and execution return preserve the original destination',async({page})=>{
- await recursiveFixture(page);await page.goto('/project/demo/jobs/entry/tree');await page.locator('[data-job-id="dependency"] .tree-card-select').click();const pane=page.getByRole('complementary',{name:'Selected job details'});await pane.locator('a[href="/project/demo/jobs/dependency/tree"]').click();await expect(page).toHaveURL('/project/demo/jobs/dependency/tree');await expect(page.getByRole('link',{name:'Back to waiting job DAG'})).toHaveAttribute('href','/project/demo/jobs/entry/story?tab=dag');
+ await recursiveFixture(page);await page.goto('/project/demo/jobs/entry/tree');await page.locator('[data-job-id="dependency"] .tree-card-select').click();const pane=page.getByRole('complementary',{name:'Selected job details'});await pane.locator('a[href="/project/demo/jobs/dependency/tree"]').click();await expect(page).toHaveURL('/project/demo/jobs/dependency/tree');await expect(page.getByRole('link',{name:'Back to waiting job graph'})).toHaveAttribute('href','/project/demo/jobs/entry/story?tab=dag');
 });
 test('DB08 embedded reads start on activation, pause on departure, resume once and reject obsolete pages',async({page})=>{
  const f=await recursiveFixture(page);let release!:()=>void,reads=0;const gate=new Promise<void>(r=>release=r);
  await page.route('**/jobs/entry/tree-waits?*',async r=>{const current=++reads;if(current===1)await gate;await r.fulfill({json:waitsPage('entry',current===1?[waitJob('obsolete')]:[waitJob('dependency')])}).catch(()=>{});});
- await page.goto('/project/demo/jobs/entry/story');expect(f.reads).toEqual([]);await page.getByRole('tab',{name:'DAG',exact:true}).click();await expect.poll(()=>reads).toBe(1);await page.getByRole('tab',{name:'Trace',exact:true}).click();await page.getByRole('tab',{name:'DAG',exact:true}).click();await expect(page.locator('[data-job-id="leaf"]')).toBeAttached();release();await expect(page.getByText('Discovering…',{exact:true})).toHaveCount(0);expect(reads).toBe(2);await expect(page.getByRole('button',{name:'Job wait target · obsolete',exact:true})).toHaveCount(0);const count=f.reads.length;await page.clock.runFor(60000);expect(f.reads.length).toBe(count);
+ await page.goto('/project/demo/jobs/entry/story');expect(f.reads).toEqual([]);await page.getByRole('tab',{name:'Graph',exact:true}).click();await expect.poll(()=>reads).toBe(1);await page.getByRole('tab',{name:'Trace',exact:true}).click();await page.getByRole('tab',{name:'Graph',exact:true}).click();await expect(page.locator('[data-job-id="leaf"]')).toBeAttached();release();await expect(page.getByText('Discovering…',{exact:true})).toHaveCount(0);expect(reads).toBe(2);await expect(page.getByRole('button',{name:'Job wait target · obsolete',exact:true})).toHaveCount(0);const count=f.reads.length;await page.clock.runFor(60000);expect(f.reads.length).toBe(count);
 });
 async function checkWaitGeometry(page:Page,fitted=false){
  const intersections=await page.evaluate(fitted=>{

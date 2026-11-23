@@ -110,7 +110,7 @@ func (s *Server) handleReviewDocument(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.Copy(w, reader)
 }
 
-func (s *Server) handleReviewResponse(w http.ResponseWriter, r *http.Request) {
+func reportedEmailCookie(r *http.Request) string {
 	// Cortex currently identifies users through its email login cookie.
 	// The existing browser cookie contains colons, which net/http's cookie
 	// parser rejects as a name. Read that exact legacy name from the header.
@@ -123,6 +123,11 @@ func (s *Server) handleReviewResponse(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	return encodedEmail
+}
+
+func (s *Server) handleReviewResponse(w http.ResponseWriter, r *http.Request) {
+	encodedEmail := reportedEmailCookie(r)
 	if encodedEmail == "" {
 		writeHTTPError(w, http.StatusUnauthorized, fmt.Errorf("sign in before submitting a review"))
 		return

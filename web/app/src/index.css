@@ -175,8 +175,7 @@ body {
 /* Shared responsive shell. Content owns its width; the document scrolls vertically. */
 .app-shell { min-height: 100vh; min-height: 100dvh; min-width: 0; }
 .app-header.ant-layout-header { display: flex; align-items: center; gap: 20px; height: auto; min-height: 64px; padding: 12px 24px; line-height: normal; background: #fff; border-bottom: 1px solid #f0f0f0; }
-.app-brand, .tenant-control { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.tenant-control .ant-input-search { width: 220px; min-width: 0; }
+.app-brand { display: flex; align-items: center; min-width: 0; }
 .account-button { margin-left: auto; flex-shrink: 0; }
 .app-body { flex: 1; min-width: 0; }
 .app-content, .app-page, .ant-space-item, .ant-tabs-content-holder { min-width: 0; }
@@ -204,8 +203,6 @@ body {
 }
 @media (max-width: 767px) {
   .app-header.ant-layout-header { flex-wrap: wrap; gap: 8px 12px; padding: 8px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); }
-  .tenant-control { order: 3; width: 100%; }
-  .tenant-control .ant-input-search { width: 100%; flex: 1; }
   .app-content { padding-bottom: env(safe-area-inset-bottom); }
   .app-page, .review-page, .job-story-page { padding: 12px !important; }
   .app-content .ant-card-body, .ant-modal .ant-modal-content { padding: 12px; }
@@ -248,7 +245,6 @@ body {
 .compact-cards code { white-space: normal; overflow-wrap: anywhere; }
 .compact-sort { min-height: 44px; max-width: 100%; padding: 8px; font: inherit; font-size: 16px; border: 1px solid #d9d9d9; border-radius: 6px; background: white; }
 @media (max-width: 767px) {
-  .tenant-control .ant-input-search-button { white-space: nowrap; min-width: 56px; }
 }
 
 @media (max-width: 767px) {
@@ -364,12 +360,16 @@ html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-heig
 
 
 .execution-tree { padding: 24px; min-width: 0; }
-.tree-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 16px; }
+.tree-toolbar { display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:12px; }
+.tree-toolbar output { min-width:40px; text-align:center; font-variant-numeric:tabular-nums; }
+.tree-tools { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-block:10px; }
+.tree-tools input { flex:1; min-width:116px; padding:6px 8px; border:1px solid #abb8c9; border-radius:5px; }
 .execution-tree button { cursor: pointer; border: 1px solid #abb8c9; border-radius: 5px; padding: 7px 10px; background: white; color: #172a46; }
 .execution-tree button:disabled { opacity: .5; cursor: default; }
 .execution-tree button:focus-visible, .execution-tree a:focus-visible, .execution-tree input:focus-visible { outline: 3px solid #1677ff; outline-offset: 3px; }
 .execution-tree button[aria-pressed=true] { border-color: #1677ff; box-shadow: inset 0 0 0 2px #1677ff; }
-.tree-coverage { background: #eef4fa; border: 1px solid #cad8e6; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; overflow-wrap: anywhere; }
+.tree-coverage { font-size:12px; color:#526174; margin-top:12px; }
+.tree-coverage summary { cursor:pointer; }
 .tree-coverage p { margin: 5px 0; }
 .tree-workspace { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 16px; align-items: start; }
 .tree-viewport { overflow: auto; max-height: 650px; background: #f7f9fc; border: 1px solid #cad8e6; border-radius: 8px; }
@@ -389,7 +389,6 @@ html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-heig
 .tree-match::after { content: ''; position: absolute; top: -9px; right: -9px; width: 13px; height: 13px; border: 2px solid #614700; border-radius: 50%; background: #ffe58f; pointer-events: none; }
 .execution-tree .tree-branch { position: absolute; bottom: 5px; left: 12px; min-height: 36px; background: transparent; color: inherit; border-color: currentColor; }
 .tree-viewport { min-height: 300px; overscroll-behavior: contain; }
-.tree-timing-note { color: #526174; }
 .tree-details { background: white; border: 1px solid #cad8e6; border-radius: 8px; padding: 16px; overflow-wrap: anywhere; }
 .tree-details-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .tree-details-header h2 { margin: 0; font-size: 18px; line-height: 28px; }
@@ -410,6 +409,8 @@ html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-heig
 
 .account-dropdown { max-width: calc(100vw - 24px); width: 300px; }
 .account-email { display: block; overflow-wrap: anywhere; white-space: normal; user-select: text; color: #595959; }
+.account-tenant-form { display:grid; gap:8px; padding:14px; background:white; border-radius:8px; box-shadow:0 6px 20px #172a4633; }
+.account-tenant-form > div { display:flex; gap:8px; }
 .build-identity dl { margin: 0 0 20px; }
 .build-identity dl > div { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 12px; margin: 8px 0; }
 .build-identity dt { color: #595959; }
@@ -417,10 +418,7 @@ html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-heig
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .desktop-navigation.ant-layout-sider { position: sticky; top: 0; align-self: flex-start; height: 100dvh; }
-.desktop-navigation .ant-layout-sider-children { overflow-y: auto; padding-bottom: 48px; }
-.desktop-navigation .ant-layout-sider-trigger { position: absolute; bottom: 0; }
-.navigation-toggle { width: 100%; height: 48px; border: 0; background: transparent; color: inherit; font-size: 18px; cursor: pointer; }
-.navigation-toggle:focus-visible { outline: 2px solid #1677ff; outline-offset: -3px; }
+.desktop-navigation .ant-layout-sider-children { overflow-y: auto; }
 .shell-navigation .ant-menu-item, .shell-navigation.ant-menu-inline-collapsed > .ant-menu-item { padding: 0 !important; }
 .shell-navigation .ant-menu-title-content { display: block; width: 100%; opacity: 1 !important; overflow: visible; }
 .shell-navigation-link { display: flex !important; align-items: center; gap: 12px; min-height: 40px; padding: 0 24px; }
@@ -430,7 +428,7 @@ html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-heig
 .shell-navigation.ant-menu-inline-collapsed .shell-navigation-label { display: none; }
 .shell-navigation .ant-menu-item { overflow: visible; }
 @media (max-width: 767px) { .shell-navigation-link { min-height: 44px; } }
-/* Reserve the desktop header's initial space so the trigger is visible before scrolling. */
+/* Match the sidebar to the space below the desktop header. */
 .desktop-navigation.ant-layout-sider { height: calc(100dvh - 65px); }
 .shell-navigation-target { display: block; width: 100%; }
 
@@ -454,13 +452,10 @@ html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-heig
 .review-document-options { display: flex; justify-content: flex-end; }
 .review-options-popover { max-width: calc(100vw - 24px); }
 .review-options-popover .ant-popover-inner-content { max-height: 60dvh; overflow: auto; overflow-wrap: anywhere; }
-.tree-toolbar label { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
-.tree-toolbar input { min-width: 0; max-width: 100%; }
 .execution-tree button { font: inherit; }
 .tree-details dd { white-space: pre-wrap; }
 
 /* Wait overlays never participate in runtime layout or discovery. */
-.tree-wait-legend { color: #526174; font-size: 13px; }
 .tree-wait-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
 .tree-waits { border-top: 1px solid #cad8e6; border-bottom: 1px solid #cad8e6; padding: 8px 0 12px; margin: 12px 0; }
 .tree-waits h3 { margin: 0 0 8px; }

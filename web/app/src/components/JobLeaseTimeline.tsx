@@ -72,6 +72,7 @@ function Timeline({ projectId, jobId, createdAt, pageSize, expanded = false }: P
   }
   const invalidCursor = state.error instanceof APIError && state.error.code === 'invalid_lease_event_page_token';
   return <section aria-label="Lease timeline" className="job-lease-timeline">
+    {expanded && <h2>Lease timeline</h2>}
     {!expanded && <Button aria-expanded={state.open} onClick={() => {
       if (state.open) { invalidate(); setState(empty()); }
       else load(undefined, true);

@@ -67,7 +67,7 @@ func NewServer(cfg Config, engine jobworkflow.Engine) (*Server, error) {
 	}
 
 	var pending workflowctl.WorkflowControl = ctl
-	var reader input.HistoryReader = ctl
+	reader := conversationHistoryReader{HistoryReader: ctl}
 	var chapters chapterReader
 	if e, ok := engine.(jobdbschema.WorkflowEngine); ok {
 		chapters, _ = e.Registry.(chapterReader)
@@ -75,7 +75,7 @@ func NewServer(cfg Config, engine jobworkflow.Engine) (*Server, error) {
 			pending = pendingTaskControl{ctl, lookup}
 		}
 		if runtime, ok := e.Registry.(jobdb.JobRunReader); ok {
-			reader = conversationHistoryReader{HistoryReader: ctl, runtime: runtime}
+			reader.runtime = runtime
 		}
 	}
 	runtime, err := input.NewRuntime(pending, sse)

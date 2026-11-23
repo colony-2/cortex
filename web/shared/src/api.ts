@@ -75,6 +75,7 @@ export async function listJobs(
     includeHidden?: boolean;
     rootOnly?: boolean;
   } = {},
+  signal?: AbortSignal,
 ): Promise<ListRecipeJobsResponse> {
   const params = new URLSearchParams();
   // An explicitly cleared filter means all statuses; omitted options retain API defaults.
@@ -90,9 +91,8 @@ export async function listJobs(
   if (options.pageSize) params.set('pageSize', String(options.pageSize));
   if (options.pageToken) params.set('pageToken', options.pageToken);
   const query = params.toString();
-  const response = await fetch(
-    `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs${query ? `?${query}` : ''}`,
-  );
+  const url = `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs${query ? `?${query}` : ''}`;
+  const response = signal ? await fetch(url, { signal }) : await fetch(url);
   await handleResponse(response, 'List jobs');
   const page = parseJobJSON(await response.text()) as ListRecipeJobsResponse;
   if (!Array.isArray(page.jobs)) throw new Error('Invalid job list response');
@@ -218,7 +218,7 @@ export type InputArtifact = {
  | { kind: 'value'; contentBinding: string; jobId?: never; taskOrdinal?: never; reason?: never }
  | { kind: 'external' | 'attached' | 'invalid'; reason: string; jobId?: never; taskOrdinal?: never; contentBinding?: never });
 
-export function storedDocumentURL(projectId: string, key: { jobId: string; taskOrdinal: number; name: string }): string {
+export function storedDocumentURL(projectId: string, key: { jobId: string; taskOrdinal: number | bigint; name: string }): string {
   const query = new URLSearchParams({ ordinal: String(key.taskOrdinal), name: key.name });
   return `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(key.jobId)}/stored-document?${query}`;
 }

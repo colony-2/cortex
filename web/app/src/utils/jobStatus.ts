@@ -6,14 +6,14 @@ type StatusPresentation = { label: string; color: string };
 
 export const filterStatuses = {
   READY: { label: 'Ready', color: 'blue' },
-  PENDING_JOBS: { label: 'Waiting for jobs', color: 'gold' },
+  PENDING_JOBS: { label: 'Waiting for jobs', color: 'lime' },
   AWAITING_FUTURE: { label: 'Scheduled', color: 'cyan' },
-  ACTIVE: { label: 'Running', color: 'purple' },
+  ACTIVE: { label: 'Running', color: 'green' },
   CRASH_CONCERN: { label: 'Job keeps failing', color: 'orange' },
   EXPIRED: { label: 'Expired', color: 'orange' },
   CANCEL_REQUESTED: { label: 'Cancellation requested', color: 'orange' },
   CANCELLED: { label: 'Cancelled', color: 'default' },
-  success: { label: 'Succeeded', color: 'green' },
+  success: { label: 'Succeeded', color: 'purple' },
   failed_app: { label: 'Failed (application)', color: 'red' },
   failed_system: { label: 'Failed (system)', color: 'red' },
   failed_timeout: { label: 'Timed out', color: 'red' },
@@ -25,7 +25,7 @@ export function isJobFilterStatus(value: string): value is RecipeJobFilterStatus
     || (value.startsWith('completion:') && value.length > 'completion:'.length);
 }
 
-export function jobStatusPresentation(status: string): StatusPresentation {
+export function jobStatusPresentation(status = 'Unknown'): StatusPresentation {
   if (Object.prototype.hasOwnProperty.call(filterStatuses, status)) return filterStatuses[status as keyof typeof filterStatuses];
   return { label: status.startsWith('completion:') ? `Finished (${status.slice('completion:'.length)})` : status, color: 'default' };
 }
@@ -43,8 +43,9 @@ export function jobStatusValue(job: JobStatusInput): string {
   return job.cancel_requested ? 'CANCEL_REQUESTED' : job.status;
 }
 
-export function jobStatus(job: JobStatusInput): StatusPresentation {
-  return jobStatusPresentation(jobStatusValue(job));
+export function jobStatus(job: JobStatusInput, awaitingReview = false): StatusPresentation {
+  const status = jobStatusValue(job);
+  return awaitingReview && status === 'READY' ? { label: 'Needs review', color: 'gold' } : jobStatusPresentation(status);
 }
 
 export function jobStatusOptions(jobs: RecipeJobSummary[], selected: RecipeJobFilterStatus[]) {

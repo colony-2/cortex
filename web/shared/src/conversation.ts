@@ -11,6 +11,7 @@ export interface HistoryEntry {
   locator: { invocation_id: string; generation_ordinal?: number; collection_invocation_ids?: string[]; collection_ordinals?: number[]; accepted_ordinal?: number; job_attempt?: number; task_attempt?: number; path?: string; story_node_id?: string };
   form_fields: Record<string, unknown>; accepted_response: HistoryValue; response_source: string;
   actor: { receipt?: unknown; legacy_user_id: HistoryValue; provenance: string };
+  review_attachments?: { request: HistoryMember[] | null; response: HistoryMember[] | null };
   diagnostics?: HistoryDiagnostic[];
 }
 export interface ConversationSection<T> { availability: 'available' | 'unavailable'; value?: T; diagnostic?: string; observed_at?: string; attempt_ordinal?: number }
@@ -45,9 +46,10 @@ async function read<T>(url: string, signal?: AbortSignal): Promise<T> {
   }
   return parseJobJSON(text) as T;
 }
-export async function getConversation(tenant: string, job: string, options: { pageToken?: string; pageSize?: number; includeSections?: boolean; reviewId?: string; signal?: AbortSignal } = {}): Promise<HistoryPage> {
+export async function getConversation(tenant: string, job: string, options: { pageToken?: string; pageSize?: number; includeSections?: boolean; includeReviewAttachments?: boolean; reviewId?: string; signal?: AbortSignal } = {}): Promise<HistoryPage> {
   const query = new URLSearchParams({ page_size: String(options.pageSize ?? 50) });
   if (options.includeSections === false) query.set('include_sections', 'false');
+  if (options.includeReviewAttachments) query.set('include_review_attachments', 'true');
   if (options.reviewId) query.set('review_id', options.reviewId);
   if (options.pageToken) query.set('page_token', options.pageToken);
   const page = await read<HistoryPage>(`${base(tenant, job)}?${query}`, options.signal);

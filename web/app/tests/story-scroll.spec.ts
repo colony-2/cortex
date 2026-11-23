@@ -27,13 +27,11 @@ test.beforeEach(async ({ page, context, baseURL }) => {
   await page.route('**/api/projects/*/jobs/one/input-artifacts', route => route.fulfill({ json: { artifacts: [] } }));
   await page.route('**/api/projects/*/jobs/one/children?*', route => route.fulfill({ json: { jobs: [] } }));
   await page.route('**/user-inputs/pending', route => route.fulfill({ json: [] }));
-  await page.route('**/api/projects/*/jobs/one', route => route.fulfill({ json: { ...jobIdentity, job_id: 'one', status: 'RUNNING', prompt: 'Scrolling fixture' } }));
+  await page.route(/\/api\/projects\/[^/]+\/jobs\/one(?:\?|$)/, route => route.fulfill({ json: { ...jobIdentity, job_id: 'one', status: 'RUNNING', prompt: 'Scrolling fixture' } }));
   await page.route('**/api/projects/*/jobs/one/story', route => { reads++; return route.fulfill({ json: fixture(append) }); });
 });
 async function open(page: Page) {
   await page.goto('/project/phone/jobs/one/story');
-  await page.getByRole('tab', { name: 'Input artifacts', exact: true }).click();
-  await expect(page.getByText('No input artifacts', { exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Trace', exact: true }).click();
   await page.getByRole('button', { name: 'Expand all', exact: true }).click();
   await expect(page.getByRole('treeitem')).toHaveCount(132);
@@ -366,7 +364,7 @@ for (const size of [{width:320,height:568},{width:768,height:1024},{width:1100,h
 }
 
 for (const width of [1280, 390, 320]) {
-  test(`JC-016 long job cell wraps between heading and prompt at ${width}`, async ({ page }, testInfo) => {
+  test(`JC-016 long job cell stays inline after the heading at ${width}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 900 });
     const cell_name = 'cell' + 'x'.repeat(240);
     await page.route(url => url.pathname === '/api/projects/phone/jobs/one', route => route.fulfill({ json: {
@@ -381,7 +379,8 @@ for (const width of [1280, 390, 320]) {
     const heading = await page.getByRole('heading', { name: 'Cell wrapping' }).boundingBox();
     const box = await cell.boundingBox();
     const prompt = await request.boundingBox();
-    expect(box!.y).toBeGreaterThanOrEqual(heading!.y + heading!.height);
+    expect(box!.x).toBeGreaterThanOrEqual(heading!.x + heading!.width);
+    expect(box!.y).toBeLessThan(heading!.y + heading!.height);
     expect(box!.y + box!.height).toBeLessThanOrEqual(prompt!.y);
     expect(box!.x).toBeGreaterThanOrEqual(0);
     expect(box!.x + box!.width).toBeLessThanOrEqual(width);
@@ -400,11 +399,9 @@ for (const width of [1280, 390, 320]) {
     writeFileSync(path, JSON.stringify(measurements, null, 2));
     await testInfo.attach('Cell wrapping geometry', { path, contentType: 'application/json' });
     expect(measurements.documentOverflow).toBeLessThanOrEqual(1);
-    expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
-    expect(dimensions.lines).toBeGreaterThan(1);
-    // A long name gets its own metadata line instead of a character-wide
-    // column beside the completion badge.
-    expect(dimensions.client).toBeGreaterThanOrEqual(dimensions.available - 1);
+    expect(dimensions.scroll).toBeGreaterThan(dimensions.client);
+    expect(dimensions.lines).toBe(1);
+    await expect(cell).toHaveAttribute('title', cell_name);
     await page.screenshot({ path: testInfo.outputPath(`job-cell-${width}.png`), fullPage: true });
   });
 }

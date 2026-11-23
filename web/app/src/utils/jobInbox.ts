@@ -1,9 +1,16 @@
-// Presentation rules only. Callers must supply a verified tenant snapshot;
-// these types are not a proposed runtime API or a way to infer tenant totals
-// from a loaded page. The runtime projection is a separate prerequisite.
+// Browser inbox presentation. Pending counts come from tenant discovery.
 export type InboxJobIdentity = { tenantId: string; jobId: string };
-export type InboxMembership = { archived: boolean; cellId: string };
-export type InboxSelection = { kind: 'all' } | { kind: 'archive' } | { kind: 'cell'; cellId: string };
+export type InboxMembership = { archived: boolean; cellId: string; waiting?: boolean };
+export type InboxSelection = { kind: 'all' | 'waiting' | 'drafts' } | { kind: 'archive' } | { kind: 'cell'; cellId: string };
+
+export const inboxSortOptions = [
+  { key: 'newest', label: 'Date (newest first)' },
+  { key: 'oldest', label: 'Date (oldest first)' },
+  { key: 'cell', label: 'Cell' },
+  { key: 'status', label: 'Status' },
+  { key: 'subject', label: 'Subject' },
+];
+export const readInboxSort = (value: string | null) => inboxSortOptions.find(option => option.key === value)?.key;
 
 export function inboxJobKey({ tenantId, jobId }: InboxJobIdentity): string {
   return JSON.stringify([tenantId, jobId]);
@@ -11,7 +18,9 @@ export function inboxJobKey({ tenantId, jobId }: InboxJobIdentity): string {
 
 export function isInInbox(job: InboxMembership, selection: InboxSelection): boolean {
   if (selection.kind === 'archive') return job.archived;
-  return !job.archived && (selection.kind === 'all' || job.cellId === selection.cellId);
+  if (job.archived || selection.kind === 'drafts') return false;
+  if (selection.kind === 'waiting') return !!job.waiting;
+  return selection.kind !== 'cell' || job.cellId === selection.cellId;
 }
 
 export type RankedInboxCell = { id: string; name: string; unarchivedJobs: number };
@@ -67,9 +76,9 @@ export function inboxPendingCounts(tenantId: string, snapshot: InboxPendingSnaps
 // Undefined means there is no badge. Unknown data remains explicit rather than
 // looking like confirmed zero. Archive never shows a pending badge.
 export function inboxPendingBadge(counts: InboxPendingCounts, selection: InboxSelection): number | '?' | undefined {
-  if (selection.kind === 'archive') return undefined;
+  if (selection.kind === 'archive' || selection.kind === 'drafts') return undefined;
   if (counts.status !== 'current') return '?';
-  const count = selection.kind === 'all' ? counts.total : counts.byCell.get(selection.cellId) ?? 0;
+  const count = selection.kind === 'cell' ? counts.byCell.get(selection.cellId) ?? 0 : counts.total;
   return count || undefined;
 }
 
@@ -77,4 +86,13 @@ export function composeJobPrompt(subject: string, body: string): string {
   if (!body.trim()) throw new Error('Write a message for this cell');
   const title = subject.trim();
   return title ? `${title}\n\n${body}` : body;
+}
+
+export function messagePreview(text?: string): string {
+  const line = text?.trim().replace(/\s+/g, ' ') ?? '';
+  return line.length > 120 ? line.slice(0, 117).trimEnd() + '…' : line;
+}
+
+export function threadTitle(job: { title?: string; prompt?: string }): string {
+  return job.title?.trim() || messagePreview(job.prompt) || 'Untitled thread';
 }

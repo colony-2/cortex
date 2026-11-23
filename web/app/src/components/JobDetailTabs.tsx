@@ -1,21 +1,21 @@
 import type { KeyboardEvent } from 'react';
 
 export const jobDetailTabs = [
-  ['conversation', 'Conversation'],
-  ['relationships', 'Relationships'],
-  ['input-artifacts', 'Input artifacts'],
-  ['env', 'Env'],
-  ['dag', 'DAG'],
-  ['leases', 'Lease timeline'],
+  ['conversation', 'Thread'],
+  ['runtime', 'Execution'],
+  ['dag', 'Graph'],
   ['execution', 'Trace'],
 ] as const;
 export type JobDetailTab = typeof jobDetailTabs[number][0];
 
 export function jobDetailTab(search: URLSearchParams): JobDetailTab {
   if (search.has('occurrenceId') || search.has('requestId')) return 'conversation';
-  if (search.get('tab') === 'summary') return 'execution';
-  if (search.has('tab')) {
-    return jobDetailTabs.find(([key]) => key === search.get('tab'))?.[0] || 'conversation';
+  const tab = search.get('tab');
+  if (tab === 'summary') return 'execution';
+  if (tab === 'env' || tab === 'leases') return 'runtime';
+  if (tab === 'relationships') return 'dag';
+  if (tab !== null) {
+    return jobDetailTabs.find(([key]) => key === tab)?.[0] || 'conversation';
   }
   if (search.get('input') === '1') return 'conversation';
   if (['nodeId', 'path', 'attempt', 'taskOrdinal'].some(key => search.has(key))) return 'execution';

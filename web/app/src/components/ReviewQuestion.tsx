@@ -1,6 +1,7 @@
 import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import MarkdownTable from './review/MarkdownTable';
+import ThreadMessageLabel from './ThreadMessageLabel';
 
 type Node = { type: string; value?: string; children?: Node[] };
 // Preserve authored prose breaks without interpreting newlines inside fenced
@@ -32,9 +33,10 @@ const components: Components = {
 };
 const remarkPlugins = [remarkGfm, proseBreaks];
 
-export default function ReviewQuestion({ question }: { question: string }) {
+export default function ReviewQuestion({ question, showMessageLabel }: { question: string; showMessageLabel?: boolean }) {
+  const sender = <strong>Agent</strong>;
   return <article className="review-v2-turn agent">
-    <strong>Agent</strong>
+    {showMessageLabel ? <span className="thread-message-meta">{sender}<ThreadMessageLabel label="Question" /></span> : sender}
     <div className="review-v2-question-markdown"><Markdown skipHtml remarkPlugins={remarkPlugins} components={components}>{question}</Markdown></div>
   </article>;
 }

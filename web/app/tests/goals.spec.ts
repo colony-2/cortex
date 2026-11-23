@@ -54,7 +54,7 @@ for (const width of [1440, 390]) {
     const savedList = `/project/${tenant}/jobs?inbox=all&q=dashboard`;
     await page.goto(savedList);
     await page.locator('.inbox-job-link[href*="/jobs/original-attempt/story"]').click();
-    await expect(page.getByRole('heading', { name: 'Job conversation', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Thread', exact: true })).toHaveAttribute('aria-selected', 'true');
     if (width === 1440) await capture('story-before-archive');
     await (await storyAction(page, 'Archive')).click();
     await expect(page.getByRole('heading', { name: 'All', exact: true })).toBeVisible();
@@ -62,7 +62,7 @@ for (const width of [1440, 390]) {
     const toast = page.locator('.ant-message-notice-content').filter({ hasText: 'Archived 1 job' });
     await expect(toast).toHaveCount(1);
     await expect(toast).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Job conversation', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'Thread', exact: true })).toHaveCount(0);
     await expect(page.getByRole('checkbox', { name: 'Select job original-attempt', exact: true })).toHaveCount(0);
     await inboxFolder(page, 'Archive');
     await expect(page.getByRole('checkbox', { name: 'Select job original-attempt', exact: true })).toBeVisible();
@@ -105,7 +105,7 @@ for (const width of [1440, 390]) {
       if(path.endsWith('/cells')) return route.fallback();
       return route.fulfill({json:path.endsWith('/projects')?[{tenant_id:'flat'}]:path.endsWith('/pending')?[]:{}});
     });
-    const jobs = Array.from({length:200}, (_, index) => ({...jobIdentity,tenant_id:'flat',job_id:`job-${String(index).padStart(3,'0')}`,goal_id:'shared-goal',title:`Job ${index}`,prompt:`Literal <script>unsafe()</script> 雪 ${index}`,status:index?'READY':'COMPLETED',store:index?'ACTIVE':'ARCHIVED',archived_at:index?undefined:'2026-11-20T12:00:00Z',created_at:'2099-01-01T00:00:00Z'}));
+    const jobs = Array.from({length:200}, (_, index) => ({...jobIdentity,tenant_id:'flat',job_id:`job-${String(index).padStart(3,'0')}`,goal_id:'shared-goal',title:`Job ${index}`,prompt:`Literal <script>unsafe()</script> 雪 ${index}`,status:index?'READY':'COMPLETED',store:index?'ACTIVE':'ARCHIVED',archived_at:index?undefined:'2026-11-20T12:00:00Z',created_at:'2026-11-10T00:00:00Z'}));
     const queries: URLSearchParams[] = [], detailReads:string[]=[];
     await page.route('**/api/projects/flat/jobs?*', route => {
       const q=new URL(route.request().url()).searchParams; queries.push(q);
@@ -115,10 +115,14 @@ for (const width of [1440, 390]) {
     await page.goto('/project/flat/goals');
     await expect(page).toHaveURL('/project/flat/jobs');
     await expect(page.getByRole('list',{name:'Jobs'}).getByRole('listitem')).toHaveCount(200);
-    // StrictMode can supersede an initial read; the final three scans must each follow every cursor.
-    expect(queries.slice(-9).map(q=>q.get('pageToken'))).toEqual([null,'empty','last',null,'empty','last',null,'empty','last']);
-    expect(queries.slice(0,-9).every(q=>!q.has('pageToken'))).toBe(true);
-    expect(queries.slice(-9).map(q=>q.get('includeHidden'))).toEqual(['false','false','false','true','true','true','false','false','false']);
+    expect(queries.map(q=>q.get('pageToken'))).toEqual([null]);
+    const more = page.getByRole('button', { name: 'Load more jobs' });
+    await more.click();
+    await expect.poll(() => queries.map(q=>q.get('pageToken'))).toEqual([null,'empty']);
+    await more.click();
+    await expect(more).toHaveCount(0);
+    expect(queries.map(q=>q.get('pageToken'))).toEqual([null,'empty','last']);
+    expect(queries.map(q=>q.get('includeHidden'))).toEqual(['false','false','false']);
     expect(queries.every(q=>q.get('pageSize')==='200'&&q.get('status')==='all')).toBe(true);
     expect(detailReads).toEqual([]);
     const rows=page.locator('.inbox-job-row');
@@ -127,12 +131,14 @@ for (const width of [1440, 390]) {
     await expect(rows.nth(1).locator('time')).toHaveText('Update unavailable');
     await expect(rows.locator('script')).toHaveCount(0);
     const initial=queries.length;
+    await page.evaluate(() => window.scrollTo(0, 0));
     await inboxFolder(page,'Archive');
     await expect(page.getByRole('checkbox',{name:'Select job hidden',exact:true})).toBeVisible();
     await expect(rows).toHaveCount(1);
+    expect(queries.slice(initial).map(q=>q.get('includeHidden'))).toEqual(['false','false','false','true','true','true','false','false','false']);
     await inboxFolder(page,'All');
     await expect(rows).toHaveCount(200);
-    expect(queries).toHaveLength(initial);
+    expect(queries.slice(initial + 9).map(q=>q.get('pageToken'))).toEqual([null]);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   });
 
@@ -147,22 +153,23 @@ for (const width of [1440, 390]) {
       if(path.endsWith('/jobs')){reads++;return route.fulfill({json:{jobs}});}
       return route.fulfill({json:path.endsWith('/projects')?[{tenant_id:'search'}]:path.endsWith('/cells')?{cells:[]}:path.endsWith('/pending')?[]:path.endsWith('/jobs/one')?jobs[0]:{}});
     });
+    await mockCells(page, ['platform']);
     await page.goto('/project/search/jobs?inbox=cell&cellId=cell-platform');
     await expect(page.locator('.inbox-job-row')).toHaveCount(2);
     const initial=reads;
-    await page.getByRole('textbox',{name:'Search jobs'}).fill('NEEDLE dashboard');
+    await page.getByRole('searchbox', { name: 'Search threads' }).fill('NEEDLE dashboard');
     await expect(page.locator('.inbox-job-row')).toHaveCount(1);
     const saved=page.url();
     expect(reads).toBe(initial);
     await page.getByRole('link',{name:'platform: Cloud release',exact:true}).click();
     await expect(page.getByRole('heading',{name:'Cloud release',exact:true})).toBeVisible();
-    await expect(page.getByRole('tab',{name:'Conversation',exact:true})).toHaveAttribute('aria-selected','true');
+    await expect(page.getByRole('tab',{name:'Thread',exact:true})).toHaveAttribute('aria-selected','true');
     await page.getByRole('link',{name:'Back to inbox'}).click();
     await expect(page).toHaveURL(saved);
-    await expect(page.getByRole('textbox',{name:'Search jobs'})).toHaveValue('NEEDLE dashboard');
+    await expect(page.getByRole('searchbox', { name: 'Search threads' })).toHaveValue('NEEDLE dashboard');
     await page.reload();
     await expect(page.locator('.inbox-job-row')).toHaveCount(1);
-    await page.getByRole('textbox',{name:'Search jobs'}).fill('Needle elsewhere');
+    await page.getByRole('searchbox', { name: 'Search threads' }).fill('Needle elsewhere');
     await expect(page.getByText('No jobs match this search')).toBeVisible();
   });
 
@@ -186,19 +193,27 @@ for (const width of [1440, 390]) {
       hidden.add(id);return route.fulfill({status:204});
     });
     await page.goto('/project/archive-ui/jobs');
+    const list = page.getByRole('list', { name: 'Jobs' });
+    const listTop = () => list.evaluate(element => element.getBoundingClientRect().top);
+    await expect(list.getByRole('listitem')).toHaveCount(3);
+    const top = await listTop();
     for(const id of ['finished','failed']) await page.getByRole('checkbox',{name:`Select job ${id}`,exact:true}).check();
     const archive=page.getByRole('button',{name:'Archive selected',exact:true});
     await archive.press('Enter');
     await expect.poll(()=>changes.length).toBe(2);
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByRole('status').filter({hasText:'Archiving jobs…'})).toBeVisible();
+    expect(await listTop()).toBe(top);
     await expect(archive).toBeDisabled();release();
     const dialog=page.getByRole('dialog');await expect(dialog).toContainText('Try again');
     await expect(page.getByRole('checkbox',{name:'Select job finished',exact:true})).toHaveCount(0);
     await expect(page.getByRole('checkbox',{name:'Select job failed',exact:true})).toBeChecked();
     fail=false;await dialog.getByRole('button',{name:'Archive job',exact:true}).click();
     await expect(dialog).toHaveCount(0);
-    expect(changes).toEqual(['finished','failed','failed']);
+    await expect(list.getByRole('listitem')).toHaveCount(1);
+    expect(await listTop()).toBe(top);
+    expect(changes.slice(0, 2).sort()).toEqual(['failed', 'finished']);
+    expect(changes.slice(2)).toEqual(['failed']);
     await page.getByRole('checkbox',{name:'Select job ready',exact:true}).check();
     await archive.click();await expect(dialog).toBeVisible();
     await dialog.getByRole('button',{name:'Keep jobs'}).click();
