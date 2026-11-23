@@ -4,7 +4,7 @@ import { ReviewEditor, type ReviewEditorHandle, type ReviewEditorMarkdownFormatI
 import type { DraftImages } from '../utils/promptImages';
 import { useCompact } from '../hooks/useCompact';
 
-type Props = { id?: string; value?: string; onChange?: (value: string) => void; disabled?: boolean; images: DraftImages; locked: () => boolean } & Pick<AriaAttributes, 'aria-describedby' | 'aria-invalid' | 'aria-required'>;
+type Props = { id?: string; value?: string; onChange?: (value: string) => void; disabled?: boolean; images: DraftImages; locked: () => boolean } & Pick<AriaAttributes, 'aria-label' | 'aria-describedby' | 'aria-invalid' | 'aria-required'>;
 const formats: [string, ReviewEditorMarkdownFormatInput][] = [
   ['Heading', { action: 'line', prefix: '## ', suffix: '', richBlock: 'h2' }],
   ['Bold', { action: 'inline', prefix: '**', suffix: '**', richFormat: 'bold' }],
@@ -17,7 +17,7 @@ const formats: [string, ReviewEditorMarkdownFormatInput][] = [
   ['Link', { action: 'link', url: 'https://example.com', placeholder: 'link text' }],
 ];
 const preservation = 'This Markdown needs source editing to preserve it. Your text is unchanged.';
-export default function GoalPromptEditor({ id, value = '', onChange, disabled, images, locked, ...aria }: Props) {
+export default function GoalPromptEditor({ id, value = '', onChange, disabled, images, locked, 'aria-label': label = 'Prompt', ...aria }: Props) {
   const editor = useRef<ReviewEditorHandle>(null);
   const surface = useRef<HTMLDivElement>(null);
   const mixedPaste = useRef(false);
@@ -57,7 +57,7 @@ export default function GoalPromptEditor({ id, value = '', onChange, disabled, i
       </div>}
     </div>
     {notice && <Alert role="status" type="info" message={notice} />}
-    <ReviewEditor {...aria} ref={editor} id={id} aria-label="Prompt" role="textbox" aria-multiline="true" className={`goal-editor-surface ${mode}`} value={{ text: value, suggestions: [], comments: [], highlights: [] }} contentMode={mode} trackChanges={false} readOnly={disabled}
+    <ReviewEditor {...aria} ref={editor} id={id} aria-label={label} role="textbox" aria-multiline="true" className={`goal-editor-surface ${mode}`} value={{ text: value, suggestions: [], comments: [], highlights: [] }} contentMode={mode} trackChanges={false} readOnly={disabled}
       onPasteCapture={event => { mixedPaste.current = event.clipboardData.types.some(type => type === 'text/html' || type === 'text/plain'); }}
       imagePreviews={images.previews()} onChange={next => { if (!locked()) onChange?.(next.text); }}
       onPasteImages={files => { if (locked()) return { reject: true }; try { setNotice(''); return images.stage(files); } catch (error) { setNotice((error as Error).message); return { reject: true }; } }}

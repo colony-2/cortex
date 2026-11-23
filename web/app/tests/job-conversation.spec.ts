@@ -1,3 +1,4 @@
+import { storyAction, originalRequest, expandHistory } from './helpers/inbox';
 import { test, expect } from '@playwright/test';
 import { jobIdentity } from './helpers/cells';
 
@@ -16,6 +17,8 @@ test.beforeEach(async ({ page, context, baseURL }) => {
     if (url.pathname.endsWith('/final-documents')) return route.fulfill({json:{job_id:'job',manifest_id:'none',state:'absent',documents:[]}});
     if (url.pathname.endsWith('/conversation/entry')) return route.fulfill({ status: 404, json: { error: 'Not retained', code: 'history_not_found' } });
     if (url.pathname === '/api/projects') return route.fulfill({ json: [{ tenant_id: 'demo' }] });
+    if (url.pathname.endsWith('/cells')) return route.fulfill({ json: { cells: [] } });
+    if (url.pathname.endsWith('/jobs')) return route.fulfill({ json: { jobs: [] } });
     if (url.pathname.endsWith('/user-inputs/pending')) return route.fulfill({ json: [] });
     if (url.pathname.endsWith('/input-artifacts')) return route.fulfill({ json: { artifacts: [] } });
     if (url.pathname.endsWith('/children')) return route.fulfill({ json: { jobs: [] } });
@@ -35,11 +38,12 @@ test('CT-001–007 default, panel visibility, keyboard navigation and URL restor
   const tabs = page.getByRole('tablist', { name: 'Job detail' });
   const conversation = tabs.getByRole('tab', { name: 'Conversation', exact: true });
   await expect(conversation).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('heading', { name: 'Job Story: Conversation fixture' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Conversation fixture' })).toBeVisible();
   await expect(page.getByLabel('Job cell')).toBeVisible();
   await expect(page.getByLabel('Job status')).toBeVisible();
-  await expect(page.getByRole('button', { name: /Refresh$/ })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Job prompt' })).toHaveText('PromptThe original request');
+  await expect((await storyAction(page, 'Refresh'))).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Job prompt' })).toBeHidden();
+  await expect(await originalRequest(page)).toHaveText('The original request');
   await expect(page.getByRole('region', { name: 'Job completion' })).not.toContainText('Merge status');
   await expect(page.getByRole('tree')).toHaveCount(0);
   await page.screenshot({ path: info.outputPath('conversation.png'), animations:'disabled',fullPage: true });
@@ -71,14 +75,14 @@ test('CT-001–007 default, panel visibility, keyboard navigation and URL restor
   await expect(page.getByRole('button', { name: /Submit/ })).toHaveCount(0);
 });
 
-test('CT-007 narrow tabs wrap without horizontal page overflow', async ({ page }, info) => {
+test('CT-007 narrow tabs scroll without horizontal page overflow', async ({ page }, info) => {
   await page.setViewportSize({ width: 320, height: 568 });
   await page.goto('/project/demo/jobs/job/story');
   const tabs = page.getByRole('tablist', { name: 'Job detail' });
   await expect(tabs).toBeVisible();
-  const boxes = await tabs.getByRole('tab').evaluateAll(elements => elements.map(element => ({ top: element.getBoundingClientRect().top, right: element.getBoundingClientRect().right })));
-  expect(new Set(boxes.map(box => box.top)).size).toBeGreaterThan(1);
-  expect(Math.max(...boxes.map(box => box.right))).toBeLessThanOrEqual(320);
+  // The compact inbox uses one scrollable tab line. Keyboard focus must reveal the last tab.
+  await tabs.getByRole('tab', { name: 'Trace', exact: true }).focus();
+  await expect(tabs.getByRole('tab', { name: 'Trace', exact: true })).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
   await tabs.getByRole('tab', { name: 'Trace', exact: true }).focus();
   await page.keyboard.press('Home');
@@ -103,10 +107,14 @@ test('CT-014,021,031 retained answers and exact earlier review stay selected thr
     return route.fallback();
   });
   await page.goto('/project/demo/jobs/job/story?tenantId=demo&filter=mine');
+  await expect(page.locator('.inbox-history-message')).toHaveCount(1);
+  await expandHistory(page);
   await expect(page.getByText('State: pending', { exact: false })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Job completion' })).toHaveCount(0);
   stage = 1;
-  await page.getByRole('button', { name: /Refresh$/ }).click();
+  await (await storyAction(page, 'Refresh')).click();
+  await expect(page.locator('[data-occurrence="second"]')).toBeAttached();
+  await expandHistory(page);
   await expect(page.locator('[data-occurrence="second"]')).toBeVisible();
   await expect(page.locator('.conversation-answer').first()).toBeVisible();
   await page.getByRole('button', { name: 'Open review' }).first().click();
@@ -118,7 +126,7 @@ test('CT-014,021,031 retained answers and exact earlier review stay selected thr
   await page.reload();
   await expect(recorded).toHaveAttribute('data-occurrence', 'first');
   stage = 2;
-  await page.getByRole('button', { name: /Refresh$/ }).click();
+  await (await storyAction(page, 'Refresh')).click();
   await expect(page.getByRole('region', { name: 'Job completion' })).toContainText('Persisted completion');
   await expect(page.getByRole('region', { name: 'Job completion' })).not.toContainText('Merge status');
   await expect(recorded).toHaveAttribute('data-occurrence', 'first');
@@ -199,6 +207,15 @@ for (const width of [1280,390]) test(`CC-001 CC-009 CC-010 CC-013 CC-014 compact
  await page.goto('/project/demo/jobs/job/story?filter=mine');
  const retainedCards=page.locator('[aria-label="Recorded request step"], [aria-label="Accepted response"]');
  await expect(retainedCards).toHaveCount(3);
+ await expect(retainedCards.first()).toBeHidden();
+ const messages = page.locator('.inbox-history-message');
+ for (const message of await messages.all()) {
+  const summary = message.locator(':scope > summary');
+  const height = await summary.evaluate(el => el.getBoundingClientRect().height);
+  expect(height).toBeGreaterThanOrEqual(width < 768 ? 44 : 32); expect(height).toBeLessThanOrEqual(60);
+ }
+ if(width===390 && process.env.CORTEX_INBOX_REPAIR_CAPTURE) await page.screenshot({path:`${process.env.CORTEX_INBOX_REPAIR_CAPTURE}/conversation-folded-phone.png`,animations:'disabled'});
+ await expandHistory(page);
  for(const card of await retainedCards.all()){
   const height=await card.evaluate(el=>el.getBoundingClientRect().height);
   expect(height).toBeLessThanOrEqual(width < 768 ? 120 : 100);expect(height).toBeGreaterThan(60);
@@ -241,6 +258,7 @@ for (const width of [1280,390]) test(`CC-001 CC-009 CC-010 CC-013 CC-014 compact
  await back.click();
  await expect(page).not.toHaveURL(/occurrenceId=/);
  expect(new URL(page.url()).searchParams.get('filter')).toBe('mine');
+ await expandHistory(page);
  await page.getByRole('button',{name:'Open review',exact:true}).last().click();
  await expect(reader.getByRole('heading',{name:'Original proposal'})).toBeVisible();
  await expect(reader.getByLabel('Recorded answers')).toHaveCount(0);
@@ -276,24 +294,24 @@ test('CV-009 CV-010 CV-013 page refresh retains the conversation observation and
   await page.route(url => url.pathname === '/api/projects/demo/jobs/job', route => failed ? route.fulfill({status:503,json:{error:'Fixture metadata unavailable'}}) : route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',title:'Conversation fixture',status,store:'ACTIVE'}}));
   await page.route('**/conversation?*',route=>failed?route.fulfill({status:503,json:{error:'Unavailable conversation'}}):route.fulfill({json:{...terminalConversation({job_id:'job',state:'empty'}),activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status,store:status==='COMPLETED'?'ARCHIVED':'ACTIVE'}}}}));
   await Promise.all([page.waitForResponse(response => new URL(response.url()).pathname === '/api/projects/demo/jobs/job'),page.goto('/project/demo/jobs/job/story')]);
-  await expect(page.getByRole('heading', {name:'Job Story: Conversation fixture'})).toBeVisible();
+  await expect(page.getByRole('heading', {name:'Conversation fixture'})).toBeVisible();
   const tail = page.getByLabel('Current job activity');
   await expect(tail).toHaveCount(1);
   await expect(tail).toContainText('Running');
   await page.screenshot({path:info.outputPath('activity-running-desktop.png'),animations:'disabled',fullPage:true});
   status = 'PENDING_JOBS';
-  await page.getByRole('button',{name:/Refresh$/}).click();
+  await (await storyAction(page, 'Refresh')).click();
   await expect(tail).toContainText('Pending');
   await expect(tail).toContainText('Waiting for jobs');
   await page.setViewportSize({width:390,height:844});
   await page.screenshot({path:info.outputPath('activity-pending-phone.png'),animations:'disabled',fullPage:true});
   failed = true;
-  await page.getByRole('button',{name:/Refresh$/}).click();
+  await (await storyAction(page, 'Refresh')).click();
   await expect(tail).toContainText('Status stale');
   await expect(tail).toContainText('Pending');
   await expect(tail).toHaveCount(1);
   failed = false; status = 'COMPLETED';
-  await page.getByRole('button',{name:/Refresh$/}).click();
+  await (await storyAction(page, 'Refresh')).click();
   await expect(tail).toHaveCount(0);
 });
 
@@ -311,6 +329,7 @@ test('CV-002 CV-003 CV-005 CV-020 merge ordering and final document viewer',asyn
   });
   await page.goto('/project/demo/jobs/job/story');
   await expect(page.getByLabel('Verified publication')).toHaveCount(2);
+  await expandHistory(page);
   const cards=page.locator('[aria-label="Recorded request step"],[aria-label="Verified publication"],[aria-label="Accepted response"]');
   await expect(cards).toHaveCount(4);
   expect(await cards.evaluateAll(nodes=>nodes.map(n=>n.getAttribute('aria-label')))).toEqual(['Recorded request step','Verified publication','Accepted response','Verified publication']);
@@ -370,6 +389,7 @@ test('CX-001 automatic completion supersedes an in-flight pre-publication snapsh
   await expect.poll(() => held, {timeout:15000}).toBe(true);
   terminal = true;
   await expect(page.getByLabel('Verified publication')).toHaveCount(1);
+  await expandHistory(page);
   await expect(page.getByLabel('Verified publication')).toContainText(merge.candidate_subject);
   await expect(page.getByLabel('Current job activity')).toHaveCount(0);
   releaseOld();
@@ -387,24 +407,24 @@ test('CV-009 CV-010 CV-013 current activity tail uses conversation and retains s
   await page.route(url => url.pathname === '/api/projects/demo/jobs/job',route=>route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',title:'Conversation fixture',status,store:status==='COMPLETED'?'ARCHIVED':'ACTIVE',completion_status:status==='COMPLETED'?'success':undefined}}));
   await page.route('**/conversation?*',route=>failed ? route.fulfill({status:503,json:{error:'Fixture conversation unavailable'}}) : route.fulfill({json:{tenant_id:'demo',job_id:'job',entries:[],snapshot_token:'snapshot',completeness:'complete',activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status,store:status==='COMPLETED'?'ARCHIVED':'ACTIVE',completion_status:status==='COMPLETED'?'success':undefined}},final_documents:{availability:'available',value:{job_id:'job',state:status==='COMPLETED'?'empty':'pending'}}}}));
   await page.goto('/project/demo/jobs/job/story');
-  await expect(page.getByRole('heading', {name:'Job Story: Conversation fixture'})).toBeVisible();
+  await expect(page.getByRole('heading', {name:'Conversation fixture'})).toBeVisible();
   const tail = page.getByLabel('Current job activity');
   await expect(tail).toHaveCount(1);
   await expect(tail).toContainText('Running');
   await page.screenshot({path:info.outputPath('activity-running-desktop.png'),fullPage:true});
   status = 'PENDING_JOBS';
-  await page.getByRole('button',{name:/Refresh$/}).click();
+  await (await storyAction(page, 'Refresh')).click();
   await expect(tail).toContainText('Pending');
   await expect(tail).toContainText('Waiting for jobs');
   await page.setViewportSize({width:390,height:844});
   await page.screenshot({path:info.outputPath('activity-pending-phone.png'),fullPage:true});
   failed = true;
-  await page.getByRole('button',{name:/Refresh$/}).click();
+  await (await storyAction(page, 'Refresh')).click();
   await expect(tail).toContainText('Status stale');
   await expect(tail).toContainText('Pending');
   await expect(tail).toHaveCount(1);
   failed = false; status = 'COMPLETED';
-  await page.getByRole('button',{name:/Refresh$/}).click();
+  await (await storyAction(page, 'Refresh')).click();
   await expect(tail).toHaveCount(0);
 });
 
@@ -419,6 +439,8 @@ for(const width of [1280,390]) test(`CV-002 CV-020 CV-022 terminal publications 
  const reads:string[]=[];
  await page.route('**/final-documents/document?*',r=>{const url=new URL(r.request().url());reads.push(url.search);expect(url.searchParams.get('manifest_id')).toBe('manifest-one');return r.fulfill({contentType:'application/octet-stream',body:url.searchParams.get('alias')==='report.md'?'# Returned report\n\n[Data](data.json)':'{"retained":true}'});});
  await page.goto('/project/demo/jobs/job/story');
+ await expect(page.getByLabel('Verified publication')).toHaveCount(1);
+ await expandHistory(page);
  await expect(page.getByLabel('Verified publication')).toContainText('Add conversation publication cards');
  const link=page.getByRole('link',{name:'report.md',exact:true});await link.click();
  const dialog=page.getByRole('dialog');await expect(dialog.getByRole('heading',{name:'Returned report'})).toBeVisible();
@@ -469,7 +491,7 @@ test('CV-022 CV-030 changed attempt aborts old preview and ignores late bytes',a
  await page.goto('/project/demo/jobs/job/story');
  await page.getByRole('link',{name:'report.md',exact:true}).click();await requested;
  attempt=2;
- await page.getByRole('button',{name:/Refresh$/}).evaluate(el=>(el as HTMLButtonElement).click());
+ await page.locator('.inbox-story-more button').filter({hasText:/^Refresh$/}).evaluate(el=>(el as HTMLButtonElement).click());
  await expect(page.getByRole('dialog')).toHaveCount(0);
  release();
  await page.getByRole('link',{name:'report.md',exact:true}).click();
@@ -494,7 +516,7 @@ test('CV-028 conversation refresh and Retry use no status or listing enrichment'
  await page.waitForLoadState('networkidle');
  const initial=statusReads.length;
  const initialConversations=conversations;
- await page.getByRole('button',{name:/Refresh$/}).click();
+ await (await storyAction(page, 'Refresh')).click();
  await expect.poll(()=>conversations).toBe(initialConversations+1);
  available=true;
  await page.getByLabel('Returned documents',{exact:true}).getByRole('button',{name:'Retry',exact:true}).click();
@@ -540,19 +562,21 @@ test('CV-028 polling uses conversation activity despite terminal page chrome',as
  await expect(page.getByLabel('Current job activity')).toContainText('Running');
 });
 
-for (const width of [1440, 390]) test(`JS-001,002,026–028 safe full prompt and one action line at ${width}px`, async ({page}, info) => {
+for (const width of [1440, 390]) test(`JS-001,002,026–028 safe disclosed prompt and compact actions at ${width}px`, async ({page}, info) => {
   await page.setViewportSize({width,height:900});
   const prompt='# Release plan\n\n'+('A complete paragraph explaining the requested work. '.repeat(20))+'\n\n- Preserve history\n- Keep retries\n\n```text\n'+('long-token-'.repeat(80))+'\n```\n\n<img src="https://bad.example/raw.png">\n\n![remote](https://bad.example/remote.png) [unsafe](javascript:alert(1))\n\n## Ending content';
   const remote:string[]=[]; page.on('request',request=>{if(request.url().includes('bad.example'))remote.push(request.url());});
   await page.route(url => url.pathname === '/api/projects/demo/jobs/job',route=>route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',goal_id:'goal',title:'Review a complete saved prompt '+ 'long-title-'.repeat(12),prompt,status:'RUNNING',store:'ACTIVE'}}));
   await page.goto('/project/demo/jobs/job/story');
+  await originalRequest(page);
   await expect(page.getByRole('heading',{name:'Ending content'})).toBeVisible();
+  await storyAction(page, 'Restart');
   const actions=page.getByRole('group',{name:'Job actions'});
   const boxes=await actions.locator(':scope > *').evaluateAll(nodes=>nodes.map(node=>{const r=node.getBoundingClientRect();return {top:r.top,height:r.height};}));
-  expect(Math.max(...boxes.map(b=>b.top))-Math.min(...boxes.map(b=>b.top))).toBeLessThan(15);
+  expect(boxes.every(box=>box.height>0)).toBe(true);
   for(const label of ['Restart','Archive','Cancel job']){
     const button=actions.getByRole('button',{name:label,exact:true}); await button.focus(); await expect(button).toBeFocused();
-    const box=await button.boundingBox(); expect(box!.height).toBeGreaterThanOrEqual(44); expect(box!.x).toBeGreaterThanOrEqual(0); expect(box!.x+box!.width).toBeLessThanOrEqual(width);
+    const box=await button.boundingBox(); expect(box!.height).toBeGreaterThanOrEqual(width <= 767 ? 44 : 32); expect(box!.x).toBeGreaterThanOrEqual(0); expect(box!.x+box!.width).toBeLessThanOrEqual(width);
   }
   expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
   await expect(page.getByRole('region',{name:'Job prompt'}).locator('img,script')).toHaveCount(0);
@@ -560,9 +584,10 @@ for (const width of [1440, 390]) test(`JS-001,002,026–028 safe full prompt and
   await expect(page.getByRole('button',{name:/Back to Goals|Download chapters/})).toHaveCount(0);
   await actions.evaluate(element=>element.scrollLeft=0);
   await page.screenshot({path:info.outputPath(`prompt-actions-${width}.png`),fullPage:true,animations:'disabled'});
+  if (process.env.CORTEX_INBOX_REPAIR_CAPTURE) await page.screenshot({path:`${process.env.CORTEX_INBOX_REPAIR_CAPTURE}/inbox-actions-${width === 390 ? 'phone' : 'desktop'}.png`,animations:'disabled'});
 });
 
-test('JS-015,020–023 AR-010,011 Archive retries retain cancellation and return to Goals', async ({page}, info) => {
+test('JS-015,020–023 AR-010,011 Archive retries retain cancellation and return to inbox', async ({page}, info) => {
   let deletes=0, storyReads=0;
   const payloads:unknown[]=[];
   await page.route(url => url.pathname === '/api/projects/demo/jobs/job',async route=>{
@@ -575,7 +600,7 @@ test('JS-015,020–023 AR-010,011 Archive retries retain cancellation and return
   await page.route('**/api/projects/demo/jobs/job/story',route=>{storyReads++;return route.fulfill({json:{job_id:'job',status:'completed',restart_scopes:[{scope_id:'recorded',chapter_ordinal:3,title:'Recorded restart'}],root:null}});});
   await page.route('**/api/projects/demo/jobs?*',route=>route.fulfill({json:{jobs:[]}}));
   await page.goto('/project/demo/jobs/job/story');
-  const archive=page.getByRole('button',{name:'Archive',exact:true}); await archive.click();
+  const archive=await storyAction(page, 'Archive'); await archive.click();
   const dialog=page.getByRole('dialog'); await dialog.getByLabel('Cancellation message (optional)').fill('Retain my cancellation');
   await dialog.getByRole('button',{name:'Archive job',exact:true}).click();
   await expect(dialog.getByText(/only archiving remains/)).toBeVisible();
@@ -585,8 +610,8 @@ test('JS-015,020–023 AR-010,011 Archive retries retain cancellation and return
   await page.screenshot({path:info.outputPath('archive-retry.png'),animations:'disabled'});
   await dialog.getByRole('button',{name:'Archive job',exact:true}).click();
   await expect(dialog).toHaveCount(0);
-  await expect(page).toHaveURL('/project/demo/goals?executionState=cells-v1');
-  await expect(page.getByRole('heading',{name:'Goals',exact:true})).toBeVisible();
+  await expect(page).toHaveURL('/project/demo/jobs');
+  await expect(page.getByRole('heading',{name:'All',exact:true})).toBeVisible();
   const toast=page.locator('.ant-message-notice-content').filter({hasText:'Archived 1 job'});
   await expect(toast).toHaveCount(1);
   await expect(toast).toBeVisible();
@@ -606,7 +631,7 @@ test('JS-010,036,037 header Restart submits before Trace and retries the saved r
   });
   await page.goto('/project/demo/jobs/job/story');
   expect(storyReads).toBe(0);
-  const restart=page.getByRole('button',{name:'Restart',exact:true}); await restart.click(); const dialog=page.getByRole('dialog');
+  const restart=await storyAction(page, 'Restart'); await restart.click(); const dialog=page.getByRole('dialog');
   await expect(dialog.getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
   await expect(page.locator('#execution-story-tree')).toHaveCount(0);
   await dialog.getByRole('combobox',{name:'Restart point'}).click(); await page.getByText(/Recorded restart · Chapter 3/).click();
@@ -638,14 +663,15 @@ for(const width of [1440,390]) test(`JS-004,005,010,036 summary deep link and sh
   await page.screenshot({path:info.outputPath(`trace-summary-${width}.png`),fullPage:true,animations:'disabled'});
   for(const tab of ['Conversation','Relationships','Input artifacts','DAG','Lease timeline','Trace']){
     await page.getByRole('tab',{name:tab,exact:true}).click();
-    const opener=page.getByRole('group',{name:'Job actions'}).getByRole('button',{name:'Restart',exact:true});
+    const opener=await storyAction(page, 'Restart');
     await opener.click();
     const dialog=page.getByRole('dialog');
     await expect(dialog.getByRole('combobox',{name:'Restart point'})).toBeVisible();
     await expect(dialog.getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
     await expect.poll(()=>dialog.evaluate(element=>element.contains(document.activeElement))).toBe(true);
     await page.keyboard.press('Escape');
-    await expect(dialog).toHaveCount(0); await expect(opener).toBeFocused();
+    await expect(dialog).toHaveCount(0); await expect(page.locator('.inbox-story-more > summary')).toBeFocused();
+    await expect(page.locator('.inbox-story-more')).not.toHaveAttribute('open');
     await expect(page.getByRole('tab',{name:tab,exact:true})).toHaveAttribute('aria-selected','true');
   }
 });

@@ -19,10 +19,25 @@ import (
 	"github.com/colony-2/c2j/pkg/jobdbschema"
 	"github.com/colony-2/colony2/server/internal/testjobdb"
 	"github.com/colony-2/jobdb/pkg/jobdb"
+	"github.com/colony-2/jobdb/pkg/jobdb/runtime/remote"
+	"github.com/colony-2/jobdb/pkg/jobdb/runtime/toy"
 )
 
 func TestGoalAttachmentNativePersistence(t *testing.T) {
-	srv, err := NewUITestServer(Config{WorkingDir: writeC2JConfig(t)})
+	for _, transport := range []string{"embedded", "remote"} {
+		t.Run(transport, func(t *testing.T) { testGoalAttachmentPersistence(t, transport) })
+	}
+}
+func testGoalAttachmentPersistence(t *testing.T, transport string) {
+	var srv *Server
+	var err error
+	if transport == "remote" {
+		backend := httptest.NewServer(testjobdb.Handler(remote.NewServer(toy.New())))
+		defer backend.Close()
+		srv, err = NewRemoteServer(Config{WorkingDir: writeC2JConfig(t), JobDBURL: backend.URL})
+	} else {
+		srv, err = NewUITestServer(Config{WorkingDir: writeC2JConfig(t)})
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +48,7 @@ func TestGoalAttachmentNativePersistence(t *testing.T) {
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
 	_ = w.WriteField("submission", `{"cell":"platform","job_id":"files","inputs":{"prompt":"Build with files","type":"build"}}`)
-	for _, p := range []struct{ name, data string }{{"雪.bin", "\x00\xff\x01"}, {"empty", ""}, {"brief ?#.md", "# Hello"}} {
+	for _, p := range []struct{ name, data string }{{"雪.bin", "\x00\xff\x01"}, {"empty", ""}, {"brief ?#.md", "# Hello"}, {`a"b.txt`, "quoted"}, {"a%22b.txt", "literal percent"}, {"100%.txt", "bare percent"}, {"a+%22.txt", "plus and percent"}, {"雪%22.bin", "unicode percent"}, {"%", "only percent"}} {
 		part, e := w.CreateFormFile("files", p.name)
 		if e != nil {
 			t.Fatal(e)
@@ -62,7 +77,7 @@ func TestGoalAttachmentNativePersistence(t *testing.T) {
 	inventory := getJSON[struct {
 		Artifacts []inputArtifact `json:"artifacts"`
 	}](t, base+"/jobs/files/input-artifacts")
-	if len(inventory.Artifacts) != 3 {
+	if len(inventory.Artifacts) != 9 {
 		t.Fatalf("inventory: %#v", inventory)
 	}
 	for _, suffix := range []string{"/api/projects/other/jobs/files/input-artifacts", "/api/projects/attachments/jobs/missing/input-artifacts", "/api/projects/other/jobs/files/tasks/0/artifacts/empty", "/api/projects/attachments/jobs/files/tasks/0/artifacts/missing"} {
@@ -79,7 +94,7 @@ func TestGoalAttachmentNativePersistence(t *testing.T) {
 			t.Fatalf("guard %s: %d", suffix, response.StatusCode)
 		}
 	}
-	for _, p := range []struct{ name, data string }{{"雪.bin", "\x00\xff\x01"}, {"empty", ""}, {"brief ?#.md", "# Hello"}} {
+	for _, p := range []struct{ name, data string }{{"雪.bin", "\x00\xff\x01"}, {"empty", ""}, {"brief ?#.md", "# Hello"}, {`a"b.txt`, "quoted"}, {"a%22b.txt", "literal percent"}, {"100%.txt", "bare percent"}, {"a+%22.txt", "plus and percent"}, {"雪%22.bin", "unicode percent"}, {"%", "only percent"}} {
 		response, e := http.Get(base + "/jobs/files/tasks/0/artifacts/" + url.PathEscape(p.name))
 		if e != nil {
 			t.Fatal(e)
@@ -106,7 +121,7 @@ func TestGoalAttachmentNativePersistence(t *testing.T) {
 		t.Fatalf("lease: %v", e)
 	}
 	defer lease.StopKeepAlive()
-	artifact := jobdb.NewArtifactFromBytes("docs/nested 雪 ?#.txt", []byte("recorded ordinal"))
+	artifact := jobdb.NewArtifactFromBytes("docs/nested 雪 %22 ?#.txt", []byte("recorded ordinal"))
 	runtime := srv.engine.(jobdbschema.WorkflowEngine).Registry.(jobdb.WorkflowRuntime)
 	token := ""
 	if l, ok := lease.(interface{ LeaseToken() string }); ok {

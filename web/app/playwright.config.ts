@@ -120,7 +120,7 @@ export default defineConfig({
       cwd: '../..',
     },
     {
-      command: 'pnpm exec vite --host 127.0.0.1 --port 15173 --strictPort',
+      command: 'exec node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 15173 --strictPort',
       url: webURL,
       env: { ...accountUIBuildEnvironment, CORTEX_API_URL: apiURL, VITE_CORTEX_API_BASE: '/api' },
       reuseExistingServer: false,
@@ -128,7 +128,7 @@ export default defineConfig({
       cwd: '.',
     },
     {
-      command: 'pnpm exec vite --host 127.0.0.1 --port 15174 --strictPort',
+      command: 'exec node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 15174 --strictPort',
       url: 'http://127.0.0.1:15174',
       env: { CORTEX_API_URL: 'http://127.0.0.1:18083', VITE_CORTEX_API_BASE: '/api' },
       reuseExistingServer: false,

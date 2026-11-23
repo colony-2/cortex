@@ -21,7 +21,7 @@ async function fixtures(page: Page) {
   const defaultDetail = async (route:Route) => route.fulfill({json:currentJob});
   let detailRespond = defaultDetail;
   let respond = async (route:Route) => { await route.fulfill({ json: { events:[leaseEvent('9'),leaseEvent('2')],nextPageToken:'opaque+/=雪' } }); };
-  await page.context().addCookies([{name:'colony2:user:email',value:'fixture@example.com',url:'http://127.0.0.1:15177'}]);
+  await page.context().addCookies([{name:'colony2:user:email',value:'fixture@example.com',url: test.info().project.use.baseURL!}]);
   await page.addInitScript(() => { (window as any).EventSource = class { readyState=1; close(){} addEventListener(){} removeEventListener(){} }; });
   page.on('request',request => { const url=new URL(request.url()); if(url.pathname.endsWith('/events')) requests.push(url); if(url.pathname.endsWith('/clear-crash-concern')) mutations.push(url); });
   await page.route('**/api/**',async route => {
@@ -42,15 +42,14 @@ async function fixtures(page: Page) {
 async function surface(page:Page, which:'story'|'detail') {
   await page.goto(which==='story' ? '/project/tenant/jobs/job/story' : '/project/tenant/jobs');
   if(which==='detail') {
-    const expand = page.getByRole('button',{name:'Expand goal details'});
-    await expand.first().click();
+    await page.getByRole('link',{name:'platform: Inspect lease history',exact:true}).click();
   }
   await expect(timeline(page)).toBeVisible();
 }
 for(const which of ['story','detail'] as const) {
   test(`${which}: zero ordinary reads, one keyboard opening, explicit paging, tied renewal details and fresh reopening`,async({page})=>{
     const fixture=await fixtures(page); await surface(page,which);
-    await expect(timeline(page)).toHaveAttribute(which==='story'?'aria-selected':'aria-expanded','false');
+    await expect(timeline(page)).toHaveAttribute('aria-selected','false');
     expect(fixture.requests).toHaveLength(0);
     await timeline(page).focus(); await page.keyboard.press('Enter');
     await expect(pane(page).locator('tr.ant-table-row')).toHaveCount(1);
@@ -87,7 +86,7 @@ test('older failure retains rows, invalid cursor refresh discards history before
   await pane(page).getByRole('button',{name:'Load older lease events'}).click();
   await expect(pane(page).getByRole('alert')).toContainText('backend offline');
   await expect(pane(page).locator('tr.ant-table-row')).toHaveCount(1);
-  await expect(page.getByRole('heading',{name:'Job Story: Inspect lease history'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Inspect lease history'})).toBeVisible();
   fixture.setResponder(async route=>{await route.fulfill({status:400,json:{error:'cursor expired',code:'invalid_lease_event_page_token'}});});
   await pane(page).getByRole('button',{name:'Retry lease history'}).click();
   await expect(pane(page).getByRole('button',{name:'Refresh from first page'})).toBeVisible();
@@ -107,11 +106,16 @@ for(const [status,code] of [[403,'forbidden'],[401,'authentication_required'],[5
     await surface(page,'detail'); expect(fixture.requests).toHaveLength(0); await timeline(page).click();
     await expect(pane(page).getByRole('alert')).toContainText(code);
     await expect(pane(page).getByText('No retained lease events are available.')).toHaveCount(0);
+    await page.getByRole('tab',{name:'Conversation',exact:true}).click();
+    await page.locator('.inbox-original > summary').click();
     await expect(page.getByText('Keep ordinary job details usable',{exact:true}).first()).toBeVisible();
+    await timeline(page).click();
+    await expect(pane(page).getByRole('alert')).toContainText(code);
+    expect(fixture.requests).toHaveLength(2);
     fixture.setResponder(async route=>{await route.fulfill({json:{events:[]}});});
     await pane(page).getByRole('button',{name:'Retry lease history'}).click();
     await expect(pane(page).getByText('No retained lease events are available.')).toBeVisible();
-    expect(fixture.requests).toHaveLength(2);
+    expect(fixture.requests).toHaveLength(3);
   });
 }
 test('overlapping older actions are disabled, closing cancels and ignores late history',async({page})=>{
@@ -149,7 +153,7 @@ test('navigation cancels the pending read and the destination starts closed',asy
   fixture.setResponder(async route=>{await wait; await route.fulfill({json:{events:[leaseEvent('late')]}}).catch(()=>{});});
   await timeline(page).click(); await expect(pane(page).getByRole('status')).toBeVisible();
   const canceled=page.waitForEvent('requestfailed',req=>req.url().includes('/events'));
-  await page.getByRole('link',{name:'Goal overview',exact:true}).click(); await canceled; release();
+  await page.getByRole('link',{name:'Back to inbox',exact:true}).click(); await canceled; release();
   await page.goto('/project/tenant/jobs/job/story'); await expect(timeline(page)).toHaveAttribute('aria-selected','false');
   expect(fixture.requests).toHaveLength(1);
 });

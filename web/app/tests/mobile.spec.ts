@@ -1,3 +1,4 @@
+import { openCompose, inboxFolder, storyAction } from './helpers/inbox';
 import { routeEnvironment, captureEnvironment, longBase, envJobs } from './helpers/executionRequirements';
 import { jobIdentity, mockCells, cellFixture } from './helpers/cells';
 import { expect, type Page } from '@playwright/test';
@@ -5,24 +6,17 @@ import { test, setNativeZoom, captureNativeZoom } from './helpers/nativeZoom';
 
 const prompt = 'Build a reliable dashboard ' + 'long-content-'.repeat(30);
 const jobs = [
-  { ...jobIdentity, job_id: 'one', goal_id: 'g', cell_name: 'platform', repo: 'https://github.com/colony-2/platform.git', prompt, status: 'READY', store: 'ACTIVE', created_at: '2026-10-30T10:00:00Z' },
-  { ...jobIdentity, job_id: 'two', goal_id: 'g', cell_name: 'platform', prompt, status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'success', created_at: '2026-10-29T10:00:00Z' },
-  { ...jobIdentity, cell_id: 'cell-api', cell_name: 'api', job_id: 'three', goal_id: 'other', prompt: 'Another goal', status: 'READY', store: 'ACTIVE', created_at: '2026-10-28T10:00:00Z' },
+  { ...jobIdentity, tenant_id: 'phone', job_id: 'one', goal_id: 'g', cell_name: 'platform', repo: 'https://github.com/colony-2/platform.git', prompt, status: 'READY', store: 'ACTIVE', created_at: '2026-10-30T10:00:00Z' },
+  { ...jobIdentity, tenant_id: 'phone', job_id: 'two', goal_id: 'g', cell_name: 'platform', prompt, status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'success', created_at: '2026-10-29T10:00:00Z' },
+  { ...jobIdentity, tenant_id: 'phone', cell_id: 'cell-api', cell_name: 'api', job_id: 'three', goal_id: 'other', prompt: 'Another goal', status: 'READY', store: 'ACTIVE', created_at: '2026-10-28T10:00:00Z' },
 ];
 async function noOverflow(page: Page) {
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
 }
-async function filter(page: Page, name: string, selected: string[] | null) {
-  if (!await page.getByRole('button', { name, exact: true }).isVisible()) await page.getByRole('button', { name: /^Filters and sorting/ }).click();
-  await page.getByRole('button', { name, exact: true }).click();
-  const popup = page.getByRole('dialog', { name });
-  await popup.getByRole('button', { name: selected === null ? 'Select all' : 'Select none', exact: true }).click();
-  for (const label of selected || []) await popup.getByRole('checkbox', { name: label, exact: true }).check();
-  await popup.getByRole('button', { name: 'Apply', exact: true }).click();
-  await expect(popup).toBeHidden();
-}
-
 test.beforeEach(async ({ page, context, baseURL }) => {
+  await page.route('**/input-artifacts', route => route.fulfill({json:{artifacts:[]}}));
+  await page.route('**/children?*', route => route.fulfill({json:{jobs:[]}}));
+  await page.route('**/workspace-diff*', route => route.fulfill({json:{status:'absent',comparisons:[]}}));
   await page.route('**/conversation?*', route => route.fulfill({ status: 501, json: { error: 'Fixture has no retained history', code: 'history_unsupported' } }));
   await context.addCookies([{ name: 'colony2:user:email', value: 'phone@example.com', url: baseURL! }]);
   await page.addInitScript(() => {
@@ -41,115 +35,107 @@ test.beforeEach(async ({ page, context, baseURL }) => {
     const id = new URL(route.request().url()).pathname.split('/').pop();
     return route.fulfill({ json: { ...jobs.find(job => job.job_id === id), tenant_id: 'phone' } });
   });
-  await page.route(/\/api\/projects\/[^/]+\/jobs\/[^/]+\/story$/, route => route.fulfill({ json: { ...jobIdentity, job_id: 'one', status: 'completed', root: { id: 'root', kind: 'recipe', title: 'Phone recipe', path: [], attempt: 1, status: 'completed', children: [{ id: 'child', kind: 'op', title: 'Task name ' + 'x'.repeat(200), path: ['step'], attempt: 1, status: 'completed', output: { data: 'value'.repeat(200) } }] } } }));
+  await page.route(/\/api\/projects\/[^/]+\/jobs\/[^/]+\/story$/, route => route.fulfill({ json: { ...jobIdentity, tenant_id: 'phone', job_id: 'one', status: 'completed', root: { id: 'root', kind: 'recipe', title: 'Phone recipe', path: [], attempt: 1, status: 'completed', children: [{ id: 'child', kind: 'op', title: 'Task name ' + 'x'.repeat(200), path: ['step'], attempt: 1, status: 'completed', output: { data: 'value'.repeat(200) } }] } } }));
 });
 
-test('phone filters, ordering, selection, history, and responsive state share one model', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  const reads: string[] = [];
-  page.on('request', request => { if (/\/jobs(?:\?|\/[^/]+$)/.test(request.url())) reads.push(request.url()); });
-  await page.goto('/project/phone/goals');
-  await expect(page.locator('.goal-card')).toHaveCount(2);
-  const card = page.locator('.goal-card').filter({ has: page.getByRole('link', { name: /^Build a reliable dashboard/ }) });
-  await expect(card.locator('.goal-card-meta').getByRole('link')).toHaveCount(1);
-  await expect(card.locator('.goal-card-meta').getByRole('link')).toHaveAttribute('aria-label', /^Job .*: /);
-  await expect(card.locator('.goal-card-meta')).not.toContainText('Build a reliable dashboard');
-  await expect(page.getByText('2 attempts on this page')).toBeVisible();
-  await filter(page, 'Filter cells', []);
-  await expect(page.getByText('No cells selected')).toBeVisible();
-  await filter(page, 'Filter cells', ['api']);
-  await expect(page.locator('.goal-card')).toHaveCount(1);
-  await expect(page.getByRole('link', { name: 'Another goal', exact: true })).toBeVisible();
-  await filter(page, 'Filter cells', null);
-  await filter(page, 'Filter statuses', []);
-  await expect(page.getByText('No statuses selected')).toBeVisible();
-  await filter(page, 'Filter statuses', null);
-  await expect(page.locator('.goal-card')).toHaveCount(2);
-  await page.getByRole('combobox', { name: 'Sort goals' }).selectOption('prompt');
-  await expect(page.locator('.goal-card').first()).toContainText('Another goal');
-  await page.getByRole('combobox', { name: 'Sort direction' }).selectOption('descend');
-  await expect(page.locator('.goal-card').first()).toContainText('Build a reliable dashboard');
-  await page.getByRole('checkbox', { name: 'Select all goals on this page', exact: true }).check();
-  await expect(page.getByText('3 selected', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Expand goal details' }).first().click();
-  await expect(card.locator('.goal-card-secondary')).toContainText('Submitted:');
-  await expect(card.locator('.goal-card-secondary')).toContainText('Links:');
-  const attempts = page.getByRole('region', { name: 'Attempts', exact: true });
-  await expect(attempts.getByRole('button', { name: 'Details', exact: true })).toHaveCount(2);
-  await attempts.getByRole('button', { name: 'Details', exact: true }).last().click();
-  await expect(page).toHaveURL(/inspect=two/);
-  const before = [...reads]; const subscriptions = await page.evaluate(() => (window as any).sseConnections);
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await expect(page.getByRole('table').first()).toBeVisible();
-  await expect(page.getByText('3 selected', { exact: true })).toBeVisible();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(attempts.getByRole('button', { name: 'Details', exact: true }).last()).toHaveAttribute('aria-pressed', 'true');
-  expect(reads).toEqual(before);
-  expect(await page.evaluate(() => (window as any).sseConnections)).toBe(subscriptions);
-  await page.getByRole('link', { name: 'Goal overview', exact: true }).first().click();
-  await page.getByRole('link', { name: 'Back to Goals', exact: true }).click();
-  await expect(page).toHaveURL(/expanded=/);
-  await expect(page).toHaveURL(/inspect=/);
+
+// Inbox rows replace goal cards/filter dialogs. Check the same native mobile
+// navigation, selection, resize, text-entry and action paths on the new surface.
+for (const width of [320,390,768,1440]) test(`inbox and Compose fit long content at ${width}px`,async({page,context},info)=>{
+  await page.setViewportSize({width,height:900});
+  await page.goto('/project/phone/jobs');
+  await expect(page.locator('.inbox-job-row')).toHaveCount(3);
   await noOverflow(page);
-});
-
-test('drawer keyboard navigation closes, restores focus, and changes at the md boundary', async ({ page }, testInfo) => {
-  await page.setViewportSize({ width: 767, height: 800 });
-  await page.goto('/project/phone/goals');
-  const opener = page.getByRole('button', { name: 'Open navigation' });
-  await opener.focus(); await page.keyboard.press('Enter');
-  await expect(page.getByRole('dialog')).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(opener).toBeFocused();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await opener.click();
-  await page.screenshot({ path: testInfo.outputPath('phone-navigation.png'), animations: 'disabled' });
-  await page.getByRole('dialog').getByRole('link', { name: 'Cells', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Cells', exact: true })).toBeVisible();
-  await expect(opener).toBeFocused();
-  await expect(page.getByText('github.com/acme/api', { exact: true })).toBeVisible();
-  await opener.click();
-  await page.setViewportSize({ width: 768, height: 1024 });
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(opener).toHaveCount(0);
-  await expect(page.locator('.ant-layout-sider')).toBeVisible();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await inboxFolder(page,'api');
+  await expect(page.locator('.inbox-job-row')).toHaveCount(1);
+  await expect(page.getByRole('heading',{name:'api',exact:true})).toBeVisible();
+  const saved=page.url();
+  await page.getByRole('link',{name:'api: Another goal'}).click();
+  await page.getByRole('link',{name:'Back to inbox'}).click();
+  await expect(page).toHaveURL(saved);
+  await inboxFolder(page,'All');
+  for(const id of ['one','two','three']) await page.getByRole('checkbox',{name:`Select job ${id}`,exact:true}).check();
+  for(const name of ['Cancel','Archive']){
+    const trigger=page.getByRole('button',{name:`${name} selected`,exact:true});await trigger.click();
+    const dialog=page.getByRole('dialog');
+    await expect(dialog.getByRole('button',{name:`${name} 3 jobs`,exact:true})).toBeVisible();
+    await dialog.getByRole('button',{name:'Keep jobs'}).click();await expect(trigger).toBeFocused();
+  }
+  const composer=await openCompose(page,'api');
+  await composer.getByLabel('Message',{exact:true}).fill(prompt);
   await noOverflow(page);
+  await page.setViewportSize({width,height:360});
+  const send=composer.getByRole('button',{name:'Send',exact:true});await send.scrollIntoViewIfNeeded();
+  await expect(send).toBeInViewport({ratio:1});
+  await composer.getByRole('button',{name:'Close composer'}).click();
+  await openCompose(page);
+  await expect(composer.getByLabel('Message',{exact:true})).toHaveText(prompt);
+  await composer.getByRole('button',{name:'Discard'}).click();await openCompose(page);
+  await expect(composer.getByLabel('Message',{exact:true})).toHaveText('');
+  await composer.getByRole('button',{name:'Discard'}).click();
+  await context.clearCookies();await page.reload();
+  await expect(page.getByPlaceholder('Email address')).toBeVisible();await noOverflow(page);
 });
 
-for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1440, height: 900 }]) {
-  test(`scoped pages and dialogs contain long content at ${viewport.width}`, async ({ page, context }, testInfo) => {
-    await page.setViewportSize(viewport);
-    for (const path of ['/goals', '/goals/g', '/jobs/one/story', '/cells', '/reviews']) {
-      await page.goto('/project/phone' + path);
-      await expect(page.getByRole('heading').first()).toBeVisible();
-      await noOverflow(page);
+for(const width of [320,390]) test(`inbox links and drawer have actual touch areas at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:844});await page.goto('/project/phone/jobs');
+  const links=page.locator('.inbox-job-link');await expect(links).toHaveCount(3);
+  for(const link of await links.all()){
+    const r=(await link.boundingBox())!;expect(r.width).toBeGreaterThanOrEqual(44);expect(r.height).toBeGreaterThanOrEqual(44);
+    expect(await link.evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+2,r.y+2));})).toBe(true);
+  }
+  const opener=page.getByRole('button',{name:'Open navigation'});await opener.press('Enter');
+  const dialog=page.getByRole('dialog');
+  for(const link of await dialog.getByRole('link').all()){
+    const r=(await link.boundingBox())!;expect(r.width).toBeGreaterThanOrEqual(44);expect(r.height).toBeGreaterThanOrEqual(44);
+  }
+  if(width===390 && process.env.CORTEX_INBOX_REPAIR_CAPTURE) await page.screenshot({path:`${process.env.CORTEX_INBOX_REPAIR_CAPTURE}/inbox-navigation-phone.png`,animations:'disabled'});
+  await dialog.getByRole('link',{name:'Archive',exact:true}).click({position:{x:2,y:2}});
+  await expect(opener).toBeFocused();await expect(page.getByRole('heading',{name:'Archive',exact:true})).toBeVisible();
+  await page.setViewportSize({width:768,height:900});await expect(opener).toHaveCount(0);await noOverflow(page);
+});
+
+test.describe('native browser zoom',()=>{
+  test.use({nativeZoom:true});
+  test('200% zoom retains Compose, batch and restart actions',async({page},info)=>{
+    await page.goto('/project/phone/jobs');await setNativeZoom(page,2);
+    const composer=await openCompose(page,'platform');
+    await composer.getByRole('button',{name:'Send',exact:true}).click();
+    await expect(composer.getByRole('alert')).toHaveText('Enter a message with text or an image');
+    const message=composer.getByLabel('Message',{exact:true});
+    await expect(message).toHaveAttribute('aria-invalid','true');
+    await expect(message).toHaveAccessibleDescription('Enter a message with text or an image');
+    await message.fill(prompt);
+    const send=composer.getByRole('button',{name:'Send',exact:true});await send.scrollIntoViewIfNeeded();await expect(send).toBeInViewport({ratio:1});await noOverflow(page);
+    await captureNativeZoom(page,info.outputPath('native-200-compose.png'));
+    await composer.getByRole('button',{name:'Discard'}).click();
+    for(const id of ['one','two','three']) await page.getByRole('checkbox',{name:`Select job ${id}`,exact:true}).check();
+    for(const name of ['Cancel','Archive']){
+      const trigger=page.getByRole('button',{name:`${name} selected`});await trigger.click();const dialog=page.getByRole('dialog');
+      const confirm=dialog.getByRole('button',{name:`${name} 3 jobs`,exact:true});await confirm.scrollIntoViewIfNeeded();await expect(confirm).toBeInViewport({ratio:1});await noOverflow(page);
+      await dialog.getByRole('button',{name:'Keep jobs'}).click();await expect(trigger).toBeFocused();
     }
-    await page.goto('/project/phone/goals');
-    if (viewport.width === 390) await page.screenshot({ path: testInfo.outputPath('phone-goals.png'), fullPage: true });
-    await page.getByRole('button', { name: 'New goal', exact: true }).click();
-    const dialog = page.getByRole('dialog');
-    await dialog.getByLabel('Prompt').fill(prompt);
-    await expect(dialog.getByRole('combobox', { name: 'Cell' })).toBeVisible();
-    await dialog.getByRole('combobox', { name: 'Cell', exact: true }).focus();
-    await page.keyboard.press('ArrowDown');
-    await page.getByTitle('api · github.com/acme/api', { exact: true }).click();
-    await expect(dialog.locator('.goal-target-summary')).toBeVisible();
-    await expect(page.locator('.ant-select-dropdown:visible')).toHaveCount(0);
-    await noOverflow(page);
-    if (viewport.width === 390) await page.screenshot({ path: testInfo.outputPath('phone-target.png'), fullPage: true });
-    await page.setViewportSize({ ...viewport, height: 360 });
-    await dialog.getByRole('button', { name: 'Create goal', exact: true }).scrollIntoViewIfNeeded();
-    await expect(dialog.getByRole('button', { name: 'Create goal', exact: true })).toBeInViewport();
-    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
-    await context.clearCookies();
-    await page.reload();
-    await expect(page.getByPlaceholder('Email address')).toBeVisible();
-    await noOverflow(page);
+    await page.goto('/project/phone/jobs/one/story');
+    const restart=await storyAction(page,'Restart');await restart.click();
+    const dialog=page.getByRole('dialog');await expect(dialog.getByRole('combobox',{name:'Restart point'})).toBeVisible();
+    await dialog.getByRole('button',{name:'Cancel',exact:true}).click();await expect(page.locator('.inbox-story-more > summary')).toBeFocused();
+    await setNativeZoom(page,1);await expect(page.getByRole('button',{name:'Open navigation'})).toHaveCount(0);
   });
-}
+});
 
+for(const width of [320,390,768,1440]) test(`ENV exact-job tab retains full requirements through failed Trace at ${width}px`,async({page},info)=>{
+  await page.setViewportSize({width,height:1000});const reads=await routeEnvironment(page);
+  await page.goto('/project/env/jobs/long/story?tab=env');
+  await expect(page.getByRole('tab',{name:'Env',exact:true})).toHaveAttribute('aria-selected','true');
+  await expect(page.getByText(longBase,{exact:true})).toBeVisible();
+  await expect(page.getByText('0.5 cores',{exact:true})).toBeVisible();
+  await expect(page.getByText('512 MiB',{exact:true})).toBeVisible();
+  await expect(page.getByText('a-long-capability-name-with-雪',{exact:true})).toBeVisible();
+  expect(reads.some(path=>/\/(story|input-artifacts|conversation)$/.test(path))).toBe(false);
+  await noOverflow(page);await captureEnvironment(page,info,`env-${width}`);
+  await page.getByRole('tab',{name:'Trace',exact:true}).click();await expect(page.getByText('Failed to load job story',{exact:true})).toBeVisible();
+  await page.getByRole('tab',{name:'Env',exact:true}).click();await expect(page.getByText(longBase,{exact:true})).toBeVisible();await noOverflow(page);
+});
 test('phone story stacks panels, provides selected details access, and preserves node selection on resize', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/project/phone/jobs/one/story');
@@ -173,158 +159,8 @@ test('phone story stacks panels, provides selected details access, and preserves
   await page.screenshot({ path: testInfo.outputPath('phone-story.png'), fullPage: true });
 });
 
-test('compact controls meet touch and text-entry sizes and login fits', async ({ page, context }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/project/phone/goals');
-  await page.getByRole('button', { name: /^Filters and sorting/ }).click();
-  for (const name of ['Open navigation', 'Filter cells', 'New goal']) {
-    const box = await page.getByRole('button', { name, exact: true }).boundingBox();
-    expect(box!.height).toBeGreaterThanOrEqual(44);
-  }
-  expect(await page.getByRole('searchbox', { name: 'Tenant ID' }).evaluate(element => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);
-  await context.clearCookies();
-  await page.reload();
-  await expect(page.getByPlaceholder('Email address')).toBeVisible();
-  await noOverflow(page);
-});
-
-test('existing-cell validation precedes posting and cancellation starts a fresh draft', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  const posts: unknown[] = [];
-  page.on('request', request => { if (request.method() === 'POST') posts.push(request.postDataJSON()); });
-  await page.goto('/project/phone/goals?cellId=cell-platform&executionState=cells-v1');
-  await page.getByRole('button', { name: 'New goal', exact: true }).click();
-  let dialog = page.getByRole('dialog');
-  await expect(dialog.locator('.goal-target-summary')).toContainText('platform');
-  await expect(dialog.getByRole('radio')).toHaveCount(0);
-  await expect(dialog.getByLabel('Repository', { exact: true })).toHaveCount(0);
-  await dialog.getByRole('button', { name: 'Create goal', exact: true }).click();
-  await expect(dialog.getByText('Enter a prompt with text or an image')).toBeVisible();
-  await expect(dialog.getByRole('textbox', { name: 'Prompt', exact: true })).toHaveAttribute('aria-invalid', 'true');
-  expect(posts).toEqual([]);
-  await dialog.getByLabel('Prompt').fill('An old draft');
-  await page.keyboard.press('Escape');
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'New goal', exact: true })).toBeFocused();
-  await page.getByRole('button', { name: 'New goal', exact: true }).click();
-  dialog = page.getByRole('dialog');
-  await expect(dialog.getByLabel('Prompt')).toHaveText('');
-  await expect(dialog.getByRole('radio')).toHaveCount(0);
-  const picker = dialog.getByRole('combobox', { name: 'Cell', exact: true });
-  await picker.focus(); await picker.fill('api'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
-  await expect(dialog.locator('.goal-target-summary')).toHaveText('api · github.com/acme/api');
-  await dialog.getByRole('button', { name: 'Create goal', exact: true }).click();
-  await expect(dialog.getByText('Enter a prompt with text or an image')).toBeVisible();
-  await expect(dialog.getByRole('textbox', { name: 'Prompt', exact: true })).toHaveAttribute('aria-invalid', 'true');
-  expect(posts).toEqual([]);
-});
-
 for (const width of [320, 390]) {
-  test(`short compact navigation anchors have actual touch areas at ${width}`, async ({ page }, testInfo) => {
-    await page.setViewportSize({ width, height: 844 });
-    await page.route(/\/api\/projects\/[^/]+\/jobs(?:\?.*)?$/, route => route.fulfill({ json: { jobs: jobs.map(job => ({ ...job, prompt: 'X', repo: 'https://github.com/colony-2/a.git', parent: { ...jobIdentity, job_id: 'two', tenant_id: 'phone' } })) } }));
-    await page.goto('/project/phone/goals');
-    await page.getByRole('button', { name: 'Expand goal details' }).first().click();
-    const links = page.locator('.compact-cards a');
-    await expect(links.first()).toBeVisible();
-    expect(await links.count()).toBeGreaterThan(10);
-    for (const link of await links.all()) {
-      await link.scrollIntoViewIfNeeded();
-      const box = await link.boundingBox();
-      expect(box!.width).toBeGreaterThanOrEqual(44);
-      expect(box!.height).toBeGreaterThanOrEqual(44);
-      // The padded edge belongs to the anchor, rather than an adjacent action.
-      expect(await link.evaluate(element => {
-        const box = element.getBoundingClientRect();
-        return element.contains(document.elementFromPoint(box.x + 2, box.y + 2));
-      })).toBe(true);
-    }
-    await page.screenshot({ path: testInfo.outputPath(`phone-touch-areas-${width}.png`), fullPage: true });
-    const overview = page.getByRole('link', { name: 'Goal overview', exact: true }).first();
-    await overview.click({ position: { x: 2, y: 2 } });
-    await expect(page).toHaveURL(/\/goals\/g$/);
-    await page.getByRole('link', { name: 'Back to Goals', exact: true }).click();
-    const opener = page.getByRole('button', { name: 'Open navigation' });
-    await opener.click();
-    for (const link of await page.getByRole('dialog').getByRole('link').all()) {
-      const box = await link.boundingBox();
-      expect(box!.width).toBeGreaterThanOrEqual(44);
-      expect(box!.height).toBeGreaterThanOrEqual(44);
-    }
-    await page.getByRole('dialog').getByRole('link', { name: 'Cells', exact: true }).click({ position: { x: 2, y: 2 } });
-    await expect(page).toHaveURL(/\/cells$/);
-    await expect(opener).toBeFocused();
-    await noOverflow(page);
-  });
-}
-
-test.describe('native browser zoom', () => {
-  test.use({ nativeZoom: true });
-  test('200% zoom retains navigation and new-goal, batch, restart actions', async ({ page }, testInfo) => {
-    await page.goto('/project/phone/goals');
-    expect(await page.evaluate(() => ({ width: innerWidth, dpr: devicePixelRatio }))).toEqual({ width: 1280, dpr: 1 });
-    await setNativeZoom(page, 2);
-    await page.getByRole('button', { name: 'Open navigation' }).click();
-    await captureNativeZoom(page, testInfo.outputPath('native-200-navigation.png'));
-    await page.getByRole('dialog').getByRole('link', { name: 'Cells', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Open navigation' })).toBeFocused();
-    await noOverflow(page);
-    await page.getByRole('button', { name: 'Open navigation' }).click();
-    await page.getByRole('dialog').getByRole('link', { name: 'Goals', exact: true }).click();
-    const newGoal = page.getByRole('button', { name: 'New goal', exact: true });
-    await newGoal.click();
-    let dialog = page.getByRole('dialog');
-    await dialog.getByRole('button', { name: 'Create goal', exact: true }).click();
-    await expect(dialog.getByText('Enter a prompt with text or an image')).toBeVisible();
-    await dialog.getByLabel('Prompt').fill(prompt);
-    await noOverflow(page);
-    await dialog.getByRole('button', { name: 'Create goal', exact: true }).scrollIntoViewIfNeeded();
-    await expect(dialog.getByRole('button', { name: 'Create goal', exact: true })).toBeInViewport({ ratio: 1 });
-    await captureNativeZoom(page, testInfo.outputPath('native-200-new-goal.png'));
-    await dialog.getByRole('button', { name: 'Cancel', exact: true }).focus();
-    await page.keyboard.press('Enter');
-    await expect(newGoal).toBeFocused();
-    await page.getByRole('checkbox', { name: 'Select all goals on this page', exact: true }).check();
-    for (const action of ['Cancel', 'Archive']) {
-      const trigger = page.getByRole('button', { name: `${action} selected`, exact: true });
-      await trigger.click();
-      dialog = page.getByRole('dialog');
-      const confirm = dialog.getByRole('button', { name: `${action} 3 jobs`, exact: true });
-      await confirm.scrollIntoViewIfNeeded();
-      await expect(confirm).toBeInViewport({ ratio: 1 });
-      await noOverflow(page);
-      await captureNativeZoom(page, testInfo.outputPath(`native-200-${action.toLowerCase()}-batch.png`));
-      await dialog.getByRole('button', { name: 'Keep jobs', exact: true }).click();
-      await expect(trigger).toBeFocused();
-    }
-    await page.route(/\/api\/projects\/[^/]+\/jobs\/one\/story$/, route => route.fulfill({ json: {
-      ...jobIdentity, job_id: 'one', status: 'completed',
-      restart_scopes: [{ scope_id: 'scope', chapter_ordinal: 1, title: 'Recorded point', started_at: '2026-10-30T10:00:00Z' }],
-      root: { id: 'root', kind: 'recipe', title: 'Phone recipe', path: [], attempt: 1, status: 'completed', restart_scope_id: 'scope', restart_chapter_ordinal: 1 },
-    } }));
-    await page.goto('/project/phone/jobs/one/story');
-  await page.getByRole('tab', { name: 'Trace', exact: true }).click();
-    const restart = page.getByRole('button', { name: 'Restart job', exact: true });
-    await restart.click();
-    dialog = page.getByRole('dialog', { name: 'Restart Job', exact: true });
-    const confirm = dialog.getByRole('button', { name: 'Restart', exact: true });
-    await expect(confirm).toBeEnabled();
-    await confirm.scrollIntoViewIfNeeded();
-    await expect(confirm).toBeInViewport({ ratio: 1 });
-    await dialog.getByRole('combobox', { name: 'Restart point', exact: true }).focus();
-    await expect(dialog.getByRole('combobox', { name: 'Restart point', exact: true })).toBeFocused();
-    await noOverflow(page);
-    await captureNativeZoom(page, testInfo.outputPath('native-200-restart.png'));
-    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
-    await expect(restart).toBeFocused();
-    await setNativeZoom(page, 1);
-    await expect(page.getByRole('button', { name: 'Open navigation' })).toHaveCount(0);
-    await testInfo.attach('native-zoom-method', { body: `${await page.evaluate(() => navigator.userAgent)}; chrome.tabs.setZoom/getZoom=2; fixed 1280x900 viewport; innerWidth=640, innerHeight=450, devicePixelRatio=2; restored 100% after validation.`, contentType: 'text/plain' });
-  });
-});
-
-for (const width of [320, 390]) {
-  test(`story overview and short artifact links have touch areas at ${width}`, async ({ page }, testInfo) => {
+  test(`story return and short artifact links have touch areas at ${width}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
     await page.route(/\/api\/projects\/[^/]+\/jobs\/one\/story$/, route => route.fulfill({ json: {
       ...jobIdentity, job_id: 'one', status: 'completed', root: {
@@ -344,7 +180,7 @@ for (const width of [320, 390]) {
     await page.goto('/project/phone/jobs/one/story');
   await page.getByRole('tab', { name: 'Trace', exact: true }).click();
     // Select by accessible action names, independently of their CSS treatment.
-    const overview = page.getByRole('link', { name: 'Goal overview', exact: true });
+    const overview = page.getByRole('link', { name: 'Back to inbox', exact: true });
     const assertTouchArea = async (link: ReturnType<Page['getByRole']>) => {
       await link.scrollIntoViewIfNeeded();
       const box = await link.boundingBox();
@@ -358,7 +194,7 @@ for (const width of [320, 390]) {
     };
     await assertTouchArea(overview);
     await overview.click({ position: { x: 2, y: 2 } });
-    await expect(page).toHaveURL(/\/goals\/g$/);
+    await expect(page).toHaveURL(/\/jobs$/);
     await page.goBack();
     await page.getByRole('tab', { name: 'Outbox (1)', exact: true }).click();
     const artifact = page.getByRole('link', { name: 'a', exact: true });
@@ -374,52 +210,6 @@ for (const width of [320, 390]) {
     await expect(viewer).toHaveCount(0);
     await expect(artifact).toBeVisible();
   });
-}
-
-for (const scope of ['', '?scope=roots']) {
-test(`phone goals start with concise cards and disclose existing controls and metadata ${scope}`, async ({ page }, testInfo) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`/project/phone/goals${scope}`);
-  await expect(page.getByRole('button', { name: 'Filter cells', exact: true })).toBeHidden();
-  await expect(page.getByRole('textbox', { name: 'Search goals' })).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Cancel selected', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeHidden();
-  const card = page.locator('.goal-card').first();
-  // JC-014: the desktop swap must preserve the compact summary and secondary fields.
-  await expect(card.locator('.goal-card-title')).toHaveCount(1);
-  const expander = card.getByRole('button', { name: 'Expand goal details' });
-  const target = await expander.boundingBox();
-  expect(target!.width).toBeGreaterThanOrEqual(44);
-  expect(target!.height).toBeGreaterThanOrEqual(44);
-  await expect(expander.locator('.goal-expander-icon')).toHaveText('+');
-  await expect(expander.locator('.goal-expander-icon')).toHaveCSS('width', '17px');
-  await expect(expander.locator('.goal-expander-icon')).toHaveCSS('height', '17px');
-  await expander.click();
-  await expect(card.getByRole('button', { name: 'Collapse goal details' }).locator('.goal-expander-icon')).toHaveText('−');
-  await card.getByRole('button', { name: 'Collapse goal details' }).click();
-
-  await expect(card.locator('.goal-card-meta .ant-tag')).toHaveCount(1);
-  await expect(card.locator('.goal-card-meta').getByText('platform', { exact: true })).toHaveCount(1);
-  await expect(card.locator('.goal-card-meta')).toContainText('2 attempts on this page');
-  await expect(card.getByRole('link', { name: 'Goal overview', exact: true })).toHaveCount(0);
-  expect((await card.boundingBox())!.height).toBeLessThan(210);
-  expect((await card.boundingBox())!.y).toBeLessThan(410);
-  await page.screenshot({ path: testInfo.outputPath('phone-goals-concise.png'), fullPage: true });
-  await page.getByRole('button', { name: /^Filters and sorting/ }).click();
-  await expect(page.getByRole('button', { name: 'Filter cells', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toHaveCount(1);
-  await page.getByRole('textbox', { name: 'Search goals' }).fill('Another');
-  await expect(page.locator('.goal-card')).toHaveCount(1);
-  await page.getByRole('button', { name: /^Filters and sorting/ }).click();
-  await expect(page.getByRole('link', { name: 'Another goal', exact: true })).toBeVisible();
-  await page.locator('.goal-card').getByRole('button', { name: 'Expand goal details' }).click();
-  await expect(page.getByRole('link', { name: 'Goal overview', exact: true })).toBeVisible();
-  await expect(page.locator('.goal-card-secondary .goal-card-field')).toHaveCount(2);
-  await expect(page.locator('.goal-card-secondary .goal-card-field').nth(0)).toContainText('Submitted:');
-  await expect(page.locator('.goal-card-secondary .goal-card-field').nth(1)).toContainText('Links:');
-  await noOverflow(page);
-});
 }
 
 for (const width of [320, 390]) {
@@ -446,7 +236,7 @@ for (const width of [320, 390]) {
     await page.getByRole('button', { name: 'Approve', exact: true }).click();
     const feedback = page.getByLabel('Feedback', { exact: true });
     await feedback.fill('Keep my draft while reading.');
-    await page.locator('input[type=file]').setInputFiles({ name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('Notes') });
+    await page.getByRole('region', { name: 'Review decisions', exact: true }).locator('input[type=file]').setInputFiles({ name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('Notes') });
     await expect(page.getByLabel('Rendered document')).toContainText('Last paragraph.');
     await page.getByRole('button', { name: 'Show documents', exact: true }).click();
     const read = page.getByRole('button', { name: 'Read design.md', exact: true });
@@ -469,71 +259,5 @@ for (const width of [320, 390]) {
     await expect(page.getByLabel('Markdown source')).toHaveText(source);
     expect(reads).toBe(1);
     await expect(feedback).toHaveValue('Keep my draft while reading.');
-  });
-}
-
-for (const width of [320, 390, 768, 1440]) {
-  test.describe(`Execution requirements at ${width}px`, () => {
-    test.use({ hasTouch: width < 768 });
-    test(`ENV summaries ellipsize without overflow and open full Env at ${width}px`, async ({ page }, testInfo) => {
-      test.setTimeout(60_000);
-      await page.setViewportSize({ width, height: 1000 });
-      const reads = await routeEnvironment(page);
-      await page.goto('/project/env/goals');
-      const summaries = page.locator('.job-requirements-summary');
-      await expect(summaries).toHaveCount(2);
-      const long = summaries.nth(1);
-      await expect(long).toContainText(longBase);
-      const geometry = await long.evaluate(element => {
-        const style = getComputedStyle(element); const bounds = element.getBoundingClientRect();
-        return { width: bounds.width, height: bounds.height, lineHeight: parseFloat(style.lineHeight), whiteSpace: style.whiteSpace, overflow: style.overflow, ellipsis: style.textOverflow, color: style.color, scroll: element.scrollWidth, client: element.clientWidth };
-      });
-      expect(geometry.whiteSpace).toBe('nowrap'); expect(geometry.overflow).toBe('hidden'); expect(geometry.ellipsis).toBe('ellipsis');
-      expect(geometry.scroll).toBeGreaterThan(geometry.client); expect(geometry.height).toBe(geometry.lineHeight);
-      expect(geometry.color).toBe('rgb(97, 105, 113)');
-      // WCAG contrast from computed text channels against the white card background.
-      const channels = [97, 105, 113].map(c => c / 255).map(c => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
-      expect(1.05 / (.2126 * channels[0] + .7152 * channels[1] + .0722 * channels[2] + .05)).toBeGreaterThanOrEqual(4.5);
-      const emptyTitle = page.getByRole('link', { name: 'Update project documentation', exact: true });
-      const row = emptyTitle.locator(width < 768 ? 'xpath=ancestor::*[contains(@class,"goal-card")][1]' : 'xpath=ancestor::tr');
-      await expect(row.locator('.job-requirements-summary')).toHaveCount(0); await expect(row.getByText(/No requirements/)).toHaveCount(0);
-      if (width < 768) {
-        expect(geometry.height).toBeGreaterThanOrEqual(44);
-        expect(await row.getByRole('button', { name: 'Expand goal details' }).getAttribute('aria-expanded')).toBe('false');
-      }
-      await noOverflow(page);
-      await captureEnvironment(page, testInfo, `goals-${width}`);
-      await long.focus();
-      await expect(long).toBeFocused();
-      expect(await long.evaluate(element => getComputedStyle(element).outlineStyle)).toBe('solid');
-      await page.keyboard.press('Enter');
-      await expect(page).toHaveURL(/\/long\/story\?.*tab=env/);
-      await expect(page.getByText(longBase, { exact: true })).toBeVisible();
-      await expect(page.getByText('0.5 cores', { exact: true })).toBeVisible();
-      await expect(page.getByText('512 MiB', { exact: true })).toBeVisible();
-      await expect(page.getByText('a-long-capability-name-with-雪', { exact: true })).toBeVisible();
-      expect(reads.some(path => /\/(story|input-artifacts|conversation)$/.test(path))).toBe(false);
-      const base = page.getByText(longBase, { exact: true });
-      expect(await base.evaluate(element => getComputedStyle(element).userSelect)).toBe('text');
-      await noOverflow(page);
-      if (width === 390 || width === 1440) await captureEnvironment(page, testInfo, `env-long-${width}`);
-      await page.getByRole('link', { name: 'Back to Goals', exact: true }).click();
-      await expect(summaries).toHaveCount(2);
-      await page.setViewportSize({ width: width < 768 ? 1440 : 390, height: 1000 });
-      await expect(summaries).toHaveCount(2); await noOverflow(page);
-      // Exercise a pointer/touch activation as well as keyboard navigation.
-      if (width < 768) await summaries.first().tap(); else await summaries.first().click();
-      await expect(page.getByRole('tab', { name: 'Env', exact: true })).toHaveAttribute('aria-selected', 'true');
-      await page.getByRole('link', { name: 'Back to Goals', exact: true }).click();
-      await page.setViewportSize({ width: 390, height: 1000 });
-      const longCard = page.locator('.goal-card').filter({ has: page.getByRole('link', { name: 'Rebuild the search index', exact: true }) });
-      const heightWithRequirements = (await longCard.boundingBox())!.height;
-      await page.route('**/api/projects/env/jobs?*', route => route.fulfill({ json: { jobs: envJobs.map(job => job.job_id === 'long' ? { ...job, recorded_execution: undefined } : job) } }));
-      const refresh = page.getByRole('button', { name: 'Refresh', exact: true });
-      if (!await refresh.isVisible()) await page.getByRole('button', { name: /^Filters and sorting/ }).click();
-      await refresh.click();
-      await expect(longCard.locator('.job-requirements-summary')).toHaveCount(0);
-      expect(heightWithRequirements - (await longCard.boundingBox())!.height).toBe(44);
-    });
   });
 }

@@ -73,7 +73,7 @@ test('keyboard menu navigation and Escape return focus', async ({ page }) => {
  await page.goto('/');
  const account=page.getByRole('button',{name:'User account'});
  await account.focus();await account.press('ArrowDown');
- await expect(page.getByRole('menu')).toHaveCount(2);
+ await expect(page.locator('.account-dropdown').getByRole('menu')).toHaveCount(1);
  await expect(page.getByRole('menuitem',{name:'About',exact:true})).toBeVisible();
  // Wait for the dropdown's asynchronous autofocus before navigating its items.
  await expect(page.locator('.account-dropdown :focus')).toHaveCount(1);

@@ -139,7 +139,7 @@ for (const viewport of [{width:1280,height:800},{width:390,height:844}]) {
         opener=page.getByRole('link',{name:'docs/bar.md',exact:true});await opener.click();
         backgroundChanged=true;
         // Refresh behind the modal without changing its attachment scope.
-        await page.getByRole('button',{name:'reload Refresh',exact:true}).evaluate((el:HTMLElement)=>el.click());
+        await page.locator('.inbox-story-more button').filter({hasText:/^Refresh$/}).evaluate((el:HTMLButtonElement)=>el.click());
         await expect(page.getByRole('tab',{name:'Outbox (4)',includeHidden:true})).toBeAttached();
       }
       const scope=viewer==='story'?page.getByRole('dialog'):page.locator('.review-document-preview');

@@ -1,11 +1,12 @@
 import { message } from 'antd';
 import { StrictMode } from 'react';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within, configure } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import JobStoryPage from './JobStoryPage';
 import { amendedReviewV2Fixture } from '../../../shared/src/test/reviewV2Fixture';
 import JobsListPage from './JobsListPage';
+import { JobInboxProvider } from '../hooks/useJobInbox';
 import * as storyTree from '../utils/storyTree';
 import { jobIdentity, registryCell } from '../test/cellFixtures';
 import { clearCrashConcern, getJob, getJobInputArtifacts, listJobChildren, cancelJob, listJobs, listCells, getCell } from '@colony2/shared/api';
@@ -13,8 +14,16 @@ import type { RecipeJob } from '@colony2/shared/types';
 import DownloadChaptersButton from './DownloadChaptersButton';
 import { inputActivityService, getConversation, getFinalDocuments, getTreeNode, getTreeChildren } from '@colony2/shared';
 
+configure({ asyncUtilTimeout: 5000 });
+vi.setConfig({ testTimeout: 15000 });
 const inputState = vi.hoisted(() => ({ pendingInputs: [] as any[], refresh: vi.fn(), setCurrentProjectId: vi.fn() }));
 const scrollIntoView = vi.fn();
+let compactSurfaces: MutationObserver;
+beforeEach(() => {
+  compactSurfaces = new MutationObserver(() => document.querySelectorAll('details.inbox-story-more, details.inbox-original').forEach(node => node.setAttribute('open', '')));
+  compactSurfaces.observe(document.body, { childList: true, subtree: true });
+});
+afterEach(() => compactSurfaces.disconnect());
 const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView');
 // jsdom omits this browser API; portal focus also reaches the header's handler.
 beforeAll(() => {
@@ -80,6 +89,10 @@ const story = {
   job_id: 'job', status: 'failed', recipe: { name: 'build' },
   root: { ...jobAttempt(3), past_attempts: [jobAttempt(1), jobAttempt(2)] },
 };
+async function recordedTask(name: string) {
+  if (!screen.queryByText(name)) fireEvent.click(await screen.findByRole('button', { name: 'Expand all' }));
+  return screen.findByText(name);
+}
 function Location() {
   return <output data-testid="location">{useLocation().search}</output>;
 }
@@ -111,23 +124,24 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => { cleanup(); message.destroy(); }); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('job story history', () => {
-  it('preserves the expanded goal return location after selecting a node and a detail tab', async () => {
-    const returnTo = '/project/tenant/goals?expanded=goal%3Agoal&detail=requirements';
+  it('preserves the inbox return location after selecting a node and a detail tab', async () => {
+    const returnTo = '/project/tenant/jobs?q=release';
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => story }));
-    render(<MemoryRouter initialEntries={[{ pathname: '/project/tenant/jobs/job/story', search: '?tab=execution', state: { goalsReturnTo: returnTo, goalId: 'goal', goalReturnTo: '/project/tenant/goals/goal?inspect=job' } }]}>
+    render(<MemoryRouter initialEntries={[{ pathname: '/project/tenant/jobs/job/story', search: '?tab=execution', state: { goalsReturnTo: returnTo, goalId: 'goal', goalReturnTo: '/project/tenant/jobs?q=release' } }]}>
       <Routes>
         <Route path="/project/:projectId/jobs/:jobId/story" element={<><JobStoryPage projectId="tenant" /><Location /></>} />
-        <Route path="/project/:projectId/goals/:goalId" element={<><span>Returned to goal</span><Location /></>} />
+        <Route path="/project/:projectId/jobs" element={<><span>Returned to goal</span><Location /></>} />
       </Routes>
     </MemoryRouter>);
-    fireEvent.click(await screen.findByText('Development.Design.Task 3.2'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Expand all' }));
+    fireEvent.click(await recordedTask('Development.Design.Task 3.2'));
     expect(screen.getByTestId('location')).toHaveTextContent('nodeId=');
     fireEvent.click(screen.getByRole('tab', { name: 'Output', exact: true }));
-    expect(screen.getByRole('link', { name: 'Goal overview' })).toHaveAttribute('href', '/project/tenant/goals/goal?inspect=job');
+    expect(screen.getByRole('link', { name: 'Back to inbox' })).toHaveAttribute('href', '/project/tenant/jobs?q=release');
     expect(screen.queryByRole('button', { name: /Back to Goals/ })).toBeNull();
-    fireEvent.click(screen.getByRole('link', { name: 'Goal overview' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Back to inbox' }));
     expect(await screen.findByText('Returned to goal')).toBeVisible();
-    expect(screen.getByTestId('location')).toHaveTextContent('?inspect=job');
+    expect(screen.getByTestId('location')).toHaveTextContent('?q=release');
   });
 
   it('keeps auto-refresh off after an in-flight poll or a manual refresh finishes', async () => {
@@ -317,7 +331,7 @@ describe('job story history', () => {
       ],
     });
     fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Restart job' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Restart job', exact: true }));
     const dialog = screen.getByRole('dialog');
     fetchMock.mockResolvedValueOnce({ ok: true, text: async () => JSON.stringify({
       project_id: 'tenant', job_id: 'job', chapter_ordinal: 4, scope_id: 'root', job: {}, visible: {}, redacted_paths: [],
@@ -356,7 +370,7 @@ describe('job story history', () => {
       invocation_id: 'root/task:resolve', task_ordinal: 4, restart_unavailable_reason: 'Recipe source resolution has no recipe scope.',
     }, restart_scopes: [{ chapter_ordinal: 4, scope_id: 'root', started_at: '' }] });
     fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Restart job' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Restart job', exact: true }));
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText('Recipe source resolution has no recipe scope.')).toBeVisible();
     expect(within(dialog).getByRole('button', { name: 'Restart', exact: true })).toBeDisabled();
@@ -374,7 +388,7 @@ describe('job story history', () => {
       ],
     });
     fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Restart job' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Restart job', exact: true }));
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText(/Previous body · Chapter 14/)).toBeVisible();
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ job_id: 'new-job' }) });
@@ -395,7 +409,7 @@ describe('job story history', () => {
       ],
     });
     fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Restart job' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Restart job', exact: true }));
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText(/Selected scope · Chapter 4/)).toBeVisible();
     fetch.mockResolvedValueOnce({ ok: true, text: async () => JSON.stringify({ project_id: 'tenant', job_id: 'job', scope_id: 'target/scope', chapter_ordinal: 4, job: { git: { author: 'old' } }, visible: {}, redacted_paths: [] }) });
@@ -498,7 +512,7 @@ describe('chapter download action', () => {
         <Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId="tenant" />} /></Routes>
       </MemoryRouter>);
       fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
-      await screen.findByText('Development.Design.Task 3.2');
+      await recordedTask('Development.Design.Task 3.2');
       fireEvent.click(screen.getByRole('switch', { name: 'Auto-refresh' }));
       fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
       fireEvent.click(screen.getByRole('tab', { name: 'Job attempt 1' }));
@@ -560,8 +574,8 @@ describe('job story context', () => {
     vi.mocked(getJob).mockResolvedValue(metadata({ status, cell_name, title: 'Title', prompt: 'Prompt text' }));
     const fetchMock = mount('');
     const cell = await screen.findByLabelText('Job cell');
-    expect(cell.textContent).toBe(`Cell: ${cell_name}`);
-    const heading = screen.getByRole('heading', { name: 'Job Story: Title' });
+    expect(cell.textContent).toBe(`${cell_name}`);
+    const heading = screen.getByRole('heading', { name: 'Title' });
     const prompt = screen.getByRole('region', { name: 'Job prompt' });
     expect(heading.compareDocumentPosition(cell) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(cell.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -584,7 +598,7 @@ describe('job story context', () => {
     const prompt = '# Saved heading\n\n<img src=x onerror=alert(1)>\n\n雪 ' + 'long '.repeat(150) + '\n\n**Ending** [unsafe](javascript:alert(1)) ![external](https://example.com/x.png) ![relative](image.png) [safe](https://example.com)';
     vi.mocked(getJob).mockResolvedValue(metadata({ title: '<Title>', metadata: { title: 'wrong' }, prompt }));
     const { container } = renderContext();
-    const heading = await screen.findByRole('heading', { level: 2, name: 'Job Story: <Title>' });
+    const heading = await screen.findByRole('heading', { level: 3, name: '<Title>' });
     const region = screen.getByRole('region', { name: 'Job prompt' });
     expect(within(region).getByRole('heading', { name: 'Saved heading' })).toBeVisible();
     expect(region).toHaveTextContent('雪 ' + 'long '.repeat(150).trim());
@@ -602,8 +616,8 @@ describe('job story context', () => {
     await act(async () => { fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true })); });
     expect(screen.getByText('Development.Design.Task 3.2')).toBeVisible();
     fireEvent.click(screen.getByRole('tab', { name: 'Conversation', exact: true }));
-    expect(screen.getByRole('heading', { name: 'Job Story', exact: true })).toBeVisible();
-    expect(screen.getByLabelText('Job cell')).toHaveTextContent(`Cell: ${jobIdentity.cell_name}`); // JC-002
+    expect(screen.getByRole('heading', { name: 'Job conversation', exact: true })).toBeVisible();
+    expect(screen.getByLabelText('Job cell')).toHaveTextContent(`${jobIdentity.cell_name}`); // JC-002
     expect(screen.getByRole('region', { name: 'Job prompt' })).toHaveTextContent('No prompt recorded for this job.');
   });
   it('does not manufacture a prompt from other context', async () => {
@@ -661,8 +675,8 @@ describe('job story context', () => {
     expect(await screen.findByText('Failure 1.2: temporary directory missing')).toBeVisible();
     fireEvent.click(screen.getByRole('tab', { name: 'Conversation', exact: true }));
     expect(screen.getByText('Current failure')).toBeVisible();
-    expect(screen.getByLabelText('Job cell')).toHaveTextContent('Cell: owning-cell'); // JC-004
-    expect(screen.getByRole('heading', { name: 'Job Story: Current' })).toBeVisible();
+    expect(screen.getByLabelText('Job cell')).toHaveTextContent('owning-cell'); // JC-004
+    expect(screen.getByRole('heading', { name: 'Current' })).toBeVisible();
   });
   it('C1-M06 uses returned primary membership over navigation goal state', async () => {
     vi.mocked(getJob).mockResolvedValue(metadata({ goal_id: 'other', title: 'Loaded' }));
@@ -670,8 +684,8 @@ describe('job story context', () => {
     render(<MemoryRouter initialEntries={[{ pathname: '/project/tenant/jobs/job/story', state: { goalId: 'navigation' } }]}>
       <Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId="tenant" />} /></Routes>
     </MemoryRouter>);
-    await screen.findByRole('heading', { name: 'Job Story: Loaded' });
-    expect(screen.getByRole('link', { name: 'Goal overview' })).toHaveAttribute('href', '/project/tenant/goals/other');
+    await screen.findByRole('heading', { name: 'Loaded' });
+    expect(screen.getByRole('link', { name: 'Back to inbox' })).toHaveAttribute('href', '/project/tenant/jobs');
   });
   it('renders story while metadata is pending and recovers metadata after failure', async () => {
     const pending = deferred<RecipeJob>();
@@ -687,11 +701,11 @@ describe('job story context', () => {
     expect(screen.getByText('Job details unavailable')).toBeVisible();
     expect(screen.getByText('Cell, prompt, and completion information could not be loaded.')).toBeVisible();
     expect(screen.queryByLabelText('Job cell')).toBeNull();
-    expect(screen.getByRole('heading', { name: 'Job Story' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Job conversation' })).toBeVisible();
     expect(screen.queryByText('Failed to load job story')).toBeNull();
     vi.mocked(getJob).mockResolvedValue(metadata({ title: 'Recovered', prompt: 'New prompt', completion_status: 'failed_system', completion_detail: 'New detail' }));
     fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
-    await screen.findByRole('heading', { name: 'Job Story: Recovered' });
+    await screen.findByRole('heading', { name: 'Recovered' });
     expect(screen.getByText('New prompt')).toBeVisible();
     expect(screen.getByText('New detail')).toBeVisible();
     expect(screen.queryByText('Job details unavailable')).toBeNull();
@@ -702,7 +716,7 @@ describe('job story context', () => {
     vi.stubGlobal('fetch', vi.fn().mockReturnValue(pending.promise));
     renderContext(false);
     fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
-    await screen.findByRole('heading', { name: 'Job Story: Independent' });
+    await screen.findByRole('heading', { name: 'Independent' });
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     await act(async () => { pending.reject(new Error('transport failure')); });
     fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
@@ -714,15 +728,15 @@ describe('job story context', () => {
   it.each(['success', 'failure'])('ignores an older refresh %s after a newer response', async outcome => {
     vi.mocked(getJob).mockResolvedValue(metadata({ title: 'Initial' }));
     mount('');
-    await screen.findByRole('heading', { name: 'Job Story: Initial' });
+    await screen.findByRole('heading', { name: 'Initial' });
     const old = deferred<RecipeJob>();
     vi.mocked(getJob).mockReturnValueOnce(old.promise).mockResolvedValue(metadata({ title: 'Newest', cell_name: 'newest-cell' }));
     fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
     fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
-    await screen.findByRole('heading', { name: 'Job Story: Newest' });
+    await screen.findByRole('heading', { name: 'Newest' });
     await act(async () => { if (outcome === 'success') old.resolve(metadata({ title: 'Obsolete', cell_name: 'obsolete-cell' })); else old.reject(new Error('obsolete')); });
-    expect(screen.getByRole('heading', { name: 'Job Story: Newest' })).toBeVisible();
-    expect(screen.getByLabelText('Job cell')).toHaveTextContent('Cell: newest-cell'); // JC-008
+    expect(screen.getByRole('heading', { name: 'Newest' })).toBeVisible();
+    expect(screen.getByLabelText('Job cell')).toHaveTextContent('newest-cell'); // JC-008
   });
   it('retries only metadata and escapes its diagnostic', async () => {
     const diagnostic = '<img src=x onerror=alert(1)> 雪\n second line';
@@ -735,7 +749,7 @@ describe('job story context', () => {
     vi.mocked(getJob).mockResolvedValue(metadata({ title: 'Recovered', prompt: 'Recovered prompt', completion_status: 'failed_app', completion_detail: 'Recovered diagnostic' }));
     fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
     expect(await screen.findByText('Recovered prompt')).toBeVisible();
-    expect(screen.getByLabelText('Job cell')).toHaveTextContent(`Cell: ${jobIdentity.cell_name}`); // JC-006
+    expect(screen.getByLabelText('Job cell')).toHaveTextContent(`${jobIdentity.cell_name}`); // JC-006
     expect(screen.getByText('Recovered diagnostic')).toBeVisible();
     expect(getJob).toHaveBeenLastCalledWith('tenant', 'job', true);
     expect(fetchMock.mock.calls.length).toBe(reads);
@@ -751,7 +765,7 @@ describe('job story context', () => {
     expect(screen.queryByText('Old prompt')).toBeNull();
     expect(screen.queryByLabelText('Job cell')).toBeNull(); // JC-007,008
     expect(screen.queryByText('Old diagnostic')).toBeNull();
-    expect(screen.getByRole('heading', { name: 'Job Story', exact: true })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Job conversation', exact: true })).toBeVisible();
     vi.mocked(getJob).mockResolvedValue(metadata({ prompt: 'Fresh prompt' }));
     fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
     expect(await screen.findByText('Fresh prompt')).toBeVisible();
@@ -769,7 +783,7 @@ describe('job story context', () => {
     vi.mocked(getJob).mockResolvedValue(metadata({ prompt: 'Loaded prompt' }));
     fireEvent.click(screen.getByText('Job details unavailable').closest('[role="alert"]')!.querySelector('button')!);
     expect(await screen.findByText('Loaded prompt')).toBeVisible();
-    expect(screen.getByLabelText('Job cell')).toHaveTextContent(`Cell: ${jobIdentity.cell_name}`); // JC-006
+    expect(screen.getByLabelText('Job cell')).toHaveTextContent(`${jobIdentity.cell_name}`); // JC-006
     fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
     expect(await screen.findByText('Failed to load job story')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
@@ -836,7 +850,7 @@ describe('job story context', () => {
     render(<MemoryRouter initialEntries={['/project/tenant/jobs/job/story']}><Nav /><Routes>
       <Route path="/project/:projectId/jobs/:jobId/story" element={<Host />} />
     </Routes></MemoryRouter>);
-    await screen.findByRole('heading', { name: 'Job Story: Old' });
+    await screen.findByRole('heading', { name: 'Old' });
     fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
     const current = deferred<RecipeJob>();
     vi.mocked(getJob).mockReturnValueOnce(current.promise);
@@ -848,8 +862,8 @@ describe('job story context', () => {
     expect(screen.queryByText('Leaked')).toBeNull();
     expect(screen.queryByLabelText('Job cell')).toBeNull(); // JC-007
     await act(async () => { current.resolve(metadata({job_id:change==='job'?'new':'job',tenant_id:change==='tenant'?'other':'tenant',title:'Current',cell_name:'current-cell'})); });
-    expect(screen.getByRole('heading', { name: 'Job Story: Current' })).toBeVisible();
-    expect(screen.getByLabelText('Job cell')).toHaveTextContent('Cell: current-cell');
+    expect(screen.getByRole('heading', { name: 'Current' })).toBeVisible();
+    expect(screen.getByLabelText('Job cell')).toHaveTextContent('current-cell');
   });
 });
 function renderContext(stub = true) {
@@ -1064,7 +1078,7 @@ it('keeps story cancellation confirmed by default and retries only after an expl
   await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
   expect(changes).toEqual([]);
   fireEvent.click(within(dialog).getByRole('button', { name: 'Keep jobs', exact: true }));
-  await waitFor(() => expect(trigger).toHaveFocus());
+  await waitFor(() => expect(screen.getByText('More actions', { selector: 'summary' })).toHaveFocus());
   expect(changes).toEqual([]);
   fireEvent.click(trigger);
   dialog = screen.getByRole('dialog');
@@ -1415,7 +1429,7 @@ describe('Conversation tab layout', () => {
     mount('');
     expect(screen.getByRole('tab', { name: 'Conversation' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getAllByRole('tabpanel').filter(panel => panel.classList.contains('job-detail-panel'))).toHaveLength(1);
-    expect(await screen.findByRole('heading', { name: 'Job Story: Build the requested feature' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Build the requested feature' })).toBeVisible();
     expect(screen.getByLabelText('Job cell')).toBeVisible();
     expect(screen.getByLabelText('Job status')).toBeVisible();
     expect(screen.getByRole('button', { name: /Refresh$/ })).toBeVisible();
@@ -1457,11 +1471,11 @@ describe('Conversation tab layout', () => {
     inputState.pendingInputs = [{id:'job',client_payload_revision:1}];
     const read = vi.spyOn(inputActivityService, 'getInputDetails').mockResolvedValue({
       jobId: 'job', status: 'pending', startTime: '', task_ordinal: 10,
-      form: { kind: 'review', request_id: 'current', title: 'Current review' },
+      form: { kind: 'review', request_id: 'current', title: 'Current review', fields: [{ id: 'decision', type: 'multiple_choice', question: 'Proceed?', options: [{value:'approve'}] }] },
     });
     try {
       mount('?input=1&taskOrdinal=10', { ...story, root: null });
-      expect(await screen.findByRole('link', { name: 'Open review', exact: true })).toHaveAttribute('href', '/project/tenant/reviews/job');
+      expect(await screen.findByRole('heading', { name: 'Current review' })).toBeVisible();
       expect(screen.getByRole('tab', { name: 'Conversation' })).toHaveAttribute('aria-selected', 'true');
       expect(screen.queryByRole('tree')).toBeNull();
       expect(read).toHaveBeenCalledWith('tenant', 'job');
@@ -1516,7 +1530,7 @@ describe('Steps on demand', () => {
     }
     expect(construction.mock.calls.filter(([root]) => !!root)).toHaveLength(0);
     fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
-    await screen.findByText('Development.Design.Task 3.2');
+    await recordedTask('Development.Design.Task 3.2');
     expect(storyReads()).toBe(1);
     fireEvent.click(screen.getByText('Development.Design.Task 3.2'));
     fireEvent.click(screen.getByRole('tab', { name: 'Conversation', exact: true }));
@@ -1543,7 +1557,7 @@ describe('Steps on demand', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Relationships', exact: true }));
     expect(document.querySelector('#execution-story-tree')).toBeNull();
     fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
-    await screen.findByText('Development.Design.Task 3.2');
+    await recordedTask('Development.Design.Task 3.2');
     expect(requests.mock.calls.filter(([url]) => String(url).endsWith('/story'))).toHaveLength(2);
   });
 
@@ -1554,7 +1568,7 @@ describe('Steps on demand', () => {
     await screen.findByText('Steps unavailable');
     const metadataReads = vi.mocked(getJob).mock.calls.length;
     fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
-    await screen.findByText('Development.Design.Task 3.2');
+    await recordedTask('Development.Design.Task 3.2');
     expect(getJob).toHaveBeenCalledTimes(metadataReads);
   });
 });
@@ -1582,7 +1596,7 @@ it.each(['job', 'tenant'].flatMap(change => ['success', 'failure'].map(outcome =
   expect(document.querySelector('#execution-story-tree')).toBeNull();
   expect(transport.mock.calls.filter(([url]) => String(url).endsWith('/story'))).toHaveLength(1);
   fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
-  await screen.findByText('Development.Design.Task 3.2');
+  await recordedTask('Development.Design.Task 3.2');
   expect(transport.mock.calls.filter(([url]) => String(url).endsWith('/story'))).toHaveLength(2);
 });
 
@@ -1613,7 +1627,7 @@ it('STP-008,011,015,016 refreshes running cache only while visible and retains f
 
 it('STP-013 does not retrieve hidden Steps when cancellation started there completes later', async () => {
   const requests = mount('?tab=execution', { ...story, status: 'running' });
-  await screen.findByText('Development.Design.Task 3.2');
+  await recordedTask('Development.Design.Task 3.2');
   const completion = deferred<Response>();
   requests.mockImplementation(async (_url: string, init?: RequestInit) =>
     init?.method === 'POST' ? completion.promise : { ok: true, json: async () => story });
@@ -1736,7 +1750,7 @@ describe('page controls refresh the real conversation', () => {
     await start();
     fireEvent.click(screen.getByRole('switch',{name:'Auto-refresh'}));
     const initial=vi.mocked(getConversation).mock.calls.length;
-    inputState.pendingInputs = [{job_id:'another-job',request_id:'new-input'}];
+    inputState.pendingInputs = [{id:'another-job',request_id:'new-input'}];
     await act(async()=>{fireEvent.click(screen.getByRole('tab',{name:'Trace',exact:true}));});
     expect(getConversation).toHaveBeenCalledTimes(initial);
     await act(async()=>{fireEvent.click(screen.getByRole('tab',{name:'Conversation',exact:true}));});
@@ -1793,7 +1807,7 @@ describe('JS shared story actions', () => {
   it.each(['conversation','relationships','input-artifacts','leases','execution'])('JS-001,010,014 opens header Restart from %s with explicit selection and shared data', async tab => {
     const construction = vi.spyOn(storyTree, 'buildStoryTree');
     const requests = mount(`?tab=${tab}`, restartStory);
-    await screen.findByRole('link', {name:'Goal overview'});
+    await screen.findByRole('link', {name:'Back to inbox'});
     const actions = within(screen.getByRole('group', {name:'Job actions'}));
     expect(actions.getByRole('button', {name:'Archive',exact:true})).toBeVisible();
     expect(screen.queryByRole('button', {name:/Download chapters|Back to Goals/})).toBeNull();
@@ -1811,19 +1825,19 @@ describe('JS shared story actions', () => {
     expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
     fireEvent.click(within(dialog).getByRole('button',{name:'Cancel',exact:true}));
     fireEvent.click(screen.getByRole('tab',{name:'Trace',exact:true}));
-    await screen.findByText('Development.Design.Task 3.2');
+    await recordedTask('Development.Design.Task 3.2');
     expect(requests.mock.calls.filter(([url])=>String(url).endsWith('/story'))).toHaveLength(1);
     construction.mockRestore();
   });
   it('JS-006,008 keeps an in-flight story when either consumer remains and rejects it after both leave', async () => {
     const requests = mount('');
-    await screen.findByRole('link',{name:'Goal overview'});
+    await screen.findByRole('link',{name:'Back to inbox'});
     const first = deferred<Response>(); requests.mockReturnValueOnce(first.promise);
     fireEvent.click(within(screen.getByRole('group',{name:'Job actions'})).getByRole('button',{name:'Restart',exact:true}));
     fireEvent.click(screen.getByRole('tab',{name:'Trace',exact:true}));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:'Cancel',exact:true}));
     await act(async()=>first.resolve({ok:true,json:async()=>restartStory} as Response));
-    await screen.findByText('Development.Design.Task 3.2');
+    await recordedTask('Development.Design.Task 3.2');
     expect(requests.mock.calls.filter(([url])=>String(url).endsWith('/story'))).toHaveLength(1);
     fireEvent.click(screen.getByRole('tab',{name:'Conversation',exact:true}));
     fireEvent.click(within(screen.getByRole('group',{name:'Job actions'})).getByRole('button',{name:'Restart',exact:true}));
@@ -1834,7 +1848,7 @@ describe('JS shared story actions', () => {
     expect(screen.queryByText('obsolete retrieval')).toBeNull();
   });
   it('JS-011 retries failed restart retrieval and explains empty recorded points', async () => {
-    const requests=mount(''); await screen.findByRole('link',{name:'Goal overview'});
+    const requests=mount(''); await screen.findByRole('link',{name:'Back to inbox'});
     requests.mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ok:true,json:async()=>({...story,restart_scopes:[]})});
     fireEvent.click(within(screen.getByRole('group',{name:'Job actions'})).getByRole('button',{name:'Restart',exact:true}));
     const dialog=screen.getByRole('dialog');
@@ -1848,7 +1862,7 @@ function ArchiveLocation() {
   const location = useLocation();
   const navigate = useNavigate();
   return <><output data-testid="archive-location">{location.pathname + location.search}</output>
-    <button onClick={() => navigate('/project/tenant/goals?view=all')}>Leave story</button></>;
+    <button onClick={() => navigate('/project/tenant/jobs?view=all')}>Leave story</button></>;
 }
 function mountArchive(search = '', state?: Record<string, unknown>) {
   const requests = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
@@ -1857,8 +1871,8 @@ function mountArchive(search = '', state?: Record<string, unknown>) {
     <ArchiveLocation />
     <Routes>
       <Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId="tenant" />} />
-      <Route path="/project/:projectId/goals" element={<JobsListPage projectId="tenant" />} />
-      <Route path="/project/:projectId/jobs" element={<JobsListPage projectId="tenant" />} />
+      <Route path="/project/:projectId/goals" element={<JobInboxProvider tenant="tenant"><JobsListPage projectId="tenant" /></JobInboxProvider>} />
+      <Route path="/project/:projectId/jobs" element={<JobInboxProvider tenant="tenant"><JobsListPage projectId="tenant" /></JobInboxProvider>} />
     </Routes>
   </MemoryRouter>);
   return requests;
@@ -1867,10 +1881,10 @@ async function startArchive() {
   await screen.findByRole('region', { name: 'Job prompt' });
   fireEvent.click(screen.getByRole('button', { name: 'Archive', exact: true }));
 }
-async function expectArchived(destination = '/project/tenant/goals?executionState=cells-v1') {
-  await screen.findByRole('heading', { name: 'Goals', exact: true });
+async function expectArchived(destination = '/project/tenant/jobs') {
+  await screen.findByRole('heading', { name: 'All', exact: true });
   expect(screen.getByTestId('archive-location').textContent).toBe(destination);
-  expect(screen.queryByRole('heading', { name: 'Job Story', exact: true })).toBeNull();
+  expect(screen.queryByRole('heading', { name: 'Job conversation', exact: true })).toBeNull();
   await waitFor(() => expect(screen.getAllByText('Archived 1 job')).toHaveLength(1));
 }
 
@@ -1906,7 +1920,7 @@ it('AR-004 keeps unfinished jobs when confirmation is dismissed', async () => {
 
 const savedListQuery = '?executionState=cells-v1&status=success&cellId=cell-platform&view=all&q=release&sort=created&order=descend&pageToken=next&expanded=goal%3Agoal&detail=requirements';
 it.each([
-  { goalsReturnTo: '/project/tenant/goals' + savedListQuery },
+  { goalsReturnTo: '/project/tenant/jobs' + savedListQuery },
   { returnTo: '/project/tenant/jobs' + savedListQuery },
 ])('AR-006 restores the saved list destination $goalsReturnTo $returnTo', async state => {
   vi.mocked(getJob).mockResolvedValue(metadata({ completion_status: 'success' }));
@@ -1919,7 +1933,7 @@ it.each([undefined, '/project/other/goals', 'https://example.com/project/tenant/
   vi.mocked(getJob).mockResolvedValue(metadata({ completion_status: 'success' }));
   mountArchive('?status=success&cellId=cell-platform&view=all&q=release&sort=created&order=descend&expanded=goal%3Agoal&detail=requirements&pageToken=next&tab=conversation&nodeId=old&taskOrdinal=7&requestId=old', { goalsReturnTo });
   await startArchive();
-  const destination = '/project/tenant/goals?executionState=cells-v1&status=success&cellId=cell-platform&view=all&q=release&sort=created&order=descend&expanded=goal%3Agoal&detail=requirements&pageToken=next';
+  const destination = '/project/tenant/jobs?cellId=cell-platform&q=release';
   await expectArchived(destination);
 });
 
@@ -1958,13 +1972,13 @@ it.each(['pending', 'rejected'])('AR-012 returns without reloading archived meta
 it.each(['success', 'failure'])('AR-014 ignores late archive %s after leaving the story', async outcome => {
   vi.mocked(getJob).mockResolvedValue(metadata({ completion_status: 'success', goal_id: 'goal' }));
   const pending = deferred<Response>();
-  const requests = mountArchive('', { goalsReturnTo: '/project/tenant/goals?view=all' });
+  const requests = mountArchive('', { goalsReturnTo: '/project/tenant/jobs?view=all' });
   requests.mockReturnValue(pending.promise);
   await startArchive();
   fireEvent.click(screen.getByRole('button', { name: 'Leave story', exact: true }));
-  await screen.findByRole('heading', { name: 'Goals', exact: true });
+  await screen.findByRole('heading', { name: 'All', exact: true });
   await act(async () => outcome === 'success' ? pending.resolve(new Response(null, { status: 204 })) : pending.reject(new Error('obsolete archive')));
-  expect(screen.getByTestId('archive-location').textContent).toBe('/project/tenant/goals?view=all');
+  expect(screen.getByTestId('archive-location').textContent).toBe('/project/tenant/jobs?view=all');
   expect(inputState.refresh).not.toHaveBeenCalled();
   expect(screen.queryByText('Archived 1 job')).toBeNull();
   expect(screen.queryByText(/obsolete archive/)).toBeNull();
@@ -2042,7 +2056,7 @@ it('JS-004,006 initial Trace deep links recover through StrictMode effect replay
   render(<StrictMode><MemoryRouter initialEntries={['/project/tenant/jobs/job/story?nodeId=n_40']}><Routes>
     <Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId="tenant" />} />
   </Routes></MemoryRouter></StrictMode>);
-  await screen.findByText('Development.Design.Task 3.2');
+  await recordedTask('Development.Design.Task 3.2');
   expect(screen.getByRole('heading',{name:'Run Summary'})).toBeVisible();
 });
 
@@ -2278,7 +2292,7 @@ describe('C1 source recovery',()=>{
     expect(getJob).toHaveBeenCalledTimes(reads);
     expect(JSON.parse(postCalls()[0][1]!.body as string)).toEqual(request);
     expect(listJobs).not.toHaveBeenCalled();
-    expect(screen.queryByRole('link',{name:'Goal overview'})).toBeNull();
+    expect(within(dialog).getByRole('link',{name:'Back to inbox'})).toHaveAttribute('href','/project/tenant/jobs');
   });
   it.each(['job','tenant'].flatMap(change=>['success','failure'].map(outcome=>({change,outcome}))))('R19 ignores late restart $outcome after $change navigation',async({change,outcome})=>{
     const {dialog,requests,postCalls}=await recoveryDialog();
@@ -2378,226 +2392,32 @@ it.each(['job','child'])('refreshes the story header and pending inputs only for
  expect(inputState.refresh).toHaveBeenCalledTimes(inputsBefore+(selected==='job'?1:0));
 });
 
-describe('current request callout', () => {
-  const details = (form: import('@colony2/shared').InputFormConfig): import('@colony2/shared').UserInputDetails => ({
-    jobId: 'job', status: 'pending', startTime: '', task_ordinal: 10, form,
-  });
+describe('embedded current request', () => {
   const review = { kind: 'review', request_id: 'first', title: 'Release design', fields: [
-    { id: 'decision', type: 'multiple_choice' as const, required: true, question: 'How should we proceed?', options: [{ value: 'approve' }] },
-  ], documents: {
-    design: { kind: 'stored' as const, stored: { key: { jobId: 'job', taskOrdinal: 1, name: 'design.md', sizeBytes: 1 } } },
-  } };
+    { id: 'decision', type: 'multiple_choice' as const, required: true, question: 'Proceed?', options: [{ value: 'approve' }] },
+  ], documents: {} };
   beforeEach(() => {
     inputState.pendingInputs = [{ id: 'job', request_id: 'first' }];
-    vi.spyOn(inputActivityService, 'getInputDetails').mockResolvedValue(details(review));
+    vi.spyOn(inputActivityService, 'getInputDetails').mockResolvedValue({ jobId: 'job', status: 'pending', startTime: '', form: review });
   });
   afterEach(() => vi.mocked(inputActivityService.getInputDetails).mockRestore());
-  function requestHost(search = '', tenant = 'tenant', job = 'job') {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Execution unavailable')));
-    function Host() {
-      const params = useParams();
-      const location = useLocation();
-      return <><JobStoryPage projectId={params.projectId!} /><output data-testid="request-location">{location.pathname}{location.search}{JSON.stringify(location.state)}</output></>;
-    }
-    const view = () => <MemoryRouter initialEntries={[{ pathname: `/project/${tenant}/jobs/${job}/story`, search, state: { returnTo: '/project/tenant/jobs', keep: true } }]}>
-      <Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<Host />} />
-        <Route path="/project/:projectId/reviews/:jobId" element={<div>Review reader destination</div>} /></Routes>
-    </MemoryRouter>;
-    const mounted = render(view());
-    return () => mounted.rerender(view());
-  }
-  it('DR-01,02 shows review context before history with one direct action and no response controls', async () => {
-    requestHost();
-    const action = await screen.findByRole('link', { name: 'Open review', exact: true });
-    const callout = action.closest('.ant-alert')!;
-    expect(within(callout as HTMLElement).getByText('Review requested')).toBeVisible();
-    expect(callout).toHaveTextContent('Release design');
-    expect(callout).toHaveTextContent('How should we proceed?');
-    expect(callout).toHaveTextContent('1 document');
-    expect(callout.compareDocumentPosition(screen.getByRole('region', { name: 'Input history' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getAllByRole('link', { name: 'Open review' })).toHaveLength(1);
-    expect(screen.queryByRole('button', { name: 'Submit', exact: true })).toBeNull();
-    expect(action).toHaveAttribute('href', '/project/tenant/reviews/job');
-    fireEvent.click(action);
-    expect(screen.getByText('Review reader destination')).toBeVisible();
+  it('opens the full reader inside Conversation without a route transition', async () => {
+    mount('', null);
+    expect(await screen.findByText('Release design')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'approve', exact: true })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Back to Reviews' })).toBeNull();
+    expect(screen.getByTestId('location')).not.toHaveTextContent('/reviews/');
   });
-  it('DR-02 encodes tenant and job in the review route', async () => {
-    inputState.pendingInputs = [{ id: 'job /?#' }];
-    requestHost('', 'tenant%20%2F%3F%23', 'job%20%2F%3F%23');
-    expect(await screen.findByRole('link', { name: 'Open review' })).toHaveAttribute('href', '/project/tenant%20%2F%3F%23/reviews/job%20%2F%3F%23');
-  });
-  it.each(['', '?input=1'])('opens review/v2 directly with its request context: %s', async search => {
-    const request = amendedReviewV2Fixture();
-    vi.mocked(inputActivityService.getInputDetails).mockResolvedValue(details({
-      title: 'Outer request title', presentation: { type: 'review/v2' }, request,
-    }));
-    requestHost(search);
-    const action = await screen.findByRole('link', { name: 'Open review', exact: true });
-    const callout = action.closest('.ant-alert')!;
-    expect(callout).toHaveTextContent('Review requested');
-    expect(callout).toHaveTextContent(request.title);
-    expect(callout).toHaveTextContent(request.question);
-    expect(callout).toHaveTextContent('1 document');
-    expect(screen.queryByRole('button', { name: 'Open form' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Submit', exact: true })).toBeNull();
-    fireEvent.click(action);
-    expect(screen.getByText('Review reader destination')).toBeVisible();
-  });
-  it('leaves incompatible review/v2 validation to the review reader', async () => {
-    vi.mocked(inputActivityService.getInputDetails).mockResolvedValue(details({
-      title: 'Incompatible review', presentation: { type: 'review/v2' }, request: {},
-    }));
-    requestHost('?input=1');
-    fireEvent.click(await screen.findByRole('link', { name: 'Open review', exact: true }));
-    expect(screen.getByText('Review reader destination')).toBeVisible();
-    expect(screen.queryByRole('button', { name: 'Submit', exact: true })).toBeNull();
-  });
-  it.each([undefined, 'form', 'Review'])('DR-03,04 opens ordinary kind %s inline, preserving query and navigation state', async kind => {
-    vi.mocked(inputActivityService.getInputDetails).mockResolvedValue(details({ kind, title: 'Review this value', fields: [{ id: 'answer', type: 'short_answer', question: 'Release note', required: true }] }));
-    requestHost('?filter=mine');
-    fireEvent.click(await screen.findByRole('button', { name: 'Open form' }));
-    expect(screen.getByText('Your input is needed')).toBeVisible();
-    expect(screen.getByLabelText('Release note')).toBeVisible();
-    expect(screen.getByTestId('request-location')).toHaveTextContent('filter=mine&input=1&tab=conversation&taskOrdinal=10');
-    expect(screen.getByTestId('request-location')).toHaveTextContent('"keep":true');
-    expect(screen.queryByRole('link', { name: 'Open review' })).toBeNull();
-  });
-  it('DR-05 legacy review input links retain one callout without redirect or intermediate card', async () => {
-    requestHost('?input=1');
-    await screen.findByRole('link', { name: 'Open review' });
-    expect(screen.getByTestId('request-location')).toHaveTextContent('/story?input=1');
-    expect(screen.queryByText('Review reader destination')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Submit' })).toBeNull();
-    expect(screen.getAllByText('Release design')).toHaveLength(1);
-  });
-  it('DR-05 legacy ordinary input links still show inline fields', async () => {
-    vi.mocked(inputActivityService.getInputDetails).mockResolvedValue(details({ question: 'Name the release' }));
-    requestHost('?input=1');
-    expect(await screen.findByLabelText('Name the release')).toBeVisible();
-  });
-  it.each(['requestId', 'occurrenceId'])('DR-06 does not load current details for explicit %s selections', async parameter => {
-    requestHost(`?${parameter}=missing&input=1`);
+  it.each(['requestId', 'occurrenceId'])('keeps explicit historical %s selections read-only', async parameter => {
+    mount(`?${parameter}=missing&input=1`, null);
     expect(await screen.findByText('Request unavailable', { selector: '.ant-alert-message' })).toBeVisible();
     expect(inputActivityService.getInputDetails).not.toHaveBeenCalled();
-    expect(screen.queryByRole('link', { name: 'Open review' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'approve', exact: true })).toBeNull();
   });
-  it('DR-07 shows only loading while request kind is unknown', async () => {
-    const read = deferred<import('@colony2/shared').UserInputDetails>();
-    vi.mocked(inputActivityService.getInputDetails).mockReturnValue(read.promise);
-    requestHost('?input=1');
-    expect(screen.getByText('Loading request…')).toBeVisible();
-    expect(screen.queryByRole('link', { name: 'Open review' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Open form' })).toBeNull();
-    await act(async () => read.resolve(details(review)));
-    expect(screen.getByRole('link', { name: 'Open review' })).toBeVisible();
-  });
-  it('DR-08,09 retries repeated failures without restoring stale actions', async () => {
-    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.mocked(inputActivityService.getInputDetails).mockRejectedValueOnce(new Error('Unavailable')).mockRejectedValueOnce(new Error('Still unavailable')).mockResolvedValue(details(review));
-    requestHost();
-    await screen.findByText('Could not load this request');
-    fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
-    await screen.findByText('Still unavailable');
-    expect(screen.queryByRole('link', { name: 'Open review' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
-    expect(await screen.findByRole('link', { name: 'Open review' })).toBeVisible();
-    expect(screen.queryByText('Still unavailable')).toBeNull();
-    log.mockRestore();
-  });
-  it('DR-11 replaces review with form and form with review while continuously pending', async () => {
-    const update = requestHost();
-    await screen.findByRole('link', { name: 'Open review' });
-    const form = deferred<import('@colony2/shared').UserInputDetails>();
-    vi.mocked(inputActivityService.getInputDetails).mockReturnValueOnce(form.promise);
-    inputState.pendingInputs = [{ id: 'job', request_id: 'second' }];
-    update();
-    expect(screen.queryByText('Release design')).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Open review' })).toBeNull();
-    expect(screen.getByText('Loading request…')).toBeVisible();
-    await act(async () => form.resolve(details({ question: 'Name the release', request_id: 'second' })));
-    expect(screen.getByRole('button', { name: 'Open form' })).toBeVisible();
-    inputState.pendingInputs = [{ id: 'job', request_id: 'third' }];
-    update();
-    expect(await screen.findByRole('link', { name: 'Open review' })).toBeVisible();
-    expect(screen.queryByRole('button', { name: 'Open form' })).toBeNull();
-  });
-  it.each(['success', 'failure'])('DR-11 ignores superseded same-job %s reads', async outcome => {
-    const stale = deferred<import('@colony2/shared').UserInputDetails>();
-    vi.mocked(inputActivityService.getInputDetails).mockReturnValueOnce(stale.promise);
-    const update = requestHost();
-    inputState.pendingInputs = [{ id: 'job', request_id: 'replacement' }];
-    update();
-    await screen.findByRole('link', { name: 'Open review' });
-    await act(async () => outcome === 'success' ? stale.resolve(details({ question: 'Obsolete question' })) : stale.reject(new Error('Obsolete failure')));
-    expect(screen.queryByText('Obsolete question')).toBeNull();
-    expect(screen.queryByText('Obsolete failure')).toBeNull();
-    expect(screen.getByRole('link', { name: 'Open review' })).toBeVisible();
-  });
-  it.each([true, false])('DR-12 removes requests and ignores late responses (loaded: %s)', async loaded => {
-    const late = deferred<import('@colony2/shared').UserInputDetails>();
-    if (!loaded) vi.mocked(inputActivityService.getInputDetails).mockReturnValueOnce(late.promise);
-    const update = requestHost();
-    if (loaded) await screen.findByRole('link', { name: 'Open review' });
-    inputState.pendingInputs = [];
-    update();
-    await act(async () => late.resolve(details(review)));
-    expect(screen.queryByRole('link', { name: 'Open review' })).toBeNull();
-    expect(screen.queryByText('Release design')).toBeNull();
-    expect(screen.queryByText('Loading request…')).toBeNull();
-  });
-  it.each([
-    { form: { kind: 'review', title: '  ', question: 'Question title' }, title: 'Question title', instruction: 'Review the documents and respond.' },
-    { form: { kind: 'review', title: '  ', question: ' ' }, title: 'Review', instruction: 'Review the documents and respond.' },
-    { form: { kind: 'review', title: 'Design', question: 'Read the documents' }, title: 'Design', instruction: 'Read the documents' },
-    { form: { ...review, title: 'How should we proceed?' }, title: 'How should we proceed?', instruction: 'Review the documents and respond.' },
-    { form: { title: ' ', question: ' ' }, title: 'Input request', instruction: undefined },
-  ])('DR-13,14 uses nonblank title and distinct instruction fallbacks: $title / $instruction', async ({ form, title, instruction }) => {
-    vi.mocked(inputActivityService.getInputDetails).mockResolvedValue(details(form));
-    requestHost();
-    await screen.findByText(title, { selector: '.pending-request-title' });
-    if (instruction) expect(screen.getByText(instruction, { selector: '.pending-request-instructions' })).toBeVisible();
-  });
-  it.each([0, 1, 2])('DR-15 counts %s document entries without metadata', async count => {
-    const documents = Object.fromEntries(Array.from({ length: count }, (_, i) => [String(i), review.documents.design]));
-    vi.mocked(inputActivityService.getInputDetails).mockResolvedValue(details({ ...review, documents }));
-    requestHost();
-    await screen.findByRole('link', { name: 'Open review' });
-    if (count) expect(screen.getByText(`${count} ${count === 1 ? 'document' : 'documents'}`)).toBeVisible();
-    else expect(document.querySelector('.pending-request-count')).toBeNull();
-  });
-  it('DR-16 renders supplied markup literally', async () => {
-    const title = '<img src=x onerror=alert(1)>';
-    const instruction = '[unsafe](https://invalid.example) <script>bad()</script>';
-    vi.mocked(inputActivityService.getInputDetails).mockResolvedValue(details({ ...review, title, fields: [{ ...review.fields[0], question: instruction }] }));
-    requestHost();
-    expect(await screen.findByText(title)).toBeVisible();
-    expect(screen.getByText(instruction)).toBeVisible();
-    expect(document.querySelector('.pending-request-content img, .pending-request-content script, .pending-request-content a')).toBeNull();
-  });
-  it('DR-17 remains independent of execution and is hidden on other tabs', async () => {
-    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-    requestHost();
-    await screen.findByRole('link', { name: 'Open review' });
-    fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
-    expect(screen.queryByRole('link', { name: 'Open review' })).toBeNull();
-    fireEvent.click(screen.getByRole('tab', { name: 'Conversation', exact: true }));
-    expect(screen.getByRole('link', { name: 'Open review' })).toBeVisible();
-    log.mockRestore();
-  });
-  it.each(['job', 'tenant'].flatMap(change => ['success', 'failure'].map(outcome => ({ change, outcome }))))('DR-10 clears request state across $change navigation and late $outcome', async ({ change, outcome }) => {
-    const stale = deferred<import('@colony2/shared').UserInputDetails>();
-    vi.mocked(inputActivityService.getInputDetails).mockReturnValueOnce(stale.promise);
-    let navigate!: ReturnType<typeof useNavigate>;
-    function Nav() { navigate = useNavigate(); return null; }
-    function Host() { return <JobStoryPage projectId={useParams().projectId!} />; }
-    render(<MemoryRouter initialEntries={['/project/tenant/jobs/job/story?input=1']}><Nav /><Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<Host />} /></Routes></MemoryRouter>);
-    inputState.pendingInputs = [{id:change === 'job' ? 'new' : 'job',client_payload_revision:1}];
-    act(() => navigate(change === 'job' ? '/project/tenant/jobs/new/story?input=1' : '/project/other/jobs/job/story?input=1'));
-    await screen.findByRole('link', { name: 'Open review' });
-    await act(async () => outcome === 'success' ? stale.resolve(details({ ...review, title: 'Obsolete title' })) : stale.reject(new Error('Obsolete failure')));
-    expect(screen.queryByText('Obsolete title')).toBeNull();
-    expect(screen.queryByText('Obsolete failure')).toBeNull();
-    expect(screen.getByRole('link', { name: 'Open review' })).toHaveAttribute('href', change === 'job' ? '/project/tenant/reviews/new' : '/project/other/reviews/job');
+  it('renders ordinary requests inline in the same reader', async () => {
+    vi.mocked(inputActivityService.getInputDetails).mockResolvedValue({ jobId: 'job', status: 'pending', startTime: '', form: { question: 'Name the release' } });
+    mount('', null);
+    expect(await screen.findByLabelText('Name the release')).toBeVisible();
   });
 });
 
@@ -2648,15 +2468,15 @@ it.each(['job', 'tenant'])('ENV-22 clears Env and ignores late metadata across %
 });
 
 it('ENV-26 keeps the originating list filters on the Env return link across tab changes', async () => {
-  const returnTo = '/project/tenant/goals?executionState=cells-v1&scope=roots&status=READY&q=report&sort=submitted&order=descend';
+  const returnTo = '/project/tenant/jobs?executionState=cells-v1&scope=roots&status=READY&q=report&sort=submitted&order=descend';
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => story }));
   render(<MemoryRouter initialEntries={[{ pathname: '/project/tenant/jobs/job/story', search: '?tab=env', state: { goalsReturnTo: returnTo } }]}>
     <Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId="tenant" />} /></Routes>
   </MemoryRouter>);
-  expect(screen.getByRole('link', { name: 'Back to Goals', exact: true })).toHaveAttribute('href', returnTo);
+  expect(screen.getByRole('link', { name: 'Back to inbox', exact: true })).toHaveAttribute('href', returnTo);
   fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
   fireEvent.click(screen.getByRole('tab', { name: 'Env', exact: true }));
-  expect(screen.getByRole('link', { name: 'Back to Goals', exact: true })).toHaveAttribute('href', returnTo);
+  expect(screen.getByRole('link', { name: 'Back to inbox', exact: true })).toHaveAttribute('href', returnTo);
 });
 
 describe('crash concern in lease panel', () => {

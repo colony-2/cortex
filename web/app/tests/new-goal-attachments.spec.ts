@@ -1,17 +1,17 @@
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
+import { openCompose, originalRequest } from './helpers/inbox';
 import { registerCell } from './helpers/cells';
 
-test('ATT-018 ATT-020 ATT-035 creates a goal with persisted file bytes', async ({ page, request, context, baseURL }) => {
+test('ATT-018 ATT-020 ATT-035 composes a job with persisted file bytes', async ({ page, request, context, baseURL }) => {
  const tenant = `attachments-${randomUUID()}`;
  const cell = await registerCell(request, tenant);
  await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
- await page.goto(`/project/${tenant}/goals`);
- await page.getByRole('button', { name: 'New goal', exact: true }).click();
- const dialog = page.getByRole('dialog');
- await dialog.getByLabel('Prompt').fill('Use the attached requirements');
- await dialog.getByRole('combobox', { name: 'Cell', exact: true }).click();
- await page.getByTitle(`${cell.name} · ${cell.repo}`, { exact: true }).click();
+ await page.goto(`/project/${tenant}/jobs`);
+ const dialog = await openCompose(page);
+ await dialog.getByLabel('Message', { exact: true }).fill('Use the attached requirements');
+ await dialog.getByRole('combobox', { name: 'Recipient cell', exact: true }).click();
+ await page.getByRole('option', { name: cell.name, exact: true }).click();
  const picker = dialog.getByRole('button', { name: 'Attach files' });
  const chooserEvent = page.waitForEvent('filechooser');
  await picker.press('Enter');
@@ -28,11 +28,11 @@ test('ATT-018 ATT-020 ATT-035 creates a goal with persisted file bytes', async (
  await dialog.locator('input[type=file]').setInputFiles(uploads);
  await expect(remove).toBeVisible();
  const resultEvent = page.waitForResponse(response => response.url().endsWith(`/api/projects/${tenant}/jobs`) && response.request().method() === 'POST');
- await dialog.getByRole('button', { name: 'Create goal', exact: true }).click();
+ await dialog.getByRole('button', { name: 'Send', exact: true }).click();
  const result = await resultEvent;
  expect(result.status(), await result.text()).toBe(201);
  const job = await result.json();
- await expect(page).toHaveURL(new RegExp(`/goals/${job.goal_id}`));
+ await expect(page).toHaveURL(new RegExp(`/jobs/${job.job_id}/story`));
  for (const upload of uploads) {
  const artifact = await request.get(`/api/projects/${tenant}/jobs/${job.job_id}/tasks/0/artifacts/${encodeURIComponent(upload.name)}`);
  expect(artifact.status(), await artifact.text()).toBe(200);
@@ -45,12 +45,11 @@ for (const width of [1440, 390]) test(`pasted PNG persists exact bytes and rende
  const cell = await registerCell(request, tenant);
  await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
  await page.setViewportSize({ width, height: 900 });
- await page.goto(`/project/${tenant}/goals`);
- await page.getByRole('button', { name: 'New goal', exact: true }).click();
- const dialog = page.getByRole('dialog', { name: 'New goal' });
- const prompt = dialog.getByRole('textbox', { name: 'Prompt', exact: true });
- await dialog.getByRole('combobox', { name: 'Cell', exact: true }).click();
- await page.getByTitle(`${cell.name} · ${cell.repo}`, { exact: true }).click();
+ await page.goto(`/project/${tenant}/jobs`);
+ const dialog = await openCompose(page);
+ const prompt = dialog.getByRole('textbox', { name: 'Message', exact: true });
+ await dialog.getByRole('combobox', { name: 'Recipient cell', exact: true }).click();
+ await page.getByRole('option', { name: cell.name, exact: true }).click();
  await prompt.fill('Build the release dashboard'); await prompt.press('End'); await prompt.press('Enter');
  const bytes = Buffer.from(await prompt.evaluate(element => {
    const canvas = document.createElement('canvas'); canvas.width = 240; canvas.height = 100;
@@ -63,7 +62,7 @@ for (const width of [1440, 390]) test(`pasted PNG persists exact bytes and rende
  }));
  await expect(prompt.locator('img')).toBeVisible();
  const responseEvent = page.waitForResponse(response => response.url().endsWith(`/api/projects/${tenant}/jobs`) && response.request().method() === 'POST');
- await dialog.getByRole('button', { name: 'Create goal', exact: true }).click();
+ await dialog.getByRole('button', { name: 'Send', exact: true }).click();
  const response = await responseEvent; expect(response.status(), await response.text()).toBe(201);
  const job = await response.json();
  const detail = await request.get(`/api/projects/${tenant}/jobs/${job.job_id}`);
@@ -74,10 +73,9 @@ for (const width of [1440, 390]) test(`pasted PNG persists exact bytes and rende
  expect((await inventory.json()).artifacts.filter((a: { name: string }) => a.name === filename)).toHaveLength(1);
  const download = await request.get(`/api/projects/${tenant}/jobs/${job.job_id}/tasks/0/artifacts/${filename}`);
  expect(download.status()).toBe(200); expect(await download.body()).toEqual(bytes);
- await expect(page).toHaveURL(new RegExp(`/goals/${job.goal_id}`));
- await expect(page.locator('.goal-full-prompt img[alt="flow.png"]')).toBeVisible();
- await page.screenshot({ path: testInfo.outputPath(`goal-bound-image-${width}.png`), animations: 'disabled' });
+ await expect(page).toHaveURL(new RegExp(`/jobs/${job.job_id}/story`));
  await page.goto(`/project/${tenant}/jobs/${job.job_id}/story`);
+ await originalRequest(page);
  await expect(page.getByRole('region', { name: 'Job prompt' }).locator('img[alt="flow.png"]')).toBeVisible();
  await page.screenshot({ path: testInfo.outputPath(`story-bound-image-${width}.png`), animations: 'disabled' });
 });

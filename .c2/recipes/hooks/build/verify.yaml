@@ -269,12 +269,14 @@ sequence:
       run: |
         set -euo pipefail
         pnpm install --frozen-lockfile
+        # Fail with the actual HTTP host response before running clipboard journeys.
+        bash scripts/verify-browser.sh pnpm --filter @colony2/app test:e2e --config playwright.copy.config.ts --grep JC-00 --retries=0
         # Gate CT-20 against the real message DOM, then require archive and the full focused suite.
         pnpm --filter @colony2/app test src/components/CopyJobId.test.tsx -t CT-20
         pnpm --filter @colony2/app test src/components/JobActionDialog.test.tsx
         pnpm --filter @colony2/app test src/utils/copyText.test.ts src/components/CopyJobId.test.tsx src/components/JobsListPage.test.tsx src/components/JobActionDialog.test.tsx src/components/JobStoryPage.test.tsx
-        bash scripts/verify-browser.sh pnpm --filter @colony2/app test:e2e --config playwright.copy.config.ts
-        bash scripts/verify-browser.sh pnpm --filter @colony2/app test:e2e --config playwright.fixtures.config.ts --grep 'copies the title job'
+        bash scripts/verify-browser.sh pnpm --filter @colony2/app test:e2e --config playwright.copy.config.ts --retries=0
+        bash scripts/verify-browser.sh pnpm --filter @colony2/app test:e2e --config playwright.fixtures.config.ts --grep 'copies the title job' --retries=0
   # Keep recursive DAG contracts and browser routing failures visible separately.
   - id: dag-wait-tree-tests
     op: command_execution
@@ -292,8 +294,11 @@ sequence:
         # Isolate pruned-stream races and cycle-label bounds in verification diagnostics.
         pnpm --filter @colony2/app test src/executionTree/downward.test.ts src/executionTree/layout.test.ts -t 'after refresh prunes|replaced stream|complete label extents'
         pnpm --filter @colony2/app test src/executionTree
+        # Exercise compact story menu navigation before the complete DAG browser gate.
+        bash scripts/verify-browser.sh pnpm --filter @colony2/app test:e2e --config playwright.tree.config.ts --grep 'story opens and returns|identity changes dispose loaded state|generic entry keeps standalone return' --retries=0
         bash scripts/verify-browser.sh pnpm --filter @colony2/app test:e2e --config playwright.tree.config.ts --retries=0
-  # Gate the delivered editor identity, semantic Link, images and fresh-empty checks.
+  # Gate the delivered editor identity and its inbox Compose integration,
+  # including semantic Link, images, fresh-empty validation and native persistence.
   - id: composer-tests
     op: command_execution
     const: true
@@ -321,11 +326,35 @@ sequence:
         assert.equal(app.dependencies.critrev, 'file:vendor/critrev/' + identity.tarball);
         console.log('Verified immutable Critrev delivery:', identity.version);
         NODE
-        pnpm --filter @colony2/app test src/components/NewGoalDialog.test.tsx src/components/GoalPrompt.test.tsx src/components/GoalJobOverview.test.tsx src/components/ReviewJobContext.test.tsx src/utils/goalPrompt.test.ts src/utils/promptImages.test.ts
+        pnpm --filter @colony2/app test src/components/ComposeJob.test.tsx src/components/NewGoalDialog.test.tsx src/components/GoalPrompt.test.tsx src/components/GoalJobOverview.test.tsx src/components/ReviewJobContext.test.tsx src/utils/goalPrompt.test.ts src/utils/promptImages.test.ts
+        # Surface responsive overflow and image/source/retry failures without retry masking.
+        # These journeys attach geometry, preserved Markdown or native selection on failure.
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.composer.config.ts --grep 'desktop size and phone takeover|pasted image survives modes|image deletion undo and redo|Link placeholder' --retries=0
         bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.composer.config.ts
         # Warm the native fixture's Go cache outside its 180-second readiness budget.
         timeout 10m node scripts/verify-command.mjs bash scripts/go.sh build -o /dev/null ./server/cmd/uitestserver
         bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.composer-runtime.config.ts
+  # Verify inbox data, navigation, composition, folding and responsive review integration.
+  - id: job-inbox-model-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        pnpm install --frozen-lockfile
+        # Reconcile the inbox shell and compact story with upstream Assistant removal.
+        pnpm --filter @colony2/app test src/App.test.tsx src/components/JobStoryPage.test.tsx
+        # Retain upstream runners, metadata-backed embedded reviews and lazy Conversation behavior.
+        pnpm --filter @colony2/app test src/components/InputDetailPage.test.tsx src/components/ReviewV2.test.tsx src/hooks/useReviewV2.test.ts
+        pnpm --filter @colony2/app test src/utils/jobInbox.test.ts src/utils/jobInboxData.test.ts src/hooks/useReviewDraft.test.tsx src/components/JobsListPage.test.tsx src/components/ComposeJob.test.tsx src/components/JobConversation.test.tsx
+        # Every inbox journey also rejects requests to the removed Assistant API.
+        bash scripts/verify-browser.sh pnpm --filter @colony2/app test:e2e --config playwright.job-inbox.config.ts --workers=1 --retries=0
   - id: app-tests
     op: command_execution
     const: true
@@ -473,6 +502,8 @@ sequence:
         pnpm --filter @colony2/app test src/components/JobCrashConcern.test.tsx src/components/JobStoryPage.test.tsx src/components/JobLeaseTimeline.test.tsx
         # Includes a held metadata refresh to verify trigger focus and stale-action guards.
         bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.timeline.config.ts --retries=0
+  # Exercise compact action disclosure, unchanged restart replay, retired links,
+  # and complete inbox cursor scans at desktop and phone widths.
   - id: restart-browser-tests
     op: command_execution
     const: true
@@ -489,7 +520,7 @@ sequence:
         pnpm install --frozen-lockfile
         # Every repetition must pass; keep nested confirmation races visible.
         bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.recovery.config.ts recovery-stage1.spec.ts --grep 'R17 R18' --repeat-each=3 --retries=0
-        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.recovery.config.ts recovery-stage1.spec.ts --retries=0
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.recovery.config.ts recovery-stage1.spec.ts --workers=1 --retries=0
   # Saved-diff contracts must pass before checking the production review UI.
   - id: workspace-diff-contract-tests
     op: command_execution
@@ -525,6 +556,8 @@ sequence:
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
         bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.changes.config.ts --retries=0
+  # Keep review-context and inbox-sidebar assertions distinct; surface failures
+  # directly while retaining the complete review usability and discovery suite.
   - id: review-v2-browser-tests
     op: command_execution
     const: true
@@ -539,7 +572,25 @@ sequence:
         set -euo pipefail
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
-        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.review-history.config.ts review-v2-usability.spec.ts input-discovery.spec.ts --retries=0
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.review-history.config.ts review-v2-usability.spec.ts input-discovery.spec.ts --workers=1 --retries=0
+  # Exercise every current inbox destination with native keyboard, modified-link,
+  # touch, drawer and zoom interactions, plus route-local navigation state.
+  - id: inbox-navigation-browser-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 15m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        pnpm install --frozen-lockfile
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.review-history.config.ts navigation.spec.ts --workers=1 --retries=0
+        # Keep compact action disclosure and full cell/prompt geometry covered before general shards.
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.review-history.config.ts story-scroll.spec.ts --grep 'navigation and resize|JC-016 long job cell' --workers=1 --retries=0
   # Catch discovery regressions separately while retaining both upstream browser shards.
   - id: input-discovery-browser-regressions
     op: command_execution
@@ -555,7 +606,45 @@ sequence:
         set -euo pipefail
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
-        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.review-history.config.ts job-relationships.spec.ts mobile.spec.ts navigation.spec.ts review-document-history.spec.ts review-queue.spec.ts review-scroll.spec.ts story-scroll.spec.ts --grep 'REL-|JS-024|phone review|badges update|H[0-9]|PR-009|Reviews controls|REV-|RC-|RM-|JS-SC-003 wheel|JS-SC-004 trusted|compact drawer stays open on browser history' --retries=0 --global-timeout=1500000
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.review-history.config.ts job-relationships.spec.ts mobile.spec.ts navigation.spec.ts review-document-history.spec.ts review-queue.spec.ts review-scroll.spec.ts story-scroll.spec.ts --grep 'REL-|JS-024|phone review|badges update|H[0-9]|PR-009|Reviews controls|REV-|RC-|RM-|JS-SC-003 wheel|JS-SC-004 trusted|compact drawer stays open on browser history' --workers=1 --retries=0 --global-timeout=1500000
+  # Detect inbox migration failures before the long general shards, with no
+  # retries: flat rows, folded history, lease reads and production mutations.
+  - id: inbox-migration-browser-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 30m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        # Fail early on native zoom accessibility before the full migration run.
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.fixtures.config.ts mobile.spec.ts --grep '200% zoom retains Compose' --workers=1 --retries=0 --global-timeout=180000
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.fixtures.config.ts goals.spec.ts goal-retirement.spec.ts job-conversation.spec.ts job-lease-timeline.spec.ts mobile.spec.ts --workers=1 --retries=0 --global-timeout=1500000
+  - id: inbox-http-browser-tests
+    op: command_execution
+    const: true
+    inputs:
+      working_directory: '${{ context.environment.op.worktree_path }}'
+      shell: bash
+      timeout: 30m
+      continue_on_error: false
+      capture_diagnostics: always
+      env: *verification-env
+      run: |
+        set -euo pipefail
+        export GOTOOLCHAIN="go$(cat .go-version)"
+        pnpm install --frozen-lockfile
+        pnpm --filter @colony2/app test:e2e --list
+        timeout 15m node scripts/verify-command.mjs bash scripts/prepare-browser-tests.sh
+        # Verify filtered Compose return paths before the complete HTTP acceptance gate.
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.inbox-http.config.ts --grep 'Compose submits a prompt-only job and retains inbox context' --workers=1 --retries=0 --global-timeout=180000
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.inbox-http.config.ts --workers=1 --retries=0 --global-timeout=900000
   # Keep the complete general suite, but give each half a fresh execution window
   # and fresh servers. Both sequential shards must pass before runtime checks.
   - id: browser-tests-shard-1
@@ -607,6 +696,7 @@ sequence:
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
         timeout 15m node scripts/verify-command.mjs bash scripts/prepare-browser-tests.sh
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm test:e2e --project=production --grep 'announces each prompt in the same job' --workers=1 --global-timeout=180000 --retries=0
         bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm test:e2e --project=production --project=previous-worker --project=goals-runtime --global-timeout=1500000 --retries=0
   - id: artifact-browser-tests
     op: command_execution
@@ -622,6 +712,7 @@ sequence:
         set -euo pipefail
         export GOTOOLCHAIN="go$(cat .go-version)"
         pnpm install --frozen-lockfile
+        bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.artifact.config.ts --grep 'MAL-013-033 local links story' --workers=1 --retries=0
         bash scripts/verify-browser.sh node scripts/verify-command.mjs pnpm --filter @colony2/app test:e2e --config playwright.artifact.config.ts --retries=0
 # Native failures propagate to the caller's existing repair handlers.
 # Successful command logs remain attached to their individual tasks.

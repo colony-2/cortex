@@ -10,6 +10,6 @@ export function goalTargets(cells: CortexCell[]) {
 export function cellPath(tenant: string, id: string) {
   return `/project/${encodeURIComponent(tenant)}/cells/${encodeURIComponent(id)}`;
 }
-export function cellGoalsPath(tenant: string, id: string) {
-  return `/project/${encodeURIComponent(tenant)}/goals?${new URLSearchParams({ cellId: id, executionState: 'cells-v1' })}`;
+export function cellInboxPath(tenant: string, id: string) {
+  return `/project/${encodeURIComponent(tenant)}/jobs?${new URLSearchParams({ inbox: 'cell', cellId: id })}`;
 }

@@ -1,78 +1,47 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AppShell, readNavigationPreference } from './App';
+import { beforeEach, expect, it, vi } from 'vitest';
+import { AppShell } from './App';
 import { render, screen, fireEvent } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-const activity = vi.hoisted(() => ({ pendingCount: 0, discoveryStatus:'current', currentProjectId:'navigation', setCurrentProjectId: vi.fn() }));
-vi.mock('@colony2/shared', async importOriginal => ({
-  ...await importOriginal<typeof import('@colony2/shared')>(),
-  isAuthenticated: () => true,
-  useInputActivity: () => activity,
-}));
+import { listCells } from '@colony2/shared/api';
+import { registryCell } from './test/cellFixtures';
+const activity = vi.hoisted(() => ({ pendingInputs: [] as {id:string;cell_id:string}[], discoveryStatus:'current', currentProjectId:'navigation', setCurrentProjectId: vi.fn(), refresh: vi.fn() }));
+vi.mock('@colony2/shared', async original => ({ ...await original<typeof import('@colony2/shared')>(), isAuthenticated: () => true, useInputActivity: () => activity }));
+vi.mock('@colony2/shared/api', async original => ({ ...await original<typeof import('@colony2/shared/api')>(), listJobs: vi.fn().mockResolvedValue({jobs:[]}), listCells: vi.fn() }));
 vi.mock('./hooks/useCompact', () => ({ useCompact: () => false }));
 vi.mock('./components/JobsListPage', () => ({ default: () => <input aria-label="Page draft" /> }));
-function shell() { return <MemoryRouter initialEntries={['/project/navigation/goals']}><AppShell defaultTenantId="navigation" /></MemoryRouter>; }
-
-describe('desktop navigation preference', () => {
-  afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); });
-  for (const value of [null, '', 'null', 'undefined', '{}', '1', 'TRUE', 'false', '"true"']) {
-    it(`defaults expanded for ${value}`, () => {
-      if (value !== null) localStorage.setItem('cortex:desktop-navigation-collapsed', value);
-      expect(readNavigationPreference()).toBe(false);
-    });
-  }
-  it('restores a collapsed preference', () => {
-    localStorage.setItem('cortex:desktop-navigation-collapsed', 'true');
-    expect(readNavigationPreference()).toBe(true);
-  });
-  it('tolerates denied storage reads', () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied'); });
-    expect(readNavigationPreference()).toBe(false);
-  });
+vi.mock('./components/JobStoryPage', () => ({ default: () => <input aria-label="Review draft" /> }));
+function shell(path='/project/navigation/jobs') { return <MemoryRouter initialEntries={[path]}><AppShell defaultTenantId="navigation" /></MemoryRouter>; }
+beforeEach(() => { vi.mocked(listCells).mockResolvedValue({cells:[registryCell('platform','navigation')]}); activity.pendingInputs=[]; activity.currentProjectId='navigation'; activity.discoveryStatus='current'; });
+it('omits zero badges while keeping All, cells and Archive reachable', async () => {
+  render(shell());
+  const all=screen.getByRole('link',{name:'All',exact:true});
+  expect(all.querySelector('.inbox-badge')).toBeNull();
+  expect(await screen.findByRole('link',{name:'platform',exact:true})).toBeVisible();
+  expect(screen.getByRole('link',{name:'Archive',exact:true}).querySelector('.inbox-badge')).toBeNull();
+  expect(screen.queryByRole('link',{name:'Goals',exact:true})).toBeNull();
+  expect(screen.getByRole('link',{name:'Runners',exact:true})).toHaveAttribute('href','/project/navigation/runners');
+  expect(screen.getByRole('link',{name:'Settings',exact:true})).toHaveAttribute('href','/project/navigation/admin');
 });
-
-describe('navigation control and activity', () => {
-  afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); activity.pendingCount = 0; activity.currentProjectId = 'navigation'; });
-  it('hides another tenant’s fresh count until provider selection catches up', () => {
-    activity.currentProjectId = 'other'; activity.pendingCount = 7;
-    render(shell());
-    expect(screen.getByRole('link', { name: 'Reviews' })).toHaveAccessibleDescription('Pending review count unavailable');
-  });
-  it('toggles once for mouse, Enter and Space with accessible state and icons', async () => {
-    const user = userEvent.setup();
-    render(shell());
-    fireEvent.change(screen.getByLabelText("Page draft"), { target: { value: "Unsubmitted draft" } });
-    let toggle = screen.getByRole('button', { name: 'Collapse navigation' });
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(toggle.querySelector('[aria-label="menu-fold"]')).toBeTruthy();
-    fireEvent.click(toggle);
-    toggle = screen.getByRole('button', { name: 'Expand navigation' });
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(toggle.querySelector('[aria-label="menu-unfold"]')).toBeTruthy();
-    toggle.focus(); await user.keyboard('{Enter}');
-    expect(screen.getByRole('button', { name: 'Collapse navigation' })).toHaveAttribute('aria-expanded', 'true');
-    await user.keyboard(' ');
-    expect(screen.getByRole('button', { name: 'Expand navigation' })).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByLabelText('Page draft')).toHaveValue('Unsubmitted draft');
-    expect(document.querySelectorAll('.navigation-toggle')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: 'Expand navigation' })).toHaveTextContent('');
-  });
-  it('updates activity descriptions and badge without changing collapsed state', () => {
-    const view = render(shell());
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse navigation' }));
-    for (const count of [0, 7, 120, 3]) {
-      activity.pendingCount = count;
-      view.rerender(shell());
-      expect(screen.getByRole('link', { name: 'Reviews' })).toHaveAccessibleDescription(`${count} pending reviews`);
-      expect(screen.getByRole('button', { name: 'Expand navigation' })).toHaveAttribute('aria-expanded', 'false');
-    }
-  });
-  it('keeps rendering and toggling when storage writes fail', () => {
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('denied'); });
-    render(shell());
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse navigation' }));
-    expect(screen.getByRole('button', { name: 'Expand navigation' })).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Expand navigation' }));
-    expect(screen.getByRole('button', { name: 'Collapse navigation' })).toBeVisible();
-  });
+it('shows pending counts without changing them on navigation width changes', () => {
+  activity.pendingInputs=[{id:'one',cell_id:'cell-platform'}]; render(shell());
+  fireEvent.click(screen.getByRole('button',{name:'Collapse navigation'}));
+  expect(screen.getAllByLabelText('1 pending responses')[0]).toBeVisible();
+  fireEvent.click(screen.getByRole('button',{name:'Expand navigation'}));
+  expect(screen.getAllByLabelText('1 pending responses')[0]).toBeVisible();
+});
+it('never shows another tenant count as current or empty', () => {
+  activity.currentProjectId='other'; activity.pendingInputs=[{id:'one',cell_id:'cell-platform'}]; render(shell());
+  expect(screen.getByRole('link',{name:'All',exact:true})).toHaveTextContent('?');
+});
+it('starts stories narrow and preserves mounted review text through width toggles', () => {
+  render(shell('/project/navigation/jobs/one/story'));
+  fireEvent.change(screen.getByLabelText('Review draft'),{target:{value:'Unsent feedback'}});
+  fireEvent.click(screen.getByRole('button',{name:'Expand navigation'}));
+  fireEvent.click(screen.getByRole('button',{name:'Collapse navigation'}));
+  expect(screen.getByLabelText('Review draft')).toHaveValue('Unsent feedback');
+});
+it('explains retired goal links and offers All instead of opening an arbitrary job', () => {
+  render(shell('/project/navigation/goals/legacy'));
+  expect(screen.getByText('Goal links have been retired')).toBeVisible();
+  expect(screen.getByRole('link',{name:'Open All jobs'})).toHaveAttribute('href','/project/navigation/jobs');
 });

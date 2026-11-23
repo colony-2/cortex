@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Link, matchPath, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { CloudServerOutlined, FileSearchOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MenuOutlined, OrderedListOutlined, PlayCircleOutlined, SettingOutlined } from '@ant-design/icons';
-import { Alert, Badge, Button, Drawer, Empty, Input, Layout, Menu, Spin, Tooltip, Typography } from 'antd';
+import { CloudServerOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MenuOutlined, SettingOutlined } from '@ant-design/icons';
+import { Alert, Button, Drawer, Empty, Input, Layout, Spin, Tooltip, Typography } from 'antd';
 import {
   InputActivityProvider,
+  getUserEmail,
   clearUserEmail,
   isAuthenticated,
   listProjects,
@@ -21,6 +22,10 @@ import JobStoryPage from './components/JobStoryPage';
 import { useCompact } from './hooks/useCompact';
 import AccountMenu from './components/AccountMenu';
 import LoginPage from './components/LoginPage';
+import InboxNavigation from './components/InboxNavigation';
+import ComposeJob from './components/ComposeJob';
+import { JobInboxProvider } from './hooks/useJobInbox';
+import './inbox.css';
 
 const { Header, Content, Sider } = Layout;
 
@@ -58,27 +63,32 @@ function initialTenantId(search: string, pathname: string, defaultTenantId: stri
   return defaultTenantId;
 }
 
-const navigationPreference = 'cortex:desktop-navigation-collapsed';
 const reviewDetailPath = '/project/:projectId/reviews/:jobId';
 const isStoryInput = (selectors: URLSearchParams) => selectors.has('occurrenceId') || selectors.has('requestId');
-export function readNavigationPreference(): boolean {
-  try { return localStorage.getItem(navigationPreference) === 'true'; } catch { return false; }
-}
 
 export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
+  const location = useLocation();
+  const [identity, setIdentity] = useState(getUserEmail);
+  useEffect(() => {
+    const changed = () => setIdentity(getUserEmail());
+    window.addEventListener('cortex-ui-identity', changed);
+    return () => window.removeEventListener('cortex-ui-identity', changed);
+  }, []);
+  const tenant = initialTenantId(location.search, location.pathname, defaultTenantId);
+  return <JobInboxProvider key={JSON.stringify([tenant, identity])} tenant={tenant}><InboxShell defaultTenantId={defaultTenantId} /></JobInboxProvider>;
+}
+function InboxShell({ defaultTenantId }: { defaultTenantId: string }) {
   const compact = useCompact();
   const location = useLocation();
   const selectors = new URLSearchParams(location.search);
   const reviewOpen = !!matchPath(reviewDetailPath, location.pathname) && selectors.has('review_id') && !isStoryInput(selectors);
   const openReviewPath = reviewOpen ? location.pathname : null;
   const useNavigationDrawer = compact || reviewOpen;
-  const [collapsed, setCollapsed] = useState(readNavigationPreference);
-  const toggleNavigation = () => setCollapsed(previous => {
-    const next = !previous;
-    try { localStorage.setItem(navigationPreference, String(next)); } catch { /* Memory state remains usable. */ }
-    return next;
-  });
-  const [focusedNavigation, setFocusedNavigation] = useState<string>();
+  const story = /\/jobs\/[^/]+\/story$/.test(location.pathname);
+  const [navigationChoice, setNavigationChoice] = useState<{path: string; expanded: boolean}>();
+  const collapsed = navigationChoice?.path === location.pathname ? !navigationChoice.expanded : story;
+  const toggleNavigation = () => setNavigationChoice({path: location.pathname, expanded: collapsed});
+  const [composeOpen, setComposeOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   useEffect(() => { setMenuOpen(false); }, [useNavigationDrawer, openReviewPath]);
@@ -90,8 +100,7 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
   const navigate = useNavigate();
   const [tenantId, setTenantId] = useState(() => initialTenantId(location.search, location.pathname, defaultTenantId));
   const [tenantDraft, setTenantDraft] = useState(tenantId);
-  const { pendingCount, setCurrentProjectId, discoveryStatus, currentProjectId } = useInputActivity();
-  const reviewCountKnown = currentProjectId === tenantId && discoveryStatus === 'current';
+  const { setCurrentProjectId } = useInputActivity();
 
   useEffect(() => {
     const selectedTenant = initialTenantId(location.search, location.pathname, defaultTenantId);
@@ -105,15 +114,6 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
     setCurrentProjectId(tenantId);
     document.title = `cortex: tenant ${tenantId}`;
   }, [tenantId, setCurrentProjectId]);
-
-  const navKey = useMemo(() => {
-    const path = location.pathname;
-    if (path.includes('/runners')) return 'runners';
-    if (path.includes('/reviews')) return 'reviews';
-    if (path.includes('/cells')) return 'cells';
-    if (path.includes('/admin')) return 'admin';
-    return 'jobs';
-  }, [location.pathname]);
 
   useEffect(() => {
     const query = new URLSearchParams(location.search);
@@ -141,42 +141,10 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
   };
 
   const rail = !useNavigationDrawer && collapsed;
-  const navigation = (
-    <Menu className="shell-navigation" onClick={closeMenu} mode="inline"
-      inlineCollapsed={rail} selectedKeys={[navKey]}
-      items={[
-        ['jobs', 'Goals', 'goals', <PlayCircleOutlined />],
-        ['reviews', 'Reviews', 'reviews', <FileSearchOutlined />],
-        ['cells', 'Cells', 'cells', <OrderedListOutlined />],
-        ['runners', 'Runners', 'runners', <CloudServerOutlined />],
-        ['admin', 'Admin', 'admin', <SettingOutlined />],
-      ].map(([key, name, route, icon]) => ({
-        key: String(key), title: '',
-        onFocus: () => setFocusedNavigation(String(key)),
-        onBlur: () => setFocusedNavigation(undefined),
-        'aria-describedby': key === 'reviews' ? 'navigation-review-count' : undefined,
-        'aria-label': String(name),
-        onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
-          if (event.key === 'Enter' && event.target === event.currentTarget) {
-            event.preventDefault();
-            event.currentTarget.querySelector<HTMLAnchorElement>('a')?.click();
-          }
-        },
-        label: <Tooltip title={rail ? String(name) : null} placement="right" trigger={['hover', 'focus']}
-          open={rail && focusedNavigation === key ? true : undefined}>
-          <span className="shell-navigation-target"><Link className="shell-navigation-link" tabIndex={-1}
-          aria-label={String(name)} aria-describedby={key === 'reviews' ? 'navigation-review-count' : undefined}
-          to={`/project/${encodeURIComponent(tenantId)}/${route}`}>
-          <span className="shell-navigation-icon">{key === 'reviews' && rail
-            ? <Badge count={reviewCountKnown ? pendingCount : '?'} size="small">{icon}</Badge> : icon}</span>
-          <span className="shell-navigation-label">{name}{key === 'reviews' && !rail && <Badge count={reviewCountKnown ? pendingCount : '?'} size="small" />}</span>
-        </Link></span></Tooltip>,
-      }))}
-      style={{ borderRight: 0 }} />
-  );
+  const navigation = <InboxNavigation rail={rail} onCompose={() => setComposeOpen(true)} onNavigate={closeMenu}
+    onExpand={() => setNavigationChoice({path: location.pathname, expanded: true})} />;
   return (
     <Layout className="app-shell">
-      <span id="navigation-review-count" className="sr-only">{reviewCountKnown ? `${pendingCount} pending reviews` : 'Pending review count unavailable'}</span>
       <Header className="app-header">
         <div className="app-brand">
           {useNavigationDrawer && <Button ref={menuButton} aria-label="Open navigation" aria-expanded={menuOpen} icon={<MenuOutlined />} onClick={() => setMenuOpen(true)} />}
@@ -186,6 +154,8 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
           <Typography.Text type="secondary">Tenant</Typography.Text>
           <Input.Search aria-label="Tenant ID" value={tenantDraft} onChange={event => setTenantDraft(event.target.value)} onSearch={applyTenant} enterButton="Use" />
         </div>
+        <Tooltip title="Runners"><Link className="inbox-settings" aria-label="Runners" to={`/project/${encodeURIComponent(tenantId)}/runners`}><CloudServerOutlined /></Link></Tooltip>
+        <Tooltip title="Settings"><Link className="inbox-settings" aria-label="Settings" to={`/project/${encodeURIComponent(tenantId)}/admin`}><SettingOutlined /></Link></Tooltip>
         <AccountMenu onLogout={handleLogout} />
       </Header>
       <Layout className="app-body">
@@ -194,7 +164,7 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
           // our explicit opener afterwards, including interrupted animations.
           if (!open) queueMicrotask(() => menuButton.current?.focus({ preventScroll: true }));
         }}>{navigation}</Drawer>
-          : <Sider className="desktop-navigation" width={220} collapsedWidth={80} collapsed={collapsed} collapsible
+          : <Sider className="desktop-navigation" width={256} collapsedWidth={76} collapsed={rail} collapsible
             theme="light" trigger={<button className="navigation-toggle" aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
               aria-expanded={!collapsed}>{collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}</button>}
             onCollapse={toggleNavigation}>{navigation}</Sider>}
@@ -203,8 +173,8 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
             <Route path="/" element={<Navigate to={`/project/${tenantId}/jobs`} replace />} />
             <Route path="/jobs" element={<JobsListPage key={tenantId} projectId={tenantId} />} />
             <Route path="/project/:projectId/jobs" element={<JobsRoute fallbackProjectId={tenantId} />} />
-            <Route path="/project/:projectId/goals" element={<JobsRoute fallbackProjectId={tenantId} />} />
-            <Route path="/project/:projectId/goals/:goalId" element={<JobsRoute fallbackProjectId={tenantId} />} />
+            <Route path="/project/:projectId/goals" element={<Navigate to={`/project/${encodeURIComponent(tenantId)}/jobs`} replace />} />
+            <Route path="/project/:projectId/goals/:goalId" element={<Alert type="info" message="Goal links have been retired" description={<Link to={`/project/${encodeURIComponent(tenantId)}/jobs`}>Open All jobs</Link>} />} />
             <Route path="/project/:projectId/jobs/:jobId/tree" element={<TreePage />} />
             <Route path="/project/:projectId/jobs/:jobId/story" element={<StoryRoute fallbackProjectId={tenantId} />} />
             <Route path="/reviews" element={<PendingInputsListPage projectId={tenantId} />} />
@@ -219,6 +189,7 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
           </Routes>
         </Content>
       </Layout>
+      <ComposeJob key={JSON.stringify([tenantId, getUserEmail()])} open={composeOpen} onClose={() => setComposeOpen(false)} />
     </Layout>
   );
 }

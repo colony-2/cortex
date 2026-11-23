@@ -1,3 +1,6 @@
+import { useInboxReadReceipt, useOptionalJobInbox } from '../hooks/useJobInbox';
+import { InputRequestReader } from './InputDetailPage';
+import ReviewV2 from './ReviewV2';
 import { dagReturnPath } from '../executionTree/navigation';
 import { TreeWorkspace } from '../executionTree/TreePage';
 import InboxPanel, { inboxCount } from './InboxPanel';
@@ -13,7 +16,7 @@ import { cellLabel } from '../utils/cellPresentation';
 import { resolveArtifactLink, type NavigationIntent } from './review/artifactLinks';
 import ArtifactContents from './ArtifactContents';
 import './JobStoryPage.css';
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import {
   Alert,
@@ -41,7 +44,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import ReactJson from 'react-json-view';
-import { API_BASE, inputActivityService, type FormResponse, useInputActivity, useCurrentInput, parseReviewV2 } from '@colony2/shared';
+import { API_BASE, inputActivityService, type FormResponse, useInputActivity, useCurrentInput } from '@colony2/shared';
 import InputFormRenderer from './InputFormRenderer';
 import AttemptTabs from './AttemptTabs';
 import CancelJobButton from './CancelJobButton';
@@ -50,39 +53,14 @@ import GoalPrompt from './GoalPrompt';
 import { getJob, getJobInputArtifacts, storedDocumentURL, type InputArtifact } from '@colony2/shared/api';
 import type { RecipeJob } from '@colony2/shared/types';
 import { canArchiveImmediately, isFinishedJob, confirmsRecoveryCompletion, jobStatusPresentation, jobStatusValue } from '../utils/jobStatus';
-import { goalPath } from './JobWaitLinks';
-import { jobFilterSearch } from '../utils/jobFilters';
 import { buildStoryTree, storyAttempts, storyNodeName, type ArtifactKey as StoredArtifactKey, type StoryNode, type StoryKind, type StoryNodeRef } from '../utils/storyTree';
 import { adaptInputFormConfig } from '../utils/formAdapter';
-import { reviewActionField } from '../utils/reviewForm';
 import type { RestartScope } from '@colony2/shared';
 import RestartContextPreview from './RestartContextPreview';
 import { buildContextPatch, type PatchLine, type ScopePatchLine } from '../utils/restartPatch';
 import { stringifyJobJSON, parseJobJSON, type RestartContext } from '@colony2/shared';
 
 const { Title, Text } = Typography;
-
-function ReviewInstructions({ text }: { text: string }) {
-  const id = useId();
-  const paragraph = useRef<HTMLParagraphElement>(null);
-  const [expanded, setExpanded] = useState(false);
-  const [overflows, setOverflows] = useState(false);
-  useLayoutEffect(() => {
-    const element = paragraph.current;
-    if (!element) return;
-    const measure = () => setOverflows(element.scrollHeight > parseFloat(getComputedStyle(element).lineHeight) * 3 + 1);
-    measure();
-    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure);
-    observer?.observe(element);
-    window.addEventListener('resize', measure);
-    return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
-  }, [text]);
-  return <>
-    <p ref={paragraph} id={id} className={`pending-request-instructions${expanded ? ' expanded' : ''}`}>{text}</p>
-    {overflows && <button className="pending-request-disclosure" aria-expanded={expanded} aria-controls={id}
-      onClick={() => setExpanded(value => !value)}>{expanded ? 'Show less' : 'Show more'}</button>}
-  </>;
-}
 
 function newId(): string {
   try {
@@ -272,6 +250,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
 }
 
 function JobStoryContent({ projectId }: JobStoryPageProps) {
+  const inbox = useOptionalJobInbox();
   const [activeTreeKey, setActiveTreeKey] = useState<string | null>(null);
   const { jobId: routeJobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
@@ -364,7 +343,8 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   }, [projectId, jobId, artifactIdentity, inputRetry, loadInputInventory]);
 
   const [historyRevision, setHistoryRevision] = useState(0);
-  const historyRefreshKey = useMemo(() => ({ revision: historyRevision, pendingInputs }), [historyRevision, pendingInputs]);
+  const pendingHistoryRevision = stringifyJobJSON(pendingInputs.filter(input => input.id === jobId));
+  const historyRefreshKey = useMemo(() => ({ revision: historyRevision, pending: pendingHistoryRevision }), [historyRevision, pendingHistoryRevision]);
   const dagIdentity = JSON.stringify([projectId, jobId]);
   const [relationshipsVisited, setRelationshipsVisited] = useState<string>();
   useEffect(() => { if (activeTab === 'relationships') setRelationshipsVisited(dagIdentity); }, [activeTab, dagIdentity]);
@@ -407,15 +387,17 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
 
   const { keyToRef, keyToParent, keyFor, ancestorsByKey, projectionByKey, visibleKeyByKey, childrenByNode, renderNodes } = treeModel;
   const [restartGoalMode, setRestartGoalMode] = useState<'continue' | 'new'>('continue');
-  const filterSearch = jobFilterSearch(searchParams);
-  const goalsHome = `/project/${encodeURIComponent(projectId)}/goals`;
-  const suppliedReturn = location.state?.goalsReturnTo || location.state?.returnTo;
-  const returnTo = typeof suppliedReturn === 'string' && [goalsHome, `/project/${encodeURIComponent(projectId)}/jobs`].includes(suppliedReturn.split('?')[0])
-    ? suppliedReturn : `${goalsHome}${filterSearch}`;
+  const goalsHome = `/project/${encodeURIComponent(projectId)}/jobs`;
+  const suppliedReturn = location.state?.inboxReturnTo || location.state?.goalsReturnTo || location.state?.returnTo;
+  const inboxQuery = new URLSearchParams([...searchParams].filter(([key]) => ['inbox', 'cellId', 'q'].includes(key)));
+  const filterSearch = inboxQuery.size ? '?' + inboxQuery : '';
+  const returnTo = typeof suppliedReturn === 'string' && suppliedReturn.split('?')[0] === goalsHome
+    ? suppliedReturn : `${goalsHome}${inboxQuery.size ? '?' + inboxQuery : ''}`;
   const [loadedJob, setLoadedJob] = useState<{
     jobId: string; projectId: string; job?: RecipeJob; observedJob?: RecipeJob;
     status: 'loading' | 'loaded' | 'failed'; error?: string;
   }>();
+  useInboxReadReceipt(projectId, jobId, loadedJob?.projectId === projectId && loadedJob?.jobId === jobId && loadedJob?.status === 'loaded');
   const metadataGeneration = useRef(0);
   const crashMutationBusy = useRef(false);
   const metadata = loadedJob?.jobId === jobId && loadedJob.projectId === projectId ? loadedJob : undefined;
@@ -448,9 +430,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   };
   const currentGoal = job?.goal_id;
   const sourceFinished = metadata?.status === 'loaded' && confirmsRecoveryCompletion(job);
-  const overviewPath = currentGoal ? goalPath(projectId, currentGoal) : undefined;
-  const savedOverview = location.state?.goalReturnTo;
-  const overviewLink = typeof savedOverview === 'string' && savedOverview.split('?')[0] === overviewPath ? savedOverview : overviewPath;
+
 
 
   const selectedRef = useMemo(() => {
@@ -822,18 +802,6 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   );
 
   const pendingInputForm = pendingInputDetails ? adaptInputFormConfig(pendingInputDetails.form, jobId) : null;
-  const isReviewV2 = pendingInputDetails?.form.presentation?.type === 'review/v2';
-  const pendingReviewV2 = useMemo(() => {
-    if (!isReviewV2) return undefined;
-    try { return parseReviewV2(pendingInputDetails?.form.request); }
-    catch { return undefined; } // The review reader explains incompatible declarations.
-  }, [isReviewV2, pendingInputDetails]);
-  const isReview = pendingInputDetails?.form.kind === 'review' || isReviewV2;
-  const requestTitle = [pendingReviewV2?.title, pendingInputDetails?.form.title, pendingInputDetails?.form.question]
-    .find(value => value?.trim())?.trim() || (isReview ? 'Review' : 'Input request');
-  const reviewInstructions = [pendingReviewV2?.question, pendingInputForm && reviewActionField(pendingInputForm)?.label, pendingInputDetails?.form.question]
-    .find(value => value?.trim() && value.trim() !== requestTitle)?.trim() || 'Review the documents and respond.';
-  const reviewDocumentCount = Object.keys(pendingReviewV2?.documents || pendingInputDetails?.form.documents || {}).length;
   const selectedIsPendingNode =
     focusTaskOrdinal !== null &&
     focusTaskOrdinal !== undefined &&
@@ -864,19 +832,24 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   };
 
   return (
-    <div className="app-page job-story-page" style={{ padding: 24 }}>
-      <Space direction="vertical" style={{ width: '100%' }} size="large">
+    <div className="app-page job-story-page inbox-story" style={{ padding: 20 }}>
+      <Space direction="vertical" style={{ width: '100%' }} size="small">
         <div className="job-story-header" data-testid="job-story-header">
-          <Title level={2} style={{ margin: 0, overflowWrap: 'anywhere' }}>
-            {jobTitle ? `Job Story: ${jobTitle}` : 'Job Story'}
-          </Title>
-          <div className="job-story-actions" role="group" aria-label="Job actions" onFocusCapture={event => {
+          <div className="inbox-story-subject"><Link className="inbox-back" aria-label="Back to inbox" to={returnTo}>←</Link><Title level={3} style={{ margin: 0 }}>{(jobTitle || 'Job conversation')}</Title></div>
+          <div className="inbox-story-meta">{job && <><span aria-label="Job cell">{cellLabel(job.cell_name)}</span><Tag color={jobStatusPresentation(terminalStatus || 'unknown').color} aria-label="Job status">{jobStatusPresentation(terminalStatus || 'unknown').label}</Tag></>}</div>
+          <details className="inbox-story-more"><summary>More actions</summary><div className="job-story-actions" role="group" aria-label="Job actions" onClickCapture={event => {
+            if (!(event.target as HTMLElement).closest('button:not([role="switch"]), a')) return;
+            const menu = event.currentTarget.closest('details');
+            if (menu) {
+              menu.open = false;
+              menu.querySelector('summary')?.focus();
+            }
+          }} onFocusCapture={event => {
             (event.target.closest('button, a, .ant-select') || event.target).scrollIntoView({ block: 'nearest', inline: 'nearest' });
           }}>
-            {activeTab === 'env' && <Link className="compact-touch-link" to={returnTo}>Back to Goals</Link>}
+
             <Link className="compact-touch-link" to={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId || '')}/story?tab=dag`} state={location.state}>DAG</Link>
             {treeReturnTo && <Link className="compact-touch-link" to={treeReturnTo}>Return to DAG</Link>}
-            {overviewLink && <Link className="compact-touch-link" to={overviewLink} state={{ goalsReturnTo: returnTo }}>Goal overview</Link>}
             {(terminalStatus ? !isFinishedJob(job!) : story?.status === 'running') ? (
               <Space>
                 <Text type="secondary">Auto-refresh</Text>
@@ -893,7 +866,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                 />
               </Space>
             ) : null}
-            <Button icon={<ReloadOutlined />} onClick={() => load()}>
+            <Button icon={<ReloadOutlined />} onClick={() => void load()}>
               Refresh
             </Button>
             <Button onClick={() => openRestart()}>Restart</Button>
@@ -901,7 +874,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
             {requestId === null && <CancelJobButton key={`${projectId}/${jobId}`} projectId={projectId} jobId={jobId}
               disabled={!jobId || !!job && !!terminalStatus && isFinishedJob(job)}
               onCancelled={async () => { if (alive.current) await Promise.all([load(), refreshPendingInputs()]); }} />}
-          </div>
+          </div></details>
         </div>
 
         {!job && (!metadata || metadata.status === 'loading') && <Text role="status" aria-label="Job details loading">Loading job details...</Text>}
@@ -911,67 +884,26 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
             <div>{metadata.error}</div>
           </div>}
           action={<Button size="small" onClick={() => void loadMetadata()}>Retry</Button>} />}
-        {job && <Tag color={jobStatusPresentation(terminalStatus || 'unknown').color} aria-label="Job status">{jobStatusPresentation(terminalStatus || 'unknown').label}</Tag>}
         {job?.launch_id && <div><Text strong>Last recorded launch ID </Text><Link to={launchPath(projectId, job.launch_id, {jobId})}>{job.launch_id}</Link></div>}
-        {job && <div aria-label="Job cell" style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-          <Text strong>Cell: </Text>{cellLabel(job.cell_name)}
-        </div>}
         <JobDetailTabs activeTab={activeTab} onChange={selectTab} />
         <div className="job-detail-panels">
         <section role="tabpanel" id="job-panel-conversation" aria-labelledby="job-tab-conversation" hidden={activeTab !== 'conversation'} tabIndex={0} className="job-detail-panel">
-        {activeTab === 'conversation' && job && <section aria-label="Job prompt">
-          <Text strong>Prompt</Text>
+        {activeTab === 'conversation' && job && <details className="inbox-original"><summary>Original request</summary><section aria-label="Job prompt">
           {prompt ? <GoalPrompt projectId={projectId} jobId={jobId} text={prompt} inventory={promptInventory} waitingForInventory={inventoryObserved !== artifactIdentity} /> : <p>No prompt recorded for this job.</p>}
-        </section>}
+        </section></details>}
         {selectedInput.discovery.status === 'unavailable' && pendingInputDetails && requestId === null && <Alert type="warning" showIcon message="Pending request availability is unavailable." description={selectedInput.discovery.error} action={<Button onClick={() => void selectedInput.refresh().catch(() => {})}>Retry</Button>} />}
         {wantInput && requestId === null && !pendingInputLoading && !pendingInputDetails && !pendingInputError && <Alert type={selectedInput.discovery.status === 'unavailable' ? 'warning' : 'info'} showIcon
           message={selectedInput.discovery.status === 'unavailable' ? 'Pending request availability is unavailable.' : 'No outstanding input request.'}
           action={<Button onClick={() => void selectedInput.refresh().catch(() => {})}>{selectedInput.discovery.status === 'unavailable' ? 'Retry' : 'Refresh'}</Button>} />}
-        {requestId === null && (pendingInputLoading ? (
-          <Alert type="warning" showIcon message="Loading request…" />
-        ) : pendingInputError ? (
-          <Alert type="warning" showIcon message="Could not load this request" description={pendingInputError}
-            action={<Button onClick={() => void selectedInput.refresh().catch(() => {})}>Retry</Button>} />
-        ) : pendingInputDetails ? (
-          <Alert type="warning" showIcon className="pending-request-callout"
-            message={isReview ? 'Review requested' : 'Your input is needed'}
-            description={<div className="pending-request-layout">
-              <div className="pending-request-content">
-                <div className="pending-request-title">{requestTitle}</div>
-                {isReview && <>
-                  <ReviewInstructions text={reviewInstructions} />
-                  {reviewDocumentCount > 0 && <div className="pending-request-count">{reviewDocumentCount} {reviewDocumentCount === 1 ? 'document' : 'documents'}</div>}
-                </>}
-              </div>
-              {isReview ? <Link className="pending-request-action pending-request-review-link" to={`/project/${encodeURIComponent(projectId)}/reviews/${encodeURIComponent(jobId)}`}>Open review</Link>
-                : <Button type="primary" className="pending-request-action" onClick={() => {
-                  setSearchParams(previous => {
-                    const next = new URLSearchParams(previous);
-                    next.set('input', '1');
-                    next.set('tab', 'conversation');
-                    next.delete('requestId');
-                    next.delete('occurrenceId');
-                    if (focusTaskOrdinal !== null) next.set('taskOrdinal', String(focusTaskOrdinal));
-                    return next;
-                  });
-                  setActiveDetailsTab('pending_input');
-                }}>Open form</Button>}
-            </div>}
-          />
-        ) : null)}
-        {activeTab === 'conversation' && <JobConversation onInventory={receiveInventory} onBack={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('occurrenceId'); next.delete('requestId'); return next; })} tenant={projectId} job={jobId} occurrence={searchParams.get('occurrenceId') ?? undefined}
+        {activeTab === 'conversation' && <JobConversation folded currentRequestId={pendingInputDetails?.form.request_id} cellName={job?.cell_name} onInventory={receiveInventory} onBack={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('occurrenceId'); next.delete('requestId'); return next; })} tenant={projectId} job={jobId} occurrence={searchParams.get('occurrenceId') ?? undefined}
           autoRefresh={autoRefresh} refreshIntervalMs={refreshIntervalMs} requestId={searchParams.get('requestId') ?? undefined}
           refreshKey={historyRefreshKey} onOpen={entry => setSearchParams(previous => {
             const next = new URLSearchParams(previous); next.set('occurrenceId', entry); next.set('tab', 'conversation');
             next.delete('requestId'); next.delete('input'); return next;
           })} />}
-        {wantInput && requestId === null && pendingInputForm && !isReview && (
-          <Card title={pendingInputForm.title || 'Input request'} size="small">
-            <InputFormRenderer key={JSON.stringify([projectId, jobId, pendingInputDetails?.form.request_id ?? selectedInput.readableVersion])} form={pendingInputForm} onSubmit={submitPendingInput}
-              onCancel={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('input'); return next; })}
-              loading={pendingInputSubmitting || !selectedInput.details} />
-          </Card>
-        )}
+        {activeTab === 'conversation' && requestId === null && !searchParams.has('occurrenceId') && (searchParams.get('review_id')
+          ? <ReviewV2 key={JSON.stringify([projectId,jobId,searchParams.get('review_id')])} tenant={projectId} job={jobId} reviewId={searchParams.get('review_id')!} embedded metadata={job} />
+          : (pendingInputDetails || pendingInputLoading || pendingInputError) && <InputRequestReader key={JSON.stringify([projectId,jobId,pendingInputDetails?.form.request_id])} projectId={projectId} embedded metadata={job} />)}
         {job && terminalStatus && (job.store === 'ARCHIVED' || isFinishedJob(job)) && <section aria-label="Job completion">
           <Title level={3}>Completion</Title>
         {failed && <Alert type="error" showIcon
@@ -1480,6 +1412,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         onClose={() => { if (alive.current) setArchiveTarget(undefined); }}
         onComplete={() => {
           if (!alive.current) return;
+          inbox?.refresh();
           navigate(returnTo);
           // Activity refresh is independent of the successful archive and return.
           void refreshPendingInputs().catch(() => {});
@@ -1509,7 +1442,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
             <Button disabled={restartSubmitting || cancellationBusy} onClick={() => void loadMetadata()}>Refresh source</Button>
             {!sourceFinished && <Button disabled={restartSubmitting || cancellationBusy} onClick={() => setCancelSource(true)}>Cancel source</Button>}
             <Button disabled={restartSubmitting || cancellationBusy} onClick={() => setRestartGoalMode('new')}>Start a new goal</Button>
-            {overviewLink && <Link to={overviewLink}>View goal</Link>}
+            <Link to={returnTo}>Back to inbox</Link>
           </Space>
           {savedRestart && <Card size="small" title="Saved restart request">
             <Typography.Paragraph>The following saved request will be retried unchanged, independently of the current editor and source completion.</Typography.Paragraph>

@@ -14,6 +14,7 @@ import { automaticDocuments, reviewPaneDefaults, reviewV2Layout, type ReviewSide
 import ReviewV2Settings from './ReviewV2Settings';
 import './reviewV2.css';
 import ReviewV2Context from './ReviewV2Context';
+import { useReviewDraft, useReviewDraftRef } from '../hooks/useReviewDraft';
 import { useReviewResponsePane } from '../hooks/useReviewResponsePane';
 import { resolveReviewDocumentLocation, reviewDocumentSearch } from '../utils/reviewDocumentLocation';
 
@@ -51,18 +52,19 @@ export function ReviewV2Discussion({turns,request,attachmentURL,declarations,pen
     {!turns.length&&!request.question.trim()&&<p>No questions yet. You can ask about the material before choosing a direction.</p>}
   </section>;
 }
-export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;job:string;reviewId:string;initial?:UserInputDetails}) {
+export default function ReviewV2({tenant,job,reviewId,initial,embedded=false,metadata}: {tenant:string;job:string;reviewId:string;initial?:UserInputDetails;embedded?:boolean;metadata?:RecipeJob}) {
   const [contextJob, setContextJob] = useState<RecipeJob>();
-  const {view,error,busy,refresh,sending,accepted,failed}=useReviewV2(tenant,job,reviewId,initial,contextJob);
+  const {view,error,busy,refresh,sending,accepted,failed}=useReviewV2(tenant,job,reviewId,initial,metadata ?? contextJob);
   const navigate=useNavigate(); const [search]=useSearchParams(); const location=useLocation();
   const reviewsPath=`/project/${encodeURIComponent(tenant)}/reviews${reviewReturnSearch(search)}`;
   const [settingsOpen,setSettingsOpen]=useState(false);
-  const [drafts,setDrafts]=useState<Record<string,unknown>>({});
+  const draftIdentity=JSON.stringify([tenant,job,reviewId]);
+  const [drafts,setDrafts]=useReviewDraft<Record<string,unknown>>(draftIdentity,'settings',{});
   const [draftNotice,setDraftNotice]=useState('');
-  const [direction,setDirection]=useState<string>();
-  const [feedback,setFeedback]=useState('');
-  const [files,setFiles]=useState<File[]>([]);
-  const [composerOpen,setComposerOpen]=useState(false);
+  const [direction,setDirection]=useReviewDraft<string|undefined>(draftIdentity,'direction',undefined);
+  const [feedback,setFeedback]=useReviewDraft(draftIdentity,'feedback','');
+  const [files,setFiles]=useReviewDraft<File[]>(draftIdentity,'files',[]);
+  const [composerOpen,setComposerOpen]=useReviewDraft(draftIdentity,'composer',false);
   const pane=useRef<HTMLDivElement>(null);
   const workspace=useRef<HTMLDivElement>(null);
   const [workspaceSize,setWorkspaceSize]=useState({width:0,narrow:false});
@@ -95,11 +97,11 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
   const feedbackInput=useRef<InputRef>(null);
   const actionButtons=useRef(new Map<string,HTMLButtonElement|HTMLAnchorElement>());
   const [unavailableDocument,setUnavailableDocument]=useState(false);
-  const [submitError,setSubmitError]=useState('');
+  const [submitError,setSubmitError]=useReviewDraft(draftIdentity,'error','');
   const submitBusy=useRef(false);
   const requestRef=useRef<ReviewV2Request>();
-  const submissionAttempt=useRef<{requestId:string;submissionId:string}>();
-  const pendingContribution=useRef<{requestId:string;submissionId:string;direction:string;feedback:string;files:File[];settings:Record<string,unknown>}>();
+  const submissionAttempt=useReviewDraftRef<{requestId:string;submissionId:string}|undefined>(draftIdentity,'attempt',undefined);
+  const pendingContribution=useReviewDraftRef<{requestId:string;submissionId:string;direction:string;feedback:string;files:File[];settings:Record<string,unknown>}|undefined>(draftIdentity,'contribution',undefined);
   const gear=useRef<HTMLButtonElement>(null);
   const fileInput=useRef<HTMLInputElement>(null);
   const current=view?.phase==='actionable'?view.current:undefined;
@@ -167,7 +169,7 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
     }
     requestRef.current=view.request;
   },[view?.request]);
-  if(!view)return <div className="review-page review-v2"><Button onClick={()=>navigate(reviewsPath)}>Back to Reviews</Button>{error?<Alert type="error" message="Review unavailable" description={error} action={<Button loading={busy} onClick={()=>void refresh()}>Refresh</Button>}/>:<p role="status">Loading review…</p>}</div>;
+  if(!view)return <div className={`review-page review-v2${embedded?' embedded-review':''}`}>{!embedded&&<Button onClick={()=>navigate(reviewsPath)}>Back to Reviews</Button>}{error?<Alert type="error" message="Review unavailable" description={error} action={<Button loading={busy} onClick={()=>void refresh()}>Refresh</Button>}/>:<p role="status">Loading review…</p>}</div>;
   const {request,phase}=view;
   const selected=request.directions.find(d=>d.id===direction);
   const policy=selected?reviewV2DirectionPolicy(request,selected):undefined;
@@ -244,10 +246,10 @@ export default function ReviewV2({tenant,job,reviewId,initial}: {tenant:string;j
     contentIdentity: (id: string) => stringifyJobJSON(documents[id]?.stored) ?? id,
     url: (id: string) => documents[id]?.stored ? storedDocumentURL(tenant, documents[id].stored.key) : '',
   };
-  return <div className="review-page review-v2">
-    <div className="review-v2-heading"><Button icon={<ArrowLeftOutlined/>} onClick={()=>navigate(reviewsPath)}>Back to Reviews</Button><a href={`/project/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(job)}/story`}>Job activity</a></div>
-    <ReviewV2Context tenant={tenant} job={job} metadata={view.job} onMetadata={setContextJob}/>
-    <Typography.Title level={2}>{request.title}</Typography.Title>
+  return <div className={`review-page review-v2${embedded?' embedded-review':''}`}>
+    {!embedded&&<div className="review-v2-heading"><Button icon={<ArrowLeftOutlined/>} onClick={()=>navigate(reviewsPath)}>Back to Reviews</Button><a href={`/project/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(job)}/story`}>Job activity</a></div>}
+    {!embedded&&<ReviewV2Context tenant={tenant} job={job} metadata={view.job} onMetadata={setContextJob}/>}
+    <Typography.Title level={embedded?4:2}>{request.title}</Typography.Title>
     {unavailableDocument&&<Alert type="warning" message="The linked document is unavailable. Showing the starting document."/>}
     {!validSelection?<Alert type="warning" message={selection?.kind==='invalid'?'This review link is malformed':'This linked review is unavailable'} action={<Button onClick={()=>navigate({pathname:location.pathname,search:reviewDocumentSearch(location.search,reviewId,undefined,'review_id'),hash:location.hash})}>Open selected review</Button>}/>:<>
     <div className="review-v2-workspace-toolbar" aria-label="Review panes">

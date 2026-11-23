@@ -593,3 +593,18 @@ it('RM-009/010/011 validates required uploads inside confirmation and retains th
   await user.click(screen.getByRole('button',{name:'OK',exact:true}));
   await waitFor(()=>expect(submit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({response:'approve',fields:{decision:'approve'},attachments:{attachment:file}})));
 });
+
+it('retains ordinary response fields across a Settings round trip for the same native request', async () => {
+  const { setUserEmail, clearUserEmail } = await import('@colony2/shared');
+  setUserEmail('draft@example.com');
+  const form: InputForm = { id: 'ordinary', fields: [{ id: 'answer', label: 'Release note', type: 'paragraph_text' }] };
+  const first = render(<InputFormRenderer form={form} draftIdentity="tenant/job/native-one" onSubmit={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText('Release note'), { target: { value: 'Keep this response' } });
+  first.unmount();
+  const second = render(<InputFormRenderer form={form} draftIdentity="tenant/job/native-one" onSubmit={vi.fn()} />);
+  expect(screen.getByLabelText('Release note')).toHaveValue('Keep this response');
+  second.unmount();
+  render(<InputFormRenderer form={form} draftIdentity="tenant/job/native-two" onSubmit={vi.fn()} />);
+  expect(screen.getByLabelText('Release note')).toHaveValue('');
+  clearUserEmail();
+});

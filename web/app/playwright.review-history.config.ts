@@ -11,7 +11,8 @@ export default defineConfig({
   timeout: 90_000,
   projects: [{ name: 'review-history', testMatch: ['review-document-history.spec.ts','review-scroll.spec.ts','review-v2-usability.spec.ts','input-discovery.spec.ts','job-relationships.spec.ts','mobile.spec.ts','navigation.spec.ts','review-queue.spec.ts','story-scroll.spec.ts'], use: { baseURL: 'http://127.0.0.1:15177' } }],
   webServer: [{
-    command: 'pnpm exec vite --host 127.0.0.1 --port 15177 --strictPort',
+    // Keep teardown confined to Vite; the pnpm intermediary can forward SIGTERM.
+    command: 'exec node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 15177 --strictPort',
     url: 'http://127.0.0.1:15177', reuseExistingServer: false,
     env: { VITE_CORTEX_API_BASE: '/api' },
   }],

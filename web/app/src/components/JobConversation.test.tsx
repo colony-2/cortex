@@ -345,3 +345,27 @@ it.each([undefined,null,''])('CV-003 CV-032 missing subject %s uses the explicit
  render(<MergeCard merge={{entry_id:'m',tenant_id:'tenant',job_id:'job',invocation_id:'i',job_attempt:1,task_attempt:1,result_ordinal:2,operation:'merge:merge',candidate_sha:'sha',candidate_subject,publication_branch:'main',publication_disposition:'published',evidence_availability:'recorded'}}/>);
  expect(screen.getAllByText(/Commit message not recorded/)).toHaveLength(2);
 });
+
+describe('inbox folded history', () => {
+ it('folds each retained message and hides the middle of long conversations', async () => {
+  const { FoldedConversationTimeline } = await import('./JobConversation');
+  const entries = ['first', 'second', 'third', 'last'].map(id => ({ ...entry(id), title: { present: true, raw: id } }));
+  const { container } = render(<FoldedConversationTimeline page={page(entries)} entries={entries} cellName="platform" onOpen={vi.fn()} />);
+  expect(screen.getByText('2 earlier events')).toBeVisible();
+  expect(container.querySelectorAll('.inbox-history-message')).toHaveLength(4);
+  expect(container.querySelectorAll('.inbox-history-message[open]')).toHaveLength(0);
+  fireEvent.click(screen.getByText('platform · first'));
+  expect(container.querySelector('.inbox-history-message')).toHaveAttribute('open');
+  fireEvent.click(screen.getByText('2 earlier events'));
+  expect(container.querySelector('.inbox-history-middle')).toHaveAttribute('open');
+ });
+ it('omits the open pending request from prior context and tolerates an absent title', async () => {
+  const { FoldedConversationTimeline } = await import('./JobConversation');
+  const current = { ...entry('current'), request_id: 'native', accepted_response: { present: false } };
+  const previous = { ...entry('previous'), title: undefined } as unknown as HistoryEntry;
+  render(<FoldedConversationTimeline entries={[previous, current]} currentRequestId="native" onOpen={vi.fn()} />);
+  expect(screen.getByText('Cell · review request')).toBeVisible();
+  expect(occurrence('current')).toBeNull();
+  expect(occurrence('previous')).toBeInTheDocument();
+ });
+});

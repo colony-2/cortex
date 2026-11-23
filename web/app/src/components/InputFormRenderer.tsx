@@ -1,3 +1,4 @@
+import { useReviewDraft } from '../hooks/useReviewDraft';
 import { useEffect, useRef, useState } from 'react';
 import { 
   Form, 
@@ -35,6 +36,7 @@ interface InputFormRendererProps {
   loading?: boolean;
   reviewPromptShown?: boolean;
   submissionError?: string | null;
+  draftIdentity?: string;
 }
 
 export default function InputFormRenderer({ 
@@ -45,16 +47,18 @@ export default function InputFormRenderer({
   loading = false,
   reviewPromptShown = false,
   submissionError,
+  draftIdentity,
 }: InputFormRendererProps) {
   // Context is accepted for future use (display/telemetry) even if not rendered currently.
   void context;
   const [antForm] = Form.useForm();
-  const [fileList, setFileList] = useState<Record<string, UploadFile[]>>({});
+  const [fileList, setFileList] = useReviewDraft<Record<string, UploadFile[]>>(draftIdentity, 'legacy-files', {});
   const [validationError, setValidationError] = useState(false);
+  const [draftValues, setDraftValues] = useReviewDraft<Record<string, unknown>>(draftIdentity, 'legacy-values', {});
   const actionField = reviewActionField(form);
   const feedback = reviewFeedbackField(form);
   const conventional = !!conventionalReviewFeedback(form);
-  const [pending, setPending] = useState<string>();
+  const [pending, setPending] = useReviewDraft<string | undefined>(draftIdentity, 'legacy-direction', undefined);
   const actions = useRef<HTMLDivElement>(null);
   const opener = useRef<string>();
   const explicitOK = useRef(false);
@@ -345,6 +349,8 @@ export default function InputFormRenderer({
     <Form
       form={antForm}
       layout="vertical"
+      initialValues={draftValues}
+      onValuesChange={(_, values) => setDraftValues(values)}
       onFinish={handleFinish}
       onSubmitCapture={event => {
         if (actionField && !explicitOK.current) { event.preventDefault(); event.stopPropagation(); }

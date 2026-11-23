@@ -4,11 +4,13 @@ import { Alert, Button, Card, Empty, Input, Select, Space, Table, Tag, Typograph
 import { listCells } from '@colony2/shared/api';
 import type { CortexCell, ListCellsOptions } from '@colony2/shared/types';
 import { useCompact } from '../hooks/useCompact';
-import { cellGoalsPath, cellPath } from '../utils/goalTarget';
+import { useOptionalJobInbox } from '../hooks/useJobInbox';
+import { cellInboxPath, cellPath } from '../utils/goalTarget';
 import CreateCellDialog from './CreateCellDialog';
 
 export default function CellsList({ projectId }: { projectId: string }) {
   const compact = useCompact();
+  const inbox = useOptionalJobInbox();
   const navigate = useNavigate();
   const [cells, setCells] = useState<CortexCell[]>([]);
   const [options, setOptions] = useState<ListCellsOptions>({ state: 'ACTIVE' });
@@ -26,7 +28,7 @@ export default function CellsList({ projectId }: { projectId: string }) {
     return () => { current = false; };
   }, [projectId, options, revision]);
   const change = (filter: Partial<ListCellsOptions>) => setOptions(previous => ({ ...previous, ...filter, pageToken: undefined }));
-  const links = (cell: CortexCell) => <Link className="compact-touch-link" to={cellGoalsPath(projectId, cell.id)}>Goals for this cell</Link>;
+  const links = (cell: CortexCell) => <Link className="compact-touch-link" to={cellInboxPath(projectId, cell.id)}>Jobs for this cell</Link>;
   return <div className="app-page" style={{ padding: 24 }}><Space direction="vertical" size="large" style={{ width: '100%' }}>
     <div className="goal-toolbar"><div><Typography.Title level={3}>Cells</Typography.Title><Typography.Text type="secondary">Registered cells in this tenant</Typography.Text></div>
       <Button type="primary" onClick={() => setCreating(true)}>Create cell</Button></div>
@@ -45,10 +47,11 @@ export default function CellsList({ projectId }: { projectId: string }) {
       : <Table rowKey="id" dataSource={cells} loading={loading} pagination={false} scroll={{ x: 700 }} locale={{ emptyText: 'No cells found' }} columns={[
         { title: 'Name', key: 'name', render: (_, cell) => <Space><Link to={cellPath(projectId, cell.id)}>{cell.name}</Link></Space> },
         { title: 'State', dataIndex: 'state' }, { title: 'Repository', dataIndex: 'repo' }, { title: 'Description', dataIndex: 'description' },
-        { title: 'Goals', key: 'goals', render: (_, cell) => links(cell) },
+        { title: 'Jobs', key: 'jobs', render: (_, cell) => links(cell) },
       ]} />}
     <Space>{options.pageToken && <Button onClick={() => change({})}>First page</Button>}{nextPage && <Button disabled={loading} onClick={() => setOptions(previous => ({ ...previous, pageToken: nextPage }))}>Next cells</Button>}</Space>
   </Space>{creating && <CreateCellDialog projectId={projectId} onClose={() => setCreating(false)} onCreated={cell => {
+    inbox?.registry.reload();
     setCreating(false); navigate(cellPath(projectId, cell.id));
   }} />}</div>;
 }

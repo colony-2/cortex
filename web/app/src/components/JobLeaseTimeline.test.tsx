@@ -106,7 +106,7 @@ it('refresh clears rows and cursor immediately, aborts older work, and ignores l
 });
 it('close cancels supported requests, discards pages, and reopening revalidates without polling', async () => {
   const late=deferred(); getEvents.mockReturnValueOnce(late.promise).mockResolvedValue({events:[]});
-  const view=await mount(); const signal=getEvents.mock.calls[0][3]!; view.unmount();
+  const view=await mount(); await waitFor(()=>expect(getEvents).toHaveBeenCalledTimes(1)); const signal=getEvents.mock.calls[0][3]!; view.unmount();
   expect(signal.aborted).toBe(true);
   await act(async()=>late.resolve({events:[leaseEvent('stale')]}));
   expect(screen.queryByText('Job created')).toBeNull();
@@ -138,7 +138,7 @@ it.each(['tenant','job','options','identity','navigation'])('clears local state 
 });
 it('unmount aborts pending work', async () => {
   getEvents.mockReturnValue(deferred().promise);
-  const view=await mount(); const signal=getEvents.mock.calls[0][3]!;
+  const view=await mount(); await waitFor(()=>expect(getEvents).toHaveBeenCalledTimes(1)); const signal=getEvents.mock.calls[0][3]!;
   view.unmount(); expect(signal.aborted).toBe(true);
 });
 
@@ -153,6 +153,7 @@ it('counts a lease through now, stops at the latest renewal expiry, and fills a 
     ]});
   await mount();
   expect(screen.queryByText('10s')).toBeNull();
+  await screen.findByRole('button',{name:'Load older lease events'});
   await act(async()=>click('Load older lease events'));
   expect(screen.getAllByRole('link',{name:'launch'})).toHaveLength(2);
   expect(screen.getByText('10s')).toBeVisible();

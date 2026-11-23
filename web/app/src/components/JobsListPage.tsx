@@ -1,402 +1,70 @@
-import { requirementSummary } from '../utils/executionRequirements';
-import { cellLabel } from '../utils/cellPresentation';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Alert, Button, Card, Checkbox, Empty, Input, Space, Spin, Table, Typography, theme } from 'antd';
-import { FilterFilled, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
-import type { ColumnsType, TableProps } from 'antd/es/table';
-import type { SortOrder } from 'antd/es/table/interface';
-import { getCell, getJob, listJobs } from '@colony2/shared/api';
-import type { RecipeJobSummary } from '@colony2/shared/types';
-import { jobStatus, jobStatusOptions, canArchiveImmediately } from '../utils/jobStatus';
-import { jobTime } from './JobListDetails';
-import SelectedJobDetails from './SelectedJobDetails';
-import GoalJobOverview, { AttemptStatus } from './GoalJobOverview';
-import { abbreviatePrompt, jobTimestamp, latestActiveJob } from '../utils/goalPresentation';
-import { jobFilterSearch, nextFilterSelection, readJobFilters } from '../utils/jobFilters';
-import JobActionDialog, { type JobAction } from './JobActionDialog';
-import JobWaitLinks, { goalPath, jobPath } from './JobWaitLinks';
-import JobCompletionMessage from './JobCompletionMessage';
-import JobExecutionRequirements from './JobExecutionRequirements';
 import './JobsListPage.css';
-import NewGoalDialog from './NewGoalDialog';
-import CompactFilter from './CompactFilter';
-import CopyJobId from './CopyJobId';
-import { useCompact } from '../hooks/useCompact';
-import { useCells } from '../hooks/useCells';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { Alert, Button, Checkbox, Empty, Input, Spin, Tag } from 'antd';
+import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import { useJobInbox } from '../hooks/useJobInbox';
+import { inboxUpdate, type InboxJob } from '../utils/jobInboxData';
+import { jobStatus } from '../utils/jobStatus';
 import { matchesSearchTerms, searchTerms } from '../utils/searchTerms';
-import { orderGoalRows } from '../utils/goalRowOrder';
+import JobActionDialog, { type JobAction } from './JobActionDialog';
+import { canArchiveImmediately } from '../utils/jobStatus';
+import CopyJobId from './CopyJobId';
+import JobExecutionRequirements from './JobExecutionRequirements';
 
-const { Text, Title } = Typography;
-type Props = { projectId: string; goalId?: string };
-type JobGroup = { key: string; goalId?: string; jobs: RecipeJobSummary[] };
-type Row = { key: string; group: JobGroup; job: RecipeJobSummary };
-const fullPrompt = (group: JobGroup) => latestActiveJob(group.jobs).title || latestActiveJob(group.jobs).prompt || group.jobs.find(job => job.prompt?.trim())?.prompt;
-const rowComparisons = {
-  cell: (a: Row, b: Row) => cellLabel(a.job.cell_name).localeCompare(cellLabel(b.job.cell_name)),
-  prompt: (a: Row, b: Row) => (fullPrompt(a.group) || 'Untitled goal').localeCompare(fullPrompt(b.group) || 'Untitled goal'),
-  status: (a: Row, b: Row) => jobStatus(a.job).label.localeCompare(jobStatus(b.job).label),
-  submitted: (a: Row, b: Row) => jobTimestamp(a.job) - jobTimestamp(b.job),
-};
-function GoalExpander({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
-  const { token } = theme.useToken();
-  return <button type="button" className="goal-expander"
-    aria-label={`${expanded ? 'Collapse' : 'Expand'} goal details`} aria-expanded={expanded}
-    style={{ color: token.colorTextSecondary, '--goal-expander-border': token.colorBorder, '--goal-expander-bg': token.colorBgContainer, '--goal-expander-active': token.colorPrimary } as React.CSSProperties}
-    onClick={event => { event.stopPropagation(); onToggle(); }}>
-    <span className="goal-expander-icon" aria-hidden="true">{expanded ? '−' : '+'}</span>
-  </button>;
-}
-export default function JobsListPage(props: Props) {
-  return <JobsList key={`${props.projectId}/${props.goalId || ''}`} {...props} />;
-}
-
-function JobsList({ projectId, goalId }: Props) {
-  const { token } = theme.useToken();
-  const compact = useCompact();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const homePath = `/project/${encodeURIComponent(projectId)}/goals`;
-  const savedHome = location.state?.goalsReturnTo;
-  const goalsReturnTo = goalId
-    ? (typeof savedHome === 'string' && [homePath, `/project/${encodeURIComponent(projectId)}/jobs`].includes(savedHome.split('?')[0]) ? savedHome : homePath)
-    : location.pathname + location.search;
-  const navigationState = (id?: string) => ({ goalsReturnTo, goalId: id,
-    ...(goalId ? { goalReturnTo: location.pathname + location.search } : {}) });
-  // Keep rows attached to the result set that actually loaded them, including
-  // while a different page is still in flight.
-  const [loadedPage, setLoadedPage] = useState<{ jobs: RecipeJobSummary[]; resultSet?: string }>({ jobs: [] });
-  const { jobs } = loadedPage;
-  const [nextPage, setNextPage] = useState<string>();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>();
-  const [goalAbsenceKnown, setGoalAbsenceKnown] = useState(false);
-  const [controlsOpen, setControlsOpen] = useState(false);
-  const [submitOpen, setSubmitOpen] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [operation, setOperation] = useState<{ action: JobAction; jobIds: string[]; immediate: boolean; job?: RecipeJobSummary } | null>(null);
-  const operationActive = useRef(false);
-  const [operationBusy, setOperationBusy] = useState(false);
-  const startOperation = (action: JobAction) => {
-    if (operationActive.current || loading || !selectedIds.length) return;
-    operationActive.current = true;
-    const jobIds = [...selectedIds];
-    setOperation({ action, jobIds, job: jobIds.length === 1 ? jobs.find(job => job.job_id === jobIds[0]) : undefined, immediate: action === 'archive' && canArchiveImmediately(jobIds, jobs) });
-  };
-  const [refresh, setRefresh] = useState(0);
-  const registry = useCells(projectId, 'ALL', refresh);
-  const loadVersion = useRef(0);
-  const loadedScope = useRef<string>();
-  const emptyPrefix = useRef<{ scope: string; refresh: number; next?: string }>();
-  const inspectionRequests = useRef(new Map<string, ReturnType<typeof getJob>>());
-  const listRequest = useRef<{ key: string; promise: ReturnType<typeof listJobs> }>();
+export default function JobsListPage({ projectId }: { projectId: string; goalId?: string }) {
+  const inbox = useJobInbox();
   const [params, setParams] = useSearchParams();
-  const filters = useMemo(() => readJobFilters(params), [params]);
-  const pageToken = params.get('executionState') === 'cells-v1' ? params.get('pageToken') || undefined : undefined;
-  const rootOnly = !goalId && params.get('scope') === 'roots';
-  const statusesKey = JSON.stringify(filters.status);
-  const cellsKey = JSON.stringify(filters.cell);
-  // Goal overview is history for that goal, including attempts archived from the inbox.
-  const includeHidden = !!goalId || filters.view === 'all';
-  const noStatuses = !goalId && filters.status?.length === 0;
-  const noCells = !goalId && filters.cell?.length === 0;
-  const resultSet = JSON.stringify([projectId, goalId, pageToken, statusesKey, cellsKey, includeHidden, rootOnly]);
-  const search = params.get('q') || '';
-  const terms = searchTerms(search);
-  const sortOrder = (column: string): SortOrder => params.get('sort') === column
-    && (params.get('order') === 'ascend' || params.get('order') === 'descend') ? params.get('order') as SortOrder : null;
-  const expanded = params.getAll('expanded');
-  const changeQuery = (change: (query: URLSearchParams) => void, replace = false) => setParams(previous => {
-    const query = new URLSearchParams(previous); query.set('executionState', 'cells-v1'); change(query); return query;
-  }, { replace });
-
-  // Also clear selections when browser history restores a different local filter.
-  useEffect(() => { setSelectedIds([]); }, [search, cellsKey]);
-
-  useEffect(() => {
-    const version = ++loadVersion.current;
-    setLoading(true); setError(undefined);
-    const scope = JSON.stringify([projectId, goalId, statusesKey, cellsKey, includeHidden, rootOnly]);
-    if (loadedScope.current !== scope) {
-      setLoadedPage({ jobs: [] }); setNextPage(undefined); setSelectedIds([]);
-      inspectionRequests.current.clear();
-      loadedScope.current = scope;
-    }
-    (async () => {
-      const cellNames = !goalId && filters.cell?.length ? await Promise.all(filters.cell.map(async id => (await getCell(projectId, id)).name)) : undefined;
-      if (version !== loadVersion.current) return;
-      const key = JSON.stringify([projectId, goalId, statusesKey, cellsKey, cellNames, includeHidden, rootOnly, pageToken, refresh]);
-      if (listRequest.current?.key !== key) listRequest.current = { key, promise: noStatuses || noCells ? Promise.resolve({ jobs: [] })
-        : listJobs(projectId, { cellNames, goal: goalId, includeHidden, ...(goalId ? {} : { rootOnly }), displayStatus: goalId ? [] : JSON.parse(statusesKey) || [], pageToken }) };
-      const page = await listRequest.current.promise;
-      if (version !== loadVersion.current) return;
-      const retained = goalId ? page.jobs.filter(job => job.goal_id === goalId) : page.jobs;
-      // Only an initial page or the continuation of a proven empty prefix can
-      // establish goal-wide absence. Scope changes and refresh invalidate proof.
-      const prefixKnown = !pageToken || (emptyPrefix.current?.scope === scope
-        && emptyPrefix.current.refresh === refresh && emptyPrefix.current.next === pageToken);
-      emptyPrefix.current = { scope, refresh, next: !retained.length && prefixKnown ? page.next_page_token : undefined };
-      setGoalAbsenceKnown(!!goalId && !retained.length && prefixKnown && !page.next_page_token);
-      setLoadedPage({ jobs: retained, resultSet }); setNextPage(page.next_page_token);
-      setSelectedIds(previous => previous.filter(id => page.jobs.some(job => job.job_id === id)));
-    })().catch(reason => {
-      if (version === loadVersion.current) {
-        setLoadedPage({ jobs: [] }); setNextPage(undefined); setSelectedIds([]);
-        setError(reason instanceof Error ? reason.message : 'Could not load goals');
-      }
-    }).finally(() => { if (version === loadVersion.current) setLoading(false); });
-    return () => { loadVersion.current++; };
-  }, [projectId, goalId, pageToken, statusesKey, cellsKey, includeHidden, rootOnly, noStatuses, noCells, refresh, resultSet]);
-
-  // The backend applies cell selection before pagination and goal grouping.
-  const groups = useMemo(() => {
-    const grouped = new Map<string, JobGroup>();
-    for (const job of jobs) {
-      const goals = goalId ? [goalId] : job.goal_id ? [job.goal_id] : [];
-      for (const id of goals.length ? goals : [undefined]) {
-        const key = id ? `goal:${id}` : `job:${job.job_id}`;
-        const group = grouped.get(key) || { key, goalId: id, jobs: [] };
-        group.jobs.push(job);
-        grouped.set(key, group);
-      }
-    }
-    return [...grouped.values()];
-  }, [jobs, goalId]);
-  const allRows = useMemo<Row[]>(() => groups.map(group => ({ key: group.key, group, job: latestActiveJob(group.jobs) })), [groups]);
-  const activeColumn = Object.keys(rowComparisons).find(column => column === params.get('sort')) as keyof typeof rowComparisons | undefined;
-  const activeOrder = activeColumn ? sortOrder(activeColumn) : null;
-  const compare = activeColumn && activeOrder ? rowComparisons[activeColumn] : undefined;
-  const [ordered, setOrdered] = useState<{ resultSet?: string; rows: Row[]; positions: Map<string, number> }>({ rows: [], positions: new Map() });
-  // Capture complete-page ranks only for data/sort transitions. Search, layout,
-  // selection and expansion never become ordering operations. Commit before
-  // paint so both layouts always display the same transitioned order.
-  useLayoutEffect(() => {
-    setOrdered(previous => ({ resultSet: loadedPage.resultSet, ...orderGoalRows(allRows,
-      previous.resultSet === loadedPage.resultSet ? previous.positions : new Map(), compare, activeOrder || 'ascend') }));
-  }, [allRows, loadedPage.resultSet, compare, activeOrder]);
-  // Search complete prompts (including other attempts) after ordering the page.
-  const rows = noStatuses || noCells ? [] : ordered.rows.filter(({ group }) => group.jobs.some(job =>
-    [job.prompt, job.title].some(text => matchesSearchTerms(terms, text)),
-  ));
-  const statusOptions = jobStatusOptions(jobs, filters.status || []);
-  const cellOptions = registry.cells.map(cell => ({ value: cell.id, label: `${cell.name}${cell.state === 'RETIRED' ? ' (retired)' : ''}` }));
-  for (const id of filters.cell || []) if (!cellOptions.some(option => option.value === id)) cellOptions.push({ value: id, label: `Selected cell (${id})` });
-  const checkboxFilter = (label: string, options: { value: string; label: string }[], selected: string[] | null) => ({
-    filters: options.map(option => ({ text: option.label, value: option.value })),
-    filteredValue: selected ?? options.map(option => option.value), filtered: selected !== null,
-    filterMode: 'tree' as const, filterSearch: true, filterOnClose: false,
-    filterIcon: <FilterFilled aria-label={label} style={{ color: selected === null ? token.colorTextDescription : token.colorPrimary }} tabIndex={0}
-      onKeyDown={(event: React.KeyboardEvent<HTMLSpanElement>) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); event.currentTarget.click(); } }} />,
-  });
-  const setSelection = (ids: string[], selected: boolean) => setSelectedIds(previous => selected
-    ? [...new Set([...previous, ...ids])] : previous.filter(id => !ids.includes(id)));
-  const onTableChange: TableProps<Row>['onChange'] = (_, columnFilters, sorter, extra) => {
-    if (extra.action === 'filter') {
-      const statuses = columnFilters.status?.map(String) || [];
-      const selectedStatuses = nextFilterSelection(statuses, statusOptions.map(option => option.value), filters.status);
-      const cells = columnFilters.cell?.map(String) || [];
-      const selectedCells = nextFilterSelection(cells, cellOptions.map(option => option.value), filters.cell);
-      setSelectedIds([]);
-      changeQuery(query => {
-        if (JSON.stringify(selectedStatuses) !== statusesKey) query.delete('pageToken');
-        query.delete('status'); query.delete('cellId'); query.delete('cellSelection');
-        if (selectedStatuses?.length === 0) query.set('status', 'none');
-        selectedStatuses?.forEach(status => query.append('status', status));
-        if (selectedCells?.length === 0) query.set('cellSelection', 'none');
-        selectedCells?.forEach(cell => query.append('cellId', cell));
-        if (JSON.stringify(selectedCells) !== cellsKey) { query.delete('expanded'); query.delete('pageToken'); }
-      });
-    } else if (extra.action === 'sort') {
-      const active = Array.isArray(sorter) ? sorter[0] : sorter;
-      changeQuery(query => {
-        query.delete('sort'); query.delete('order');
-        if (active.order && active.columnKey) {
-          query.set('sort', String(active.columnKey)); query.set('order', active.order);
-        }
-      });
-    }
-  };
-  const columns: ColumnsType<Row> = [
-    { title: 'Cell', key: 'cell', width: 140, sorter: true, sortOrder: sortOrder('cell'),
-      ...checkboxFilter('Filter cells', cellOptions, filters.cell), render: (_, { job }) => cellLabel(job.cell_name) },
-    { title: 'Goal', key: 'prompt', sorter: true, sortOrder: sortOrder('prompt'), render: (_, row) => { const { group, job } = row; return <Space className="goal-title-content" direction="vertical" size={2}>
-      <CopyJobId key={job.job_id} jobId={job.job_id}
-        before={<GoalExpander expanded={isExpanded(row)} onToggle={() => expand(!isExpanded(row), row)} />}
-        title={<Link className="goal-prompt compact-touch-link" to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)}>
-          {abbreviatePrompt(fullPrompt(group) || 'Untitled goal')}
-        </Link>} />
-      {group.jobs.length > 1 && <Text type="secondary" className="goal-attempt-count">{group.jobs.length} attempts on this page</Text>}
-      <JobWaitLinks job={job} projectId={projectId} />
-      <JobCompletionMessage job={job} />
-      {requirementSummary(job) && <JobExecutionRequirements job={job} projectId={projectId} navigationState={navigationState(group.goalId)} />}
-    </Space>; } },
-    { title: 'Status', key: 'status', width: 180,
-      sorter: true, sortOrder: sortOrder('status'),
-      ...checkboxFilter('Filter statuses', statusOptions, filters.status),
-      render: (_, { job, group }) => <Link className="compact-touch-link" to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)} aria-label={`Job ${job.job_id}: ${jobStatus(job).label}`}><AttemptStatus job={job} /></Link> },
-    { title: 'Submitted', key: 'submitted', width: 185, sorter: true, sortOrder: sortOrder('submitted'), render: (_, { job }) => jobTime(job.submitted_at || job.created_at) || '—' },
-    { title: 'Links', key: 'links', width: 180, render: (_, { job, group }) => <Space direction="vertical" size={2}>
-      {group.goalId && <Link className="compact-touch-link" to={goalPath(projectId, group.goalId)} state={{ goalsReturnTo }}>Goal overview</Link>}
-      {job.parent?.job_id && <Link className="compact-touch-link" to={jobPath(job.parent.tenant_id || projectId, job.parent.job_id)}>Parent</Link>}
-      {job.repo && <RepositoryLink repo={job.repo} />}
-    </Space> },
-  ];
-
-  const isExpanded = (row: Row) => expanded.includes(row.key) || row.group.jobs.some(job => expanded.includes(job.job_id));
-  const expand = (open: boolean, row: Row) => changeQuery(query => {
-    const ids = new Set(query.getAll('expanded')); row.group.jobs.forEach(job => ids.delete(job.job_id));
-    if (open) ids.add(row.key); else ids.delete(row.key);
-    query.delete('expanded'); ids.forEach(id => query.append('expanded', id));
-  }, true);
-  const details = (row: Row) => <GoalJobOverview inspectionRequests={inspectionRequests.current} jobs={row.group.jobs} projectId={projectId} refresh={refresh} navigationState={navigationState(row.group.goalId)} selectedIds={selectedIds} onSelect={setSelection} />;
-  const visibleInspectionIds = goalId && params.get('inspect') ? [params.get('inspect')!] : (goalId ? [{ jobs }] : rows.filter(isExpanded).map(row => row.group))
-    .map(group => group.jobs.find(job => params.getAll('inspect').includes(job.job_id)) || latestActiveJob(group.jobs))
-    .filter(Boolean).map(job => job.job_id);
-  const visibleInspectionKey = JSON.stringify(visibleInspectionIds);
-  useEffect(() => {
-    // Keep requests across presentation changes, but revalidate a selection
-    // after it has actually been hidden, closed, or replaced.
-    for (const key of inspectionRequests.current.keys()) {
-      const [, id, revision] = JSON.parse(key);
-      if (!visibleInspectionIds.includes(id) || revision !== refresh) inspectionRequests.current.delete(key);
-    }
-  }, [visibleInspectionKey, refresh]);
-  const emptyMessage = loading ? 'Loading goals…' : error ? 'Could not load goals.' : noStatuses ? 'No statuses selected' : noCells ? 'No cells selected' : terms.length ? <><span>No goals match this search on this page</span>{nextPage && <div>No matches on this page. More results may be available.</div>}</> : nextPage ? 'No matches on this page. More results may be available.' : rootOnly ? 'No root goals found' : 'No goals found';
-  const changeScope = (roots: boolean) => {
-    setSelectedIds([]); inspectionRequests.current.clear();
-    changeQuery(query => {
-      if (roots) query.set('scope', 'roots'); else query.delete('scope');
-      for (const key of ['pageToken', 'expanded', 'inspect', 'detail']) query.delete(key);
+  const location = useLocation();
+  const [operation, setOperation] = useState<{action: JobAction; ids: string[]; job?: InboxJob}>();
+  const [selected, setSelected] = useState<string[]>([]);
+  useEffect(() => { setSelected([]); }, [location.pathname, location.search]);
+  const folder = params.get('inbox') ?? 'all', cellId = params.get('cellId');
+  const search = params.get('q') ?? '';
+  const label = folder === 'archive' ? 'Archive' : folder === 'cell' ? inbox.ranked.find(cell => cell.id === cellId)?.name ?? 'Cell inbox' : 'All';
+  const rows = useMemo(() => {
+    const terms = searchTerms(search);
+    return inbox.jobs.filter(job => (folder === 'archive' ? job.inboxArchived : !job.inboxArchived && (folder !== 'cell' || job.cell_id === cellId))
+      && [job.title, job.prompt, job.cell_name].some(text => matchesSearchTerms(terms, text))).sort((a, b) => {
+      const time = (job: InboxJob) => Date.parse(inboxUpdate(job, inbox.pending.find(input => input.id === job.job_id)?.requested_at) ?? '') || 0;
+      return time(b) - time(a) || a.job_id.localeCompare(b.job_id);
     });
-  };
-  const applyCompactFilter = (key: 'status' | 'cell', values: string[]) => {
-    // Reuse the table's filter transition, including URL and selection semantics.
-    onTableChange?.({}, {
-      status: key === 'status' ? values : filters.status ?? statusOptions.map(option => option.value),
-      cell: key === 'cell' ? values : filters.cell ?? cellOptions.map(option => option.value),
-    }, {}, { action: 'filter', currentDataSource: rows });
-  };
-  const setSort = (key: string, order: string) => changeQuery(query => {
-    query.delete('sort'); query.delete('order');
-    if (key) { query.set('sort', key); query.set('order', order); }
-  });
+  }, [inbox.jobs, inbox.pending, folder, cellId, search]);
+  return <div className="app-page inbox-page">
+    <div className="inbox-list-toolbar"><h1>{label}</h1><Button icon={<ReloadOutlined />} aria-label="Refresh inbox" loading={inbox.loading} onClick={inbox.refresh} /><span className="inbox-list-count">{inbox.loaded ? `${rows.length} jobs` : 'Loading jobs…'}</span>
+      <Input prefix={<SearchOutlined />} aria-label="Search jobs" placeholder="Search jobs" allowClear value={search} onChange={event => setParams(previous => { const next = new URLSearchParams(previous); if (event.target.value) next.set('q', event.target.value); else next.delete('q'); return next; }, { replace: true })} />
+    </div>
+    {inbox.error && <Alert type="warning" showIcon message={inbox.loaded ? 'Inbox refresh failed; showing the previous result' : 'Inbox unavailable'} description={inbox.error} action={<Button onClick={inbox.refresh}>Retry</Button>} />}
+    {selected.length > 0 && <div className="inbox-selection-actions"><span>{selected.length} selected</span><Button size="small" disabled={!!operation} onClick={() => setOperation({action:'cancel',ids:[...selected]})}>Cancel selected</Button><Button size="small" disabled={!!operation} onClick={() => setOperation({action:'archive',ids:[...selected]})}>Archive selected</Button><Button size="small" onClick={() => setSelected([])}>Clear selection</Button></div>}
+    <Spin spinning={inbox.loading}>
+      <div className="inbox-column-labels"><span><Checkbox aria-label="Select all jobs" disabled={!!operation || !rows.length} checked={!!rows.length && rows.every(job=>selected.includes(job.job_id))} indeterminate={selected.length>0 && !rows.every(job=>selected.includes(job.job_id))} onChange={event=>setSelected(event.target.checked?rows.map(job=>job.job_id):[])} /> Cell</span><span>Job</span><span>Last update</span></div>
+      <ul className="inbox-job-list" aria-label="Jobs">
+        {rows.map(job => {
+          const updated = inboxUpdate(job, inbox.pending.find(input => input.id === job.job_id)?.requested_at);
+          const status = jobStatus(job), title = job.title || job.prompt?.split('\n')[0] || 'Untitled job';
+          const unread = inbox.isUnread(job);
+          return <li key={job.job_id} className={`inbox-job-row${unread ? ' unread' : ''}`}>
+            <Checkbox className="inbox-row-select" aria-label={`Select job ${job.job_id}`} disabled={!!operation} checked={selected.includes(job.job_id)} onChange={event=>setSelected(previous=>event.target.checked?[...previous,job.job_id]:previous.filter(id=>id!==job.job_id))} />
+            <div className="inbox-job-body"><Link className="inbox-job-link" to={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(job.job_id)}/story${location.search}`} state={{ inboxReturnTo: location.pathname + location.search }} onClick={() => inbox.markRead(job)} aria-label={`${job.cell_name}: ${title}`}>
+              <span className="inbox-correspondent" title={job.cell_name}>{unread && <span className="inbox-unread-dot" aria-label="Unread" />}{job.cell_name}</span>
+              <span className="inbox-job-subject"><span className="inbox-job-title">{title}</span><Tag color={status.color}>{status.label}</Tag><span className="inbox-job-snippet">{job.prompt?.replace(/\s+/g, ' ')}</span></span>
+              <time dateTime={updated} title={updated ? new Date(updated).toLocaleString(undefined, { timeZoneName: 'long' }) : 'Execution activity times are not available from this runtime'}>{updated ? new Date(updated).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Update unavailable'}</time>
+            </Link>
+            <JobExecutionRequirements job={job} projectId={projectId} navigationState={{inboxReturnTo:location.pathname + location.search}} />
+            </div>
+            <div className="inbox-row-actions"><CopyJobId jobId={job.job_id} title={null} compact />{!job.inboxArchived && <Button size="small" type="text" aria-label={`Archive job ${job.job_id}`} onClick={() => setOperation({action:'archive', ids:[job.job_id], job})}>Archive</Button>}</div>
+          </li>;
+        })}
+      </ul>
+      {!inbox.loading && !rows.length && <Empty description={inbox.error ? 'Jobs could not be loaded' : search ? 'No jobs match this search' : 'No jobs in this inbox'} />}
+    </Spin>
+    {operation && <JobActionDialog projectId={projectId} action={operation.action} jobIds={operation.ids} job={operation.job} immediate={operation.action==='archive' && canArchiveImmediately(operation.ids,inbox.jobs)} onClose={() => setOperation(undefined)} onComplete={async succeeded => { setSelected(previous=>previous.filter(id=>!succeeded.includes(id))); inbox.refresh(); }} />}
 
-  return <div className="app-page" style={{ padding: 24 }}>
-    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <div className="goal-toolbar">
-        <Title level={3} style={{ margin: 0 }}>{goalId ? 'Goal overview' : 'Goals'}</Title>
-        <Space wrap className="goal-toolbar-actions">
-          {!goalId && <span className="goal-scope-control"><label htmlFor="goal-scope">Goal scope</label>{' '}<select id="goal-scope" className="compact-sort" aria-describedby="goal-scope-help" value={rootOnly ? 'roots' : 'all'} onChange={event => changeScope(event.target.value === 'roots')}>
-            <option value="all">All goals</option><option value="roots">Root goals</option>
-          </select></span>}
-          {!goalId && <select className="compact-sort goal-visibility" aria-label="Job visibility" value={filters.view} onChange={event => {
-            const view = event.target.value;
-            setSelectedIds([]);
-            changeQuery(query => {
-              if (view === 'all') query.set('view', 'all'); else query.delete('view');
-              for (const key of ['pageToken', 'expanded', 'inspect']) query.delete(key);
-            });
-          }}><option value="inbox">Inbox</option><option value="all">All jobs</option></select>}
-          {goalId && <Link className="compact-touch-link" to={goalsReturnTo}>Back to Goals</Link>}
-          {!compact && <Button icon={<ReloadOutlined aria-hidden />} onClick={() => setRefresh(value => value + 1)}>Refresh</Button>}
-          <Button className="goal-new-action" type="primary" icon={<PlusOutlined aria-hidden />} onClick={() => setSubmitOpen(true)}>New goal</Button>
-        </Space>
-      </div>
-      {!goalId && <Text id="goal-scope-help" type="secondary">Shows attempts with no recorded submitting parent; direct restarts can appear here.</Text>}
-      {!goalId && !compact && <Text type="secondary">Cell filtering applies across pages. Search and sorting apply to the current page.</Text>}
-      {registry.error && <Alert type="error" showIcon message={registry.error} action={<Button onClick={registry.reload}>Retry cells</Button>} />}
-      {error && <Alert type="error" showIcon message={error} action={<Space wrap><Button onClick={() => setRefresh(value => value + 1)}>Retry</Button>{rootOnly && <Button onClick={() => changeScope(false)}>All goals</Button>}</Space>} />}
-      {goalId ? <Spin spinning={loading}>
-        <section aria-label="Goal overview">
-          {jobs.length ? <GoalJobOverview requestedSelection={params.get('inspect') || undefined} inspectionRequests={inspectionRequests.current} jobs={jobs} projectId={projectId} refresh={refresh} navigationState={navigationState(goalId)} />
-            : <Empty description={loading ? 'Loading jobs for this goal…' : error ? 'Jobs for this goal unavailable' : nextPage ? 'No retained matches on this page. More results may be available.' : goalAbsenceKnown ? 'No retained jobs for this goal' : 'No retained matches on this page.'} />}
-          {!jobs.length && !loading && params.get('inspect') && <SelectedJobDetails key={params.get('inspect')!} projectId={projectId} jobId={params.get('inspect')!} refresh={refresh} navigationState={navigationState(goalId)} />}
-        </section>
-      </Spin> : <>
-        {compact && <Button aria-expanded={controlsOpen} onClick={() => setControlsOpen(value => !value)}>Filters and sorting{filters.cell !== null || filters.status !== null || search || params.get('sort') ? ' (active)' : ''}</Button>}
-        {(!compact || selectedIds.length > 0 || controlsOpen) && <div className="goal-list-actions">
-          {(!compact || selectedIds.length > 0) && <Space wrap>
-            <Text>{selectedIds.length} selected</Text>
-            <Button danger disabled={loading || !!operation || !selectedIds.length} onClick={() => startOperation('cancel')}>Cancel selected</Button>
-            <Button danger aria-busy={operation?.action === 'archive' && operationBusy || undefined} disabled={loading || !!operation || !selectedIds.length} onClick={() => startOperation('archive')}>Archive selected</Button>
-            {!!selectedIds.length && <Button onClick={() => setSelectedIds([])}>Clear selection</Button>}
-          </Space>}
-          <div hidden={compact && !controlsOpen} className="goal-search-control"><Input className="goal-search" aria-label="Search goals" placeholder="Search full prompts" prefix={<SearchOutlined aria-hidden />} allowClear value={search}
-            onChange={event => {
-              const value = event.target.value;
-              changeQuery(query => { if (value) query.set('q', value); else query.delete('q'); }, true);
-            }} /></div>
-        </div>}
-        {compact ? <Spin spinning={loading}>
-          <div hidden={!controlsOpen}><Space wrap className="compact-controls">
-            <CompactFilter label="Filter statuses" options={statusOptions} selected={filters.status} onApply={values => applyCompactFilter('status', values)} />
-            <CompactFilter label="Filter cells" options={cellOptions} selected={filters.cell} onApply={values => applyCompactFilter('cell', values)} />
-            <select className="compact-sort" aria-label="Sort goals" value={params.get('sort') || ''} onChange={event => setSort(event.target.value, params.get('order') || 'ascend')}>
-              <option value="">Original order</option><option value="prompt">Goal</option><option value="status">Status</option><option value="cell">Cell</option><option value="submitted">Submitted</option>
-            </select>
-            <select className="compact-sort" aria-label="Sort direction" value={params.get('order') || 'ascend'} disabled={!params.get('sort')} onChange={event => setSort(params.get('sort') || '', event.target.value)}><option value="ascend">Ascending</option><option value="descend">Descending</option></select>
-            <Button icon={<ReloadOutlined aria-hidden />} onClick={() => setRefresh(value => value + 1)}>Refresh</Button>
-          </Space><p>Cell filtering applies across pages. Search and sorting apply to the current page.</p></div>
-          {!!rows.length && <Checkbox disabled={loading} checked={rows.every(row => row.group.jobs.every(job => selectedIds.includes(job.job_id)))} indeterminate={!!selectedIds.length && !rows.every(row => row.group.jobs.every(job => selectedIds.includes(job.job_id)))} onChange={event => setSelection(rows.flatMap(row => row.group.jobs.map(job => job.job_id)), event.target.checked)}>Select all goals on this page</Checkbox>}
-          <div className="compact-cards" aria-label="Goals">
-            {rows.map((row, index) => <Card key={row.key} size="small" className="goal-card">
-              <CopyJobId key={row.job.job_id} jobId={row.job.job_id} compact
-                before={<Checkbox disabled={loading} checked={row.group.jobs.every(job => selectedIds.includes(job.job_id))} indeterminate={row.group.jobs.some(job => selectedIds.includes(job.job_id)) && !row.group.jobs.every(job => selectedIds.includes(job.job_id))} onChange={event => setSelection(row.group.jobs.map(job => job.job_id), event.target.checked)} aria-label={row.group.jobs.length === 1 ? `Select job ${row.job.job_id}` : `Select attempts for ${abbreviatePrompt(fullPrompt(row.group) || 'Untitled goal')}`} />}
-                title={<Link className="goal-prompt compact-touch-link" to={`${jobPath(projectId, row.job.job_id)}${jobFilterSearch(params)}`} state={navigationState(row.group.goalId)}>
-                  <span className="goal-card-title">{abbreviatePrompt(fullPrompt(row.group) || 'Untitled goal')}</span>
-                </Link>}
-                after={<GoalExpander expanded={isExpanded(row)} onToggle={() => expand(!isExpanded(row), row)} />} />
-              <div className="goal-card-meta">
-                {columns.find(column => column.key === 'status')?.render?.(undefined, row, index) as React.ReactNode}
-                <Text type="secondary">{cellLabel(row.job.cell_name)}</Text>
-                {row.group.jobs.length > 1 && <Text type="secondary" className="goal-attempt-count">{row.group.jobs.length} attempts on this page</Text>}
-              </div>
-              <JobExecutionRequirements job={row.job} projectId={projectId} navigationState={navigationState(row.group.goalId)} />
-              <JobWaitLinks job={row.job} projectId={projectId} />
-              {isExpanded(row) && <div className="goal-card-secondary">
-                {columns.filter(column => column.key === 'submitted' || column.key === 'links').map((column, columnIndex) => <div key={columnIndex} className="goal-card-field"><Text type="secondary">{String(column.title)}: </Text>{column.render?.(undefined, row, index) as React.ReactNode}</div>)}
-                <JobCompletionMessage job={row.job} />
-              </div>}
-              {isExpanded(row) && details(row)}
-            </Card>)}
-            {!rows.length && !loading && <Empty description={emptyMessage} />}
-          </div>
-        </Spin> :         <Table<Row> rowKey="key" columns={columns} dataSource={rows} loading={loading} pagination={false} size="small" scroll={{ x: 1000 }} tableLayout="fixed"
-          onChange={onTableChange} locale={{ filterCheckAll: 'Select all', filterReset: 'Select none', filterConfirm: 'Apply',
-            emptyText: emptyMessage }}
-          rowSelection={{
-            selectedRowKeys: rows.filter(row => row.group.jobs.every(job => selectedIds.includes(job.job_id))).map(row => row.key),
-            onSelect: (row, selected) => setSelection(row.group.jobs.map(job => job.job_id), selected),
-            onSelectAll: (selected, _, changed) => setSelection(changed.flatMap(row => row.group.jobs.map(job => job.job_id)), selected),
-            getCheckboxProps: row => ({ disabled: loading,
-              indeterminate: row.group.jobs.some(job => selectedIds.includes(job.job_id)) && !row.group.jobs.every(job => selectedIds.includes(job.job_id)),
-              'aria-label': row.group.jobs.length === 1 ? `Select job ${row.job.job_id}` : `Select attempts for ${abbreviatePrompt(fullPrompt(row.group) || 'Untitled goal')}` }),
-          }}
-          expandable={{
-            expandedRowKeys: rows.filter(row => expanded.includes(row.key) || row.group.jobs.some(job => expanded.includes(job.job_id))).map(row => row.key),
-            onExpand: expand,
-            expandedRowRender: row => isExpanded(row) ? details(row) : null,
-            showExpandColumn: false,
-          }} />}
-      </>}
-      <Space>
-        {pageToken && <Button onClick={() => changeQuery(query => { query.delete('pageToken'); })}>First page</Button>}
-        {nextPage && <Button disabled={loading} onClick={() => changeQuery(query => { query.set('pageToken', nextPage); })}>Next jobs</Button>}
-      </Space>
-    </Space>
-    {operation && <JobActionDialog projectId={projectId} {...operation} onBusyChange={setOperationBusy} onClose={() => { operationActive.current = false; setOperation(null); }} onComplete={async succeeded => {
-      setSelectedIds(previous => previous.filter(id => !succeeded.includes(id))); setRefresh(value => value + 1);
-    }} />}
-    {submitOpen && <NewGoalDialog projectId={projectId} filters={filters.cell} onClose={() => setSubmitOpen(false)} onCreated={id => {
-      setSubmitOpen(false); navigate(goalPath(projectId, id), { state: { goalsReturnTo } });
-    }} />}
   </div>;
 }
 
 export function RepositoryLink({ repo }: { repo: string }) {
-  // Never turn arbitrary git selectors into executable browser URLs.
-  const source = repo.replace(/^git\+/, '');
-  const url = /^[A-Za-z0-9.-]+\/[^\s?#]+$/.test(source) ? `https://${source}` : source;
+  const source = repo.replace(/^git\+/, ''), url = /^[A-Za-z0-9.-]+\/[^\s?#]+$/.test(source) ? `https://${source}` : source;
   const label = repo.replace(/\/$/, '').split('/').slice(-1)[0]?.replace(/\.git$/, '') || repo;
-  return /^https?:\/\//i.test(url) ? <a className="compact-touch-link" href={url} target="_blank" rel="noreferrer" title={repo}>{label}</a> : <Text title={repo}>{label}</Text>;
+  return /^https?:\/\//i.test(url) ? <a href={url} target="_blank" rel="noreferrer" title={repo}>{label}</a> : <span title={repo}>{label}</span>;
 }

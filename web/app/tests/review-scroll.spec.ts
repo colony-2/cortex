@@ -7,6 +7,7 @@ test.beforeEach(async ({page, context, baseURL}) => {
   await page.addInitScript(() => { (window as any).EventSource = class { readyState=1; close(){} addEventListener(){} removeEventListener(){} }; });
   await page.route('**/api/projects', r => r.fulfill({json:[{...jobIdentity, tenant_id:'phone'}]}));
   await mockCells(page,['platform']);
+  await page.route('**/jobs?*', route => route.fulfill({ json: { jobs: [] } }));
   await page.route('**/user-inputs/pending', r => r.fulfill({json:[{...jobIdentity,id:'one',client_payload_revision:1,request_id:'request'}]}));
   await page.route('**/jobs/one', r => r.fulfill({json:{...jobIdentity, job_id:'one', status:'ACTIVE', prompt:'Review fixture'}}));
   await page.route('**/jobs/one/children?*', r => r.fulfill({json:{jobs:[]}}));
@@ -227,7 +228,7 @@ for (const width of [320,390,1440]) test(`RM-001/004/006/007/009/012 metadata an
   await page.getByRole('button',{name:'Show documents'}).click();
   await page.getByRole('button',{name:'Reject',exact:true}).click();
   await page.getByLabel('Reason',{exact:true}).fill('Retained response draft');
-  await page.locator('input[type=file]').setInputFiles({name:'notes.md',mimeType:'text/markdown',buffer:Buffer.from('Review annotations')});
+  await page.getByRole('region', { name: 'Review decisions', exact: true }).locator('input[type=file]').setInputFiles({name:'notes.md',mimeType:'text/markdown',buffer:Buffer.from('Review annotations')});
   await expect(page.locator('.review-actions')).toContainText('notes.md');
   await page.getByRole('button',{name:'Hide documents'}).click();
   await page.getByRole('button',{name:'Show documents'}).click();

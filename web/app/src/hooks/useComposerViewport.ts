@@ -14,7 +14,7 @@ export function useComposerViewport(): CSSProperties {
     const update = () => setStyle(read());
     const revealFocus = () => {
       const focused = document.activeElement;
-      if (focused instanceof HTMLElement && focused.closest('.new-goal-composer')) {
+      if (focused instanceof HTMLElement && focused.closest('.new-goal-composer, .inbox-composer')) {
         focused.scrollIntoView({ block: 'nearest' });
       }
     };

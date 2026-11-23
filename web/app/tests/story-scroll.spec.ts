@@ -1,3 +1,4 @@
+import { originalRequest } from './helpers/inbox';
 import { writeFileSync } from 'node:fs';
 import { expect, type Page } from '@playwright/test';
 import { test, setNativeZoom, captureNativeZoom } from './helpers/nativeZoom';
@@ -22,6 +23,7 @@ test.beforeEach(async ({ page, context, baseURL }) => {
   });
   await page.route('**/api/projects', route => route.fulfill({ json: [{ ...jobIdentity, tenant_id: 'phone' }] }));
   await mockCells(page, ['platform']);
+  await page.route('**/jobs?*', route => route.fulfill({ json: { jobs: [] } }));
   await page.route('**/api/projects/*/jobs/one/input-artifacts', route => route.fulfill({ json: { artifacts: [] } }));
   await page.route('**/api/projects/*/jobs/one/children?*', route => route.fulfill({ json: { jobs: [] } }));
   await page.route('**/user-inputs/pending', route => route.fulfill({ json: [] }));
@@ -117,7 +119,12 @@ test.describe('touch', () => {
 test('JS-SC-008,009,010,011,013,014,015 navigation and resize', async ({ page }, info) => {
   await page.setViewportSize({ width: 390, height: 844 }); await page.emulateMedia({ reducedMotion: 'reduce' }); await open(page);
   // Scheduled polling is covered below; isolate navigation/resize-triggered reads.
-  await page.getByRole('switch', { name: 'Auto-refresh', exact: true }).uncheck();
+  const actions = page.locator('.inbox-story-more');
+  await actions.locator(':scope > summary').click();
+  const polling = actions.getByRole('switch', { name: 'Auto-refresh', exact: true });
+  await polling.uncheck();
+  await expect(polling).not.toBeChecked();
+  await actions.locator(':scope > summary').click();
   const row = page.getByRole('region', { name: 'Execution story tree' }).getByText('row-10', { exact: true }); await row.scrollIntoViewIfNeeded();
   const before = await page.evaluate(() => scrollY); await row.click();
   expect(await page.evaluate(() => scrollY)).toBe(before);
@@ -358,7 +365,7 @@ for (const size of [{width:320,height:568},{width:768,height:1024},{width:1100,h
   });
 }
 
-for (const width of [1280, 390]) {
+for (const width of [1280, 390, 320]) {
   test(`JC-016 long job cell wraps between heading and prompt at ${width}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 900 });
     const cell_name = 'cell' + 'x'.repeat(240);
@@ -367,10 +374,13 @@ for (const width of [1280, 390]) {
     } }));
     await page.goto('/project/phone/jobs/one/story');
     const cell = page.getByLabel('Job cell', { exact: true });
-    await expect(cell).toHaveText(`Cell: ${cell_name}`);
-    const heading = await page.getByRole('heading', { name: 'Job Story: Cell wrapping' }).boundingBox();
+    await expect(cell).toHaveText(cell_name);
+    const request = await originalRequest(page);
+    await expect(request).toBeVisible();
+    await expect(request).toHaveText('Job prompt text');
+    const heading = await page.getByRole('heading', { name: 'Cell wrapping' }).boundingBox();
     const box = await cell.boundingBox();
-    const prompt = await page.getByRole('region', { name: 'Job prompt' }).boundingBox();
+    const prompt = await request.boundingBox();
     expect(box!.y).toBeGreaterThanOrEqual(heading!.y + heading!.height);
     expect(box!.y + box!.height).toBeLessThanOrEqual(prompt!.y);
     expect(box!.x).toBeGreaterThanOrEqual(0);
@@ -378,11 +388,23 @@ for (const width of [1280, 390]) {
     const dimensions = await cell.evaluate(element => {
       const range = document.createRange();
       range.selectNodeContents(element);
-      return { client: element.clientWidth, scroll: element.scrollWidth,
+      const metadata = element.parentElement!;
+      const style = getComputedStyle(metadata);
+      const available = metadata.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      return { client: element.clientWidth, scroll: element.scrollWidth, available,
         lines: new Set(Array.from(range.getClientRects(), rect => Math.round(rect.top))).size };
     });
+    const measurements = { width, heading, cell: box, prompt, ...dimensions,
+      documentOverflow: await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) };
+    const path = testInfo.outputPath(`job-cell-${width}.json`);
+    writeFileSync(path, JSON.stringify(measurements, null, 2));
+    await testInfo.attach('Cell wrapping geometry', { path, contentType: 'application/json' });
+    expect(measurements.documentOverflow).toBeLessThanOrEqual(1);
     expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
     expect(dimensions.lines).toBeGreaterThan(1);
+    // A long name gets its own metadata line instead of a character-wide
+    // column beside the completion badge.
+    expect(dimensions.client).toBeGreaterThanOrEqual(dimensions.available - 1);
     await page.screenshot({ path: testInfo.outputPath(`job-cell-${width}.png`), fullPage: true });
   });
 }

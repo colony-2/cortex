@@ -40,6 +40,7 @@ test.describe('Console cleanliness', () => {
       } as any;
     });
 
+    await page.route('**/api/projects', route => route.fulfill({ json: [{ tenant_id: '1' }] }));
     await mockCells(page, ['platform', 'api']);
 
     await page.route(/\/api\/projects\/[^/]+\/jobs(\?.*)?$/, async (route) => {
@@ -70,10 +71,10 @@ test.describe('Console cleanliness', () => {
     await page.goto('/project/1/jobs');
 
     await expect(page).toHaveTitle(/cortex: tenant 1/);
-    await expect(page.getByRole('heading', { name: 'Goals' })).toBeVisible();
-    await expect(page.getByText('Build the platform')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'All' })).toBeVisible();
+    await expect(page.locator('.inbox-job-title').filter({ hasText: 'Build the platform' })).toBeVisible();
 
-    await page.getByRole('link', { name: 'Cells' }).click();
+    await page.goto('/project/1/cells');
 
     await expect(page.getByRole('heading', { name: 'Cells' })).toBeVisible();
     const rows = page.locator('.ant-table-tbody > tr[data-row-key]');

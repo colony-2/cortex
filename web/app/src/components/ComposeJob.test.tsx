@@ -1,0 +1,74 @@
+vi.mock('./GoalPromptEditor', () => ({ default: ({value, onChange, disabled, id, ...props}: any) => <textarea id={id} aria-label={props['aria-label']} value={value || ''} disabled={disabled} onChange={event => onChange(event.target.value)} /> }));
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { beforeEach, expect, it, vi } from 'vitest';
+import { getCell, submitJob } from '@colony2/shared/api';
+import { registryCell } from '../test/cellFixtures';
+import ComposeJob from './ComposeJob';
+const state = vi.hoisted(() => ({ refresh: vi.fn(), reload: vi.fn(), close: vi.fn(), cells: [] as any[] }));
+vi.mock('../hooks/useJobInbox', () => ({ useJobInbox: () => ({ tenant: 'tenant', registry: { cells: state.cells, reload: state.reload }, refresh: state.refresh }) }));
+vi.mock('@colony2/shared/api', async importOriginal => ({ ...await importOriginal<typeof import('@colony2/shared/api')>(), getCell: vi.fn(), submitJob: vi.fn() }));
+beforeEach(() => {
+  vi.clearAllMocks(); state.cells = [registryCell()];
+  vi.mocked(getCell).mockResolvedValue(registryCell());
+  vi.mocked(submitJob).mockResolvedValue({ tenant_id: 'tenant', job_id: 'sent' } as any);
+});
+async function compose() {
+  render(<MemoryRouter><ComposeJob open onClose={state.close} /></MemoryRouter>);
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Recipient cell' }));
+  fireEvent.click(await screen.findByRole('option', { name: 'platform', exact: true }));
+  fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Please build this.' } });
+}
+it('validates body and rechecks the active recipient before submission', async () => {
+  await compose();
+  fireEvent.change(screen.getByLabelText('Message'), { target: { value: '  ' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send', exact: true }));
+  expect(await screen.findByText('Enter a message with text or an image')).toBeVisible();
+  expect(submitJob).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Build' } });
+  vi.mocked(getCell).mockResolvedValue({ ...registryCell(), state: 'RETIRED' });
+  fireEvent.click(screen.getByRole('button', { name: 'Send', exact: true }));
+  await screen.findByText('This cell is retired. Choose an active cell.');
+  expect(submitJob).not.toHaveBeenCalled();
+});
+it('prevents concurrent sends and reuses the same identity after an uncertain response', async () => {
+  await compose();
+  let reject!: (error: Error) => void;
+  vi.mocked(submitJob).mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+  const send = screen.getByRole('button', { name: 'Send', exact: true });
+  fireEvent.click(send); fireEvent.click(send);
+  await waitFor(() => expect(submitJob).toHaveBeenCalledTimes(1));
+  expect(screen.getByRole('button', { name: 'Send', exact: true })).toBe(send);
+  expect(send).toBeDisabled();
+  expect(send).toHaveAttribute('aria-busy', 'true');
+  reject(new Error('Response lost'));
+  await screen.findByText(/Response lost.*same job ID/);
+  expect(send).toBeEnabled();
+  expect(send).toHaveAttribute('aria-busy', 'false');
+  const first = vi.mocked(submitJob).mock.calls[0][1].job_id;
+  fireEvent.click(send);
+  await waitFor(() => expect(submitJob).toHaveBeenCalledTimes(2));
+  expect(vi.mocked(submitJob).mock.calls[1][1].job_id).toBe(first);
+  await waitFor(() => expect(state.close).toHaveBeenCalledTimes(1));
+  expect(state.refresh).toHaveBeenCalledTimes(1);
+});
+it('keeps selected files and forwards the original file objects with the prompt', async () => {
+  await compose();
+  const file = new File(['evidence'], 'notes.txt', { type: 'text/plain' });
+  fireEvent.change(screen.getByLabelText('Job attachments'), { target: { files: [file] } });
+  expect(screen.getByText('notes.txt')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Send', exact: true }));
+  await waitFor(() => expect(submitJob).toHaveBeenCalledWith('tenant', expect.objectContaining({ inputs: { prompt: 'Please build this.', type: 'build' } }), [file]));
+});
+
+it('refreshes recipients on reopening while keeping the draft', async () => {
+  const view = render(<MemoryRouter><ComposeJob open={false} onClose={state.close} /></MemoryRouter>);
+  expect(state.reload).not.toHaveBeenCalled();
+  view.rerender(<MemoryRouter><ComposeJob open onClose={state.close} /></MemoryRouter>);
+  expect(state.reload).toHaveBeenCalledTimes(1);
+  fireEvent.change(screen.getByLabelText('Message'), {target:{value:'Keep my draft'}});
+  view.rerender(<MemoryRouter><ComposeJob open={false} onClose={state.close} /></MemoryRouter>);
+  view.rerender(<MemoryRouter><ComposeJob open onClose={state.close} /></MemoryRouter>);
+  expect(state.reload).toHaveBeenCalledTimes(2);
+  expect(screen.getByLabelText('Message')).toHaveValue('Keep my draft');
+});

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { listCells } from '@colony2/shared/api';
 import type { CortexCell } from '@colony2/shared/types';
 
@@ -28,5 +28,6 @@ export function useCells(projectId: string, state: 'ACTIVE' | 'ALL', revision = 
       .finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
   }, [projectId, state, revision, retry]);
-  return { cells, loading, error, reload: () => setRetry(value => value + 1) };
+  const reload = useCallback(() => setRetry(value => value + 1), []);
+  return { cells, loading, error, reload };
 }

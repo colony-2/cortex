@@ -26,17 +26,17 @@ async function fixture(page:Page){
    return route.fulfill({json:{jobs}});
   }
   if(p.endsWith('/children'))return route.fulfill({json:{jobs:[]}});
-  if(p.endsWith('/conversation'))return route.fulfill({json:{entries:[],available:true}});
+  if(p.endsWith('/conversation'))return route.fulfill({json:{tenant_id:'recovery',job_id:p.includes('accepted-successor')?'accepted-successor':'source',snapshot_token:'recovery-snapshot',snapshot_revision:1,completeness:'complete',activity:{availability:'available',value:detail},entries:[]}});
   if(p.endsWith('/input-artifacts'))return route.fulfill({json:{artifacts:[]}});
   return route.fulfill({json:{}});
  });
  return {posts,cancellations,reads,terminal:()=>{detail={...detail,status:'COMPLETED',store:'ACTIVE'};},detailError:(value:number)=>{detailError=value;},cancelError:(value:number)=>{cancellationError=value;},restart:(value:string)=>{restartFailure=value;}};
 }
-async function capture(page:Page,name:string){
+async function capture(page:Page,name:string,preserveViewport=false){
  const directory=process.env.CORTEX_REVIEW_ARTIFACTS;
  if(!directory)return;
  mkdirSync(directory,{recursive:true});
- if(!name.endsWith('phone')) { await page.setViewportSize({width:1440,height:2200});await page.locator('.ant-modal-body').evaluateAll(elements=>elements.forEach(element=>{element.scrollTop=0;})); }
+ if(!preserveViewport && !name.endsWith('phone')) { await page.setViewportSize({width:1440,height:2200});await page.locator('.ant-modal-body').evaluateAll(elements=>elements.forEach(element=>{element.scrollTop=0;})); }
  // A visible dialog may still have zero opacity during its opening animation.
  // Capture the settled application state, including nested cancellation dialogs.
  await page.evaluate(async()=>{
@@ -46,8 +46,12 @@ async function capture(page:Page,name:string){
  });
  await page.screenshot({path:path.join(directory,name+'.png'),fullPage:true,animations:'disabled'});
 }
-async function open(page:Page, sourceAvailable=true){
+async function showActions(page:Page, sourceAvailable=true){
+ await page.locator('.inbox-story-more > summary').click();
  if(sourceAvailable) await page.getByRole('switch',{name:'Auto-refresh'}).uncheck();
+}
+async function open(page:Page, sourceAvailable=true){
+ await showActions(page, sourceAvailable);
  await page.getByRole('button',{name:'Restart',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Restart Job'});
  await dialog.getByRole('combobox',{name:'Restart point'}).click();
@@ -116,7 +120,7 @@ test(`R18 accepted fresh running-source continuation from ${entry} navigates wit
  let dialog;
  if(entry==='header') dialog=await open(page);
  else {
-  await page.getByRole('switch',{name:'Auto-refresh'}).uncheck();
+  await showActions(page);
   await page.getByRole('tab',{name:'Trace',exact:true}).click();
   await page.getByRole('tree').getByText('Validation',{exact:true}).click();
   await page.getByRole('button',{name:'Restart job',exact:true}).click();
@@ -162,69 +166,106 @@ test('R06 R09 denied details permit explicit new goal and lost responses retain 
  expect(JSON.parse(f.posts[0]).goal.mode).toBe('new');expect(f.cancellations).toHaveLength(1);
 });
 
-test('C1-M01 M05 M06 M08 X02 X03 V03 primary navigation, recorded identity and literal displaced goals',async({page})=>{
+test('C1-M01 M05 M06 M08 X02 X03 V03 inbox return, recorded identity and explicit goal-link retirement',async({page})=>{
  await fixture(page);await page.setViewportSize({width:1280,height:900});
  await page.goto('/project/recovery/jobs/source/story');
  // Supply remembered former membership through browser navigation state.
  await page.evaluate(()=>{history.replaceState({usr:{goalId:'former-A',goalsReturnTo:'/project/recovery/jobs?view=all'},key:'fixture'},'',location.href);});
  await page.reload();
- await expect(page.getByRole('link',{name:'Goal overview',exact:true})).toHaveAttribute('href','/project/recovery/goals/chosen-primary');
+ await expect(page.getByRole('link',{name:'Back to inbox',exact:true})).toHaveAttribute('href','/project/recovery/jobs?view=all');
  await page.getByRole('tab',{name:'Relationships',exact:true}).click();
  const siblings=page.getByRole('region',{name:'Other attempts at this goal'});
+ await expect(siblings.getByRole('link',{name:'Goal · chosen-primary',exact:true})).toHaveAttribute('href','/project/recovery/goals/chosen-primary');
  await expect(siblings.getByRole('link',{name:'Recover release validation',exact:true})).toHaveCount(2);
  await expect(page.getByRole('link',{name:'Job · recorded-parent'})).toHaveAttribute('href','/project/recorded-tenant/jobs/recorded-parent/story');
  await expect(page.getByRole('link',{name:'Goal · former-A'})).toHaveAttribute('href','/project/recorded-tenant/goals/former-A');
  await capture(page,'11-returned-primary-navigation');
  await page.goto('/project/recovery/goals/former-A');
- await expect(page.getByText('No retained jobs for this goal',{exact:true})).toBeVisible();
+ await expect(page.getByText('Goal links have been retired',{exact:true})).toBeVisible();
+ await expect(page.getByRole('link',{name:'Open All jobs',exact:true})).toHaveAttribute('href','/project/recovery/jobs');
+ await expect(page.getByRole('region',{name:'Other attempts at this goal'})).toHaveCount(0);
  await expect(page).toHaveURL(/goals\/former-A$/);await capture(page,'12-displaced-goal-empty');
  await page.setViewportSize({width:390,height:844});
  await capture(page,'13-displaced-goal-phone');
 });
 
+// Goal-detail pagination was retired with the inbox replacement. Keep coverage
+// of opaque cursors and exhausted suffixes at the current full-scan boundary.
 for (const phone of [false, true]) {
- test(`C1-M08 M09 REV-001 exhausted suffix and direct cursor entry stay page-local (${phone ? 'phone' : 'desktop'})`, async ({ page }) => {
+ test(`C1-M08 M09 REV-001 legacy cursors retire explicitly and inbox scans retain jobs after empty suffixes (${phone ? 'phone' : 'desktop'})`, async ({ page }) => {
   await fixture(page);
   await page.setViewportSize(phone ? { width: 390, height: 844 } : { width: 1440, height: 1800 });
   const cursor = 'opaque+/=';
   const goal = '/project/recovery/goals/paged-goal';
   const cursorURL = goal + '?executionState=cells-v1&pageToken=' + encodeURIComponent(cursor);
+  // Both jobs have archived execution records; only hidden membership puts a
+  // job in Archive. The visible completed job must remain in All.
   const retained = { ...source, goal_id: 'paged-goal', status: 'COMPLETED', store: 'ARCHIVED' };
-  const reads: string[] = [];
-  await page.route('**/api/projects/recovery/jobs/source', route => route.fulfill({ json: retained }));
-  // Controlled HTTP summaries model backend primary filtering: the first page
-  // retains a member; an excluded-only suffix returns an empty exhausted page.
+  const hidden = { ...retained, job_id: 'hidden', title: 'Hidden validation' };
+  const reads: { token: string; inclusive: boolean }[] = [];
   await page.route('**/api/projects/recovery/jobs?**', async route => {
    const url = new URL(route.request().url());
-   expect(url.searchParams.get('goal')).toBe('paged-goal');
-   const token = url.searchParams.get('pageToken');
-   reads.push(token || '');
+   expect(url.searchParams.has('goal')).toBe(false);
+   const token = url.searchParams.get('pageToken') || '';
+   const inclusive = url.searchParams.get('includeHidden') === 'true';
+   reads.push({ token, inclusive });
    if (token) {
     expect(token).toBe(cursor);
     return route.fulfill({ json: { jobs: [] } });
    }
-   return route.fulfill({ json: { jobs: [retained], next_page_token: cursor } });
+   return route.fulfill({ json: { jobs: inclusive ? [retained, hidden] : [retained], next_page_token: cursor } });
   });
   await page.goto(goal);
-  await expect(page.locator('.goal-full-prompt')).toHaveText(source.prompt);
-  if (!phone) await capture(page, '14-retained-first-page');
-  await page.getByRole('button', { name: 'Next jobs', exact: true }).click();
-  await expect(page.getByText('No retained matches on this page.', { exact: true })).toBeVisible();
-  await expect(page.getByText('No retained jobs for this goal', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Goal links have been retired', { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(goal);
+  await page.getByRole('link', { name: 'Open All jobs', exact: true }).click();
+  const rows = page.getByRole('list', { name: 'Jobs' }).getByRole('listitem');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.getByRole('link', { name: 'platform: Recover release validation', exact: true })).toHaveAttribute('href', '/project/recovery/jobs/source/story');
+  await expect(page).toHaveURL('/project/recovery/jobs');
   await expect(page.getByRole('button', { name: 'Next jobs', exact: true })).toHaveCount(0);
-  await expect(page).toHaveURL(cursorURL);
-  await expect(page.getByRole('button', { name: 'First page', exact: true })).toBeVisible();
-  await capture(page, phone ? '16-empty-final-phone' : '15-empty-final-desktop');
-  // A reload mounts at a noninitial cursor without knowledge of earlier pages.
+  expect(reads).toEqual(expect.arrayContaining([
+   { token: '', inclusive: false }, { token: cursor, inclusive: false },
+   { token: '', inclusive: true }, { token: cursor, inclusive: true },
+  ]));
+  await capture(page, phone ? '16-retained-inbox-phone' : '15-retained-inbox-desktop');
+  // A direct old cursor URL and reload must stay explicit: never reinterpret
+  // that goal cursor as an inbox cursor or silently pick another goal.
+  await page.goto(cursorURL);
   await page.reload();
-  await expect(page.getByText('No retained matches on this page.', { exact: true })).toBeVisible();
-  await expect(page.getByText('No retained jobs for this goal', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Goal links have been retired', { exact: true })).toBeVisible();
   await expect(page).toHaveURL(cursorURL);
-  await capture(page, phone ? '18-direct-cursor-phone' : '17-direct-cursor-desktop');
-  await page.getByRole('button', { name: 'First page', exact: true }).click();
-  await expect(page.locator('.goal-full-prompt')).toHaveText(source.prompt);
-  await expect(page).toHaveURL(goal + '?executionState=cells-v1');
-  await expect(page.getByRole('button', { name: 'Next jobs', exact: true })).toBeEnabled();
-  expect(reads).toEqual(['', cursor, cursor, '']);
+  await page.getByRole('link', { name: 'Open All jobs', exact: true }).click();
+  await expect(rows).toHaveCount(1);
+  if (phone) await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Inboxes' }).getByRole('link', { name: 'Archive', exact: true }).click();
+  await expect(rows).toHaveCount(1);
+  await expect(rows.getByRole('link', { name: 'platform: Hidden validation', exact: true })).toHaveAttribute('href', '/project/recovery/jobs/hidden/story?inbox=archive');
+  await expect(page).toHaveURL('/project/recovery/jobs?inbox=archive');
+ });
+}
+
+for (const width of [1280, 390, 320]) {
+ test(`compact story actions remain reachable without overlap at ${width}px`, async ({ page }) => {
+  await fixture(page);
+  await page.setViewportSize({ width, height: 900 });
+  await page.goto('/project/recovery/jobs/source/story');
+  await showActions(page);
+  const menu = page.getByRole('group', { name: 'Job actions', exact: true });
+  const bounds = await menu.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+  expect(await menu.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  const refresh = menu.getByRole('switch', { name: 'Auto-refresh', exact: true });
+  await expect(refresh).not.toBeChecked();
+  await refresh.check();
+  await expect(refresh).toBeChecked();
+  await menu.getByTitle('5s', { exact: true }).click();
+  await page.locator('.ant-select-dropdown:visible').getByText('10s', { exact: true }).click();
+  await expect(menu.getByTitle('10s', { exact: true })).toBeVisible();
+  if (width !== 320) await capture(page, width === 390 ? 'inbox-actions-phone' : 'inbox-actions-desktop', true);
+  await menu.getByRole('button', { name: 'Restart', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Restart Job' })).toBeVisible();
  });
 }

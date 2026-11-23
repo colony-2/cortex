@@ -75,7 +75,8 @@ for (const width of [1440, 390]) test(`Reviews controls and return navigation at
  let rows=[make('alpha','Alpha food at the bar','Zeta','2026-11-08T12:00:00Z'), make('zeta','Zeta food at the bar','Alpha','2026-11-10T10:00:00Z'), make('unknown','Middle food at the bar','Alpha'), make('split','Food','Other',undefined,'bar')];
  await page.route('**/api/projects', route=>route.fulfill({json:[{tenant_id:'controls'}]}));
  await page.route('**/user-inputs/pending', route=>route.fulfill({json:rows}));
- await page.route('**/cells**', route=>route.abort());
+ await mockCells(page, ['Unrelated registry cell']);
+ await page.route('**/jobs?*', route=>route.fulfill({json:{jobs:[]}}));
  await page.route('**/user-inputs/alpha', route=>route.request().method()==='POST' ? route.fulfill({json:{}}) : route.fulfill({json:{jobId:'alpha',status:'pending',startTime:'2026-11-08T12:00:00Z',task_ordinal:2,form:{question:'Confirm food?',type:'short_answer'}}}));
  await page.route('**/jobs/alpha', route=>route.fulfill({json:{...jobIdentity,job_id:'alpha',tenant_id:'controls',status:'READY',store:'ACTIVE',prompt:'Confirm food'}}));
  await page.route('**/jobs/alpha/children?*', route=>route.fulfill({json:{jobs:[]}}));
@@ -83,7 +84,11 @@ for (const width of [1440, 390]) test(`Reviews controls and return navigation at
  await page.goto('/project/controls/reviews?unrelated=keep');
  const cards=page.locator('.review-page .ant-list .ant-card');
  await expect(cards).toHaveCount(4);
- expect(reads.filter(path=>/\/cells|\/jobs\/|\/user-inputs\/(?!pending)/.test(path))).toEqual([]);
+ // Registry and full-list scans belong to the inbox shell; reviews must not fetch per-job details.
+ await expect(page.locator('.inbox-nav-notice').filter({hasText:'Cells unavailable'})).toHaveCount(0);
+ await expect.poll(()=>reads.filter(path=>path.endsWith('/jobs')).length).toBeGreaterThanOrEqual(3);
+ expect(reads.filter(path=>/\/jobs\/|\/user-inputs\/(?!pending)/.test(path))).toEqual([]);
+ await page.waitForLoadState('networkidle');
  const baseline=reads.length;
  const controls=page.getByRole('button',{name:/Filters and sorting/});
  if(width<768){
@@ -94,7 +99,9 @@ for (const width of [1440, 390]) test(`Reviews controls and return navigation at
  await search.fill('foo bar');
  await expect(cards).toHaveCount(3);
  await expect(page.getByText('Showing 3 of 4 pending requests')).toBeVisible();
- await expect(page.getByText('4 pending reviews', { exact: true })).toHaveCount(1);
+ if(width<768) await page.getByRole('button',{name:'Open navigation',exact:true}).click();
+ await expect(page.getByRole('navigation',{name:'Inboxes'}).getByRole('link',{name:'All',exact:true}).locator('.inbox-badge')).toHaveAttribute('aria-label','4 pending responses');
+ if(width<768) await page.keyboard.press('Escape');
  const sort=page.getByRole('combobox',{name:'Sort by'});
  for(const [value,ids] of [
   ['requested:ascend',['alpha','zeta','unknown']],['requested:descend',['zeta','alpha','unknown']],
@@ -109,7 +116,8 @@ for (const width of [1440, 390]) test(`Reviews controls and return navigation at
  const picker=page.getByRole('button',{name:'Cells: All',exact:true});
  await picker.focus(); await page.keyboard.press('Enter');
  let dialog=page.getByRole('dialog');
- // Choices include the row excluded by search.
+ // Choices come from pending rows, including rows excluded by search, not shell registry.
+ await expect(dialog.getByRole('checkbox',{name:'Unrelated registry cell',exact:true})).toHaveCount(0);
  await expect(dialog.getByRole('checkbox',{name:'Other',exact:true})).toBeChecked();
  await dialog.getByRole('button',{name:'Select none'}).click();
  await page.keyboard.press('Escape');
@@ -166,7 +174,7 @@ for (const width of [1440, 390]) test(`Reviews controls and return navigation at
  await page.getByRole('button',{name:/Refresh/}).click();
  await expect(cards).toHaveCount(1); await expect(cards.first()).toContainText('Job ID: refreshed');
  await expect(sort).toHaveValue('title:descend'); await expect(search).toHaveValue('foo bar');
- expect(reads.some(path=>path.includes('/cells'))).toBe(false);
+ expect(reads.some(path=>path.includes('/cells'))).toBe(true);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  // A tenant change starts with its own default view and hides old rows.
  await page.route('**/api/projects/other/jobs?*', route => route.fulfill({ json: { jobs: [] } }));
@@ -174,8 +182,8 @@ for (const width of [1440, 390]) test(`Reviews controls and return navigation at
  await page.getByRole('searchbox',{name:'Tenant ID',exact:true}).fill('other');
  await page.getByRole('button',{name:'Use',exact:true}).click();
  await expect(page).toHaveURL(/\/project\/other\/jobs$/);
- if (width < 768) await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
- await page.getByRole('link', { name: 'Reviews', exact: true }).click();
+ // The retained Reviews route is directly addressable; the inbox replaces its sidebar entry.
+ await page.goto('/project/other/reviews');
  await expect(page).toHaveURL(/\/project\/other\/reviews$/);
  await expect(cards).toHaveCount(2);
  if (width < 768) await controls.click();

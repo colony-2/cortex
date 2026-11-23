@@ -41,10 +41,11 @@ function Timeline({ projectId, jobId, createdAt, pageSize, expanded = false }: P
   const pending = useRef<AbortController>();
   const invalidate = () => { ++generation.current; pending.current?.abort(); pending.current = undefined; };
   useEffect(() => {
-    // Let StrictMode's setup/cleanup replay finish before starting a read.
-    let active = true;
-    if (expanded) queueMicrotask(() => { if (active) load(undefined, true); });
-    return () => { active = false; invalidate(); };
+    // Let StrictMode replay and the shell's identity remount settle together.
+    // A child identity update can otherwise start a read that its parent
+    // immediately cancels while replacing the inbox provider.
+    const initialRead = expanded ? window.setTimeout(() => load(undefined, true), 0) : undefined;
+    return () => { window.clearTimeout(initialRead); invalidate(); };
   }, [expanded]);
 
   function load(token?: string, reset = false) {

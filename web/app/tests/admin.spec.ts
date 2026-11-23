@@ -11,8 +11,7 @@ for (const width of [390, 1440]) {
   // LAN deployments may use plain HTTP, where randomUUID is unavailable.
   await page.addInitScript(() => Object.defineProperty(window.crypto, 'randomUUID', { value: undefined, configurable: true }));
   await page.goto(`/project/${tenant}/cells`);
-  if (width < 768) await page.getByRole('button', { name: 'Open navigation' }).click();
-  await page.getByRole('link', { name: 'Admin', exact: true }).click();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Admin', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Configs', exact: true }).click();
   await page.getByRole('button', { name: 'Add config', exact: true }).click();

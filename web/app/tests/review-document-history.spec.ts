@@ -25,6 +25,7 @@ async function fixture(page: Page) {
   await page.route('**/api/**', route => route.fulfill({ status: 404, json: { error: 'No fixture for this endpoint' } }));
   await page.route('**/api/projects', route => route.fulfill({ json: [{ ...jobIdentity, tenant_id: 'history' }] }));
   await mockCells(page, ['platform']);
+  await page.route('**/jobs?*', route => route.fulfill({ json: { jobs: [] } }));
   await page.route('**/user-inputs/pending', route => route.fulfill({ json: [{ ...jobIdentity, id: 'one', client_payload_revision: 1, request_id: requestId }] }));
   await page.route('**/jobs/one', route => route.fulfill({ json: { ...jobIdentity, job_id: 'one', status: 'ACTIVE', prompt: 'Review document navigation' } }));
   await page.route('**/jobs/one/children?*', route => route.fulfill({ json: { jobs: [] } }));
@@ -78,8 +79,8 @@ for (const width of [1440, 390]) test(`H28-31 document history and response draf
   await selected(page, 0);
   await page.getByRole('button', { name: 'Reject', exact: true }).click();
   await page.getByLabel('Reason', { exact: true }).fill('Keep this response while I compare documents.');
-  await page.locator('input[type=file]').setInputFiles({ name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('Review annotations') });
-  await page.locator('input[type=file]').evaluate(element => element.setAttribute('data-history-upload', 'retained'));
+  await page.getByRole('region', { name: 'Review decisions', exact: true }).locator('input[type=file]').setInputFiles({ name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('Review annotations') });
+  await page.getByRole('region', { name: 'Review decisions', exact: true }).locator('input[type=file]').evaluate(element => element.setAttribute('data-history-upload', 'retained'));
   await catalog(page, 1, mobile);
   await catalog(page, 2, mobile);
   for (const [direction, index] of [['back', 1], ['back', 0], ['forward', 1], ['forward', 2]] as const) {
@@ -87,7 +88,7 @@ for (const width of [1440, 390]) test(`H28-31 document history and response draf
     await selected(page, index);
     await expect(page.getByLabel('Reason', { exact: true })).toHaveValue('Keep this response while I compare documents.');
     await expect(page.locator('.review-actions')).toContainText('notes.md');
-    await expect(page.locator('input[type=file]')).toHaveAttribute('data-history-upload', 'retained');
+    await expect(page.getByRole('region', { name: 'Review decisions', exact: true }).locator('input[type=file]')).toHaveAttribute('data-history-upload', 'retained');
     if (direction === 'back' && index === 1) await page.screenshot({ path: testInfo.outputPath(`history-back-draft-${width}.png`), fullPage: true });
   }
   expect(new URL(page.url()).searchParams.getAll('filter')).toEqual(['one', 'two']);

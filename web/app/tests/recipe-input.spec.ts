@@ -2,7 +2,6 @@ import { parseJobJSON, stringifyJobJSON } from '../../shared/src/jobJSON';
 import { registerCell } from './helpers/cells';
 import { fixtureGitTransport } from './helpers/gitTransport';
 import { abbreviatePrompt } from '../src/utils/goalPresentation';
-import { setStatusFilter } from './helpers/goalList';
 import { expect, type Page } from '@playwright/test';
 import { test as base, setNativeZoom } from './helpers/nativeZoom';
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
@@ -14,7 +13,7 @@ import { randomUUID } from 'node:crypto';
 
 async function openPendingInput(page: Page) {
   await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
-  await page.getByRole('button', { name: 'Open form', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Submit', exact: true })).toBeVisible();
 }
 
 const longReviewFeedback = 'Please clarify the ownership boundary before approval.\n'.repeat(38)
@@ -65,6 +64,8 @@ const test = base.extend<{
           '--poll-interval', '100ms', '--jobdb', `http://127.0.0.1:18082/${tenant}`,
         ], {
           cwd: repo,
+          // Runtime subprocess cleanup must not signal the Playwright runner's group.
+          detached: true,
           env: workerEnv,
           stdio: ['ignore', 'pipe', 'pipe'],
         });
@@ -103,7 +104,7 @@ const test = base.extend<{
       await page.goto(`/?tenantId=${tenant}`);
       await page.getByPlaceholder('Email address').fill('browser@example.com');
       await page.getByRole('button', { name: 'Continue', exact: true }).click();
-      await expect(page.getByRole('heading', { name: 'Goals', exact: true })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'All', exact: true })).toBeVisible();
 
       // This second tab must update through SSE, without refresh or navigation.
       const observer = await context.newPage();
@@ -155,8 +156,8 @@ const test = base.extend<{
       const otherTenant = await request.get(`/api/projects/other-${tenant}/user-inputs/pending`);
       expect(await otherTenant.json()).toEqual([]);
 
-      await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-      await expect(page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) })).toBeVisible();
+      await page.getByRole('button', { name: 'Refresh inbox', exact: true }).click();
+      await expect(page.locator(`.inbox-job-link[href*="/jobs/${jobID}/story"]`)).toBeVisible();
       await use({ tenant, jobID, observer, startWorker, stopWorker });
       expect(errors).toEqual([]);
     } catch (error) {
@@ -248,7 +249,7 @@ for (const multiField of [false, true]) {
       // in JobDB and be picked up by a fresh worker, not an in-process promise.
       await stopWorker();
       if (!multiField) await page.setViewportSize({ width: 390, height: 844 });
-      await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
+      await page.locator(`.inbox-job-link[href*="/jobs/${jobID}/story"]`).click();
       await openPendingInput(page);
       const question = multiField ? 'Release note' : 'What should the recipe publish?';
       await expect(page.getByLabel(question)).toBeVisible();
@@ -283,22 +284,17 @@ for (const multiField of [false, true]) {
       await expect(page.getByRole('region', { name: 'Job completion', exact: true })).toContainText('Succeeded');
       await page.setViewportSize({ width: 1440, height: 900 });
       await page.goto(`/project/${tenant}/jobs`);
-      await expect(page.getByRole('heading', { name: 'Goals', exact: true })).toBeVisible();
-      await expect(page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) })).toBeVisible();
-      await setStatusFilter(page, ['Ready']);
-      await expect(page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) })).toHaveCount(0);
-      await setStatusFilter(page, null);
+      await expect(page.getByRole('heading', { name: 'All', exact: true })).toBeVisible();
+      await expect(page.locator(`.inbox-job-link[href*="/jobs/${jobID}/story"]`)).toBeVisible();
       const jobs = await (await request.get(`/api/projects/${tenant}/jobs?status=all`)).json();
       expect(jobs.jobs.find((job: { job_id: string }) => job.job_id === jobID)).toMatchObject({ status: 'COMPLETED', completion_status: 'success' });
-      const row = page.getByRole('row').filter({ has: page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }) });
+      const row = page.locator('.inbox-job-row').filter({has:page.locator(`.inbox-job-link[href*="/jobs/${jobID}/story"]`)});
       await expect(row.getByText('Succeeded', { exact: true })).toBeVisible();
-      await row.getByRole('button', { name: 'Expand goal details' }).click();
-      await expect(page.getByText('All job data', { exact: true })).toBeVisible();
 
       if (!multiField) {
         await stopWorker();
         const storyResponse = page.waitForResponse(r => r.url().endsWith(`/jobs/${jobID}/story`));
-        await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
+        await page.locator(`.inbox-job-link[href*="/jobs/${jobID}/story"]`).click();
         await expect(page.getByRole('tab', { name: 'Conversation', exact: true })).toHaveAttribute('aria-selected', 'true');
         await page.getByRole('tab', { name: 'Trace', exact: true }).click();
         const story = await (await storyResponse).json();
@@ -506,7 +502,7 @@ for (const multiField of [false, true]) {
 
 test('cancellation removes a pending prompt in open tabs and rejects late answers', async ({ page, request, recipeRun }, testInfo) => {
   const { tenant, jobID, observer, stopWorker, startWorker } = recipeRun;
-  await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
+  await page.locator(`.inbox-job-link[href*="/jobs/${jobID}/story"]`).click();
   await openPendingInput(page);
   await expect(page.getByLabel('What should the recipe publish?')).toBeVisible();
   await stopWorker();
@@ -562,11 +558,12 @@ test('returns a real quiet 204 when a discovered input finishes before details l
 
 test.describe('sequential prompts', () => {
   test.use({ recipeFixture: 'browser-input-sequential' });
-  test('announces each prompt in the same job and preserves both answers', async ({ page, request, recipeRun }) => {
+  test('announces each prompt in the same job and preserves both answers', async ({ page, request, recipeRun }, testInfo) => {
     const { tenant, jobID, observer, stopWorker, startWorker } = recipeRun;
     const answer = `release-${randomUUID()}`;
     const reviewer = `reviewer-${randomUUID()}`;
-    await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
+    const jobLink = page.locator(`.inbox-job-link[href*="/jobs/${jobID}/story"]`);
+    await jobLink.click();
 
     for (const [question, value] of [
       ['What should the recipe publish?', answer],
@@ -575,8 +572,21 @@ test.describe('sequential prompts', () => {
       await expect(observer.getByText(`Job ID: ${jobID}`, { exact: true })).toBeVisible({ timeout: 30_000 });
       await stopWorker();
       await openPendingInput(page);
-      await expect(page.getByLabel(question)).toHaveValue('');
-      await page.getByLabel(question).fill(value);
+      const field = page.getByLabel(question);
+      await expect(field).toHaveValue('');
+      if (value === reviewer) {
+        await field.scrollIntoViewIfNeeded();
+        await page.screenshot({ path: testInfo.outputPath('next-request-blank.png'), animations: 'disabled' });
+      }
+      await field.fill(value);
+      if (value === answer) {
+        await page.getByRole('link', { name: 'Back to inbox', exact: true }).click();
+        await jobLink.click();
+        await openPendingInput(page);
+        await expect(field).toHaveValue(value);
+        await field.scrollIntoViewIfNeeded();
+        await page.screenshot({ path: testInfo.outputPath('same-request-draft.png'), animations: 'disabled' });
+      }
       const responded = page.waitForResponse(r => r.url().endsWith(`/user-inputs/${jobID}/respond`) && r.request().method() === 'POST');
       await page.getByRole('button', { name: 'Submit', exact: true }).click();
       expect((await responded).status()).toBe(200);
@@ -598,7 +608,7 @@ test.describe('input timeout', () => {
   test.use({ recipeFixture: 'browser-input-timeout' });
   test('expires an unanswered input and clears open browser prompts', async ({ page, request, recipeRun }) => {
     const { tenant, jobID, observer } = recipeRun;
-    await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
+    await page.locator(`.inbox-job-link[href*="/jobs/${jobID}/story"]`).click();
     await openPendingInput(page);
     await expect(page.getByLabel('What should the recipe publish?')).toBeVisible();
 
@@ -634,51 +644,20 @@ for (const clarification of [false, true]) {
       await page.bringToFront();
       await page.setViewportSize({ width: 1440, height: 900 });
       await page.goto(`/project/${tenant}/jobs/${jobID}/story?filter=mine`);
-      const openReview = page.getByRole('link', { name: 'Open review', exact: true });
-      const callout = page.locator('.pending-request-callout');
-      await expect(openReview).toHaveCount(1);
-      await expect(callout).toContainText('Review requested');
-      await expect(callout).toContainText('Review the release');
-      await expect(callout).toContainText('2 documents');
-      const origin = page.url();
+      // Story opens the complete native review inline, without a second link.
+      const inline = page.locator('.embedded-review');
+      await expect(inline.getByRole('heading', { name: 'Review the release' })).toBeVisible();
+      await expect(inline.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath('review-story-desktop.png'), fullPage: true });
       await page.setViewportSize({ width: 390, height: 844 });
-      if (clarification) {
-        const more = callout.getByRole('button', { name: 'Show more', exact: true });
-        await expect(more).toHaveAttribute('aria-expanded', 'false');
-        await more.focus();
-        await page.keyboard.press('Enter');
-        const less = callout.getByRole('button', { name: 'Show less', exact: true });
-        await expect(less).toHaveAttribute('aria-expanded', 'true');
-        await expect(callout.locator('.pending-request-instructions')).toContainText('Uploaded edits require another revision');
-        await page.keyboard.press('Enter');
-        await expect(more).toHaveAttribute('aria-expanded', 'false');
-      } else await expect(callout.getByRole('button', { name: 'Show more' })).toHaveCount(0);
-      // Compact header updates can move the callout after a resize. Measure
-      // both elements in one frame and wait for the responsive layout.
-      await expect.poll(() => callout.evaluate(element => {
-        const content = element.querySelector('.pending-request-content')!.getBoundingClientRect();
-        const action = element.querySelector('.pending-request-action')!.getBoundingClientRect();
-        return { stacked: action.top >= content.bottom, touchSized: action.height >= 44 };
-      })).toEqual({ stacked: true, touchSized: true });
+      await expect(inline.getByRole('button', { name: clarification ? 'Revise the plan' : 'Approve', exact: true })).toBeVisible();
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
-      await openReview.focus();
-      await expect(openReview).toBeFocused();
-      await expect(openReview).toHaveCSS('outline-style', 'solid');
       await page.screenshot({ path: testInfo.outputPath('review-story-phone.png'), fullPage: true });
-      await page.keyboard.press('Enter');
-      await expect.poll(() => {
-        const url = new URL(page.url());
-        return { pathname: url.pathname, requestId: url.searchParams.get('request_id'), documentId: url.searchParams.get('document_id') };
-      }).toEqual({ pathname: `/project/${tenant}/reviews/${jobID}`, requestId: details.form.request_id, documentId: 'design' });
+      expect(await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).toHaveLength(1);
+      // Retain coverage of bookmarked direct review destinations and their context.
+      await page.goto(`/project/${tenant}/reviews/${jobID}?request_id=${encodeURIComponent(details.form.request_id)}&document_id=design`);
       await expect(page.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath('direct-review-destination.png'), fullPage: true });
-      expect(await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).toHaveLength(1);
-      await page.goBack();
-      await expect(page).toHaveURL(origin);
-      await expect(openReview).toBeVisible();
-      expect(await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).toHaveLength(1);
-      await openReview.click();
       await page.getByText('Goal context', { exact: true }).click();
       await page.getByText('Review instructions', { exact: true }).click();
       const goalPrompt = page.getByRole('region', { name: 'Goal prompt', exact: true });
@@ -692,11 +671,15 @@ for (const clarification of [false, true]) {
       await page.getByRole('button', { name: 'Read design.md', exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
       await expect(page.getByLabel('Rendered document').getByRole('table')).toBeVisible();
-      await expect(page.locator('[contenteditable=true]')).toHaveCount(0);
+      // Compose remains mounted outside the review so its draft can survive navigation.
+      // Immutability applies to the document reader, including its source view.
+      const selectedDocument = page.getByLabel('Selected document', { exact: true });
+      await expect(selectedDocument.locator('[contenteditable=true]')).toHaveCount(0);
       await page.getByRole('button', { name: 'Document options' }).click();
       await page.getByText('Markdown', { exact: true }).click();
       await page.keyboard.press('Escape');
       await expect(page.getByLabel('Markdown source')).toContainText('**Immutable original**');
+      await expect(selectedDocument.locator('[contenteditable=true]')).toHaveCount(0);
       await page.getByTitle('design · design.md', { exact: true }).click();
       await page.getByTitle('rollout · rollout.md', { exact: true }).click();
       await expect(page.getByLabel('Markdown source')).toContainText('# Rollout');
@@ -745,7 +728,7 @@ for (const clarification of [false, true]) {
       expect(await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).toHaveLength(1);
       await action.click();
       await expect(feedback).toHaveValue(completeFeedback);
-      if (!clarification) await page.locator('input[type=file]').setInputFiles({ name: 'feedback.md', mimeType: 'text/markdown', buffer: Buffer.from('# Feedback from browser') });
+      if (!clarification) await page.getByRole('region', { name: 'Review decisions', exact: true }).locator('input[type=file]').setInputFiles({ name: 'feedback.md', mimeType: 'text/markdown', buffer: Buffer.from('# Feedback from browser') });
       await page.getByRole('button', { name: 'Read design.md', exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
       await expect(feedback).toHaveValue(completeFeedback);
@@ -877,7 +860,7 @@ test.describe('review job metadata', () => {
     await page.getByRole('button', { name: 'Approve', exact: true }).click();
     const feedback = page.getByLabel('What should change?', { exact: true });
     await feedback.fill('Keep this feedback through context retry');
-    await page.locator('input[type=file]').setInputFiles({ name: 'feedback.md', mimeType: 'text/markdown', buffer: Buffer.from('# Browser feedback') });
+    await page.getByRole('region', { name: 'Review decisions', exact: true }).locator('input[type=file]').setInputFiles({ name: 'feedback.md', mimeType: 'text/markdown', buffer: Buffer.from('# Browser feedback') });
     const viewport = page.viewportSize()!;
     await page.setViewportSize({ ...viewport, height: 1000 });
     await page.screenshot({ path: testInfo.outputPath('review-metadata-unavailable.png'), fullPage: true });
@@ -956,7 +939,7 @@ test.describe('multi-format review viewers', () => {
     await page.getByRole('button',{name:'Approve',exact:true}).click();
     const feedback=page.getByLabel('What should change?',{exact:true});
     await feedback.fill('Multi-format feedback');
-    await page.locator('input[type=file]').setInputFiles({name:'feedback.md',mimeType:'text/markdown',buffer:Buffer.from('# Feedback')});
+    await page.getByRole('region', { name: 'Review decisions', exact: true }).locator('input[type=file]').setInputFiles({name:'feedback.md',mimeType:'text/markdown',buffer:Buffer.from('# Feedback')});
     await page.getByRole('button',{name:'Show documents',exact:true}).click();
     const read=async(name:string)=>{
       await page.getByRole('button',{name:`Read ${name}`,exact:true}).click();
@@ -1180,24 +1163,21 @@ test.describe('review/v2 continuous discussion',()=>{
     const {tenant,jobID,stopWorker}=recipeRun;
     await stopWorker();
     await page.goto(`/project/${tenant}/jobs/${jobID}/story`);
-    const callout=page.locator('.pending-request-callout');
-    await expect(callout).toContainText('Review requested');
-    await expect(callout).toContainText('Keep unsent drafts');
-    await expect(callout).toContainText('Approve this direction so detailed planning can begin?');
-    await expect(callout).toContainText('2 documents');
+    const inline=page.locator('.embedded-review');
+    await expect(inline).toContainText('Keep unsent drafts');
+    await expect(inline).toContainText('Approve this direction so detailed planning can begin?');
     await expect(page.getByRole('button',{name:'Open form',exact:true})).toHaveCount(0);
     await page.screenshot({path:testInfo.outputPath('review-v2-story-desktop.png'),fullPage:true});
     await page.setViewportSize({width:390,height:844});
-    const open=callout.getByRole('link',{name:'Open review',exact:true});
-    await open.focus();
+    await expect(inline.getByRole('button',{name:'Ask a question',exact:true})).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/jobs/${jobID}/story`));
     await page.screenshot({path:testInfo.outputPath('review-v2-story-phone.png'),fullPage:true});
-    await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(new RegExp(`/reviews/${jobID}\\?review_id=`));
     await expect(page.getByText('Original material remains readable while questions are answered.',{exact:true})).toBeVisible();
     await page.screenshot({path:testInfo.outputPath('review-v2-direct-reader-phone.png'),fullPage:true});
     await page.setViewportSize({width:1320,height:900});
-    await page.getByRole('button',{name:'Show documents',exact:true}).click();
-    await page.getByRole('button',{name:'Recovery notes',exact:false}).first().click();
+    const catalog=inline.getByRole('navigation',{name:'Review documents',exact:true});
+    await inline.getByRole('button',{name:'Show documents',exact:true}).click();
+    await catalog.getByRole('button',{name:'Recovery notes',exact:false}).first().click();
     const original=page.getByRole('heading',{name:'Recovery',exact:true});
     await expect(original).toBeVisible();
     const reader=await original.elementHandle();
@@ -1432,9 +1412,9 @@ test.describe('review/v2 acceptance races',()=>{
  });
 });
 
-test.describe('story review callout layout', () => {
+test.describe('embedded story review layout', () => {
   test.use({ recipeFixture: 'browser-review' });
-  test('wraps long literal titles and measures instruction disclosure at each width', async ({ page, recipeRun }, testInfo) => {
+  test('wraps long literal titles and instructions at each width', async ({ page, recipeRun }, testInfo) => {
     const { tenant, jobID, stopWorker } = recipeRun;
     await stopWorker();
     await page.bringToFront();
@@ -1445,27 +1425,15 @@ test.describe('story review callout layout', () => {
       const body = await response.json();
       await route.fulfill({ response, json: { ...body, form: { ...body.form, title, fields: body.form.fields.map((field: { id: string }) => field.id === 'decision' ? { ...field, question: instruction } : field) } } });
     });
-    const documentReads: string[] = [];
-    page.on('request', req => { if (req.url().includes('/stored-document?')) documentReads.push(req.url()); });
     await page.goto(`/project/${tenant}/jobs/${jobID}/story`);
-    const callout = page.locator('.pending-request-callout');
-    const more = callout.getByRole('button', { name: 'Show more', exact: true });
+    const inline = page.locator('.embedded-review');
     for (const width of [1440, 768, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });
-      await expect(callout).toContainText(title);
-      await expect(more).toBeVisible();
-      await expect(more).toHaveAttribute('aria-expanded', 'false');
-      expect(await callout.locator('.pending-request-instructions').evaluate(el => el.clientHeight)).toBeLessThanOrEqual(66);
+      await expect(inline.getByRole('heading', {name:title,exact:true})).toBeVisible();
+      await expect(inline).toContainText(instruction.trim());
+      await expect(inline.getByRole('button',{name:'Approve',exact:true})).toBeVisible();
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
-      await more.focus();
-      await page.keyboard.press('Enter');
-      const less = callout.getByRole('button', { name: 'Show less', exact: true });
-      await expect(less).toHaveAttribute('aria-expanded', 'true');
-      expect(await callout.locator('.pending-request-instructions').evaluate(el => el.clientHeight)).toBeGreaterThan(66);
-      await page.keyboard.press('Enter');
-      await expect(more).toHaveAttribute('aria-expanded', 'false');
     }
-    expect(documentReads).toEqual([]);
-    await callout.screenshot({ path: testInfo.outputPath('long-review-callout-phone.png') });
+    await inline.screenshot({ path: testInfo.outputPath('long-review-inline-phone.png') });
   });
 });

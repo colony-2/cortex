@@ -13,7 +13,7 @@ vi.mock('@colony2/shared/api', async importOriginal => ({
 beforeEach(() => {
   vi.mocked(createCell).mockReset(); vi.mocked(getCell).mockReset(); vi.mocked(listCells).mockReset();
 });
-it('creates a cell without a job and opens its detail page with a stable goals link', async () => {
+it('creates a cell without a job and opens its detail page with a stable inbox link', async () => {
   const cell = registryCell('payments');
   vi.mocked(listCells).mockResolvedValue({ cells: [] });
   vi.mocked(createCell).mockResolvedValue(cell);
@@ -27,8 +27,8 @@ it('creates a cell without a job and opens its detail page with a stable goals l
   fireEvent.change(screen.getByLabelText('Repository'), { target: { value: 'https://github.com/acme/payments.git' } });
   fireEvent.change(screen.getByLabelText('Metadata (optional JSON object)'), { target: { value: '{"nested":{"items":[null,true]}}' } });
   fireEvent.click(screen.getAllByRole('button', { name: 'Create cell' }).at(-1)!);
-  const link = await screen.findByRole('link', { name: 'Goals for this cell' });
-  expect(link).toHaveAttribute('href', '/project/tenant/goals?cellId=cell-payments&executionState=cells-v1');
+  const link = await screen.findByRole('link', { name: 'Jobs for this cell' });
+  expect(link).toHaveAttribute('href', '/project/tenant/jobs?inbox=cell&cellId=cell-payments');
   expect(createCell).toHaveBeenCalledWith('tenant', { name: 'payments', repo: 'https://github.com/acme/payments.git', description: '', metadata: { nested: { items: [null, true] } }, requestId: expect.any(String) });
 });
 it('keeps creation fields and the request ID when retrying a lost response', async () => {

@@ -17,7 +17,13 @@ for(const width of [1440,390])test(`N06–10 v2 history retains text, files, com
  await page.goto('/project/v2/reviews');await page.goto(v2Path+'?filter=one&filter=two#read');await v2Selected(page,0);
  const logical=new URL(page.url()).searchParams.get('review_id');expect(logical).toBe(fixture.state.request.review_id);
  const initialDetails=fixture.state.details;
- await expect(page.getByText('platform',{exact:true})).toBeVisible();
+ await expect(page.getByRole('region',{name:'Review context',exact:true}).getByText('platform',{exact:true})).toBeVisible();
+ if(width===1440){
+  const opener=page.getByRole('button',{name:'Open navigation',exact:true});
+  const cellLink=page.getByRole('navigation',{name:'Inboxes',exact:true}).getByRole('link',{name:'platform',exact:true});
+  await opener.click();await expect(cellLink).toBeVisible();
+  await page.keyboard.press('Escape');await expect(cellLink).toBeHidden();await expect(opener).toBeFocused();
+ }
  await expect(page.getByRole('navigation',{name:'Job ancestors'}).getByRole('link')).toHaveText(['Build a useful job workspace','Improve the review reading and response flow','Review viewer usability']);
  await page.getByRole('button',{name:'Ask a question',exact:true}).click();
  const editor=page.getByLabel('Question or requested change (required)',{exact:true});await expect(editor).toBeFocused();
@@ -317,7 +323,6 @@ function selectedReview(reviewId: string) {
 
 for (const width of [1920, 2560]) test(`review workspace and composer fill ${width}px and the drawer restores the desktop shell`, async ({page}) => {
   await page.setViewportSize({width, height: 1050});
-  await page.addInitScript(() => localStorage.setItem('cortex:desktop-navigation-collapsed', 'true'));
   const fixture = await reviewV2BrowserFixture(page);
   const target = selectedReview(fixture.state.request.review_id);
   await page.goto(target);
@@ -338,25 +343,24 @@ for (const width of [1920, 2560]) test(`review workspace and composer fill ${wid
   await opener.focus();
   await page.keyboard.press('Enter');
   const drawer = page.getByRole('dialog', {name: 'Navigation'});
-  await expect(drawer.getByRole('link', {name: 'Reviews'})).toBeVisible();
+  await expect(drawer.getByRole('link', {name: 'All', exact: true})).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(drawer).toBeHidden();
   await expect(opener).toBeFocused();
   await page.keyboard.press('Enter');
-  const reviews = drawer.getByRole('menuitem', {name: 'Reviews'});
-  await reviews.focus();
+  const inbox = drawer.getByRole('link', {name: 'All', exact: true});
+  await inbox.focus();
   await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(/\/project\/v2\/reviews$/);
-  await expect(page.getByRole('heading', {name: 'Reviews', exact: true})).toBeVisible();
+  await expect(page).toHaveURL(/\/project\/v2\/jobs$/);
+  await expect(page.getByRole('heading', {name: 'All', exact: true})).toBeVisible();
   await expect(drawer).toBeHidden();
-  await expect(page.getByRole('button', {name: 'Expand navigation'})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Collapse navigation'})).toBeVisible();
 
   await page.goto(target);
   await v2Selected(page, 0);
   await page.getByRole('button', {name: 'Back to Reviews'}).click();
   await expect(page.getByRole('heading', {name: 'Reviews', exact: true})).toBeVisible();
-  await expect(page.getByRole('button', {name: 'Expand navigation'})).toBeVisible();
-  expect(await page.evaluate(() => localStorage.getItem('cortex:desktop-navigation-collapsed'))).toBe('true');
+  await expect(page.getByRole('button', {name: 'Collapse navigation'})).toBeVisible();
   await page.goto(`${target}&requestId=native-one`);
   await expect(page).toHaveURL(/\/project\/v2\/jobs\/one\/story\?/);
   await expect(page.getByRole('button', {name: 'Expand navigation'})).toBeVisible();

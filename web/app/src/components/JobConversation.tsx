@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, Button, Card, Typography } from 'antd';
 import { APIError, storedDocumentURL, conversationArtifactURL, getConversation, getConversationEntry, getConversationRequest, stringifyJobJSON, type HistoryDetail, type HistoryEntry, type HistoryPage, type HistoryValue, type HistoryMerge } from '@colony2/shared';
 
@@ -23,7 +23,7 @@ export function HistoryPair({ entry, onOpen, part }: { entry: HistoryEntry; onOp
     : Array.isArray(entry.form_fields.fields) ? entry.form_fields.fields.map(field => valueText(object(field).question || object(field).id)).join(' · ') : '';
   return <div className="conversation-pair" data-occurrence={entry.entry_id}>
     {part !== 'response' && <Card size="small" className="conversation-step" aria-label="Recorded request step">
-      <div className="conversation-line"><strong>{entry.title.present ? valueText(entry.title.raw) : `${entry.kind} request`}</strong>{onOpen && <Button size="small" onClick={onOpen}>{entry.kind === 'review' || object(entry.form_fields.presentation).type === 'review/v2' ? 'Open review' : 'Open recorded request'}</Button>}</div>
+      <div className="conversation-line"><strong>{entry.title?.present ? valueText(entry.title.raw) : `${entry.kind} request`}</strong>{onOpen && <Button size="small" onClick={onOpen}>{entry.kind === 'review' || object(entry.form_fields.presentation).type === 'review/v2' ? 'Open review' : 'Open recorded request'}</Button>}</div>
       <div className="conversation-line"><Time value={entry.requested_at} /><span>State: {entry.state || 'unknown'}</span>{!entry.accepted_response.present && <span>{reviewer(entry)}</span>}</div>
       {question && <div className="conversation-question" title={question}>{question}</div>}
 
@@ -74,6 +74,44 @@ export function ConversationTimeline({page, entries, onOpen}: {page?: HistoryPag
     const entry = byID.get(event.entry_id);
     return entry && ['request_generation','response_acceptance'].includes(event.kind) ? <HistoryPair key={key} entry={entry} part={event.kind === 'request_generation' ? 'request' : 'response'} onOpen={() => onOpen(entry.entry_id)} /> : null;
   })}</>;
+}
+export function FoldedConversationTimeline({page, entries, onOpen, currentRequestId, cellName}: {
+  page?: HistoryPage; entries: HistoryEntry[]; onOpen:(id:string)=>void; currentRequestId?:string; cellName?:string;
+}) {
+  entries = entries.filter(entry => !currentRequestId || entry.request_id !== currentRequestId || entry.accepted_response.present);
+  const items: {key:string; label:string; node:ReactNode}[] = [];
+  const byID = new Map(entries.map(entry => [entry.entry_id, entry]));
+  const addEntry = (entry:HistoryEntry, part?:'request'|'response', key=entry.entry_id) => {
+    if (entry.request_id === currentRequestId && currentRequestId && !entry.accepted_response.present) return;
+    const title = entry.title?.present ? valueText(entry.title.raw) : `${entry.kind} request`;
+    items.push({key,label:`${part==='response'?'You':cellName||'Cell'} · ${part==='response'?savedAnswers(entry.form_fields,entry.accepted_response.raw,true):title}`,
+      node:<HistoryPair entry={entry} part={part} onOpen={()=>onOpen(entry.entry_id)}/>});
+  };
+  if (!page?.events?.length) entries.forEach(entry => addEntry(entry));
+  else {
+    const seen = new Set<string>(), positioned = new Set<string>();
+    for (const event of page.events) {
+      const key=JSON.stringify([event.kind,event.entry_id,event.invocation_id,String(event.ordinal)]);
+      if(seen.has(key))continue; seen.add(key);
+      if(event.kind==='merge_completion') {
+        const merge=page.merges?.find(merge=>merge.entry_id===event.entry_id);
+        if(merge)items.push({key,label:`Publication · ${merge.candidate_subject||'Recorded commit'}`,node:<MergeCard merge={merge}/>});
+      } else {
+        const entry=byID.get(event.entry_id);
+        if(entry&&['request_generation','response_acceptance'].includes(event.kind)){
+          const part=event.kind==='request_generation'?'request':'response';
+          positioned.add(`${entry.entry_id}/${part}`); addEntry(entry,part,key);
+        }
+      }
+    }
+    const unpositioned=entries.filter(entry=>!positioned.has(`${entry.entry_id}/request`)||(entry.accepted_response.present&&!positioned.has(`${entry.entry_id}/response`)));
+    if(unpositioned.length)items.push({key:'unpositioned',label:'Events without retained positions',node:<section aria-label="Events without retained positions"><p>Some event positions were not recorded.</p>{unpositioned.map(entry=><div key={entry.entry_id}>
+      {!positioned.has(`${entry.entry_id}/request`)&&<HistoryPair entry={entry} part="request" onOpen={()=>onOpen(entry.entry_id)}/>}
+      {entry.accepted_response.present&&!positioned.has(`${entry.entry_id}/response`)&&<HistoryPair entry={entry} part="response"/>}
+    </div>)}</section>});
+  }
+  const row=(item:typeof items[number])=><details className="inbox-history-message" key={item.key}><summary title={item.label}>{item.label}</summary>{item.node}</details>;
+  return <div className="inbox-history">{items.length>2?<>{row(items[0])}<details className="inbox-history-middle"><summary>{items.length-2} earlier events</summary>{items.slice(1,-1).map(row)}</details>{row(items[items.length-1])}</>:items.map(row)}</div>;
 }
 function HistoricalRequest({ tenant, job, entry, legacy, onBack }: { tenant: string; job: string; entry: string; legacy?: boolean; onBack?: () => void }) {
   const [detail, setDetail] = useState<HistoryDetail>();
@@ -149,6 +187,7 @@ export function CurrentActivity({ metadata, freshness }: { metadata?: RecipeJob;
   </Card>;
 }
 type ConversationProps = {
+  folded?: boolean; currentRequestId?: string; cellName?: string;
   onInventory?: (rows: HistoryPage['input_artifacts']) => void;
   tenant: string; job: string; occurrence?: string; requestId?: string; onOpen: (entry: string) => void; onBack?: () => void; refreshKey?: unknown;
   metadata?: RecipeJob; metadataFreshness?: 'loading' | 'loaded' | 'failed'; autoRefresh?: boolean; refreshIntervalMs?: number;
@@ -156,7 +195,7 @@ type ConversationProps = {
 export default function JobConversation(props: ConversationProps) {
   return <Conversation key={JSON.stringify([props.tenant,props.job])} {...props}/>;
 }
-function Conversation({ tenant, job, onInventory, occurrence, requestId, onOpen, onBack, refreshKey, autoRefresh = false, refreshIntervalMs = 5000 }: ConversationProps) {
+function Conversation({ tenant, job, onInventory, occurrence, requestId, onOpen, onBack, refreshKey, folded=false, currentRequestId, cellName, autoRefresh = false, refreshIntervalMs = 5000 }: ConversationProps) {
   const [page, setPage] = useState<HistoryPage>();
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [error, setError] = useState('');
@@ -236,10 +275,11 @@ function Conversation({ tenant, job, onInventory, occurrence, requestId, onOpen,
     {/* Keep arriving activity below the historical reader so it does not move the reading position. */}
     {activity && <span role="status">New conversation activity available</span>}
     {page && !entries.length && !page.merges?.length && <p>No retained events in this history.</p>}
-    <ConversationTimeline page={loadedIdentity.current === identity ? page : undefined} entries={loadedIdentity.current === identity ? entries : []} onOpen={onOpen} />
+    {folded ? <FoldedConversationTimeline page={loadedIdentity.current === identity ? page : undefined} entries={loadedIdentity.current === identity ? entries : []} onOpen={onOpen} currentRequestId={currentRequestId} cellName={cellName} />
+      : <ConversationTimeline page={loadedIdentity.current === identity ? page : undefined} entries={loadedIdentity.current === identity ? entries : []} onOpen={onOpen} />}
     {page?.next_page_token && <Button disabled={busy || !!error} onClick={() => void load(page.next_page_token)}>Load more events</Button>}
     {!page && !error && <p role="status">Loading history…</p>}
-    <CurrentActivity metadata={page?.activity?.availability === 'available' ? page.activity.value : undefined} freshness={error ? 'failed' : 'loaded'} />
+    {!(folded && currentRequestId) && <CurrentActivity metadata={page?.activity?.availability === 'available' ? page.activity.value : undefined} freshness={error ? 'failed' : 'loaded'} />}
     <FinalDocuments tenant={tenant} job={job} terminal={!page?.activity?.value || isFinishedJob(page.activity.value)} manifest={page?.final_documents?.availability === 'available' ? page.final_documents.value : undefined} error={page && page.final_documents?.availability !== 'available' ? 'Returned documents could not be read.' : undefined} stale={!!error} onRetry={()=>void load()}/>
 
   </section>;

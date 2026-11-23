@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, Link } from 'react-router-dom';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
-import { InputActivityProvider, inputActivityService } from '@colony2/shared';
+import { clearUserEmail, InputActivityProvider, inputActivityService, setUserEmail } from '@colony2/shared';
 const render = (ui: Parameters<typeof rawRender>[0]) => rawRender(ui, {wrapper: InputActivityProvider});
 import InputDetailPage from './InputDetailPage';
 import {jobIdentity} from '../test/cellFixtures';
@@ -195,6 +195,30 @@ describe('InputDetailPage - Single Question Flow', () => {
     await userEvent.click(await screen.findByRole('button',{name:'Reject',exact:true}));
     expect(screen.getByLabelText('Reason')).toHaveValue('');
     getDetails.mockRestore();
+  });
+
+  it('retains a draft for the same short-answer request and isolates the next request without an ID', async () => {
+    setUserEmail('draft@example.com');
+    try {
+      const pending = { ...createMockPendingInput(jobId), task_ordinal: 12 };
+      setupMockInputs(projectId, [pending], [createMockSingleQuestionDetails(jobId)]);
+      const firstVisit = renderComponent();
+      const firstAnswer = await screen.findByRole('textbox', { name: 'How old are you?' });
+      await userEvent.type(firstAnswer, 'Earlier draft');
+      firstVisit.unmount();
+
+      renderComponent();
+      expect(await screen.findByRole('textbox', { name: 'How old are you?' })).toHaveValue('Earlier draft');
+
+      setupMockInputs(projectId, [{ ...pending, task_ordinal: 13, client_payload_revision: 2 }], [{
+        ...createMockSingleQuestionDetails(jobId), task_ordinal: 13,
+        form: { question: 'Who should review the release?', type: 'short_answer' },
+      }]);
+      await act(async () => { await inputActivityService.getPendingInputs(projectId, true); });
+      expect(await screen.findByRole('textbox', { name: 'Who should review the release?' })).toHaveValue('');
+    } finally {
+      clearUserEmail();
+    }
   });
 
   it('should show loading state initially', () => {

@@ -5,7 +5,7 @@ import { useParams, useNavigate, useSearchParams, useLocation, Navigate } from '
 import { reviewReturnSearch } from '../utils/reviewFilters';
 import { Card, Button, Space, Typography, message, Spin, Alert } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
-import { inputActivityService, useCurrentInput, useInputActivity, getJob, type FormResponse, parseReviewV2 } from '@colony2/shared';
+import { inputActivityService, useCurrentInput, useInputActivity, getJob, type FormResponse, type RecipeJob, parseReviewV2 } from '@colony2/shared';
 import ReviewWorkspace from './ReviewWorkspace';
 import InputFormRenderer from './InputFormRenderer';
 import { adaptInputFormConfig } from '../utils/formAdapter';
@@ -24,9 +24,9 @@ export default function InputDetailPage({ projectId }: InputDetailPageProps) {
   const [search] = useSearchParams();
   const {jobId} = useParams<{jobId:string}>();
   const selected=search.get('review_id');
-  return selected !== null && jobId ? <ReviewV2 key={JSON.stringify([projectId,jobId,selected])} tenant={projectId} job={jobId} reviewId={selected}/> : <InputRequestPage key={JSON.stringify([projectId,jobId])} projectId={projectId}/>;
+  return selected !== null && jobId ? <ReviewV2 key={JSON.stringify([projectId,jobId,selected])} tenant={projectId} job={jobId} reviewId={selected}/> : <InputRequestReader key={JSON.stringify([projectId,jobId])} projectId={projectId}/>;
 }
-function InputRequestPage({ projectId }: InputDetailPageProps) {
+export function InputRequestReader({ projectId, embedded = false, metadata }: InputDetailPageProps & { embedded?: boolean; metadata?: RecipeJob }) {
   const compact = useCompact();
   const {setCurrentProjectId} = useInputActivity();
   useEffect(() => {setCurrentProjectId(projectId);}, [projectId, setCurrentProjectId]);
@@ -59,20 +59,20 @@ function InputRequestPage({ projectId }: InputDetailPageProps) {
   }, [projectId, jobId, jobRetry]);
 
   const refresh = () => {setJobRetry(value => value + 1); void selectedInput.refresh().catch(() => {});};
-  const reviewIdentity = JSON.stringify([projectId, jobId, details?.form.request_id]);
+  const requestIdentity = JSON.stringify([projectId, jobId, details?.form.request_id ?? selectedInput.readableVersion]);
   // Advertised details establish the reader; optional job context loads independently.
   const selection = reviews
     ? resolveReviewDocumentLocation(location.search, details.form.request_id!, details.form.documents || {}, details.form.document_metadata, details.form.overview_document_id)
     : undefined;
   const [unavailableWarning, setUnavailableWarning] = useState<string>();
-  useEffect(() => { setUnavailableWarning(undefined); }, [reviewIdentity]);
+  useEffect(() => { setUnavailableWarning(undefined); }, [requestIdentity]);
   useEffect(() => {
     if (selection?.kind !== 'selected') return;
-    if (selection.unavailable) setUnavailableWarning(reviewIdentity);
+    if (selection.unavailable) setUnavailableWarning(requestIdentity);
     if (selection.search !== location.search) {
       navigate({ pathname: location.pathname, search: selection.search, hash: location.hash }, { replace: true });
     }
-  }, [selection?.kind, selection?.kind === 'selected' ? selection.search : undefined, location.pathname, location.search, location.hash, navigate, reviewIdentity]);
+  }, [selection?.kind, selection?.kind === 'selected' ? selection.search : undefined, location.pathname, location.search, location.hash, navigate, requestIdentity]);
 
   const selectDocument = (id: string) => {
     if (selection?.kind !== 'selected' || id === selection.documentId) return;
@@ -99,7 +99,7 @@ function InputRequestPage({ projectId }: InputDetailPageProps) {
         await inputActivityService.submitResponse(projectId, jobId, response);
       }
       message.success('Response submitted successfully');
-      navigate(reviewsPath);
+      if (embedded) { await selectedInput.refresh().catch(() => {}); } else navigate(reviewsPath);
     } catch (err) {
       console.error('Failed to submit response:', err);
       if (reviews) setError(err instanceof Error ? err.message : 'Failed to submit review.');
@@ -111,7 +111,7 @@ function InputRequestPage({ projectId }: InputDetailPageProps) {
   };
 
   const handleCancel = () => {
-    navigate(reviewsPath);
+    navigate(embedded ? `/project/${encodeURIComponent(projectId)}/jobs` : reviewsPath);
   };
 
   if (!details && loading) {
@@ -127,7 +127,7 @@ function InputRequestPage({ projectId }: InputDetailPageProps) {
 
   if (!details || !jobId) {
     return (
-      <div className={reviews ? 'review-page' : undefined} style={{ padding: 24 }}>
+      <div className={embedded ? 'embedded-review' : reviews ? 'review-page' : undefined} style={{ padding: embedded ? 0 : 24 }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <Button icon={<ArrowLeftOutlined />} onClick={handleCancel} disabled={submitting || cancelling}>
             Back to Reviews
@@ -148,28 +148,28 @@ function InputRequestPage({ projectId }: InputDetailPageProps) {
       const request = parseReviewV2(details.form.request);
       if(!details.form.request_id || !details.form.request_schema || !details.form.response_schema)throw new Error('Missing native structured request contract');
       const next = new URLSearchParams(location.search); next.set('review_id', request.review_id);
-      return <Navigate replace to={{pathname:location.pathname,search:'?'+next,hash:location.hash}}/>;
+      return embedded ? <ReviewV2 key={JSON.stringify([projectId,jobId,request.review_id])} tenant={projectId} job={jobId} reviewId={request.review_id} initial={details} embedded metadata={metadata} /> : <Navigate replace to={{pathname:location.pathname,search:'?'+next,hash:location.hash}}/>;
     } catch(e) {return <Alert type="error" message="Incompatible review request" description={e instanceof Error ? e.message : String(e)}/>;}
   }
   const form = adaptInputFormConfig(details.form, jobId);
   const reviewPrompt = reviewActionField(form)?.label;
 
   return (
-    <div className={reviews ? 'review-page' : undefined} style={{ padding: 24 }}>
+    <div className={embedded ? 'embedded-review' : reviews ? 'review-page' : undefined} style={{ padding: embedded ? 0 : 24 }}>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
+        {!embedded && <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
           <Button icon={<ArrowLeftOutlined />} onClick={handleCancel} disabled={submitting || cancelling}>
             Back to Reviews
           </Button>
           {reviews && <CancelJobButton key={`${projectId}/${jobId}`} projectId={projectId} jobId={jobId}
             disabled={submitting} onBusyChange={busy => { cancelBusy.current = busy; setCancelling(busy); }} onCancelled={handleCancel} />}
-        </Space>
+        </Space>}
 
         {!selectedInput.details && <Alert showIcon type={selectedInput.error ? 'error' : selectedInput.discovery.status === 'unavailable' ? 'warning' : 'info'}
           message={selectedInput.error ? 'Could not load this request' : selectedInput.discovery.status === 'unavailable' ? 'Pending request availability is unavailable.' : selectedInput.loading ? 'Checking pending requests…' : 'No outstanding input request.'}
           description={selectedInput.error || selectedInput.discovery.error}
           action={<Button onClick={refresh}>Refresh</Button>} />}
-        <div className={compact && reviews ? "review-secondary" : undefined}>
+        {!embedded && <div className={compact && reviews ? "review-secondary" : undefined}>
         {compact && reviews ? <Card>
           <Title level={4} style={{ margin: 0 }}>{details.form.title || details.form.question || 'Review'}</Title>
           <details><summary>Request details</summary>
@@ -203,20 +203,21 @@ function InputRequestPage({ projectId }: InputDetailPageProps) {
         </details> : <Card title="Review context">
           <section aria-label="Review context" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{reviewPrompt}</section>
         </Card>)}
-        </div>
+        </div>}
+        {embedded && reviews && <Title level={4} style={{ margin: 0 }}>{details.form.title || 'Review'}</Title>}
         {reviews && selection && selection.kind !== 'selected' ? <Alert showIcon type="warning"
           message={selection.kind === 'invalid' ? 'Invalid review link' : 'This linked review is no longer current'}
           description={selection.kind === 'invalid' ? 'The link contains repeated request or document parameters.' : 'The current review has a different request. Open it deliberately to read its documents and respond.'}
           action={<Button onClick={openCurrentReview}>Open current review</Button>} /> : reviews ? <>
-        {(selection?.kind === 'selected' && selection.unavailable || unavailableWarning === reviewIdentity) && <Alert showIcon type="warning" message="The linked document is unavailable. Showing the starting document, if one is attached." />}
-        <ReviewWorkspace key={reviewIdentity} projectId={projectId} jobId={jobId}
+        {(selection?.kind === 'selected' && selection.unavailable || unavailableWarning === requestIdentity) && <Alert showIcon type="warning" message="The linked document is unavailable. Showing the starting document, if one is attached." />}
+        <ReviewWorkspace key={requestIdentity} projectId={projectId} jobId={jobId}
           documentMetadata={details.form.document_metadata} overviewDocumentId={details.form.overview_document_id}
           selection={{ documentId: selection?.kind === 'selected' ? selection.documentId : undefined, onSelect: selectDocument }}
           requestId={details.form.request_id!} documents={details.form.documents || {}} response={
-            <Card title="Your response"><InputFormRenderer key={JSON.stringify([projectId, jobId, details.form.request_id ?? selectedInput.readableVersion])} submissionError={error} form={form} reviewPromptShown={!!reviewPrompt} onSubmit={handleSubmit} onCancel={handleCancel} loading={submitting || cancelling || !selectedInput.details} /></Card>
+            <Card title="Your response"><InputFormRenderer key={requestIdentity} submissionError={error} form={form} draftIdentity={requestIdentity} reviewPromptShown={!embedded && !!reviewPrompt} onSubmit={handleSubmit} onCancel={handleCancel} loading={submitting || cancelling || !selectedInput.details} /></Card>
           } /></> : <Card title={form.title}>
           {error && <Alert type="error" showIcon message={error} closable onClose={() => setError(null)} style={{ marginBottom: 16 }} />}
-          <InputFormRenderer key={JSON.stringify([projectId, jobId, details.form.request_id ?? selectedInput.readableVersion])} form={form} reviewPromptShown={!!reviewPrompt} onSubmit={handleSubmit} onCancel={handleCancel} loading={submitting || cancelling || !selectedInput.details} />
+          <InputFormRenderer key={requestIdentity} form={form} draftIdentity={requestIdentity} reviewPromptShown={!embedded && !!reviewPrompt} onSubmit={handleSubmit} onCancel={handleCancel} loading={submitting || cancelling || !selectedInput.details} />
         </Card>}
       </Space>
     </div>

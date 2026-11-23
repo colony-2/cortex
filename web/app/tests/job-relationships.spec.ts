@@ -102,8 +102,8 @@ test('REL-001,010,011,012,030,033,038 story links navigate to correct identities
   await capture(page,'story-desktop-restored.png');
   await related(page).getByRole('link',{name:'Job · Check API compatibility'}).click();
   await expect(page).toHaveURL(/\/jobs\/check-api-106\/story/);
-  await expect(page.getByRole('heading',{name:'Job Story: Check API compatibility'})).toBeVisible();
-  await expect(page.getByRole('link',{name:'Goal overview',exact:true})).toHaveAttribute('href','/project/demo/goals/goal-api');
+  await expect(page.getByRole('heading',{name:'Check API compatibility'})).toBeVisible();
+  await expect(page.getByRole('link',{name:'Back to inbox',exact:true})).toHaveAttribute('href','/project/demo/jobs');
   await openFresh(page);
   await expect(related(page).getByText('No parent recorded')).toBeVisible();
   await page.goBack(); // Child's Conversation, before selecting its Relationships tab.
@@ -111,7 +111,8 @@ test('REL-001,010,011,012,030,033,038 story links navigate to correct identities
   await openFresh(page);
   await related(page).getByRole('link',{name:'Goal · goal-api',exact:true}).click();
   await expect(page).toHaveURL(/\/goals\/goal-api/);
-  await expect(page.locator('.goal-full-prompt')).toHaveText(current.prompt);
+  await expect(page.getByText('Goal links have been retired',{exact:true})).toBeVisible();
+  await expect(page.getByRole('link',{name:'Open All jobs'})).toHaveAttribute('href','/project/demo/jobs');
   await page.goBack();
   await openFresh(page);
   await related(page).getByRole('link',{name:'Job · release-104',exact:true}).click();
@@ -246,7 +247,7 @@ for(const width of [1280,390]) test(`JS-024,025,035,037 pages other attempts, re
   await page.screenshot({path:info.outputPath('sibling-attempts.png'),animations:'disabled',fullPage:true});
   await attempts.getByRole('link',{name:'Archived earlier attempt'}).click();
   await expect(page).toHaveURL(/\/jobs\/check-api-106\/story/);
-  await expect(page.getByRole('link',{name:'Goal overview',exact:true})).toHaveAttribute('href','/project/demo/goals/goal-api');
+  await expect(page.getByRole('link',{name:'Back to inbox',exact:true})).toHaveAttribute('href','/project/demo/jobs');
   await page.getByRole('tab',{name:'Relationships',exact:true}).click();
   await expect(attempts.getByRole('link',{name:'Goal · goal-api',exact:true})).toBeVisible();
 });

@@ -22,8 +22,10 @@ export default defineConfig({
       args: ['--host-resolver-rules=MAP cortex-copy.test 127.0.0.1', '--no-proxy-server'],
     },
   },
-  webServer: (Array.isArray(fixtures.webServer) ? fixtures.webServer : []).map(server => ({
-    ...server,
-    command: server.command.replace('pnpm exec vite ', 'pnpm exec vite --config vite.copy.config.ts '),
-  })),
+  webServer: {
+    ...(Array.isArray(fixtures.webServer) ? fixtures.webServer[0] : fixtures.webServer),
+    // Select the test-only host policy explicitly, independently of the shared
+    // launcher's command text. Keep direct Node execution for clean teardown.
+    command: 'exec node node_modules/vite/bin/vite.js --config vite.copy.config.ts --host 127.0.0.1 --port 15173 --strictPort',
+  },
 });

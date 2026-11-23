@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { jobIdentity, mockCells } from './helpers/cells';
+import { storyLink } from './helpers/inbox';
 const at='2026-11-09T00:00:00Z';
 const nodes=[
  {tenant_id:'demo',job_id:'root',job_type:'recipe',cell:'cortex',status:'ACTIVE',title:'Plan the DAG improvements',created_at:'2026-11-12T08:58:00Z'},
@@ -80,8 +81,11 @@ test('TREE-015,018 story opens and returns to original tree entry',async({page})
  await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
  await page.getByRole('complementary',{name:'Selected job details'}).getByRole('link',{name:'Open execution'}).click();
  await expect(page).toHaveURL(/entry\/story$/);
- await expect(page.getByRole('link',{name:'DAG',exact:true})).toHaveAttribute('href','/project/demo/jobs/entry/story?tab=dag');
- await page.getByRole('link',{name:'Return to DAG',exact:true}).click();
+ await expect(await storyLink(page,'DAG')).toHaveAttribute('href','/project/demo/jobs/entry/story?tab=dag');
+ const returnLink = await storyLink(page,'Return to DAG');
+ if(process.env.CORTEX_TREE_SCREENSHOTS){mkdirSync(process.env.CORTEX_TREE_SCREENSHOTS,{recursive:true});await page.screenshot({path:process.env.CORTEX_TREE_SCREENSHOTS+'/dag-story-menu.png',fullPage:true,animations:'disabled'});}
+ await returnLink.click();
+ await expect(page.locator('.inbox-story-more')).toHaveJSProperty('open',false);
  await expect(page).toHaveURL(/entry\/story\?tab=dag$/);
  await expect(page.getByRole('region',{name:'Discovery coverage'})).toContainText('4 loaded jobs');
 });
@@ -188,11 +192,12 @@ test('DAG-07 identity changes dispose loaded state; DAG-09,10 recipe returns tar
  await page.getByLabel('Execution diagram').getByRole('button',{name:'Plan the DAG improvements · cortex',exact:false}).click();
  await page.getByRole('complementary',{name:'Selected job details'}).getByRole('link',{name:'Open execution'}).click();
  await expect(page).toHaveURL(/root\/story$/);
- await page.getByRole('link',{name:'DAG',exact:true}).click();
+ await (await storyLink(page,'DAG')).click();
+ await expect(page.locator('.inbox-story-more')).toHaveJSProperty('open',false);
  await expect(page.getByRole('region',{name:'Discovery coverage'})).toContainText('4 loaded jobs');
  await expect(page.getByRole('complementary',{name:'Selected job details'}).locator('dd').nth(1)).toHaveText('root');
  await expect(page.getByLabel('Zoom',{exact:true})).toHaveText('100%');
- await page.getByRole('link',{name:'Return to DAG',exact:true}).click();
+ await (await storyLink(page,'Return to DAG')).click();
  await expect(page).toHaveURL(/entry\/story\?tab=dag$/);
  await expect(page.getByRole('region',{name:'Discovery coverage'})).toContainText('4 loaded jobs');
 });
@@ -218,7 +223,11 @@ test('DAG-09,10 generic entry keeps standalone return navigation',async({page})=
  await expect(page.getByText('Discovery finished:',{exact:false})).toBeVisible();
  await page.getByLabel('Execution diagram').getByRole('button',{name:'Build the readable family graph · c2j',exact:false}).click();
  await page.getByRole('complementary',{name:'Selected job details'}).getByRole('link',{name:'Open execution'}).click();
- await expect(page.getByRole('link',{name:'Return to DAG',exact:true})).toHaveAttribute('href','/project/demo/jobs/middle/tree');
+ const returnLink = await storyLink(page,'Return to DAG');
+ await expect(returnLink).toHaveAttribute('href','/project/demo/jobs/middle/tree');
+ await returnLink.click();
+ await expect(page).toHaveURL('/project/demo/jobs/middle/tree');
+ await expect(page.getByRole('region',{name:'Discovery coverage'})).toContainText('4 loaded jobs');
 });
 
 test('DAG-07 a tenant history change starts a fresh workspace',async({page})=>{
