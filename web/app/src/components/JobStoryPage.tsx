@@ -3,6 +3,7 @@ import { dagReturnPath } from '../executionTree/navigation';
 import { TreeWorkspace } from '../executionTree/TreePage';
 import InboxPanel, { inboxCount } from './InboxPanel';
 import JobLeaseTimeline from './JobLeaseTimeline';
+import { launchPath } from '../runners/paths';
 import JobCrashConcern from './JobCrashConcern';
 import JobConversation from './JobConversation';
 import JobEnvironment from './JobEnvironment';
@@ -103,6 +104,7 @@ type JobStatus =
 
 
 interface JobStoryResponse {
+  launch_ids_by_ordinal?: Record<string,string>;
   input_artifacts?: InputArtifact[];
   restart_scopes?: RestartScope[];
   job_id: string;
@@ -434,7 +436,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
       job: previous?.projectId === projectId && previous.jobId === jobId ? previous.job : undefined,
       observedJob: previous?.projectId === projectId && previous.jobId === jobId ? previous.job ?? previous.observedJob : undefined }));
     try {
-      const detail = await getJob(projectId, jobId);
+      const detail = await getJob(projectId, jobId, true);
       if (!alive.current || generation !== metadataGeneration.current) return;
       // getJob is an exact read; reject a mismatched response as unavailable.
       if (detail.job_id !== jobId || (detail.tenant_id && detail.tenant_id !== projectId)) throw new Error('Job detail identity does not match the selected source');
@@ -465,6 +467,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const jobRoots = story?.root ? [story.root, ...(story.root.past_attempts || [])] : [];
   const displayedRoot = jobRoots.find(root => (root.job_attempt || 1) === selectedRef?.jobAttempt) || story?.root;
   const treeData = activeTab === 'execution' && displayedRoot ? renderNodes(projectionByKey.get(keyFor.get(displayedRoot)!) || []) : [];
+  const nodeLaunch = selectedNode?.task_ordinal != null ? story?.launch_ids_by_ordinal?.[String(selectedNode.task_ordinal)] : undefined;
   const isPastJob = !!story?.root && selectedRef?.jobAttempt !== (story.root.job_attempt || 1);
   const operation = selectedNode?.kind === 'op' ? selectedNode : [...selectedAncestors].reverse().find(n => n.kind === 'op');
   const contextNodes = selectedNode ? [...selectedAncestors, ...(childrenByNode.get(selectedNode) || [])] : [];
@@ -911,6 +914,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
           </div>}
           action={<Button size="small" onClick={() => void loadMetadata()}>Retry</Button>} />}
         {job && <Tag color={jobStatusPresentation(terminalStatus || 'unknown').color} aria-label="Job status">{jobStatusPresentation(terminalStatus || 'unknown').label}</Tag>}
+        {job?.launch_id && <div><Text strong>Last recorded launch ID </Text><Link to={launchPath(projectId, job.launch_id, {jobId})}>{job.launch_id}</Link></div>}
         {job && <div aria-label="Job cell" style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
           <Text strong>Cell: </Text>{cellLabel(job.cell_name)}
         </div>}
@@ -1193,6 +1197,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                           <Descriptions.Item label="Task Ordinal">
                             {selectedNode.task_ordinal ?? '-'}
                           </Descriptions.Item>
+                          {nodeLaunch && <Descriptions.Item label="Launch ID"><Link to={launchPath(projectId,nodeLaunch,{jobId})}>{nodeLaunch}</Link></Descriptions.Item>}
                           <Descriptions.Item label="Invoke Seq">
                             {selectedNode.invoke_seq ?? '-'}
                           </Descriptions.Item>

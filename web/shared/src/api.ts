@@ -115,9 +115,9 @@ export async function listJobChildren(
   return page;
 }
 
-export async function getJob(projectId: string, jobId: string): Promise<RecipeJob> {
+export async function getJob(projectId: string, jobId: string, includeLaunch = false): Promise<RecipeJob> {
   const response = await fetch(
-    `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}`,
+    `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}${includeLaunch ? '?includeLaunch=true' : ''}`,
   );
   await handleResponse(response, 'Get job');
   const job = parseJobJSON(await response.text()) as RecipeJob;

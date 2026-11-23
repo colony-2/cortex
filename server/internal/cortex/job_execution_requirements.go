@@ -9,6 +9,7 @@ import (
 // demand. Inspect only the metadata and payload already returned by JobDB.
 type jobWithExecutionRequirements struct {
 	recipejob.RecipeJob
+	LaunchID          string          `json:"launch_id,omitempty"`
 	RecordedExecution *execution.View `json:"recorded_execution,omitempty"`
 }
 

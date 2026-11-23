@@ -33,6 +33,7 @@ func newCommand(opts Options, run func(*cobra.Command, cortex.Config) error) *co
 	flags := root.PersistentFlags()
 	flags.StringVar(&assistantConfig, "assistant-config", envOr("CORTEX_ASSISTANT_CONFIG", ""), "Trusted assistant JSON configuration file")
 	flags.StringVar(&jobdb, "jobdb", "", "JobDB URI (http(s)://host/tenant); defaults to C2J_JOBDB or .c2/config.yaml")
+	flags.StringVar(&cfg.PulseURL, "pulse-url", envOr("CORTEX_PULSE_URL", cortex.DefaultPulseURL), "Pulse controller base URL for runner diagnostics")
 	flags.StringVar(&cfg.Addr, "addr", envOr("CORTEX_ADDR", ":8080"), "Listen address")
 	flags.StringVar(&cfg.WorkingDir, "working-dir", envOr("CORTEX_WORKING_DIR", "."), "Directory for c2j config discovery")
 	flags.StringVar(&cors, "cors-origins", envOr("CORTEX_CORS_ORIGINS", opts.DefaultCORS), "Comma-separated CORS origins")

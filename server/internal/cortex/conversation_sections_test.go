@@ -64,7 +64,12 @@ func TestConversationTerminalSections(t *testing.T) {
 			}
 			raw, err := json.Marshal(map[string]any{"artifact_refs": refs})
 			require.NoError(t, err)
-			require.NoError(t, lease.Complete(ctx, jobdb.CompleteExecutionRequest{Status: outcome, Chapter: &jobdb.Chapter{Ordinal: 1, TaskType: "recipe", CreatedAt: time.Now().UTC(), Body: jobdb.JobAttemptOutcomeChapter{Outcome: jobdb.ApplicationOutputOutcome{Output: jobdb.ApplicationOutputBytes{Data: raw}}}}}))
+			chapter := &jobdb.Chapter{
+				Ordinal: 1, TaskType: "recipe", CreatedAt: time.Now().UTC(),
+				Metadata: jobdb.ChapterMetadata{Fields: map[string]jobdb.ChapterMetadataValue{"worker_id": {Kind: jobdb.ChapterMetadataString, String: "sections"}}},
+				Body:     jobdb.JobAttemptOutcomeChapter{Outcome: jobdb.ApplicationOutputOutcome{Output: jobdb.ApplicationOutputBytes{Data: raw}}},
+			}
+			require.NoError(t, lease.Complete(ctx, jobdb.CompleteExecutionRequest{Status: outcome, Chapter: chapter}))
 			scans.Store(0)
 			var page struct {
 				Inventory []inputDocument `json:"input_artifacts"`
@@ -107,6 +112,18 @@ func TestConversationTerminalSections(t *testing.T) {
 				require.Equal(t, doc.Producer.JobId+"/alias.md", doc.Alias)
 				require.Equal(t, "original.md", doc.Producer.Name)
 			}
+			scans.Store(0)
+			latest := getJSON[struct {
+				LaunchID string `json:"launch_id"`
+			}](t, base+"/"+outcome+"?includeLaunch=true")
+			require.Equal(t, "sections", latest.LaunchID)
+			require.Zero(t, scans.Load())
+			trace := getJSON[struct {
+				Launches map[int64]string `json:"launch_ids_by_ordinal"`
+			}](t, base+"/"+outcome+"/story")
+			require.Equal(t, "sections", trace.Launches[1])
+			// Native c2j reconstructs history and replays it. Launch IDs use that history read.
+			require.EqualValues(t, 2, scans.Load())
 			// A section reader failure must preserve a readable history response.
 			original := server.story
 			server.story = &finalStoryStub{err: story.ErrFinalDocumentsUnsupported}

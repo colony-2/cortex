@@ -48,6 +48,7 @@ type conversationInventory struct {
 	key         jobdb.JobKey
 	run         *jobdb.GetJobRunResponse
 	rows        *[]inputDocument
+	launches    map[int64]string
 	nextOrdinal int64
 }
 type inventoryContextKey struct{}
@@ -57,6 +58,9 @@ func (r *conversationInventory) ListChapters(ctx context.Context, req jobdb.List
 	if err == nil && req.JobKey == r.key {
 		for _, ch := range chapters {
 			r.nextOrdinal = max(r.nextOrdinal, ch.Ordinal+1)
+			if worker := ch.Metadata.Fields["worker_id"]; r.launches != nil && worker.Kind == jobdb.ChapterMetadataString && worker.String != "" {
+				r.launches[ch.Ordinal] = worker.String
+			}
 		}
 		if rows, inventoryErr := documentInventory(req.JobKey.JobId, chapters); inventoryErr == nil {
 			r.rows = &rows

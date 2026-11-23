@@ -3,6 +3,7 @@ package cortex
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -22,6 +23,10 @@ type storyService = story.Service
 
 func NewServer(cfg Config, engine jobworkflow.Engine) (*Server, error) {
 	cfg = normalizeConfig(cfg)
+	base, err := url.Parse(cfg.PulseURL)
+	if err != nil || (base.Scheme != "http" && base.Scheme != "https") || base.Hostname() == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" || base.ForceQuery {
+		return nil, fmt.Errorf("Pulse URL must be an HTTP(S) base address without credentials, query or fragment")
+	}
 	if engine == nil {
 		return nil, fmt.Errorf("workflow engine is required")
 	}
@@ -115,6 +120,7 @@ func (s *Server) buildRouter(inputService ops.ManagementService) http.Handler {
 
 	api := r.PathPrefix("/api").Subrouter()
 	s.registerAssistantRoutes(api)
+	s.registerPulseRoutes(api)
 	api.HandleFunc("/build-info", s.handleBuildInfo).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/health", s.handleHealth).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects", s.handleListProjects).Methods(http.MethodGet, http.MethodOptions)

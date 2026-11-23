@@ -866,7 +866,7 @@ it.each(['ACTIVE', 'ARCHIVED'])('CID-010 opens an existing UUID job from the %s 
  expect(link.getAttribute('href')).toContain(`/project/tenant/jobs/${id}/story`);
  fireEvent.click(link);
  await screen.findByRole('tab', {name:'Conversation',exact:true});
- expect(getJob).toHaveBeenCalledWith('tenant', id);
+ expect(getJob).toHaveBeenCalledWith('tenant', id, true);
  expect(fetchMock.mock.calls.some(([url]) => url.includes(`/projects/tenant/jobs/${id}/story`))).toBe(false);
  fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
  await screen.findByRole('tree');

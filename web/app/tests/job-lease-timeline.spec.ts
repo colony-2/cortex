@@ -53,25 +53,26 @@ for(const which of ['story','detail'] as const) {
     await expect(timeline(page)).toHaveAttribute(which==='story'?'aria-selected':'aria-expanded','false');
     expect(fixture.requests).toHaveLength(0);
     await timeline(page).focus(); await page.keyboard.press('Enter');
-    await expect(pane(page).getByRole('listitem')).toHaveCount(2);
+    await expect(pane(page).locator('tr.ant-table-row')).toHaveCount(1);
     expect(fixture.requests).toHaveLength(1);
     expect(fixture.requests[0].searchParams.has('pageToken')).toBe(false);
     await expect(pane(page).getByText('Job created',{exact:true})).toBeVisible();
     if(process.env.CORTEX_REVIEW_ARTIFACTS) await page.screenshot({animations:'disabled',path:`${process.env.CORTEX_REVIEW_ARTIFACTS}/${which}-timeline-overview.png`,fullPage:false});
-    const details=pane(page).locator('summary').first();
+    const details=pane(page).getByRole('button',{name:'Expand row'});
     await details.focus(); await page.keyboard.press('Enter');
+    await pane(page).getByRole('button',{name:'Lease renewed · 9'}).click();
     await expect(pane(page).getByText(preciseTime,{exact:true}).first()).toBeVisible();
     await expect(pane(page).getByText('2026-11-08T06:00:00.999999999Z',{exact:true}).first()).toBeVisible();
     expect(await page.evaluate(()=>(window as any).hacked)).toBeUndefined();
     expect(await pane(page).locator('script,img').count()).toBe(0);
     fixture.setResponder(async route=>{ await route.fulfill({json:{events:[leaseEvent('2'),leaseEvent('900719925474099312345678901234567890',{eventType:'lease_acquired',acquisitionSource:'targeted',previousLeaseId:'replaced-lease'})]}}); });
     await pane(page).getByRole('button',{name:'Load older lease events'}).click();
-    await expect(pane(page).getByRole('listitem')).toHaveCount(3);
+    await expect(pane(page).locator('tr.ant-table-row')).toHaveCount(1);
     expect(fixture.requests).toHaveLength(2);
     expect(fixture.requests[1].searchParams.get('pageToken')).toBe('opaque+/=雪');
-    await expect(pane(page).locator('summary')).toHaveText(['Historical details · 9','Historical details · 2','Historical details · 900719925474099312345678901234567890']);
+    await expect(pane(page).getByRole('button',{name:'Lease acquired · 900719925474099312345678901234567890'})).toBeVisible();
     await expect(pane(page).getByRole('button',{name:'Load older lease events'})).toHaveCount(0);
-    await pane(page).locator('summary').last().focus(); await page.keyboard.press('Enter');
+    await pane(page).getByRole('button',{name:'Lease acquired · 900719925474099312345678901234567890'}).focus(); await page.keyboard.press('Enter');
     await expect(pane(page).getByText('replaced-lease',{exact:true})).toBeVisible();
     if(process.env.CORTEX_REVIEW_ARTIFACTS) await page.screenshot({animations:'disabled',path:`${process.env.CORTEX_REVIEW_ARTIFACTS}/${which}-timeline-details.png`,fullPage:false});
     await leaveTimeline(page); await expect(pane(page).getByText('Job created',{exact:true})).toHaveCount(0);
@@ -81,11 +82,11 @@ for(const which of ['story','detail'] as const) {
 }
 test('older failure retains rows, invalid cursor refresh discards history before requesting page one',async({page})=>{
   const fixture=await fixtures(page); await surface(page,'story'); await timeline(page).click();
-  await expect(pane(page).getByRole('listitem')).toHaveCount(2);
+  await expect(pane(page).locator('tr.ant-table-row')).toHaveCount(1);
   fixture.setResponder(async route=>{await route.fulfill({status:503,json:{error:'backend offline',code:'backend_unavailable'}});});
   await pane(page).getByRole('button',{name:'Load older lease events'}).click();
   await expect(pane(page).getByRole('alert')).toContainText('backend offline');
-  await expect(pane(page).getByRole('listitem')).toHaveCount(2);
+  await expect(pane(page).locator('tr.ant-table-row')).toHaveCount(1);
   await expect(page.getByRole('heading',{name:'Job Story: Inspect lease history'})).toBeVisible();
   fixture.setResponder(async route=>{await route.fulfill({status:400,json:{error:'cursor expired',code:'invalid_lease_event_page_token'}});});
   await pane(page).getByRole('button',{name:'Retry lease history'}).click();
@@ -94,7 +95,7 @@ test('older failure retains rows, invalid cursor refresh discards history before
   let release!:()=>void; const wait=new Promise<void>(resolve=>{release=resolve;});
   fixture.setResponder(async route=>{await wait; await route.fulfill({json:{events:[]}});});
   await pane(page).getByRole('button',{name:'Refresh from first page'}).click();
-  await expect(pane(page).getByRole('status')).toBeVisible(); await expect(pane(page).getByRole('listitem')).toHaveCount(0);
+  await expect(pane(page).getByRole('status')).toBeVisible(); await expect(pane(page).locator('tr.ant-table-row')).toHaveCount(0);
   expect(fixture.requests[3].searchParams.has('pageToken')).toBe(false);
   release(); await expect(pane(page).getByText('No retained lease events are available.')).toBeVisible();
   await expect(pane(page).getByText(/Collection and retention/)).toBeVisible();
@@ -115,7 +116,7 @@ for(const [status,code] of [[403,'forbidden'],[401,'authentication_required'],[5
 }
 test('overlapping older actions are disabled, closing cancels and ignores late history',async({page})=>{
   const fixture=await fixtures(page); await surface(page,'story'); await timeline(page).click();
-  await expect(pane(page).getByRole('listitem')).toHaveCount(2);
+  await expect(pane(page).locator('tr.ant-table-row')).toHaveCount(1);
   let release!:()=>void; const wait=new Promise<void>(resolve=>{release=resolve;});
   fixture.setResponder(async route=>{await wait; await route.fulfill({json:{events:[leaseEvent('late')],nextPageToken:'stale'}}).catch(()=>{});});
   await pane(page).getByRole('button',{name:'Load older lease events'}).click();
@@ -124,7 +125,7 @@ test('overlapping older actions are disabled, closing cancels and ignores late h
   const canceled=page.waitForEvent('requestfailed',req=>req.url().includes('/events'));
   await leaveTimeline(page); await canceled;
   release();
-  await expect(pane(page).getByRole('listitem')).toHaveCount(0);
+  await expect(pane(page).locator('tr.ant-table-row')).toHaveCount(0);
   fixture.setResponder(async route=>{await route.fulfill({json:{events:[]}});});
   await timeline(page).click(); await expect(pane(page).getByText('No retained lease events are available.')).toBeVisible();
   expect(fixture.requests).toHaveLength(3); expect(fixture.requests[2].searchParams.has('pageToken')).toBe(false);
@@ -205,8 +206,135 @@ test('crash concern remains independent of history failure and reports status fa
 
 test('crash concern conflict refreshes status without losing readable history or retrying mutation',async({page})=>{
  const f=await fixtures(page);f.setJob('CRASH_CONCERN');f.setClear(async route=>route.fulfill({status:409,json:{error:'job has a live lease'}}));await surface(page,'story');await timeline(page).click();
- await expect(pane(page).getByRole('listitem')).toHaveCount(2);
+ await expect(pane(page).locator('tr.ant-table-row')).toHaveCount(1);
  await page.getByRole('tabpanel',{name:'Lease timeline',exact:true}).getByRole('button',{name:'Clear crash concern',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'Clear crash concern',exact:true}).click();
- await expect(page.getByText('Could not confirm clearing',{exact:true})).toBeVisible();await expect(page.getByText(/job has a live lease/)).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(pane(page).getByRole('listitem')).toHaveCount(2);
+ await expect(page.getByText('Could not confirm clearing',{exact:true})).toBeVisible();await expect(page.getByText(/job has a live lease/)).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(pane(page).locator('tr.ant-table-row')).toHaveCount(1);
  expect(f.mutations).toHaveLength(1);expect(f.requests).toHaveLength(1);await expect(page.getByText('Crash concern cleared',{exact:true})).toHaveCount(0);
+});
+
+test('follows a lease to its Pulse provider, log and job-filtered launches', async ({ page }) => {
+  const fixture = await fixtures(page);
+  fixture.setDetail(route => route.fulfill({json: {...job, launch_id: 'launch-1'}}));
+  fixture.setResponder(route => route.fulfill({json: {events: [leaseEvent('7', {workerId: 'launch-1'})]}}));
+  const live = {
+    id: 'machine-1', launch_id: 'launch-1', provider: 'mac', state: 'running', refs: [],
+    job: { jobdb: 'http://db/tenant', instance_id: 'target', job_id: 'job', tenant_id: 'tenant' },
+  };
+  await page.route('**/api/pulse/**', async route => {
+    const path = new URL(route.request().url()).pathname;
+    const provider = {
+      name: 'mac', type: 'reverse', discovery: 'known', bases_complete: true,
+      bases: [{name: 'macos', capabilities: ['metal']}],
+      health: {name: 'mac', implementation: 'pulse-mac', version: '1', protocol: 1, state: 'healthy', restart_count: 0, generation: 3},
+    };
+    if (path.endsWith('/config')) return route.fulfill({json: {providers: {mac: {type: 'reverse'}}}});
+    if (path.endsWith('/providers')) return route.fulfill({json: {items: [provider]}});
+    if (path.endsWith('/mac/capabilities')) return route.fulfill({json: provider});
+    if (path.endsWith('/status')) return route.fulfill({json: {status: 'ok', version: '1', providers: 1, poll: {}}});
+    if (path.endsWith('/logs')) return route.fulfill({json: {records: [{data: 'cmVhZHkK'}], has_more: false, finalized: true, incomplete: false}});
+    return route.fulfill({json: {items: [live], errors: [], complete: true}});
+  });
+  await page.route('**/api/projects/tenant/runner-launches?**', route =>
+    route.fulfill({json: {events: [leaseEvent('2', {workerId: 'old-launch', eventType: 'lease_acquired'})]}}));
+  await page.goto('/project/tenant/jobs/job/story?tab=leases');
+  await expect(page.getByText('Last recorded launch ID')).toBeVisible();
+  await pane(page).getByRole('link', {name: 'launch-1'}).click();
+  await expect(page.getByRole('heading', {name: 'Launch launch-1'})).toBeVisible();
+  await expect(page.locator('pre.runner-log')).toHaveText('ready');
+  const download = page.getByRole('link', {name: 'Download log'});
+  await expect(download).toHaveAttribute('download', 'launch-1.log');
+  await expect(download).toHaveAttribute('href', '/api/pulse/providers/mac/launches/launch-1/download');
+  await page.getByRole('link', {name: 'mac', exact: true}).click();
+  await expect(page.getByRole('heading', {name: 'Active instances'})).toBeVisible();
+  await expect(page.getByText('pulse-mac')).toBeVisible();
+  await expect(page.getByText('metal')).toBeVisible();
+  await expect(page.getByRole('table',{name:'Runner instances'}).getByRole('link',{name:'launch-1',exact:true})).toBeVisible();
+  await page.getByRole('link', {name: 'Runners overview'}).click();
+  await expect(page.getByRole('article')).toContainText('metal');
+  await page.getByRole('navigation', {name: 'Runner navigation'}).getByRole('link', {name: 'Instances', exact: true}).click();
+  await expect(page.getByRole('columnheader',{name:/Status/}).locator('.ant-table-filter-trigger')).toHaveClass(/active/);
+  await expect(page.getByRole('link',{name:'job',exact:true})).toHaveAttribute('href','/project/tenant/jobs/job/story');
+  await page.getByRole('link',{name:'View log for launch-1'}).click();
+  await expect(page).toHaveURL(/launches\/launch-1\/logs\?provider=mac$/);
+  await expect(page.locator('pre.runner-log')).toHaveText('ready');
+  await page.goto('/project/tenant/jobs/job/story?tab=leases');
+  await pane(page).getByRole('link', {name: 'All launches for this job'}).click();
+  await expect(page.getByRole('columnheader',{name:/Job ID/}).locator('.ant-table-filter-trigger')).toHaveClass(/active/);
+  await expect(page.getByRole('table')).toContainText('old-launch');
+});
+
+test('instance column controls sort, filter and restore the list from the URL', async ({page}) => {
+  await fixtures(page);
+  await page.setViewportSize({width:2160,height:1000});
+  const active = [
+    {id:'i-2',launch_id:'launch-b-0123456789',provider:'mac',state:'running',created_at:'2026-01-02T00:06:00Z',job:{job_id:'job-b',tenant_id:'other'}},
+    {id:'i-1',launch_id:'launch-a-0123456789',provider:'linux',state:'queued',created_at:'2026-01-01T23:55:59Z',job:{job_id:'job-a',tenant_id:'tenant'}},
+  ];
+  await page.route('**/api/pulse/instances',route=>route.fulfill({json:{items:active,complete:true,errors:[]}}));
+  await page.goto('/project/tenant/runners/instances');
+  const table = page.getByRole('table',{name:'Runner instances'});
+  const rows = table.locator('tr.ant-table-row');
+  await expect(rows).toHaveCount(2);
+  const mainWidth = await page.locator('.app-content').evaluate(el=>el.clientWidth);
+  const pagePadding = await page.locator('.runners-page').evaluate(el=>parseFloat(getComputedStyle(el).paddingInlineStart));
+  expect((await table.boundingBox())!.width).toBeGreaterThanOrEqual(mainWidth - 2 * pagePadding - 1);
+  await expect(table.getByRole('columnheader',{name:'Instance',exact:true})).toHaveCount(0);
+  await expect(table.getByRole('columnheader',{name:'Run duration',exact:true})).toHaveCount(0);
+  const launch = table.getByRole('link',{name:'launch-a-0123456789',exact:true});
+  await expect(launch).toHaveText('launch-a-0…');
+  await expect(launch).toHaveAttribute('href', /launches\/launch-a-0123456789\?provider=linux$/);
+  await expect(table.getByRole('link',{name:'job-b',exact:true})).toHaveAttribute('href','/project/other/jobs/job-b/story');
+  await table.getByRole('columnheader',{name:/Launch ID/}).getByText('Launch ID',{exact:true}).click();
+  await expect(rows.first()).toContainText('launch-a');
+  await table.getByRole('columnheader',{name:/Provider/}).getByRole('button').click();
+  await page.getByRole('textbox',{name:'Provider'}).fill('mac');
+  await page.getByRole('button',{name:'Apply',exact:true}).click();
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('launch-b');
+  await page.reload();
+  await expect(rows).toHaveCount(1);
+  await page.getByRole('button',{name:'Reset filters'}).click();
+  await expect(rows).toHaveCount(2);
+  await table.getByRole('columnheader',{name:'Start',exact:true}).getByRole('button').click();
+  const from = page.getByPlaceholder('From (UTC)');
+  const through = page.getByPlaceholder('Through (UTC)');
+  await from.fill('2026-01-01 23:55');
+  await from.press('Enter');
+  await through.fill('2026-01-02 00:05');
+  await through.press('Enter');
+  await page.getByRole('button',{name:'Apply',exact:true}).click();
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('launch-a');
+  await page.reload();
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('launch-a');
+  expect(new URL(page.url()).searchParams.get('date')).toBe('2026-01-01T23:55/2026-01-02T00:05');
+  await page.goto('/project/tenant/runners/instances?date=2026-01-01T23:55/2026-01-02T00:06');
+  await expect(rows).toHaveCount(2);
+  await page.goto('/project/tenant/runners/instances?date=2026-01-02');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('launch-b');
+  await page.setViewportSize({width:390,height:844});
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('lease count filters and acquisition-time sorting operate on grouped leases',async({page})=>{
+  const fixture=await fixtures(page);
+  const acquired = (id:string,at:string) => leaseEvent(id,{leaseId:id,workerId:id,eventType:'lease_acquired',occurredAt:at});
+  fixture.setResponder(route=>route.fulfill({json:{events:[
+    leaseEvent('r2',{leaseId:'beta',workerId:'beta'}),
+    leaseEvent('r1',{leaseId:'beta',workerId:'beta'}),
+    acquired('beta','2026-11-08T00:00:00Z'),acquired('alpha','2026-11-07T00:00:00Z'),
+  ]}}));
+  await page.goto('/project/tenant/jobs/job/story?tab=leases');
+  const table=pane(page).getByRole('table',{name:'Recorded leases'});
+  const rows=table.locator('tr.ant-table-row');
+  await expect(rows).toHaveCount(2);
+  await table.getByRole('columnheader',{name:'Time acquired'}).getByText('Time acquired',{exact:true}).click();
+  await expect(rows.first()).toContainText('alpha');
+  await table.getByRole('columnheader',{name:'Renewals'}).getByRole('button').click();
+  await page.getByRole('spinbutton',{name:'Minimum renewals'}).fill('2');
+  await page.getByRole('button',{name:'Apply',exact:true}).click();
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first().getByRole('link',{name:'beta'})).toHaveAttribute('href',/launches\/beta\?jobId=job$/);
 });

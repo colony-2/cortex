@@ -259,6 +259,7 @@ with a c2j cell configuration; see the
 | Option | Environment variable | Default |
 | --- | --- | --- |
 | `--addr` | `CORTEX_ADDR` | `:8080` |
+| `--pulse-url` | `CORTEX_PULSE_URL` | `http://localhost:8080` |
 | `--jobdb` | `C2J_JOBDB` | `jobdb` from `.c2/config.yaml` |
 | `--working-dir` | `CORTEX_WORKING_DIR` | Current directory |
 | `--cors-origins` | `CORTEX_CORS_ORIGINS` | Empty; comma-separated origins |
@@ -303,6 +304,12 @@ Opening the UI uses the tenant in your configured JobDB URI. To override it,
 select a tenant in the header, use `/?tenantId=42`, or open a tenant route such as
 `/project/42/jobs`. The email screen records an identity cookie; it does not
 provide server-side authentication.
+
+### Pulse runners
+
+Cortex reads Pulse at `http://localhost:8080` by default. To run Cortex alongside Pulse on the same host, use a separate Cortex port, for example `cortex serve --addr :8081`. To reach a different controller, set `CORTEX_PULSE_URL` or pass `--pulse-url`. The Runners section exposes the connected controller’s fleet diagnostics and retained launch logs to Cortex users.
+
+The Runners overview shows each configured provider’s health, active instance count, and advertised execution bases with their supported capabilities. Each card indicates whether the catalog is complete, partial, or unavailable. Open a provider to see its health snapshot, including implementation, version, generation, restarts, and the last reported failure. Older Pulse controllers fall back to public provider configuration and health. The instances table opens on active compute. **All launches** also includes retained JobDB lease acquisitions in the selected tenant. A lease worker ID links to the corresponding launch. When an instance has disappeared, Cortex checks the configured providers for retained output. The log preview opens with up to 10 KiB and the download streams the available raw bytes in order.
 
 ### Reviewing saved changes
 

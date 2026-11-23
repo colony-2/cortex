@@ -737,7 +737,7 @@ describe('job story context', () => {
     expect(await screen.findByText('Recovered prompt')).toBeVisible();
     expect(screen.getByLabelText('Job cell')).toHaveTextContent(`Cell: ${jobIdentity.cell_name}`); // JC-006
     expect(screen.getByText('Recovered diagnostic')).toBeVisible();
-    expect(getJob).toHaveBeenLastCalledWith('tenant', 'job');
+    expect(getJob).toHaveBeenLastCalledWith('tenant', 'job', true);
     expect(fetchMock.mock.calls.length).toBe(reads);
     expect(screen.queryByText('Job details unavailable')).toBeNull();
   });
@@ -2123,7 +2123,7 @@ describe('C1 source recovery',()=>{
     await waitFor(()=>expect(sessionStorage.getItem('json-patch-v2:cortex:restart:tenant:job')).toBeNull());
     expect(screen.queryByRole('dialog')).toBeNull();
     // A keyed page remount loads the returned source identity.
-    await waitFor(()=>expect(getJob).toHaveBeenLastCalledWith('tenant','accepted-successor'));
+    await waitFor(()=>expect(getJob).toHaveBeenLastCalledWith('tenant','accepted-successor',true));
     expect(cancelJob).not.toHaveBeenCalled();
   });
   it('R08 R11 pending cancellation permits restart after its in-flight lock ends',async()=>{

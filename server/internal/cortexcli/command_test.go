@@ -20,7 +20,7 @@ import (
 
 func cleanEnv(t *testing.T) {
 	t.Helper()
-	for _, name := range []string{"C2J_JOBDB", "JOBDB_URL", "CORTEX_TENANT_ID", "CORTEX_ADDR", "CORTEX_WORKING_DIR", "CORTEX_CORS_ORIGINS"} {
+	for _, name := range []string{"C2J_JOBDB", "JOBDB_URL", "CORTEX_TENANT_ID", "CORTEX_PULSE_URL", "CORTEX_ADDR", "CORTEX_WORKING_DIR", "CORTEX_CORS_ORIGINS"} {
 		t.Setenv(name, "")
 	}
 }
@@ -71,6 +71,33 @@ func TestConnectionPrecedenceAndCobraCommands(t *testing.T) {
 			}
 			if !called {
 				t.Fatal("server was not started")
+			}
+		})
+	}
+}
+
+func TestPulseControllerAddress(t *testing.T) {
+	for _, tc := range []struct{ name, env, flag, want string }{
+		{"default", "", "", "http://localhost:8080"},
+		{"environment", "http://remote:9000", "", "http://remote:9000"},
+		{"flag", "http://remote:9000", "http://other:9001", "http://other:9001"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cleanEnv(t)
+			t.Setenv("CORTEX_PULSE_URL", tc.env)
+			cmd := newCommand(Options{}, func(_ *cobra.Command, cfg cortex.Config) error {
+				if cfg.PulseURL != tc.want {
+					t.Fatalf("Pulse URL = %q, want %q", cfg.PulseURL, tc.want)
+				}
+				return nil
+			})
+			args := []string{"serve", "--jobdb", "http://db:9047/c2"}
+			if tc.flag != "" {
+				args = append(args, "--pulse-url", tc.flag)
+			}
+			cmd.SetArgs(args)
+			if err := cmd.Execute(); err != nil {
+				t.Fatal(err)
 			}
 		})
 	}

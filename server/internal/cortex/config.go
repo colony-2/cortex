@@ -17,10 +17,12 @@ import (
 )
 
 const defaultTenantID = "1"
+const DefaultPulseURL = "http://localhost:8080"
 
 type Config struct {
 	Addr             string
 	JobDBURL         string
+	PulseURL         string
 	WorkingDir       string
 	DefaultTenantID  string
 	CORSOrigins      []string
@@ -59,6 +61,9 @@ type Server struct {
 }
 
 func normalizeConfig(cfg Config) Config {
+	if strings.TrimSpace(cfg.PulseURL) == "" {
+		cfg.PulseURL = DefaultPulseURL
+	}
 	if strings.TrimSpace(cfg.Addr) == "" {
 		cfg.Addr = ":8080"
 	}

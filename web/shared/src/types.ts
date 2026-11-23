@@ -65,6 +65,7 @@ export interface ExecutionView {
 }
 
 export interface RecipeJob {
+  launch_id?: string;
   title?: string;
   metadata?: Record<string, unknown>;
   schema_hash?: string;

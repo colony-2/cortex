@@ -1,0 +1,50 @@
+.runners-page {
+  padding: clamp(16px, 3vw, 32px);
+  max-width: 1500px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.runners-page:has(.runner-instances-table) {
+  max-width: none;
+}
+.runners-page nav,
+.runner-heading {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.runners-page nav {
+  margin-bottom: 16px;
+}
+.runner-heading {
+  justify-content: space-between;
+}
+.runner-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: 16px;
+  margin-block: 16px;
+}
+.runner-grid .ant-card {
+  height: 100%;
+}
+.runners-page .ant-table-wrapper,
+.runners-page .ant-alert {
+  margin-block: 12px;
+}
+.runners-page .ant-descriptions-item-content {
+  white-space: pre-wrap;
+}
+.runners-page pre {
+  overflow: auto;
+  max-height: 60vh;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.runner-log {
+  padding: 16px;
+  background: #16242d;
+  color: #eef5f7;
+  border-radius: 6px;
+}

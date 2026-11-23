@@ -1,7 +1,7 @@
 import { AssistantHost } from './components/AssistantContext';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { FileSearchOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MenuOutlined, OrderedListOutlined, PlayCircleOutlined, SettingOutlined } from '@ant-design/icons';
+import { CloudServerOutlined, FileSearchOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MenuOutlined, OrderedListOutlined, PlayCircleOutlined, SettingOutlined } from '@ant-design/icons';
 import { Alert, Badge, Button, Drawer, Empty, Input, Layout, Menu, Spin, Tooltip, Typography } from 'antd';
 import {
   InputActivityProvider,
@@ -10,6 +10,7 @@ import {
   listProjects,
   useInputActivity,
 } from '@colony2/shared';
+import RunnersPage from './runners/RunnersPage';
 import TreePage from './executionTree/TreePage';
 import CellsList from './components/CellsList';
 import CellPage from './components/CellPage';
@@ -102,6 +103,7 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
 
   const navKey = useMemo(() => {
     const path = location.pathname;
+    if (path.includes('/runners')) return 'runners';
     if (path.includes('/reviews')) return 'reviews';
     if (path.includes('/cells')) return 'cells';
     if (path.includes('/admin')) return 'admin';
@@ -141,6 +143,7 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
         ['jobs', 'Goals', 'goals', <PlayCircleOutlined />],
         ['reviews', 'Reviews', 'reviews', <FileSearchOutlined />],
         ['cells', 'Cells', 'cells', <OrderedListOutlined />],
+        ['runners', 'Runners', 'runners', <CloudServerOutlined />],
         ['admin', 'Admin', 'admin', <SettingOutlined />],
       ].map(([key, name, route, icon]) => ({
         key: String(key), title: '',
@@ -206,6 +209,7 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
             <Route path="/cells" element={<CellsList key={tenantId} projectId={tenantId} />} />
             <Route path="/project/:projectId/cells/:cellId" element={<CellRoute fallbackProjectId={tenantId} />} />
             <Route path="/project/:projectId/cells" element={<CellsRoute fallbackProjectId={tenantId} />} />
+            <Route path="/project/:projectId/runners/*" element={<RunnersPage />} />
             <Route path="/project/:projectId/admin" element={<AdminRoute fallbackProjectId={tenantId} />} />
             <Route path="*" element={<Navigate to={`/project/${tenantId}/jobs`} replace />} />
           </Routes>

@@ -39,12 +39,14 @@ it('JS-017 SSR makes zero requests and mounting the active tab loads history imm
 it('retains opaque identities, timestamp ties, shortened renewal, historical snapshots and escaped text', async () => {
   getEvents.mockResolvedValue({ events: [leaseEvent(), leaseEvent('1', { eventType:'lease_acquired', acquisitionSource:'targeted', previousLeaseId:'old-lease' })] });
   const { container } = await mount();
-  const rows = await screen.findAllByRole('listitem');
-  expect(rows.map(row => within(row).getByRole('group').textContent)).toEqual(expect.arrayContaining([expect.stringContaining('900719925474099312345678901234567890'),expect.stringContaining('old-lease')]));
-  expect(within(rows[0]).getByText('Lease renewed')).toBeVisible();
-  expect(within(rows[1]).getByText('Lease acquired')).toBeVisible();
-  expect(within(rows[0]).getByText(preciseTime)).toBeInTheDocument();
-  for (const text of ['historical-cell','github.com/old/repo','primary-goal','original-type','2026-11-08T06:00:00.999999999Z','2026-11-08T05:01:00.987654321Z']) expect(within(rows[0]).getByText(text)).toBeInTheDocument();
+  const table = await screen.findByRole('table', {name:'Recorded leases'});
+  const row = within(table).getByRole('link').closest('tr')!;
+  expect(within(row).getByText('1')).toBeVisible();
+  click('Expand row');
+  fireEvent.click(screen.getByText('Lease renewed · 900719925474099312345678901234567890'));
+  for (const text of [preciseTime,'historical-cell','github.com/old/repo','primary-goal','original-type','2026-11-08T06:00:00.999999999Z','2026-11-08T05:01:00.987654321Z']) expect(screen.getByText(text)).toBeInTheDocument();
+  fireEvent.click(screen.getByText('Lease acquired · 1'));
+  expect(screen.getByText('old-lease')).toBeVisible();
   expect(container.querySelector('img,script')).toBeNull();
   expect(container.textContent).not.toMatch(/Lease released|Lease completed|Lease cancelled|Current owner/);
 });
@@ -57,24 +59,27 @@ it('does not invent a recorded time for missing/invalid timestamps', async () =>
 it('loads older only on action, blocks overlap, and deduplicates event IDs in unchanged server order', async () => {
   const next = deferred();
   getEvents.mockResolvedValueOnce({ events:[leaseEvent('9'),leaseEvent('2')],nextPageToken:'opaque+/=' }).mockReturnValueOnce(next.promise);
-  await mount(); await screen.findAllByText('Lease renewed');
+  await mount(); await screen.findByRole('table', {name:'Recorded leases'});
   expect(getEvents).toHaveBeenCalledTimes(1);
   click('Load older lease events'); click('Load older lease events');
   expect(getEvents).toHaveBeenCalledTimes(2);
   expect(getEvents.mock.calls[1][2]).toEqual({ pageSize:100, pageToken:'opaque+/=' });
   await act(async () => next.resolve({ events:[leaseEvent('2'),leaseEvent('1'),leaseEvent('1')]}));
-  expect(screen.getAllByRole('listitem').map(row => within(row).getByText(/Historical details/).textContent)).toEqual(['Historical details · 9','Historical details · 2','Historical details · 1']);
+  const row = screen.getByRole('link', {name:leaseEvent().workerId}).closest('tr')!;
+  expect(within(row).getByText('3')).toBeVisible();
+  click('Expand row');
+  for(const id of ['9','2','1']) expect(screen.getByText('Lease renewed · '+id)).toBeVisible();
   expect(screen.queryByRole('button',{name:'Load older lease events'})).toBeNull();
 });
 it('keeps rows after older-page failure, retries the same cursor and refreshes invalid cursors from page one', async () => {
   getEvents.mockResolvedValueOnce({events:[leaseEvent('first')],nextPageToken:'cursor'}).mockRejectedValueOnce(new Error('offline')).mockRejectedValueOnce(new APIError('stale',400,'invalid_lease_event_page_token')).mockResolvedValueOnce({events:[]});
-  await mount(); await screen.findByText('Lease renewed'); click('Load older lease events');
+  await mount(); await screen.findByRole('table', {name:'Recorded leases'}); click('Load older lease events');
   await screen.findByRole('alert');
-  expect(screen.getAllByRole('listitem')).toHaveLength(1); expect(screen.getByText('Job created')).toBeVisible();
+  expect(screen.getAllByRole('button', {name:'Expand row'})).toHaveLength(1); expect(screen.getByText('Job created')).toBeVisible();
   click('Retry lease history'); await screen.findByRole('button',{name:'Refresh from first page'});
   expect(getEvents.mock.calls[2][2]?.pageToken).toBe('cursor');
   click('Refresh from first page');
-  expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+  expect(screen.queryAllByRole('row').slice(1)).toHaveLength(0);
   await screen.findByText('No retained lease events are available.');
   expect(getEvents.mock.calls[3][2]?.pageToken).toBeUndefined();
 });
@@ -88,16 +93,16 @@ it.each([[403,'lease_permission_denied'],[401,'authentication_required'],[501,'u
 it('refresh clears rows and cursor immediately, aborts older work, and ignores late responses from transports that ignore abort', async () => {
   const older=deferred(), fresh=deferred();
   getEvents.mockResolvedValueOnce({events:[leaseEvent('first')],nextPageToken:'old-cursor'}).mockReturnValueOnce(older.promise).mockReturnValueOnce(fresh.promise);
-  await mount(); await screen.findByText('Lease renewed'); click('Load older lease events');
+  await mount(); await screen.findByRole('table', {name:'Recorded leases'}); click('Load older lease events');
   const signal=getEvents.mock.calls[1][3]!;
   click('Refresh timeline'); expect(signal.aborted).toBe(true);
-  expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+  expect(screen.queryAllByRole('row').slice(1)).toHaveLength(0);
   expect(getEvents.mock.calls[2][2]?.pageToken).toBeUndefined();
   await act(async()=>older.resolve({events:[leaseEvent('stale')],nextPageToken:'stale-cursor'}));
-  expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+  expect(screen.queryAllByRole('row').slice(1)).toHaveLength(0);
   await act(async()=>fresh.resolve({events:[leaseEvent('fresh')]}));
-  expect(screen.getByText('Historical details · fresh')).toBeInTheDocument();
-  expect(screen.queryByText('Historical details · stale')).toBeNull();
+  click('Expand row'); expect(screen.getByText('Lease renewed · fresh')).toBeVisible();
+  expect(screen.queryByText('Lease renewed · stale')).toBeNull();
 });
 it('close cancels supported requests, discards pages, and reopening revalidates without polling', async () => {
   const late=deferred(); getEvents.mockReturnValueOnce(late.promise).mockResolvedValue({events:[]});
@@ -124,7 +129,7 @@ it.each(['tenant','job','options','identity','navigation'])('clears local state 
   expect(signal.aborted).toBe(true);
   expect(screen.getByRole('button',{name:'Refresh timeline'})).toBeVisible();
   await act(async()=>late.resolve({events:[leaseEvent('stale')],nextPageToken:'stale'}));
-  expect(screen.queryByText('Historical details · stale')).toBeNull();
+  expect(screen.queryByText('Lease renewed · stale')).toBeNull();
   await waitFor(()=>expect(getEvents).toHaveBeenCalledTimes(2));
   expect(getEvents.mock.calls[1][2]?.pageToken).toBeUndefined();
   expect(getEvents.mock.calls[1][0]).toBe(change==='tenant'?'other':'tenant');
@@ -135,4 +140,24 @@ it('unmount aborts pending work', async () => {
   getEvents.mockReturnValue(deferred().promise);
   const view=await mount(); const signal=getEvents.mock.calls[0][3]!;
   view.unmount(); expect(signal.aborted).toBe(true);
+});
+
+it('counts a lease through now, stops at the latest renewal expiry, and fills a paged acquisition', async () => {
+  const start = '2026-01-01T00:00:00Z';
+  vi.useFakeTimers({toFake:['Date','setInterval','clearInterval']});
+  vi.setSystemTime(new Date('2026-01-01T00:00:10Z'));
+  getEvents.mockResolvedValueOnce({events:[leaseEvent('2', {workerId:'launch', occurredAt:'2026-01-01T00:00:08Z', leaseExpiresAt:'2026-01-01T00:00:15Z'})],nextPageToken:'older'})
+    .mockResolvedValueOnce({events:[
+      leaseEvent('1', {workerId:'launch', eventType:'lease_acquired', occurredAt:start,leaseExpiresAt:'2026-01-01T01:00:00Z'}),
+      leaseEvent('0', {workerId:'launch', leaseId:'another-lease',eventType:'lease_acquired',occurredAt:start,leaseExpiresAt:'2026-01-01T00:00:05Z'}),
+    ]});
+  await mount();
+  expect(screen.queryByText('10s')).toBeNull();
+  await act(async()=>click('Load older lease events'));
+  expect(screen.getAllByRole('link',{name:'launch'})).toHaveLength(2);
+  expect(screen.getByText('10s')).toBeVisible();
+  expect(screen.getByText('5s')).toBeVisible();
+  act(()=>vi.advanceTimersByTime(9000));
+  expect(screen.getByText('15s')).toBeVisible();
+  expect(getEvents).toHaveBeenCalledTimes(2);
 });

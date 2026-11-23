@@ -217,7 +217,16 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job.OtherGoalIDs = nil
-	writeJSON(w, http.StatusOK, withExecutionRequirements(job))
+	result := withExecutionRequirements(job)
+	if r.URL.Query().Get("includeLaunch") == "true" && s.leaseEvents != nil {
+		page, err := s.leaseEvents.ListLeaseEvents(r.Context(), jobdb.ListLeaseEventsRequest{
+			TenantID: job.TenantID, JobIDs: []string{job.JobID}, IncludeHidden: true, PageSize: 1,
+		})
+		if err == nil && len(page.Events) > 0 {
+			result.LaunchID = page.Events[0].WorkerID
+		}
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 // Verify tenant-scoped existence before replay/control calls. Remote replay can
@@ -452,7 +461,7 @@ func (s *Server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleJobStory(w http.ResponseWriter, r *http.Request) {
-	inventory := &conversationInventory{key: jobdb.JobKey{TenantId: s.tenantID(r), JobId: mux.Vars(r)["jobId"]}}
+	inventory := &conversationInventory{launches: make(map[int64]string), key: jobdb.JobKey{TenantId: s.tenantID(r), JobId: mux.Vars(r)["jobId"]}}
 	ctx := context.WithValue(r.Context(), inventoryContextKey{}, inventory)
 	resp, err := s.story.GetJobRunStory(ctx, story.GetJobRunStoryRequest{
 		ProjectID: s.tenantID(r),
@@ -464,8 +473,9 @@ func (s *Server) handleJobStory(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, struct {
 		*story.JobRunStory
+		Launches       map[int64]string `json:"launch_ids_by_ordinal,omitempty"`
 		InputArtifacts *[]inputDocument `json:"input_artifacts,omitempty"`
-	}{resp, inventory.rows})
+	}{resp, inventory.launches, inventory.rows})
 }
 
 func (s *Server) handleJobOutcome(w http.ResponseWriter, r *http.Request) {
