@@ -73,6 +73,7 @@ export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,do
   const opensInWindow = compact && !!onPopout;
   const selected=view?.request.directions.find(d=>d.id===direction);
   const policy=view&&selected?reviewV2DirectionPolicy(view.request,selected):undefined;
+  const composing = composerOpen && selected && !opensInWindow;
   useLayoutEffect(() => {
     if (restoreDraft?.()) {
       setComposerOpen(true);
@@ -88,6 +89,25 @@ export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,do
   }, [submitted, onSubmitted]);
   const feedbackInput=useRef<InputRef>(null);
   const sendButton=useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!composing || view?.phase !== 'actionable') return;
+    const send = sendButton.current;
+    const composer = send?.closest<HTMLElement>('.review-v2-composer');
+    if (!send || !composer) return;
+    // Inline replies stay open as focus moves between the reply and the thread.
+    const scope = (docked ? null : composer.closest<HTMLElement>('[role="tabpanel"]')) ?? composer;
+    const sendOnShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat || event.isComposing || event.key !== 'Enter' || !(event.ctrlKey || event.metaKey)) return;
+      if (send.matches(':disabled') || send.closest('[hidden], [inert], details:not([open])')) return;
+      const target = event.target;
+      if (target instanceof Element && !composer.contains(target) && target.closest('input, textarea, select, [contenteditable], [role="menu"], [role="dialog"]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      send.click();
+    };
+    scope.addEventListener('keydown', sendOnShortcut);
+    return () => scope.removeEventListener('keydown', sendOnShortcut);
+  }, [composing, docked, view?.phase]);
   const actionButtons=useRef(new Map<string,HTMLButtonElement|HTMLAnchorElement>());
   const [submitError,setSubmitError]=useReviewDraft(draftIdentity,'error','');
   const submitBusy=useRef(false);
@@ -176,7 +196,6 @@ export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,do
     if(!ready||!current||submitBusy.current)return;
     setDirection(id);setSubmitError('');setComposerOpen(true);setOpenWindow(true);
   };
-  const composing = composerOpen && selected && !opensInWindow;
   const icon = selected && responseIcon(selected);
   const settingsButton = !!request.settings?.length && <Tooltip title="Review settings"><Button ref={gear} type="text" icon={<SettingOutlined aria-hidden />} aria-label="Review settings" disabled={!ready} onClick={()=>setSettingsOpen(true)}/></Tooltip>;
   const response=<section className="review-v2-response" aria-label="Your response">
@@ -197,12 +216,7 @@ export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,do
         return <div key={id}>{setting?.label??id}: <code>{JSON.stringify(value)}</code> · {direction&&setting?.applies_to.includes(direction)?'Will be sent with this action':`Retained locally; applies to ${setting?.applies_to.map(id=>request.directions.find(d=>d.id===id)?.label??id).join(', ')}`}</div>;
       })}
       {!composing&&(feedback!==''||files.length>0)&&<p>Unsent feedback draft retained. Choose a feedback action to edit it.</p>}
-      {composing && <section aria-label="Response composer" className="review-v2-composer" onKeyDownCapture={event => {
-        if (!ready || event.key !== 'Enter' || (!event.ctrlKey && !event.metaKey) || event.nativeEvent.isComposing) return;
-        event.preventDefault();
-        event.stopPropagation();
-        void submit(selected.id);
-      }}>
+      {composing && <section aria-label="Response composer" className="review-v2-composer">
         <header className={`review-v2-composer-header${docked ? ' inbox-compose-fields' : ''}`}>
           <Dropdown trigger={['click']} disabled={!ready} menu={{
             selectable:true, selectedKeys:[selected.id],

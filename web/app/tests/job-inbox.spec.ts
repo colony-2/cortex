@@ -336,7 +336,13 @@ test('embedded review preserves draft through sidebar expansion and Settings, an
   await expect(page).toHaveURL(/\/jobs\/one\/story\?/);
   await v2Selected(page, 0);
   await expect(editor).toHaveValue('Keep this response while I inspect the cell list.');
-  await page.getByRole('button', { name: 'Send · Ask a question' }).click();
+  await page.getByRole('tab', { name: 'Execution', exact: true }).click();
+  await page.keyboard.press('Control+Enter');
+  expect(fixture.state.submits).toHaveLength(0);
+  await page.getByRole('tab', { name: 'Thread', exact: true }).click();
+  const discussion = page.getByRole('button', { name: 'Hide discussion', exact: true });
+  await discussion.focus();
+  await page.keyboard.press('Control+Enter');
   await expect.poll(() => fixture.state.submits.length).toBe(1);
   expect(fixture.state.submits[0].response.feedback).toBe('Keep this response while I inspect the cell list.');
 });
