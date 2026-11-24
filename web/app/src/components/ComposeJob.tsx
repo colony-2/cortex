@@ -1,6 +1,6 @@
 import { discardMessageDraft, getMessageDraft, messageDraftScope, saveMessageDraft } from '../hooks/useMessageDrafts';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { Alert, Button, Input, Select, Tooltip, message } from 'antd';
+import { Alert, Button, Input, Select, Tooltip, message, type InputRef } from 'antd';
 import { CloseOutlined, DeleteOutlined, PaperClipOutlined } from '@ant-design/icons';
 import { getCell, submitJob } from '@colony2/shared/api';
 import { createRequestId } from '@colony2/shared/cellProtocol';
@@ -51,6 +51,7 @@ export default function ComposeJob({ open, onClose, id, onRemove, active = true,
   const [error, setError] = useState<string>();
   const sending = useRef(false), attempt = useRef(saved?.attempt);
   const fileInput = useRef<HTMLInputElement>(null);
+  const subjectInput = useRef<InputRef>(null);
   const removed = useRef(false);
   const save = () => {
     if (id && !removed.current) saveMessageDraft(scope, id, {
@@ -90,6 +91,10 @@ export default function ComposeJob({ open, onClose, id, onRemove, active = true,
     if (onRemove && !recipient && !subject.trim() && !body.trim() && !files.length && !pastedFiles.length && !attempt.current) remove();
     else onClose();
   };
+  const focusSubject = () => {
+    // The Select schedules its own focus restoration when a popup option is clicked.
+    window.setTimeout(() => subjectInput.current?.focus(), 0);
+  };
   return <ComposerWindow open={open} label="New message" title={subject.trim() || 'New message'} active={active} busy={busy} onActivate={onActivate} onClose={close}>
     {collapsed => <form hidden={collapsed} onPointerDown={onActivate} onSubmit={event => { event.preventDefault(); void send(); }} onKeyDownCapture={event => {
       if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) {
@@ -100,9 +105,10 @@ export default function ComposeJob({ open, onClose, id, onRemove, active = true,
     }}>
       <div className="inbox-compose-fields">
         <Select virtual={false} id={`${fieldId}-recipient`} aria-label="Recipient cell" placeholder="Cell" variant="borderless" autoFocus={open && active}
-          showSearch optionFilterProp="label" value={recipient} disabled={busy} loading={inbox.registry.loading} options={inbox.registry.cells.filter(cell => cell.state === 'ACTIVE').map(cell => ({ value: cell.id, label: cell.name }))} onChange={setRecipient} />
+          showSearch optionFilterProp="label" value={recipient} disabled={busy} loading={inbox.registry.loading} options={inbox.registry.cells.filter(cell => cell.state === 'ACTIVE').map(cell => ({ value: cell.id, label: cell.name }))}
+          onChange={setRecipient} onSelect={focusSubject} />
         {inbox.registry.error && <Alert type="error" message="Recipients unavailable" action={<Button onClick={inbox.registry.reload}>Retry cells</Button>} />}
-        <Input id={`${fieldId}-subject`} aria-label="Subject" placeholder="Subject" variant="borderless" value={subject} disabled={busy} onChange={event => setSubject(event.target.value)} />
+        <Input ref={subjectInput} id={`${fieldId}-subject`} aria-label="Subject" placeholder="Subject" variant="borderless" value={subject} disabled={busy} onChange={event => setSubject(event.target.value)} />
       </div>
       <div className="inbox-compose-body">
         <GoalPromptEditor key={draftRevision} id={`${fieldId}-message`} aria-label="Message" aria-invalid={bodyError || undefined} aria-describedby={bodyError ? `${fieldId}-error` : undefined} value={body} disabled={busy} images={images} locked={() => sending.current} onChange={setBody}

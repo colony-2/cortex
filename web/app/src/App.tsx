@@ -179,6 +179,7 @@ function InboxShell({ defaultTenantId }: { defaultTenantId: string }) {
     return next;
   });
   const activeId = visibleComposers.find(entry => entry.id === activeComposer)?.id ?? visibleComposers[visibleComposers.length-1]?.id;
+  const backgroundProps = compact && activeId ? { inert: '' } : {};
   return <ReviewReplyDock.Provider value={{
     open: target => openComposer(reviewReplyKey(target),target),
     has: id => composers.some(entry => entry.id === id),
@@ -186,7 +187,7 @@ function InboxShell({ defaultTenantId }: { defaultTenantId: string }) {
   }}>
     <Layout className={`app-shell${rail ? ' inbox-rail' : ''}`}
       style={{ '--inbox-sidebar-width': useNavigationDrawer ? 'auto' : `${rail ? railWidth : sidebarWidth}px` } as CSSProperties}>
-      <Header className="app-header">
+      <Header className="app-header" {...backgroundProps}>
         <div className="app-brand">
           <Button type="text" className="inbox-navigation-toggle" ref={menuButton}
             aria-label={useNavigationDrawer ? 'Open navigation' : rail ? 'Expand navigation' : 'Collapse navigation'}
@@ -205,7 +206,7 @@ function InboxShell({ defaultTenantId }: { defaultTenantId: string }) {
           <AccountMenu tenant={tenantId} onSwitchTenant={applyTenant} onLogout={handleLogout} />
         </div>
       </Header>
-      <Layout className="app-body">
+      <Layout className="app-body" {...backgroundProps}>
         {useNavigationDrawer ? <Drawer title="Navigation" width="min(320px, 100%)" open={menuOpen} onClose={closeMenu} afterOpenChange={open => {
           // rc-drawer restores its captured element after this callback. Restore
           // our explicit opener afterwards, including interrupted animations.

@@ -31,7 +31,7 @@ for(const width of [1440,390]) test(`shared input discovery retains reviews and 
  await expect(page.getByRole('button',{name:'Send · Ask a question'})).toBeEnabled();
  expect(fixture.state.details).toBe(1);
  await page.getByRole('button',{name:'Send · Ask a question'}).click();
- await expect(page.getByText('Response accepted',{exact:true})).toBeVisible();
+ await expect(page.getByText(width < 768 ? 'Response submitted' : 'Response accepted',{exact:true})).toBeVisible();
  // Independent history ticks and unchanged discovery must keep details quiet.
  await page.waitForTimeout(5600);expect(fixture.state.details).toBe(1);
  await expect(page.locator('.review-v2-response .ant-btn-loading')).toHaveCount(0);

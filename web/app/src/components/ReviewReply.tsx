@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, useId } from 'react';
-import { Alert, Button, Dropdown, Input, Tooltip, type InputRef } from 'antd';
+import { useEffect, useLayoutEffect, useRef, useState, useId } from 'react';
+import { Alert, Button, Dropdown, Input, Tooltip, message, type InputRef } from 'antd';
 import { CheckCircleOutlined, DownOutlined, EditOutlined, ExportOutlined, ImportOutlined, PaperClipOutlined, QuestionCircleOutlined, SettingOutlined } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { changedReviewSettings, createSubmissionId, getUserEmail, inputActivityService, reviewV2ContributionError, reviewV2DirectionPolicy, useInputActivity, validateReviewScalar, type ReviewV2Direction, type ReviewV2Request } from '@colony2/shared';
 import { useReviewDraft, useReviewDraftRef } from '../hooks/useReviewDraft';
 import { useReviewV2 } from '../hooks/useReviewV2';
+import { useCompact } from '../hooks/useCompact';
 import { reviewReplyKey, type ReviewReplyTarget } from '../hooks/useReviewReplyDock';
 import { reviewInboxPath, reviewThreadPath } from '../utils/reviewDocumentLocation';
 import ComposerWindow from './ComposerWindow';
@@ -23,7 +24,8 @@ type Controller = ReturnType<typeof useReviewV2>;
 export function ReviewReplyWindow({ target, active, onActivate, onClose, onSendingChange }: {
   target: ReviewReplyTarget; active: boolean; onActivate: () => void; onClose: () => void; onSendingChange:(sending:boolean)=>void;
 }) {
-  const {tenant,job,reviewId,title} = target;
+  const {tenant,job,reviewId,title,cellName} = target;
+  const compact = useCompact();
   const controller = useReviewV2(tenant,job,reviewId);
   const { currentProjectId } = useInputActivity();
   const navigate = useNavigate();
@@ -40,13 +42,15 @@ export function ReviewReplyWindow({ target, active, onActivate, onClose, onSendi
   return <ComposerWindow label="Popped-out review reply" title={title} busy={sending} active={active} onActivate={onActivate} onClose={onClose}
     extra={<Tooltip title="Return reply to thread"><Button type="text" icon={<ImportOutlined aria-hidden />} aria-label="Return reply to thread" disabled={sending} onClick={popIn} /></Tooltip>}>
     {collapsed => <div hidden={collapsed} className="review-reply-window-body" onPointerDown={onActivate}>
-      <ReviewReply tenant={tenant} job={job} reviewId={reviewId} controller={controller} docked />
+      <ReviewReply tenant={tenant} job={job} reviewId={reviewId} controller={controller} cellName={cellName} docked
+        onBack={compact ? onClose : undefined} onSubmitted={compact ? () => { message.success('Response submitted'); onClose(); } : undefined} />
     </div>}
   </ComposerWindow>;
 }
 
-export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,docked=false }: {
+export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,docked=false,cellName,restoreDraft,onBack,onSubmitted }: {
   tenant:string; job:string; reviewId:string; controller:Controller; onPopout?:()=>void; docked?:boolean;
+  cellName?:string; restoreDraft?:()=>boolean; onBack?:()=>void; onSubmitted?:()=>void;
 }) {
   const {view,error,busy,refresh,sending,accepted,failed} = controller;
   const navigate = useNavigate();
@@ -63,11 +67,25 @@ export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,do
   const [feedback,setFeedback]=useReviewDraft(draftIdentity,'feedback','');
   const [files,setFiles]=useReviewDraft<File[]>(draftIdentity,'files',[]);
   const [composerOpen,setComposerOpen]=useReviewDraft(draftIdentity,'composer',false);
+  const [openWindow, setOpenWindow] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const compact = useCompact();
+  const opensInWindow = compact && !!onPopout;
   const selected=view?.request.directions.find(d=>d.id===direction);
   const policy=view&&selected?reviewV2DirectionPolicy(view.request,selected):undefined;
-  useEffect(() => {
-    if (!docked && location.state?.openReviewDraft) setComposerOpen(true);
-  }, [location.key]);
+  useLayoutEffect(() => {
+    if (restoreDraft?.()) {
+      setComposerOpen(true);
+      setOpenWindow(true);
+    }
+  }, [restoreDraft]);
+  // Draft fields are written by their layout effects before the dock mounts.
+  useLayoutEffect(() => {
+    if (opensInWindow && openWindow && composerOpen && selected && view?.phase === 'actionable') onPopout?.();
+  }, [opensInWindow, openWindow, composerOpen, selected, view?.phase, onPopout]);
+  useLayoutEffect(() => {
+    if (submitted) onSubmitted?.();
+  }, [submitted, onSubmitted]);
   const feedbackInput=useRef<InputRef>(null);
   const sendButton=useRef<HTMLButtonElement>(null);
   const actionButtons=useRef(new Map<string,HTMLButtonElement|HTMLAnchorElement>());
@@ -100,10 +118,10 @@ export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,do
     for(const turn of view?.conversation??[])if(turn.role==='human')confirmContribution(turn.receipt);
   },[view]);
   useEffect(()=>{
-    if(!composerOpen || !direction || view?.phase !== 'actionable') return;
+    if(opensInWindow || !composerOpen || !direction || view?.phase !== 'actionable') return;
     if (policy?.mode !== 'forbidden') feedbackInput.current?.focus();
     else sendButton.current?.focus();
-  },[composerOpen,direction,policy?.mode,view?.phase]);
+  },[composerOpen,direction,opensInWindow,policy?.mode,view?.phase]);
   useEffect(()=>{
     if(!view||requestRef.current===view.request)return;
     if(requestRef.current){
@@ -149,15 +167,16 @@ export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,do
       // The server receipt is the acceptance evidence. An invalid response stays ambiguous.
       if(output.receipt?.request_id!==contribution.requestId||output.receipt.submission_id!==contribution.submissionId)throw new Error('Submission receipt is unavailable. Refresh to reconcile acceptance.');
       confirmContribution(output.receipt);accepted(request,output);
+      if (onSubmitted) setSubmitted(true);
     }catch(e){failed();if(!contribution||pendingContribution.current===contribution)setSubmitError(`${e instanceof Error?e.message:String(e)} Check the refreshed request before retrying.`);await refresh();}
     finally{submitBusy.current=false;}
   };
   const status=phase==='waiting'?'Response accepted':phase==='sending'?'Sending response…':phase==='sent'?'Response sent':phase==='terminal'?view.message:phase==='other'?view.message:phase==='unavailable'?'Review state unavailable':undefined;
   const choose=(id:string)=>{
     if(!ready||!current||submitBusy.current)return;
-    setDirection(id);setSubmitError('');setComposerOpen(true);
+    setDirection(id);setSubmitError('');setComposerOpen(true);setOpenWindow(true);
   };
-  const composing = composerOpen && selected;
+  const composing = composerOpen && selected && !opensInWindow;
   const icon = selected && responseIcon(selected);
   const settingsButton = !!request.settings?.length && <Tooltip title="Review settings"><Button ref={gear} type="text" icon={<SettingOutlined aria-hidden />} aria-label="Review settings" disabled={!ready} onClick={()=>setSettingsOpen(true)}/></Tooltip>;
   const response=<section className="review-v2-response" aria-label="Your response">
@@ -178,29 +197,40 @@ export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,do
         return <div key={id}>{setting?.label??id}: <code>{JSON.stringify(value)}</code> · {direction&&setting?.applies_to.includes(direction)?'Will be sent with this action':`Retained locally; applies to ${setting?.applies_to.map(id=>request.directions.find(d=>d.id===id)?.label??id).join(', ')}`}</div>;
       })}
       {!composing&&(feedback!==''||files.length>0)&&<p>Unsent feedback draft retained. Choose a feedback action to edit it.</p>}
-      {composing && <section aria-label="Response composer" className="review-v2-composer">
-        <header className="review-v2-composer-header">
+      {composing && <section aria-label="Response composer" className="review-v2-composer" onKeyDownCapture={event => {
+        if (!ready || event.key !== 'Enter' || (!event.ctrlKey && !event.metaKey) || event.nativeEvent.isComposing) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void submit(selected.id);
+      }}>
+        <header className={`review-v2-composer-header${docked ? ' inbox-compose-fields' : ''}`}>
           <Dropdown trigger={['click']} disabled={!ready} menu={{
             selectable:true, selectedKeys:[selected.id],
             items:request.directions.map(d=>({key:d.id,label:d.label,icon:responseIcon(d)})),
             onClick: ({key})=>choose(key),
           }}>
             <Button type="text" icon={icon} aria-haspopup="menu" aria-label={`Change response type: ${selected.label}`} title={selected.label}>
-              {!icon && selected.label}<DownOutlined aria-hidden />
+              {selected.label}<DownOutlined aria-hidden />
             </Button>
           </Dropdown>
-          <span>{getUserEmail() || 'Unknown'}</span>
+          {docked ? <span className="review-reply-recipient">Cell <strong>{cellName || view.job?.cell_name || 'Unknown'}</strong></span>
+            : <span>{getUserEmail() || 'Unknown'}</span>}
           {settingsButton}
           {onPopout && <Tooltip title="Pop out reply"><Button type="text" icon={<ExportOutlined aria-hidden />} aria-label="Pop out reply" onClick={onPopout} /></Tooltip>}
         </header>
+        <div className={docked ? 'inbox-compose-body' : undefined}>
         {(policy?.mode !== 'forbidden' || feedback !== '') && <div className="review-v2-feedback">
           <label htmlFor={feedbackId}>{request.feedback.label}{policy?.mode==='forbidden'?' (not allowed)':policy?.mode==='required'?' (required)':' (optional)'}</label>
-          <Input.TextArea ref={feedbackInput} id={feedbackId} value={feedback} readOnly={policy?.mode==='forbidden'} onChange={e=>{setFeedback(e.target.value);setSubmitError('');}} autoSize={{minRows:3}}/>
+          <div className="review-feedback-size" data-feedback={feedback}>
+            <Input.TextArea ref={feedbackInput} id={feedbackId} value={feedback} readOnly={policy?.mode==='forbidden'} onChange={e=>{setFeedback(e.target.value);setSubmitError('');}} rows={3} />
+          </div>
           {feedback!==''&&<Button size="small" type="text" onClick={()=>{setFeedback('');setSubmitError('');}}>Remove feedback draft</Button>}
         </div>}
         {files.length > 0 && <div className="review-v2-upload">{files.map((file,i)=><div key={i}><span>{file.name} ({file.size} bytes)</span> <Button size="small" type="text" aria-label={`Remove ${file.name} (${i+1})`} onClick={()=>{setFiles(previous=>previous.filter((_,index)=>index!==i));if(fileInput.current)fileInput.current.value='';setSubmitError('');}}>Remove</Button></div>)}</div>}
-        <div className="review-v2-directions">
-          <Button ref={sendButton} type="primary" aria-label={`Send · ${selected.label}`} onClick={()=>void submit(selected.id)}>Send</Button>
+        </div>
+        <div className={docked ? 'inbox-compose-actions review-reply-footer' : 'review-v2-directions'}>
+          <Tooltip title="Send (Ctrl or ⌘ + Enter)"><Button ref={sendButton} type="primary" shape={docked ? 'round' : undefined}
+            aria-label={`Send · ${selected.label}`} aria-keyshortcuts="Control+Enter Meta+Enter" onClick={()=>void submit(selected.id)}>Send</Button></Tooltip>
           {allowUploads && <>
             <input ref={fileInput} aria-label="Attach notes" id={filesId} type="file" multiple hidden onChange={event=>{
               const attached=Array.from(event.currentTarget.files??[]);
@@ -211,6 +241,7 @@ export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,do
             <Tooltip title="Attach notes"><Button type="text" icon={<PaperClipOutlined aria-hidden />} aria-label="Attach files to response" onClick={()=>fileInput.current?.click()} /></Tooltip>
           </>}
           <Button type="text" onClick={()=>{
+            if (onBack) { onBack(); return; }
             setComposerOpen(false);
             requestAnimationFrame(()=>actionButtons.current.get(selected.id)?.focus({preventScroll:true}));
           }}>Back</Button>

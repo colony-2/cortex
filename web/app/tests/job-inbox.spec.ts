@@ -238,8 +238,12 @@ test.describe('compact inbox dates and selection', () => {
     await expect(rows).toHaveCount(44);
     const job = page.getByRole('link', { name: 'platform: Make reviews easier to read' });
     const actions = rows.filter({ has: job }).locator('.inbox-row-actions');
-    await expect(actions.getByRole('button', { name: 'Copy job ID one', exact: true })).toBeVisible();
-    await expect(actions.getByRole('button', { name: 'Archive job one', exact: true }).locator('svg')).toBeVisible();
+    if (width < 768) {
+      await expect(list.getByRole('button', { name: /^(Copy job ID|Archive job) / })).toHaveCount(0);
+    } else {
+      await expect(actions.getByRole('button', { name: 'Copy job ID one', exact: true })).toBeVisible();
+      await expect(actions.getByRole('button', { name: 'Archive job one', exact: true }).locator('svg')).toBeVisible();
+    }
     await expect(job.locator('time')).toHaveText('2:00 PM');
     await job.click();
     await page.getByRole('link', { name: 'Back to inbox', exact: true }).click();
@@ -313,6 +317,10 @@ test('embedded review preserves draft through sidebar expansion and Settings, an
   await page.screenshot({ path: test.info().outputPath('inbox-review-reading.png') });
   await page.getByRole('button', { name: 'Ask a question', exact: true }).click();
   const editor = page.getByLabel('Question or requested change (required)', { exact: true });
+  const initialHeight = (await editor.boundingBox())!.height;
+  await editor.fill('One line of feedback.\n'.repeat(8));
+  expect((await editor.boundingBox())!.height).toBeGreaterThan(initialHeight);
+  expect(await editor.evaluate(el => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
   await editor.fill('Keep this response while I inspect the cell list.');
   await page.getByRole('tab', { name: 'Execution', exact: true }).click();
   await page.getByRole('tab', { name: 'Thread', exact: true }).click();
@@ -387,6 +395,9 @@ test('popped-out review replies share the dock and keep their draft through navi
   expect((await first.boundingBox())!.x).toBe(firstBounds.x);
   const replyBounds = (await docked.boundingBox())!;
   expect(replyBounds.x + replyBounds.width).toBeLessThan(firstBounds.x);
+  expect(replyBounds.height).toBe(firstBounds.height);
+  const sendBounds = (await docked.getByRole('button', { name: 'Send · Ask a question', exact: true }).boundingBox())!;
+  expect(replyBounds.y + replyBounds.height - sendBounds.y - sendBounds.height).toBeLessThan(24);
   await page.getByRole('navigation', { name: 'Inboxes' }).getByRole('link', { name: 'All', exact: true }).click();
   await expect(docked.getByLabel(field, { exact: true })).toHaveValue(feedback);
   await expect(page.getByRole('link', { name: 'platform: Make reviews easier to read', exact: true }).getByText('Draft', { exact: true })).toBeVisible();
@@ -405,7 +416,7 @@ test('popped-out review replies share the dock and keep their draft through navi
   const inline = page.getByRole('region', { name: 'Response composer', exact: true });
   await expect(inline.getByLabel(field, { exact: true })).toHaveValue(feedback);
   await expect(inline.getByText(/notes\.txt/)).toBeVisible();
-  await inline.getByRole('button', { name: 'Send · Ask a question', exact: true }).click();
+  await inline.getByLabel(field, { exact: true }).press('Control+Enter');
   await expect.poll(() => fixture.state.submits.length).toBe(1);
   expect(fixture.state.submits[0].response.feedback).toBe(feedback);
 });
@@ -561,7 +572,6 @@ test('New message docks independent composers, saves drafts and sends the restor
   await expect(first.getByRole('toolbar', { name: 'Text formatting' })).toHaveCount(0);
   await first.getByRole('combobox', { name: 'Recipient cell' }).click();
   await page.getByRole('option', { name: 'platform', exact: true }).click();
-  await page.keyboard.press('Tab');
   await expect(first.getByLabel('Subject', { exact: true })).toBeFocused();
   await expect(first.getByLabel('Subject', { exact: true })).toHaveCSS('outline-style', 'none');
   await first.getByLabel('Subject', { exact: true }).fill('Inbox request');
@@ -596,6 +606,88 @@ test('New message docks independent composers, saves drafts and sends the restor
   await expect.poll(() => fixture.submissions.length).toBe(1);
   expect(fixture.submissions[0].inputs.prompt).toBe('Inbox request\n\nFirst line\n\nSecond line');
   expect(fixture.submissions[0].job_id).toBeTruthy();
+});
+
+test('mobile inbox and full-screen composers retain drafts and keep one window visible', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const fixture = await inboxFixture(page, true);
+  const prompt = 'A long prompt without a title should use the width available on the phone. '.repeat(4).trim();
+  Object.assign(fixture.jobs[1], { title: '', prompt });
+  Object.assign(fixture.jobs[2], { title: 'Scheduled task', status: 'AWAITING_FUTURE' });
+  Object.assign(fixture.jobs[3], { title: 'Running task', status: 'ACTIVE' });
+  await page.goto('/project/v2/jobs');
+  const compose = page.getByRole('button', { name: 'New message', exact: true });
+  const windows = page.getByRole('region', { name: 'New message', exact: true });
+  await compose.click();
+  await windows.first().getByLabel('Subject', { exact: true }).fill('First draft');
+  await compose.click();
+  await windows.last().getByLabel('Subject', { exact: true }).fill('Second draft');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(windows).toHaveCount(1);
+  await expect(windows.getByLabel('Subject', { exact: true })).toHaveValue('Second draft');
+  const fullScreen = { x: 0, y: 0, width: 390, height: 844 };
+  await expect.poll(() => windows.boundingBox()).toEqual(fullScreen);
+  await expect(windows.getByRole('button', { name: 'Minimize composer' })).toHaveCount(0);
+  const recipient = windows.getByRole('combobox', { name: 'Recipient cell' });
+  const subject = windows.getByLabel('Subject', { exact: true });
+  const body = windows.getByLabel('Message', { exact: true });
+  await expect(recipient).toHaveCSS('font-size', '16px');
+  await recipient.click();
+  await page.getByRole('option', { name: 'platform', exact: true }).click();
+  await expect(subject).toBeFocused();
+  await expect(subject).toHaveCSS('font-size', '16px');
+  await body.click();
+  await expect(body).toBeFocused();
+  await expect(body).toHaveCSS('font-size', '16px');
+  await body.fill('Compose at full width.');
+  await expect.poll(() => windows.boundingBox()).toEqual(fullScreen);
+  await windows.getByRole('button', { name: 'Close composer' }).click();
+  await expect(windows.getByLabel('Subject', { exact: true })).toHaveValue('First draft');
+  await windows.getByRole('button', { name: 'Close composer' }).click();
+  await expect(windows).toHaveCount(0);
+
+  const row = page.getByRole('link', { name: 'platform: Make reviews easier to read', exact: true });
+  await expect(page.getByRole('link', { name: /^req:/ })).toHaveCount(0);
+  const status = row.getByText('Needs review', { exact: true });
+  const time = row.locator('time');
+  expect((await status.boundingBox())!.x).toBeLessThan((await time.boundingBox())!.x);
+  const preview = page.locator('.inbox-job-subject').filter({ hasText: prompt });
+  await expect(preview).toHaveCSS('-webkit-line-clamp', '2');
+  expect(await preview.evaluate(el => el.clientHeight < el.scrollHeight)).toBe(true);
+
+  const openFolder = async (name: string) => {
+    await page.getByRole('button', { name: 'Open navigation' }).click();
+    await page.getByRole('dialog', { name: 'Navigation' }).getByRole('link', { name, exact: true }).click();
+  };
+  await openFolder('Active');
+  await expect(page.getByRole('link', { name: 'platform: Running task', exact: true }).getByText('Running', { exact: true })).toBeVisible();
+  await openFolder('Waiting');
+  await expect(page.getByRole('link', { name: 'platform: Scheduled task', exact: true }).getByText('Scheduled', { exact: true })).toBeVisible();
+  await openFolder('Reviews');
+  await expect(row).toBeVisible();
+  await expect(status).toHaveCount(0);
+  await row.click();
+  await v2Selected(page, 0);
+  await page.getByRole('button', { name: 'Ask a question', exact: true }).click();
+  const reply = page.getByRole('region', { name: 'Popped-out review reply', exact: true });
+  await expect.poll(() => reply.boundingBox()).toEqual(fullScreen);
+  await expect(page.locator('.embedded-review .review-v2-composer')).toHaveCount(0);
+  const action = reply.getByRole('button', { name: 'Change response type: Ask a question' });
+  await expect(action).toHaveText('Ask a question');
+  await expect(reply.getByText('platform', { exact: true })).toBeVisible();
+  const editor = reply.getByLabel('Question or requested change (required)');
+  await expect(editor).toHaveCSS('font-size', '16px');
+  await editor.fill('Keep this mobile reply.');
+  await reply.getByRole('button', { name: 'Close composer' }).click();
+  await expect(reply).toHaveCount(0);
+  await openFolder('Drafts');
+  await page.getByRole('link', { name: /Review response · Keep this mobile reply/ }).click();
+  await expect(editor).toHaveValue('Keep this mobile reply.');
+  await editor.press('Meta+Enter');
+  await expect(page.getByText('Response submitted', { exact: true })).toBeVisible();
+  await expect(reply).toHaveCount(0);
+  await expect(page.getByTestId('job-story-header').getByText('Draft', { exact: true })).toHaveCount(0);
+  expect(fixture.state.submits).toHaveLength(1);
 });
 
 test('Drafts can discard open composers and review responses without shifting the list', async ({ page }) => {
@@ -641,7 +733,7 @@ test('Drafts can discard open composers and review responses without shifting th
   await expect.poll(top).toBe(bulkTop);
 });
 
-for (const width of [1440, 768, 390]) test(`upstream runner access and job requirements remain usable at ${width}px`, async ({ page }) => {
+for (const width of [1440, 768]) test(`upstream runner access and job requirements remain usable at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 900 });
   await inboxFixture(page, true);
   await page.goto('/project/v2/jobs');

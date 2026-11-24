@@ -3,11 +3,14 @@ import { test, setNativeZoom, captureNativeZoom } from './helpers/nativeZoom';
 import { authorizeV2, reviewV2BrowserFixture, v2Path, v2Ids, v2Selected, v2Catalog, v2Attachment, v2Preview, v2Primary, v2ClosePreview } from './helpers/reviewV2';
 
 test.beforeEach(async({page,baseURL})=>authorizeV2(page,baseURL!));
+const replyWindow = (page:Page) => page.getByRole('region', { name: 'Popped-out review reply' });
+const closeReply = (page:Page) => replyWindow(page).getByRole('button', { name: 'Close composer' }).click();
+const askQuestion = (page:Page) => page.getByRole('button', { name: 'Ask a question', exact: true }).click();
 async function geometry(page:Page){
  await expect.poll(()=>page.evaluate(()=>{
-  const pane=document.querySelector('.review-v2-response')!;
+  const pane=document.querySelector('.embedded-review .review-v2-response, .review-v2 .review-v2-response');
   const review=document.querySelector('.review-v2-layout')!;
-  return {overflow:document.documentElement.scrollWidth>innerWidth+1,inline:getComputedStyle(pane).position==='static',below:pane.getBoundingClientRect().top>=review.getBoundingClientRect().bottom};
+  return {overflow:document.documentElement.scrollWidth>innerWidth+1,inline:!pane||getComputedStyle(pane).position==='static',below:!pane||pane.getBoundingClientRect().top>=review.getBoundingClientRect().bottom};
  })).toEqual({overflow:false,inline:true,below:true});
 }
 async function screenshot(page:Page,name:string){await page.screenshot({path:test.info().outputPath(name),fullPage:false});}
@@ -30,9 +33,10 @@ for(const width of [1440,390])test(`N06–10 v2 history retains text, files, com
  const editor=page.getByLabel('Question or requested change (required)',{exact:true});await expect(editor).toBeFocused();
  await editor.fill('Keep these notes while I compare documents.');
  await page.getByLabel('Attach notes',{exact:true}).setInputFiles({name:'notes.md',mimeType:'text/markdown',buffer:Buffer.from('annotations')});
- await page.locator('#review-v2-files').evaluate(el=>el.setAttribute('data-retained','yes'));
+ if(width>=768) await page.locator('#review-v2-files').evaluate(el=>el.setAttribute('data-retained','yes'));
  await page.getByRole('button',{name:'Review settings'}).click();
  await page.getByRole('dialog').getByLabel('Example count').fill('0');await page.getByRole('button',{name:'Done',exact:true}).click();
+ if(width<768) await closeReply(page);
  const primary = v2Primary(page).getByRole('heading',{name:'Viewer changes'});
  await primary.evaluate(element=>element.setAttribute('data-preview-identity','kept'));
  await v2Catalog(page,1);
@@ -48,17 +52,26 @@ for(const width of [1440,390])test(`N06–10 v2 history retains text, files, com
  expect(await page.evaluate(()=>window.scrollY)).toBe(pageTop);
  for(const [direction,index] of [['back',1],['back',0],['forward',1],['forward',2]] as const){
   if(direction==='back')await page.goBack();else await page.goForward();await v2Selected(page,index);
-  await expect(editor).toHaveValue('Keep these notes while I compare documents.');await expect(page.locator('#review-v2-files')).toHaveAttribute('data-retained','yes');
-  await expect(page.getByRole('button',{name:'Remove notes.md (1)'})).toBeVisible();await expect(page.locator('.review-v2-response')).toContainText('Retained locally; applies to Request changes');
+  if(width>=768){
+   await expect(editor).toHaveValue('Keep these notes while I compare documents.');await expect(page.locator('#review-v2-files')).toHaveAttribute('data-retained','yes');
+   await expect(page.getByRole('button',{name:'Remove notes.md (1)'})).toBeVisible();await expect(page.locator('.review-v2-response')).toContainText('Retained locally; applies to Request changes');
+  }
  }
  expect(fixture.state.details).toBe(initialDetails);expect(fixture.state.submits).toHaveLength(0);expect(new URL(page.url()).searchParams.getAll('filter')).toEqual(['one','two']);expect(new URL(page.url()).hash).toBe('#read');
  await page.goBack();await v2Selected(page,1);
  const shared=page.url();
  await expect.poll(()=>v2Preview(page).evaluate(element=>element.contains(document.activeElement))).toBe(true);
  await page.keyboard.press('Escape');await v2Selected(page,0);
+ if(width<768){
+   await askQuestion(page);
+   await expect(editor).toHaveValue('Keep these notes while I compare documents.');
+   await expect(replyWindow(page).getByRole('button',{name:'Remove notes.md (1)'})).toBeVisible();
+   await expect(replyWindow(page)).toContainText('Retained locally; applies to Request changes');
+ }
  await page.getByRole('button',{name:'Review settings'}).click();
  await expect(page.getByRole('dialog',{name:'Review settings'}).getByLabel('Example count')).toHaveValue('0');
  await page.getByRole('button',{name:'Done',exact:true}).click();
+ if(width<768) await closeReply(page);
  await page.goto(shared);await v2Selected(page,1);
  await page.reload();await v2Selected(page,1);
  const other=await browser.newContext({baseURL});try{const recipient=await other.newPage();await authorizeV2(recipient,baseURL!);await reviewV2BrowserFixture(recipient);await recipient.goto(shared);await v2Selected(recipient,1);}finally{await other.close();}
@@ -108,8 +121,12 @@ for(const width of [1680,1320,320,390])test(`L01–05 response and attachments, 
  await expect(page.getByRole('heading',{name:'Response',exact:true})).toHaveCount(0);
  expect(await attachments.evaluate(nav => !!(nav.compareDocumentPosition(document.querySelector('.review-document-content')!) & Node.DOCUMENT_POSITION_PRECEDING))).toBe(true);
  if(width>=1320){expect(await widthOf(page,'.review-reading-track')).toBeGreaterThanOrEqual(width-700);await screenshot(page,`v2-reading-${width}.png`);}
- await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)').fill('Can you confirm the response stays in view?');
- await page.getByLabel('Attach notes').setInputFiles({name:'my-review.md',mimeType:'text/markdown',buffer:Buffer.from('notes')});await geometry(page);
+ const startReply = async () => {
+  await askQuestion(page);
+  await page.getByLabel('Question or requested change (required)').fill('Can you confirm the response stays in view?');
+  await page.getByLabel('Attach notes').setInputFiles({name:'my-review.md',mimeType:'text/markdown',buffer:Buffer.from('notes')});
+ };
+ if(width>=768) await startReply();
  await expect(page.locator('.review-selected-details')).toHaveCount(0);
  await attachments.scrollIntoViewIfNeeded();
  const tail=await attachments.boundingBox();const bar=await page.locator('.review-v2-response').boundingBox();expect(tail!.y+tail!.height).toBeLessThanOrEqual(bar!.y);
@@ -118,6 +135,7 @@ for(const width of [1680,1320,320,390])test(`L01–05 response and attachments, 
  await v2Catalog(page,0);
  await expect(page.locator('.thread-message-subject').getByText('Make reviews easier to read',{exact:true})).toHaveCount(1);
  await expect(page.getByRole('heading',{name:'Response',exact:true})).toHaveCount(0);
+ if(width<768) await startReply();
  await page.getByRole('button',{name:'Send · Ask a question'}).scrollIntoViewIfNeeded();
  await expect(page.getByRole('button',{name:'Send · Ask a question'})).toBeInViewport();
  if(width===1680||width===390||width===320)await screenshot(page,`v2-composer-${width}.png`);
@@ -157,17 +175,19 @@ test('the inline reply can switch between a recipe choice, feedback and approval
  await expect.poll(()=>fixture.state.submits.length).toBe(1);
  expect(fixture.state.submits[0].response).toMatchObject({direction:'go',feedback:''});
 });
-test('L07–09 the simulated keyboard leaves the inline reply and its send control reachable',async({page})=>{
+test('L07–09 the simulated keyboard leaves the full-screen reply and its send control reachable',async({page})=>{
  await page.setViewportSize({width:390,height:844});const fixture=await reviewV2BrowserFixture(page);fixture.state.request.question=formattedQuestion;await page.goto(v2Path);await v2Selected(page,0);
  await page.getByRole('button',{name:'Ask a question',exact:true}).click();
  await page.getByRole('button',{name:'Send · Ask a question'}).click();await expect(page.getByRole('alert')).toContainText('requires feedback');
  await page.evaluate(()=>{Object.defineProperty(window.visualViewport!,'height',{configurable:true,value:420});Object.defineProperty(window.visualViewport!,'offsetTop',{configurable:true,value:0});window.visualViewport!.dispatchEvent(new Event('resize'));window.dispatchEvent(new Event('resize'));});
  // Exercise the browser viewport event target with a simulated keyboard height.
- await geometry(page);await page.getByRole('button',{name:'Send · Ask a question'}).scrollIntoViewIfNeeded();await expect(page.getByRole('button',{name:'Send · Ask a question'})).toBeInViewport();
- await page.evaluate(()=>{Object.defineProperty(window.visualViewport!,'offsetTop',{configurable:true,value:30});window.visualViewport!.dispatchEvent(new Event('scroll'));});await geometry(page);
+ const reply = replyWindow(page);
+ await expect.poll(async () => (await reply.boundingBox())?.height).toBe(420);
+ await expect(reply.getByRole('button',{name:'Send · Ask a question'})).toBeInViewport();
+ await page.evaluate(()=>{Object.defineProperty(window.visualViewport!,'offsetTop',{configurable:true,value:30});window.visualViewport!.dispatchEvent(new Event('scroll'));});
+ await expect.poll(async () => (await reply.boundingBox())?.y).toBe(30);
+ await closeReply(page);
  await discussionPane(page).getByRole('article').last().scrollIntoViewIfNeeded();await expect(discussionPane(page).getByRole('heading',{name:'Ready to proceed?'})).toBeVisible();
- await page.getByRole('button',{name:'Send · Ask a question'}).scrollIntoViewIfNeeded();
- await expect(page.getByRole('button',{name:'Send · Ask a question'})).toBeInViewport();
  await page.getByRole('link',{name:'Back to inbox'}).click();
  await expect.poll(()=>page.evaluate(()=>document.documentElement.style.getPropertyValue('--review-action-height'))).toBe('');
  await page.evaluate(()=>window.dispatchEvent(new Event('resize')));expect(await page.evaluate(()=>document.documentElement.style.getPropertyValue('--review-action-height'))).toBe('');
@@ -214,9 +234,13 @@ test.describe('actual browser zoom',()=>{
    const button=element.getBoundingClientRect();const pane=element.closest('.review-v2-response')!.getBoundingClientRect();
    return button.top>=pane.top&&button.bottom<=Math.min(innerHeight,pane.bottom);
   })).toBe(true);
+  if(await replyWindow(page).isVisible()){
+   await captureNativeZoom(page,test.info().outputPath('v2-browser-zoom-200.png'));
+   await closeReply(page);
+  }
   await expect(page.getByRole('separator')).toHaveCount(0);const question=discussionPane(page).getByRole('article').last();await question.scrollIntoViewIfNeeded();await expect(question.getByRole('heading',{name:'Ready to proceed?'})).toBeVisible();await geometry(page);
   await question.locator('pre').scrollIntoViewIfNeeded();const finalCode=(await question.locator('pre').boundingBox())!,response=(await page.locator('.review-v2-response').boundingBox())!;expect(finalCode.y+finalCode.height).toBeLessThanOrEqual(response.y+1);
-  await captureNativeZoom(page,test.info().outputPath('v2-browser-zoom-200.png'));
+  await captureNativeZoom(page,test.info().outputPath('v2-browser-zoom-discussion-200.png'));
  });
 });
 
@@ -364,9 +388,10 @@ test('B11 discussion shares the page reading position and reveals older turns in
 for(const width of [320,390,980])test(`B12/13 long formatted question, code and tables remain reachable at ${width}px`,async({page})=>{
  await page.setViewportSize({width,height:900});const f=await reviewV2BrowserFixture(page);f.state.request.question=formattedQuestion+'\n\n'+('Long question paragraph with more review instructions.\n\n'.repeat(30))+'```text\n'+('very_long_value_'.repeat(50))+'\n```\n\n| '+('Wide column '.repeat(20))+' | Result |\n| --- | --- |\n| value | passes |\n\nFINAL QUESTION CONTENT';
  await page.goto(v2Path);await v2Selected(page,0);
- await expect(page.getByRole('separator')).toHaveCount(0);await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)').fill('Reach the final content');await geometry(page);
+ await expect(page.getByRole('separator')).toHaveCount(0);await geometry(page);
  const resultCell=discussionPane(page).getByRole('table').last().getByRole('columnheader',{name:'Result',exact:true});expect(await resultCell.evaluate(el=>el.getBoundingClientRect().width)).toBeGreaterThanOrEqual(96);
  const tail=discussionPane(page).getByText('FINAL QUESTION CONTENT',{exact:true});await tail.scrollIntoViewIfNeeded();await expect(tail).toBeInViewport();const bounds=(await tail.boundingBox())!,response=(await page.locator('.review-v2-response').boundingBox())!;expect(bounds.y+bounds.height).toBeLessThanOrEqual(response.y+1);
+ await askQuestion(page);await page.getByLabel('Question or requested change (required)').fill('Reach the final content');
  await page.getByRole('button',{name:'Send · Ask a question'}).scrollIntoViewIfNeeded();
  await expect(page.getByRole('button',{name:'Send · Ask a question'})).toBeInViewport();await geometry(page);await screenshot(page,`v2-long-question-${width}.png`);
 });

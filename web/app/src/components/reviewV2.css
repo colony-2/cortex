@@ -53,6 +53,16 @@
 .review-v2-composer-header .ant-btn {white-space:normal;height:auto;min-height:32px;max-width:100%}
 .review-v2-feedback {display:flex;flex-direction:column;align-items:flex-start;gap:4px}
 .review-v2-feedback > label {font-size:12px;color:#526174}
+.review-feedback-size {display:grid;min-width:0;width:100%}
+.review-feedback-size::after,.review-feedback-size > textarea.ant-input {
+  grid-area:1 / 1;box-sizing:border-box;font:inherit;font-size:14px;line-height:1.5715;padding:4px 11px;border-width:1px;
+}
+/* Match the wrapped input and reserve one extra line. */
+.review-feedback-size::after {
+  content:attr(data-feedback) "\a ";white-space:pre-wrap;overflow-wrap:break-word;
+  visibility:hidden;border-style:solid;min-height:calc(4.7145em + 10px);
+}
+.review-feedback-size > textarea.ant-input {height:100%;min-height:0;overflow:hidden;resize:none}
 .review-v2-upload {display:flex;flex-direction:column;gap:8px}
 .review-v2-upload input {max-width:100%}
 .review-v2-setting {margin:20px 0;padding-bottom:12px;border-bottom:1px solid #e5e7eb}

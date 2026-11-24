@@ -284,6 +284,7 @@ test.describe('phone', () => {
     await page.goto(review('v2-paged'));
     await page.getByRole('button', { name: 'Ask a question', exact: true }).tap();
     await page.getByLabel('Question or requested change (required)', { exact: true }).fill('Explain the saved changes.');
+    await page.getByRole('button', { name: 'Close composer', exact: true }).tap();
     await changesAttachment(page).tap();
     await expect(page.getByLabel('Unified diff').last()).toBeVisible();
     expect(await download(page)).toEqual(Buffer.from(oracle.all));
@@ -293,6 +294,7 @@ test.describe('phone', () => {
     await expect(page.getByLabel('Side by side diff').last()).toBeVisible();
     await noOverflow(page);
     await closeChanges(page);
+    await page.getByRole('button', { name: 'Ask a question', exact: true }).tap();
     await expect(page.getByLabel('Question or requested change (required)', { exact: true })).toHaveValue('Explain the saved changes.');
   });
 });

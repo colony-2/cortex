@@ -227,7 +227,7 @@ for (const width of [1440, 390]) {
 for (const width of [1280, 320, 390]) {
   test.describe(`job ID copying at ${width}px`, () => {
     test.use({ viewport: { width, height: 900 }, hasTouch: width < 768, permissions: ['clipboard-read', 'clipboard-write'] });
-    for (const alias of ['goals', 'jobs']) test(`copies the title job on ${alias}`, async ({ page, context, baseURL }, testInfo) => {
+    for (const alias of ['goals', 'jobs']) test(`${width < 768 ? 'hides row copy' : 'copies the title job'} on ${alias}`, async ({ page, context, baseURL }, testInfo) => {
       const id = '3M11h0hfoxIoOk6knxCN6DW9o0u';
       const title = 'Build a reliable dashboard with a long title for a compact screen';
       const job = { ...jobIdentity, tenant_id: 'copy', job_id: id, goal_id: 'different-goal', prompt: title, status: 'READY', store: 'ACTIVE', created_at: '2026-11-12T00:00:00Z' };
@@ -236,6 +236,11 @@ for (const width of [1280, 320, 390]) {
       await page.route('**/api/projects/copy/jobs?*', route => route.fulfill({ json: { jobs: [job, { ...job, job_id: 'untouched', goal_id: 'other-goal', prompt: 'Another goal' }] } }));
       await page.route('**/api/projects/copy/jobs/*', route => route.fulfill({ json: job }));
       await page.goto(`/project/copy/${alias}?executionState=cells-v1&sort=prompt&order=ascend`);
+      if (width < 768) {
+        await expect(page.getByRole('link', { name: `platform: ${title}`, exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: /^Copy job ID / })).toHaveCount(0);
+        return;
+      }
       const button = page.getByRole('button', { name: `Copy job ID ${id}`, exact: true });
       const row = button.locator('xpath=ancestor::li[contains(@class,"inbox-job-row")][1]');
       const other = page.getByRole('button', { name: 'Copy job ID untouched', exact: true }).locator('xpath=ancestor::li[contains(@class,"inbox-job-row")][1]');
@@ -276,7 +281,7 @@ for (const width of [1280, 320, 390]) {
       }
       await expect(toast).toHaveCount(0);
       await page.evaluate(() => navigator.clipboard.writeText('sentinel'));
-      if (width < 768) await button.tap(); else await button.click();
+      await button.click();
       await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(id);
       await unchanged();
       await expect(toast).toHaveCount(1);
@@ -306,15 +311,6 @@ for (const width of [1280, 320, 390]) {
         return field.value.slice(field.selectionStart, field.selectionEnd);
       })).toBe(id);
       await unchanged();
-      if (width < 768) {
-        const target = (await button.boundingBox())!;
-        expect(target.width).toBeGreaterThanOrEqual(44); expect(target.height).toBeGreaterThanOrEqual(44);
-        for (const neighbor of [row.getByRole('link', { name: `platform: ${title}`, exact: true }), row.getByRole('checkbox', { name: `Select job ${id}`, exact: true })]) {
-          const box = (await neighbor.boundingBox())!;
-          expect(target.x + target.width <= box.x || box.x + box.width <= target.x || target.y + target.height <= box.y || box.y + box.height <= target.y).toBe(true);
-        }
-        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      }
       if (alias === 'goals') await page.screenshot({ path: testInfo.outputPath(`copy-failure-${width}.png`), fullPage: true, animations: 'disabled' });
       // Start archive's reference from a fresh fixture after the copy journey.
       await page.reload();

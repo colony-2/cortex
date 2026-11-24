@@ -4,6 +4,7 @@ import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { Alert, Button, Checkbox, Dropdown, Empty, Spin, Tag, Tooltip } from 'antd';
 import { InboxOutlined, ReloadOutlined, SortAscendingOutlined } from '@ant-design/icons';
 import { useJobInbox } from '../hooks/useJobInbox';
+import { useCompact } from '../hooks/useCompact';
 import { formatInboxUpdate, inboxDate, type InboxJob } from '../utils/jobInboxData';
 import { inboxFolder, inboxSortOptions, isInInbox, readInboxSort, threadTitle, type InboxSelection } from '../utils/jobInbox';
 import { useSavedReviewDrafts } from '../hooks/useReviewDraft';
@@ -18,6 +19,7 @@ const byText = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true
 
 export default function JobsListPage({ projectId }: { projectId: string; goalId?: string }) {
   const inbox = useJobInbox();
+  const compact = useCompact();
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const [operation, setOperation] = useState<{action: JobAction; ids: string[]; job?: InboxJob}>();
@@ -87,6 +89,7 @@ export default function JobsListPage({ projectId }: { projectId: string; goalId?
         {rows.map(({ job, date, status, title }) => {
           const unread = inbox.isUnread(job);
           const checked = selected.has(job.job_id);
+          const statusTag = <Tag color={status.color} className={status.label === 'Needs review' ? 'inbox-needs-review' : undefined}>{status.label}</Tag>;
           return <li key={job.job_id} className={`inbox-job-row${unread ? ' unread' : ''}${!job.inboxArchived && pendingByJob.has(job.job_id) ? ' waiting' : ''}${checked ? ' selected' : ''}`}>
             <Checkbox className="inbox-row-select" aria-label={`Select job ${job.job_id}`} disabled={!!operation} checked={checked} onChange={event => {
               const next = new Set(selected);
@@ -96,14 +99,25 @@ export default function JobsListPage({ projectId }: { projectId: string; goalId?
             }} />
             <div className="inbox-job-body"><Link className="inbox-job-link" to={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(job.job_id)}/story${location.search}`} state={{ inboxReturnTo: location.pathname + location.search }} onClick={() => inbox.markRead(job)} aria-label={`${job.cell_name}: ${title}`}>
               <span className="inbox-correspondent" title={job.cell_name}>{unread && <span className="inbox-unread-dot" aria-label="Unread" />}{job.cell_name}</span>
-              <span className="inbox-job-subject"><span className="inbox-job-title">{title}</span><Tag color={status.color} className={status.label === 'Needs review' ? 'inbox-needs-review' : undefined}>{status.label}</Tag>{draftJobs.has(job.job_id) && <Tag color="magenta">Draft</Tag>}{job.title?.trim() && <span className="inbox-job-snippet">{job.prompt?.replace(/\s+/g, ' ')}</span>}</span>
-              <Tooltip title={date ? new Date(date).toLocaleString(undefined, { timeZoneName: 'long' }) : 'No activity or submission date was recorded'}>
-                <time dateTime={date}>{date ? formatInboxUpdate(date, today) : 'Date unavailable'}</time>
-              </Tooltip>
+              <span className="inbox-job-subject">
+                <span className="inbox-job-title">{compact && !job.title?.trim() ? job.prompt?.trim() || title : title}</span>
+                {!compact && statusTag}
+                {draftJobs.has(job.job_id) && <Tag color="magenta">Draft</Tag>}
+                {job.title?.trim() && job.prompt?.trim() && <span className="inbox-job-snippet">{job.prompt.replace(/\s+/g, ' ')}</span>}
+              </span>
+              <span className="inbox-job-stamp">
+                {compact && folder !== 'reviews' && statusTag}
+                <Tooltip title={date ? new Date(date).toLocaleString(undefined, { timeZoneName: 'long' }) : 'No activity or submission date was recorded'}>
+                  <time dateTime={date}>{date ? formatInboxUpdate(date, today) : 'Date unavailable'}</time>
+                </Tooltip>
+              </span>
             </Link>
-            <JobExecutionRequirements job={job} projectId={projectId} navigationState={{inboxReturnTo:location.pathname + location.search}} />
+            {!compact && <JobExecutionRequirements job={job} projectId={projectId} navigationState={{inboxReturnTo:location.pathname + location.search}} />}
             </div>
-            <div className="inbox-row-actions"><CopyJobId jobId={job.job_id} title={null} compact />{!job.inboxArchived && <Tooltip title="Archive"><Button size="small" type="text" aria-label={`Archive job ${job.job_id}`} icon={<InboxOutlined aria-hidden />} onClick={() => setOperation({action:'archive', ids:[job.job_id], job})} /></Tooltip>}</div>
+            {!compact && <div className="inbox-row-actions">
+              <CopyJobId jobId={job.job_id} title={null} compact />
+              {!job.inboxArchived && <Tooltip title="Archive"><Button size="small" type="text" aria-label={`Archive job ${job.job_id}`} icon={<InboxOutlined aria-hidden />} onClick={() => setOperation({action:'archive', ids:[job.job_id], job})} /></Tooltip>}
+            </div>}
           </li>;
         })}
       </ul>

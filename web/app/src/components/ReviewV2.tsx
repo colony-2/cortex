@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useId, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useId, type ReactNode } from 'react';
 import { Alert, Button, Tooltip, Typography } from 'antd';
 import { ArrowLeftOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -56,9 +56,15 @@ export default function ReviewV2({tenant,job,reviewId,initial,embedded=false,met
   const controller=useReviewV2(tenant,job,reviewId,initial,metadata ?? contextJob);
   const {view,error,busy,refresh}=controller;
   const dock=useReviewReplyDock();
-  const target={tenant,job,reviewId,title:view?.request.title || "Review reply"};
+  const target={tenant,job,reviewId,title:view?.request.title || "Review reply",cellName:metadata?.cell_name ?? view?.job?.cell_name};
   const replyKey=reviewReplyKey(target);
   const navigate=useNavigate(); const location=useLocation();
+  const restoredDraft = useRef<unknown>();
+  const restoreDraft = useCallback(() => {
+    if (!location.state?.openReviewDraft || restoredDraft.current === location.state) return false;
+    restoredDraft.current = location.state;
+    return true;
+  }, [location.state]);
   const reviewsPath=reviewInboxPath(tenant,location.search);
   const workspace=useRef<HTMLDivElement>(null);
   const [workspaceSize,setWorkspaceSize]=useState({width:0,narrow:false});
@@ -137,6 +143,6 @@ export default function ReviewV2({tenant,job,reviewId,initial,embedded=false,met
       }}/>
     </div>
     {dock?.has(replyKey) ? <Button type="text" onClick={()=>dock.activate(replyKey)}>Show popped-out reply</Button>
-      : <ReviewReply tenant={tenant} job={job} reviewId={reviewId} controller={controller} onPopout={dock ? ()=>dock.open(target) : undefined} />}</>}
+      : <ReviewReply tenant={tenant} job={job} reviewId={reviewId} controller={controller} restoreDraft={restoreDraft} onPopout={dock ? ()=>dock.open(target) : undefined} />}</>}
   </div>;
 }

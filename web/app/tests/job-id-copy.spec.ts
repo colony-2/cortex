@@ -80,9 +80,9 @@ async function expectCopyToast(page: Page) {
 async function refuseModern(page: Page) {
   await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('Injected refusal')) } }));
 }
-for (const width of [1280, 390, 320]) {
-  test(`JC-15/18–24 modern refusal and recovery at ${width}px`, async ({ page, context, baseURL }, testInfo) => {
-    await page.setViewportSize({ width, height: 900 });
+test.describe('desktop inbox', () => {
+  test.use({ viewport: { width: 1280, height: 900 } });
+  test('JC-15/18–24 modern refusal and recovery', async ({ page, context, baseURL }, testInfo) => {
     const surface = await clipboardSurface(context);
     // Native modern success uses a scoped test grant; HTTP cases below get none.
     await context.grantPermissions(['clipboard-write'], { origin: baseURL! });
@@ -113,17 +113,10 @@ for (const width of [1280, 390, 320]) {
     const field = row.getByRole('textbox', { name: 'Job ID', exact: true });
     await expect(field).toHaveValue(id); await expect(field).toHaveAttribute('readonly');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    if (width < 768) {
-      expect((await retry.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-      const recovery = (await row.locator('.goal-copy-recovery').boundingBox())!;
-      const summary = (await row.locator('.inbox-job-link').boundingBox())!;
-      expect(recovery.y).toBeGreaterThanOrEqual(summary.y + summary.height);
-      expect(recovery.width).toBeLessThanOrEqual((await row.boundingBox())!.width);
-    }
     await button.blur();
     await page.getByRole('heading', { name: 'All', exact: true }).hover();
     await expect(page.getByRole('tooltip')).toHaveCount(0);
-    await page.screenshot({ path: testInfo.outputPath(`copy-recovery-${width}.png`), fullPage: true, animations: 'disabled' });
+    await page.screenshot({ path: testInfo.outputPath('copy-recovery-1280.png'), fullPage: true, animations: 'disabled' });
     await retry.focus(); await page.keyboard.press('Enter');
     await expectCopyToast(page); await expect(button).toBeFocused(); await expect(field).toHaveCount(0);
     await surface.expectValue(id); await page.bringToFront(); await unchanged();
@@ -140,7 +133,7 @@ for (const width of [1280, 390, 320]) {
     expect(errors).toEqual([]); expect(reads()).toEqual(initialReads); await expect(checkbox).toBeChecked();
     expect(await page.evaluate(() => (window as any).copyProhibitedCalls)).toEqual([]);
   });
-}
+});
 for (const route of ['jobs', 'goals']) test(`JC-16/17 non-local HTTP copies on ${route}`, async ({ page, context }, testInfo) => {
   const surface = await clipboardSurface(context);
   const { button, row, errors, reads } = await fixture(page, context, 'http://cortex-copy.test:15173', id, route);
@@ -155,8 +148,8 @@ for (const route of ['jobs', 'goals']) test(`JC-16/17 non-local HTTP copies on $
   expect(await newHiddenTextareaCount(page)).toBe(0);
   expect(await page.evaluate(() => (window as any).copyProhibitedCalls)).toEqual([]);
 });
-for (const width of [1280, 390, 320]) test(`JC-20 long ID wraps without changing value at ${width}px`, async ({ page, context, baseURL }, testInfo) => {
-  await page.setViewportSize({ width, height: 900 });
+test('JC-20 long ID wraps without changing value at 1280px', async ({ page, context, baseURL }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
   const longId = `long-${id.repeat(8)}`;
   const { button, row } = await fixture(page, context, baseURL!, longId);
   await refuseModern(page); await button.click();
@@ -168,10 +161,10 @@ for (const width of [1280, 390, 320]) test(`JC-20 long ID wraps without changing
   await field.evaluate(element => element.scrollIntoView({ block: 'center' }));
   await page.mouse.move(0, 0);
   await expect(page.getByRole('tooltip')).toHaveCount(0);
-  await page.screenshot({ path: testInfo.outputPath(`copy-long-id-${width}.png`), fullPage: true, animations: 'disabled' });
+  await page.screenshot({ path: testInfo.outputPath('copy-long-id-1280.png'), fullPage: true, animations: 'disabled' });
 });
-test.describe('compact touch', () => {
-  test.use({ viewport: { width: 390, height: 900 }, hasTouch: true });
+test.describe('desktop touch', () => {
+  test.use({ viewport: { width: 1280, height: 900 }, hasTouch: true });
   test('JC-15 touch compatibility copying preserves the other inbox row', async ({ page, context }) => {
     const surface = await clipboardSurface(context);
     const { button, row } = await fixture(page, context, 'http://cortex-copy.test:15173');
