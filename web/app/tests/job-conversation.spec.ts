@@ -33,6 +33,31 @@ test.beforeEach(async ({ page, context, baseURL }) => {
   });
 });
 
+test('prompt-only messages show their preview when collapsed and their full text when expanded', async ({page}) => {
+  const prompt = 'Please review the release plan. '.repeat(6).trim();
+  const question = 'Which release should we use? '.repeat(6).trim();
+  await page.route('**/conversation?*', route => route.fulfill({json:{
+    tenant_id:'demo', job_id:'job', entries:[], snapshot_token:'s', input_artifacts:[],
+    activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status:'READY',store:'ACTIVE',prompt}},
+    current_input:{jobId:'job',status:'pending',startTime:'',form:{type:'short_answer',question}},
+  }}));
+  await page.goto('/project/demo/jobs/job/story');
+  const original = page.locator('.inbox-original');
+  const heading = page.getByRole('heading', {name:/Please review the release plan/});
+  await expect(heading).toBeVisible();
+  await original.locator('summary').click();
+  await expect(heading).toBeHidden();
+  await expect(original.getByLabel('Job prompt')).toHaveText(prompt);
+  await expect(original.locator('summary')).not.toContainText('Please review');
+  await original.locator('summary').click();
+  await expect(heading).toBeVisible();
+  const current = page.locator('.inbox-history-message');
+  await expect(current.getByLabel(question, {exact:true})).toBeVisible();
+  await expect(current.locator('summary')).not.toContainText('Which release');
+  await current.locator('summary').click();
+  await expect(current.locator('summary')).toContainText('Which release');
+});
+
 test('CT-001–007 default, panel visibility, keyboard navigation and URL restoration', async ({ page }, info) => {
   await page.goto('/project/demo/jobs/job/story?tenantId=demo&filter=mine');
   const tabs = page.getByRole('tablist', { name: 'Job detail' });
@@ -217,7 +242,6 @@ for (const width of [1280,390]) test(`CC-001 CC-009 CC-010 CC-013 CC-014 compact
  await page.goto('/project/demo/jobs/job/story?filter=mine');
  const messages = page.locator('.inbox-history-message:not([aria-label="Job completion"])');
  await expect(messages).toHaveCount(3);
- await page.locator('.inbox-history-middle > summary').click();
  for (const summary of await messages.locator(':scope > summary').all()) {
   const height = await summary.evaluate(el => el.getBoundingClientRect().height);
   expect(height).toBeGreaterThanOrEqual(width < 768 ? 44 : 32);
@@ -545,18 +569,18 @@ test('CV-023 returned HTML stays sandboxed and unsupported formats retain downlo
  await expect(dialog.locator('iframe')).toHaveCount(0);
 });
 
-test('CV-028 polling uses conversation activity despite terminal page chrome',async({page})=>{
+test('CV-028 polling uses the complete conversation without a separate job-status read',async({page})=>{
  let conversations=0;
  const statusReads:string[]=[];
  page.on('request',r=>{if(new URL(r.url()).pathname.endsWith('/jobs/job'))statusReads.push(r.url());});
- await page.route('**/conversation?*',r=>{conversations++;return r.fulfill({json:{...terminalConversation({job_id:'job',state:'pending'}),activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status:'ACTIVE',store:'ACTIVE'}}}});});
+ await page.route('**/conversation?*',r=>{conversations++;return r.fulfill({json:{...terminalConversation({job_id:'job',state:'pending'}),current_input:null,input_artifacts:[],activity:{availability:'available',value:{...jobIdentity,tenant_id:'demo',job_id:'job',status:'ACTIVE',store:'ACTIVE'}}}});});
  await page.goto('/project/demo/jobs/job/story');
  await expect(page.getByLabel('Current job activity')).toContainText('Running');
  await page.waitForLoadState('networkidle');
- const initialStatus=statusReads.length;
+ expect(statusReads).toHaveLength(0);
  const initialConversation=conversations;
  await expect.poll(()=>conversations,{timeout:10000}).toBeGreaterThan(initialConversation);
- expect(statusReads.length).toBe(initialStatus);
+ expect(statusReads).toHaveLength(0);
  await expect(page.getByLabel('Current job activity')).toContainText('Running');
 });
 

@@ -24,7 +24,7 @@ function DependencyLink({ tenant, id, known }: { tenant: string; id: string; kno
   return <Link title={id} to={jobPath(tenant, id)}>{known || label || id}</Link>;
 }
 
-export default function ThreadDependencies({ tenant, job, details }: { tenant: string; job: string; details?: RecipeJob }) {
+export default function ThreadDependencies({ tenant, job, details, fromHistory = false }: { tenant: string; job: string; details?: RecipeJob; fromHistory?: boolean }) {
   const inbox = useOptionalJobInbox();
   const [discovered, setDiscovered] = useState<string[]>([]);
   const recorded = details?.wait_for ?? [];
@@ -34,7 +34,7 @@ export default function ThreadDependencies({ tenant, job, details }: { tenant: s
     dependency.state === 'PENDING' && dependency.target?.jobId ? [dependency.target.jobId] : []) : recorded;
   const ids = [...new Set(hasWaitDetails ? targets : discovered)].filter(id => id && id !== job);
   useEffect(() => {
-    if (hasWaitDetails) { setDiscovered([]); return; }
+    if (hasWaitDetails || fromHistory) { setDiscovered([]); return; }
     const abort = new AbortController();
     const loadWaits = async () => {
       const targets = new Set<string>();
@@ -56,11 +56,11 @@ export default function ThreadDependencies({ tenant, job, details }: { tenant: s
     };
     queueMicrotask(() => { void loadWaits().catch(() => {}); });
     return () => abort.abort();
-  }, [tenant, job, hasWaitDetails]);
+  }, [tenant, job, hasWaitDetails, fromHistory]);
 
   if (!ids.length) return null;
   return <ul className="thread-dependencies" aria-label="Jobs this thread is waiting for">{ids.map(id => {
     const summary = inbox?.tenant === tenant ? inbox.knownJob(id) : undefined;
-    return <li key={id}><DependencyLink tenant={tenant} id={id} known={summary?.title?.trim() || messagePreview(summary?.prompt)} /></li>;
+    return <li key={id}><DependencyLink tenant={tenant} id={id} known={summary?.title?.trim() || messagePreview(summary?.prompt) || (fromHistory ? id : undefined)} /></li>;
   })}</ul>;
 }

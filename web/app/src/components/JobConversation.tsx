@@ -1,5 +1,6 @@
+import type { ThreadSnapshot } from '../hooks/useThreadInput';
 import { messagePreview } from '../utils/jobInbox';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, Button, Card, Typography } from 'antd';
 import { APIError, storedDocumentURL, conversationArtifactURL, getConversation, getConversationEntry, getConversationRequest, stringifyJobJSON, type HistoryDetail, type HistoryEntry, type HistoryMember, type HistoryPage, type HistoryValue, type HistoryMerge } from '@colony2/shared';
 
@@ -10,7 +11,7 @@ import FinalDocuments from './FinalDocuments';
 import { historicalDocuments } from './historicalDocuments';
 import { object, valueText, recordedTime, savedAnswers, reviewer } from './conversationPresentation';
 import './conversation.css';
-import { ReviewV2Discussion } from './ReviewV2';
+import ReviewMessageBody from './ReviewMessageBody';
 import { parseReviewV2 } from '@colony2/shared';
 import ThreadMessageLabel, { reviewContributionLabel, type MessageLabel } from './ThreadMessageLabel';
 import ThreadMessageTime from './ThreadMessageTime';
@@ -87,8 +88,9 @@ export function ConversationTimeline({page, entries, onOpen}: {page?: HistoryPag
     return entry && ['request_generation','response_acceptance'].includes(event.kind) ? <HistoryPair key={key} entry={entry} part={event.kind === 'request_generation' ? 'request' : 'response'} onOpen={() => onOpen(entry.entry_id)} /> : null;
   })}</>;
 }
-type ThreadItem = { key: string; occurrence?: string; sender: string; subject: string; label?: MessageLabel; time?: { value?: unknown; reported?: boolean }; node: ReactNode; ariaLabel?: string; forceOpen?: boolean };
-type InitialMessage = Omit<ThreadItem, 'key' | 'occurrence'> & { subjectIsPrompt?: boolean; showAttachments?: boolean; onExpand?: () => void };
+const RepeatedReview = createContext(false);
+type ThreadItem = { key: string; occurrence?: string; reviewId?: string; sender: string; subject: string; subjectIsPrompt?: boolean; label?: MessageLabel; time?: { value?: unknown; reported?: boolean }; node: ReactNode; ariaLabel?: string; forceOpen?: boolean };
+type InitialMessage = Omit<ThreadItem, 'key' | 'occurrence'> & { showAttachments?: boolean; onExpand?: () => void };
 
 export function FoldedConversationTimeline({
   page, entries, onOpen, currentRequestId, cellName, tenant, job, initial, trailing = [], selectedOccurrence, ready = true,
@@ -96,30 +98,35 @@ export function FoldedConversationTimeline({
   page?: HistoryPage; entries: HistoryEntry[]; onOpen:(id:string)=>void; currentRequestId?:string; cellName?:string; tenant?: string; job?: string;
   initial?: InitialMessage; trailing?: ThreadItem[]; selectedOccurrence?: string; ready?: boolean;
 }) {
-  const recorded = entries.filter(entry => entry.request_id !== currentRequestId || !currentRequestId || entry.accepted_response.present);
+  const liveOccurrence = trailing.find(item => item.occurrence)?.occurrence;
+  const recorded = entries.filter(entry => entry.accepted_response.present || (liveOccurrence
+    ? entry.entry_id !== liveOccurrence : !currentRequestId || entry.request_id !== currentRequestId));
   const byID = new Map(recorded.map(entry => [entry.entry_id, entry]));
   const items: ThreadItem[] = [];
   const addEntry = (entry: HistoryEntry, part?: 'request' | 'response') => {
     const fields = entry.form_fields;
     const structured = object(fields.presentation).type === 'review/v2';
     const isReview = entry.kind === 'review' || structured;
-    const question = structured ? object(fields.request).question : fields.question;
-    const title = (entry.title?.present ? valueText(entry.title.raw).trim() : '') ||
-      (question ? valueText(question) : '') ||
-      (Array.isArray(fields.fields) ? valueText(object(fields.fields[0]).question ?? '') : '') || `${entry.kind} request`;
+    const review = structured ? object(fields.request) : undefined;
+    const question = structured ? review?.question : fields.question;
+    const title = (entry.title?.present && typeof entry.title.raw === 'string' && entry.title.raw.trim()) ||
+      (typeof review?.title === 'string' ? review.title.trim() : '');
+    const prompt = (question ? valueText(question) : '') ||
+      (Array.isArray(fields.fields) ? valueText(object(fields.fields[0]).question ?? '') : '');
     const response = part === 'response';
     const actor = object(object(entry.actor.receipt).actor).id
       || (entry.actor.legacy_user_id?.present ? entry.actor.legacy_user_id.raw : undefined);
     const sender = response ? (actor ? valueText(actor) : 'Unknown') : cellName || 'Cell';
-    const preview = response ? savedAnswers(fields, entry.accepted_response.raw, true) : title;
+    const preview = response ? savedAnswers(fields, entry.accepted_response.raw, true) : title || prompt || `${entry.kind} request`;
     let label: MessageLabel = isReview ? 'Review' : 'Question';
     if (response) {
       const accepted = object(entry.accepted_response.raw);
-      const directions = structured ? object(fields.request).directions : undefined;
+      const directions = review?.directions;
       const direction = Array.isArray(directions) ? directions.find(d => object(d).id === object(accepted.response ?? accepted).direction) : undefined;
       label = isReview ? reviewContributionLabel(direction) : 'Answer';
     }
-    items.push({key: JSON.stringify([entry.entry_id, part]), occurrence: entry.entry_id, sender, subject: messagePreview(preview),
+    items.push({key: JSON.stringify([entry.entry_id, part]), occurrence: entry.entry_id, sender, subject: messagePreview(preview), subjectIsPrompt: !response && !title && !!prompt,
+      reviewId: !response && typeof review?.review_id === 'string' ? review.review_id : undefined,
       time: response ? acceptedTime(entry) : { value: entry.requested_at?.present ? entry.requested_at.raw : undefined },
       label, node: !response && isReview && tenant && job
         ? entry.review_attachments
@@ -159,22 +166,39 @@ export function FoldedConversationTimeline({
       if (isReview && entry.accepted_response.present) addEntry(entry, 'response');
     }
   }
-  const lastKey = trailing[trailing.length - 1]?.key ?? items[items.length - 1]?.key;
+  // A selected review can also be present in history while its reply is accepted,
+  // or when its permalink opens the latest saved request without a live input.
+  const tail = [...trailing];
+  const selectedReview = tail.find(item => item.reviewId);
+  if (selectedReview && (selectedReview.occurrence || (!currentRequestId && !page?.next_page_token))) {
+    for (let index = items.length - 1; index >= 0; index--) {
+      const item = items[index];
+      if (item.reviewId === selectedReview.reviewId && (!selectedReview.occurrence || item.occurrence === selectedReview.occurrence)) {
+        items[index] = {...item, node: selectedReview.node, forceOpen: selectedReview.forceOpen};
+        tail.splice(tail.indexOf(selectedReview), 1);
+        break;
+      }
+    }
+  }
+  const lastKey = tail[tail.length - 1]?.key ?? items[items.length - 1]?.key;
+  const latestReview = new Map<string, string>();
+  for (const item of [...items, ...tail]) {
+    if (item.reviewId) latestReview.set(item.reviewId, item.key);
+  }
   function row(item: ThreadItem) {
+    const priorReview = !!item.reviewId && latestReview.get(item.reviewId) !== item.key;
     // A permalink already displays the selected request above the timeline.
-    const defaultOpen = item.forceOpen || (item.key === lastKey && (!selectedOccurrence || item.occurrence !== selectedOccurrence));
-    return <ThreadMessage key={item.key} occurrence={item.occurrence} ariaLabel={item.ariaLabel} sender={item.sender} subject={item.subject} label={item.label} time={item.time} defaultOpen={defaultOpen}>
-      {item.node}
+    const defaultOpen = item.forceOpen || !selectedOccurrence || item.occurrence !== selectedOccurrence;
+    return <ThreadMessage key={item.key} occurrence={item.occurrence} ariaLabel={item.ariaLabel} sender={item.sender} subject={item.subject} subjectIsPrompt={item.subjectIsPrompt} label={item.label} time={item.time} defaultOpen={defaultOpen}>
+      <RepeatedReview.Provider value={priorReview}>{item.node}</RepeatedReview.Provider>
     </ThreadMessage>;
   }
   return <div className="inbox-history">
     {initial && <ThreadMessage className="inbox-original" onExpand={initial.onExpand} sender={initial.sender} subject={initial.subject} subjectIsPrompt={initial.subjectIsPrompt} time={initial.time} defaultOpen={initial.showAttachments || (ready && !lastKey)}>
       {initial.node}
     </ThreadMessage>}
-    {items.length > 2
-      ? <>{row(items[0])}<details className="inbox-history-middle"><summary>{items.length - 2} earlier messages</summary>{items.slice(1, -1).map(row)}</details>{row(items[items.length - 1])}</>
-      : items.map(row)}
-    {trailing.map(row)}
+    {items.map(row)}
+    {tail.map(row)}
   </div>;
 }
 function ThreadMessage({ sender, subject, subjectIsPrompt, label, time, children, occurrence, ariaLabel, onExpand, defaultOpen = false, className = 'inbox-history-message' }: {
@@ -196,12 +220,12 @@ function ThreadMessage({ sender, subject, subjectIsPrompt, label, time, children
       event.preventDefault();
       setExpanded(!open);
     }}>
-      <span className="thread-message-meta">
-        <span className="thread-message-sender" title={sender}>{sender}</span>
-        {label && <ThreadMessageLabel label={label} />}
-        <ThreadMessageTime {...time} />
-      </span>
-      {subject && !(open && subjectIsPrompt) && <span className="thread-message-subject" title={subject}>{subject}</span>}
+        <span className="thread-message-meta">
+          <span className="thread-message-sender" title={sender}>{sender}</span>
+          {label && <ThreadMessageLabel label={label} />}
+          <ThreadMessageTime {...time} />
+        </span>
+        {subject && !(open && subjectIsPrompt) && <span className="thread-message-subject" title={subject}>{subject}</span>}
     </summary>
     {(open || visited) && <div className="thread-message-body">{children}</div>}
   </details>;
@@ -285,6 +309,8 @@ function HistoryAttachments({ tenant,job,entry,snapshotToken,members }: {tenant:
 function RecordedRequest({ tenant, job, detail, onBack, onError, error, onRetry, inline }: {
   tenant: string; job: string; detail: RecordedRequestDetail; onBack?: () => void; onError?: (failure: unknown) => void; error?: string; onRetry?: () => void; inline?: boolean;
 }) {
+  const repeated = useContext(RepeatedReview);
+  const [showRepeated, setShowRepeated] = useState(false);
   const catalog = historicalDocuments(detail);
   const rawForm = object(detail.raw_form);
   const form = object(rawForm.presentation).type === 'review/v2' ? object(rawForm.request) : rawForm;
@@ -301,17 +327,25 @@ function RecordedRequest({ tenant, job, detail, onBack, onError, error, onRetry,
     }
     return artifactURL(member.artifact_id);
   };
+  const hasDocuments = Object.keys(catalog.documents).length > 0;
+  const repeatedContent = repeated && hasDocuments && <p><button type="button" className="review-repeated-content" aria-expanded={showRepeated}
+    onClick={() => setShowRepeated(open => !open)}>{showRepeated ? 'Hide repeated content' : '… (repeated content)'}</button></p>;
   return <section aria-label="Recorded request" data-occurrence={detail.entry_id}>
     {onBack && <Button onClick={onBack}>Back to thread</Button>}
     {!inlineReview && <Typography.Title level={4}>{detail.title.present ? valueText(detail.title.raw) : 'Recorded request'}</Typography.Title>}
     {!inlineReview && <p>Read only</p>}
-    {review&&<ReviewV2Discussion showMessageLabels turns={review.conversation} request={review}/>}
     {object(rawForm.presentation).type&&object(rawForm.presentation).type!=='review/v2'&&<Alert type="warning" message="Unsupported recorded presentation. Raw data remains available."/>}
-    {!(inlineReview && review) && (form.question || Array.isArray(form.fields)) && <section aria-label="Review context" style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{form.question ? valueText(form.question) : form.fields.map((field: unknown) => valueText(object(field).question || object(field).id)).join('\n')}</section>}
+    {!review && (form.question || Array.isArray(form.fields) || repeatedContent) && <section aria-label="Review context" style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>
+      {form.question ? valueText(form.question) : Array.isArray(form.fields) && form.fields.map((field: unknown) => valueText(object(field).question || object(field).id)).join('\n')}
+      {repeatedContent}
+    </section>}
     {!inlineReview && detail.summary.present && <p>{valueText(detail.summary.raw)}</p>}
     {error && <Alert type="warning" message={error} action={<Button onClick={onRetry}>Retry request</Button>} />}
     {catalog.limited && <Alert type="info" message="Limited history: the original form or document metadata was not recorded. Available documents and answers are shown below." />}
-    {((!review && !inlineReview) || Object.keys(catalog.documents).length > 0) && <ReviewDocuments attachmentLayout={review || inlineReview ? 'primary' : undefined} projectId={tenant} jobId={job} requestId={detail.request_id || detail.entry_id} documents={catalog.documents} documentMetadata={catalog.metadata} overviewDocumentId={catalog.overview} source={{identity:JSON.stringify([tenant,job,detail.entry_id,detail.snapshot_token]),url:id => catalog.documents[id]?.stored ? storedDocumentURL(tenant,catalog.documents[id].stored.key) : catalog.members[id] ? artifactURL(catalog.members[id]) : '',onError}} />}
+    {review && <ReviewMessageBody request={review} tenant={tenant} hasDocument={hasDocuments && (!repeated || showRepeated)}>
+      {repeatedContent}
+    </ReviewMessageBody>}
+    {(!repeated || showRepeated) && ((!review && !inlineReview) || hasDocuments) && <ReviewDocuments attachmentLayout={review || inlineReview ? 'primary' : undefined} projectId={tenant} jobId={job} requestId={detail.request_id || detail.entry_id} documents={catalog.documents} documentMetadata={catalog.metadata} overviewDocumentId={catalog.overview} source={{identity:JSON.stringify([tenant,job,detail.entry_id,detail.snapshot_token]),url:id => catalog.documents[id]?.stored ? storedDocumentURL(tenant,catalog.documents[id].stored.key) : catalog.members[id] ? artifactURL(catalog.members[id]) : '',onError}} />}
     {inlineReview ? <HistoryAttachments tenant={tenant} job={job} entry={detail.entry_id} snapshotToken={detail.snapshot_token}
       members={detail.request_manifest.filter(member=>!Object.values(catalog.members).includes(member.artifact_id))} /> : <>
     {detail.accepted_response.present && <section aria-label="Recorded answers"><Typography.Title level={5}>Accepted response</Typography.Title><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{savedAnswers(Object.keys(form).length ? form : detail.form_fields,detail.accepted_response.raw)}</pre></section>}
@@ -341,7 +375,8 @@ export function CurrentActivity({ metadata, freshness, inline = false, dependenc
   </Card>;
 }
 type ConversationProps = {
-  children?: ReactNode; initial?: InitialMessage; currentRequestLabel?: string; currentRequestTime?: string; currentReviewId?: string; currentIsReview?: boolean; openCurrent?: boolean; folded?: boolean; currentRequestId?: string; cellName?: string;
+  children?: ReactNode; initial?: InitialMessage; currentRequestLabel?: string; currentSubjectIsPrompt?: boolean; currentRequestTime?: string; currentReviewId?: string; currentIsReview?: boolean; openCurrent?: boolean; folded?: boolean; currentRequestId?: string; cellName?: string;
+  onSnapshot?: (snapshot:ThreadSnapshot) => void;
   onInventory?: (rows: HistoryPage['input_artifacts']) => void;
   tenant: string; job: string; occurrence?: string; requestId?: string; onOpen: (entry: string) => void; onBack?: () => void; refreshKey?: unknown;
   metadata?: RecipeJob; metadataFreshness?: 'loading' | 'loaded' | 'failed'; autoRefresh?: boolean; refreshIntervalMs?: number;
@@ -349,7 +384,7 @@ type ConversationProps = {
 export default function JobConversation(props: ConversationProps) {
   return <Conversation key={JSON.stringify([props.tenant,props.job])} {...props}/>;
 }
-function Conversation({ tenant, job, onInventory, occurrence, requestId, onOpen, onBack, refreshKey, folded=false, currentRequestId, cellName, children, initial, metadata, currentRequestLabel, currentRequestTime, currentReviewId, currentIsReview, openCurrent, autoRefresh = false, refreshIntervalMs = 5000 }: ConversationProps) {
+function Conversation({ tenant, job, onInventory, onSnapshot, occurrence, requestId, onOpen, onBack, refreshKey, folded=false, currentRequestId, cellName, children, initial, metadata, currentRequestLabel, currentSubjectIsPrompt, currentRequestTime, currentReviewId, currentIsReview, openCurrent, autoRefresh = false, refreshIntervalMs = 5000 }: ConversationProps) {
   const [page, setPage] = useState<HistoryPage>();
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [error, setError] = useState('');
@@ -362,13 +397,13 @@ function Conversation({ tenant, job, onInventory, occurrence, requestId, onOpen,
   const identity = `${tenant}\0${job}`;
   const loadedIdentity = useRef(identity);
   const previousRefreshKey = useRef(refreshKey);
-  const load = useCallback(async (token?: string, background = false) => {
+  const load = useCallback(async (token?: string, background = false): Promise<void> => {
     const current = ++generation.current;
     controller.current?.abort();
     const abort = new AbortController(); controller.current = abort;
     setBusy(true);
     try {
-      let next = await getConversation(tenant, job, { pageToken: token, includeSections: token ? false : undefined, includeReviewAttachments: folded, signal: abort.signal });
+      let next = await getConversation(tenant, job, { pageToken: token, includeSections: token ? false : undefined, includeReviewAttachments: folded, thread:!!onSnapshot && !token, signal: abort.signal });
       if (token && pageRef.current && next.snapshot_token !== pageRef.current.snapshot_token) throw new Error('History snapshot changed during pagination. Use the page Refresh button.');
       const first = next;
       const snapshot = next.snapshot_token;
@@ -389,6 +424,7 @@ function Conversation({ tenant, job, onInventory, occurrence, requestId, onOpen,
       if (background && pageRef.current && stringifyJobJSON(pageRef.current.merges) !== stringifyJobJSON(next.merges)) setActivity(true);
       const merged = {...next, activity: token ? pageRef.current?.activity : first.activity, final_documents: token ? pageRef.current?.final_documents : first.final_documents};
       pageRef.current = merged; setPage(merged); setError('');
+      onSnapshot?.({page: merged, refresh: () => load(undefined, true)});
       setEntries(previous => {
         if (!token) {
           if (background && previous.length && stringifyJobJSON(previous) !== stringifyJobJSON(refreshed)) setActivity(true);
@@ -403,23 +439,38 @@ function Conversation({ tenant, job, onInventory, occurrence, requestId, onOpen,
     } catch (e) {
       if (abort.signal.aborted || current !== generation.current) return;
       if (!token) onInventory?.(undefined);
-      setError(e instanceof APIError && e.code === 'history_snapshot_expired' ? 'History snapshot expired. Use the page Refresh button to restart pagination; the visible entries are retained until refresh succeeds.' : `${String(e)} Use the page Refresh button to try again.`);
-    } finally { if (current === generation.current) setBusy(false); }
-  }, [tenant, job, onInventory, folded]);
+      const failure = e instanceof APIError && e.code === 'history_snapshot_expired' ? 'History snapshot expired. Use the page Refresh button to restart pagination; the visible entries are retained until refresh succeeds.' : `${String(e)} Use the page Refresh button to try again.`;
+      setError(failure);
+      onSnapshot?.({page: pageRef.current, error: failure, refresh: () => load(undefined, true)});
+    } finally {
+      if (current === generation.current) {
+        controller.current = undefined;
+        setBusy(false);
+      }
+    }
+  }, [tenant, job, onInventory, onSnapshot, folded]);
+  const refreshThread = useCallback(() => load(undefined, true), [load]);
   useEffect(() => {
     loadedIdentity.current = identity; entriesRef.current = []; pageRef.current = undefined; setPage(undefined); setEntries([]); setError(''); setActivity(false);
-    void load();
-    return () => { ++generation.current; controller.current?.abort(); };
-  }, [identity, load]);
+    // StrictMode can immediately discard this mount. Start the request only
+    // after the mount survives its cleanup.
+    let mounted = true;
+    if (onSnapshot) queueMicrotask(() => { if (mounted) void load(); });
+    else void load();
+    return () => { mounted = false; ++generation.current; controller.current?.abort(); };
+  }, [identity, load, onSnapshot]);
   useEffect(() => {
     const changed = previousRefreshKey.current !== refreshKey; previousRefreshKey.current = refreshKey;
     if (loadedIdentity.current === identity && changed) void load(undefined, true);
   }, [refreshKey, identity, load]);
   useEffect(() => {
     if (!autoRefresh || (page?.activity?.value && isFinishedJob(page.activity.value))) return;
-    const timer = window.setInterval(() => { void load(undefined, true); }, refreshIntervalMs);
+    const timer = window.setInterval(() => {
+      if (onSnapshot && controller.current && (!pageRef.current || 'current_input' in pageRef.current)) return;
+      void load(undefined, true);
+    }, refreshIntervalMs);
     return () => window.clearInterval(timer);
-  }, [autoRefresh, refreshIntervalMs, page?.activity, load]);
+  }, [autoRefresh, refreshIntervalMs, page?.activity, load, onSnapshot]);
   const observed = page?.activity?.availability === 'available' ? page.activity.value : undefined;
   const latest = observed ?? metadata;
   const terminal = !!latest && isFinishedJob(latest);
@@ -428,7 +479,9 @@ function Conversation({ tenant, job, onInventory, occurrence, requestId, onOpen,
   const failed = outcome === 'failed_app' || outcome === 'failed_system' || outcome === 'failed_timeout';
   const outcomeLabel = failed ? (outcome === 'failed_timeout' ? 'Job timed out' : 'Job failed') : outcome && jobStatusPresentation(outcome).label;
   const completionText = latest?.completion_detail?.trim() ? latest.completion_detail : failed ? 'No failure details recorded for this job.' : undefined;
-  const activeRequest = currentRequestId ? entries.find(entry => entry.request_id === currentRequestId) : undefined;
+  const activeRequest = page?.current_input_entry_id && (!currentReviewId || object(page.current_input?.form.request).review_id === currentReviewId)
+    ? entries.find(entry => entry.entry_id === page.current_input_entry_id)
+    : currentRequestId ? entries.find(entry => entry.request_id === currentRequestId) : undefined;
   const completionSender = outcome === 'CANCELLED' ? latest?.cancelled_by || 'Unknown' : cellName || 'Job status';
   const completion: ThreadItem | undefined = (terminal || manifest?.documents?.length) ? {
     key: 'completion', ariaLabel: 'Job completion', sender: completionSender, subject: outcomeLabel || 'Attachments',
@@ -443,14 +496,21 @@ function Conversation({ tenant, job, onInventory, occurrence, requestId, onOpen,
   } : undefined;
   const current: ThreadItem | undefined = children ? {
     key: currentReviewId ? JSON.stringify(['review', currentReviewId]) : currentRequestId || 'current',
-    forceOpen: openCurrent, occurrence: activeRequest?.entry_id,
+    reviewId: currentReviewId, forceOpen: openCurrent, occurrence: activeRequest?.entry_id,
     time: { value: activeRequest?.requested_at?.present ? activeRequest.requested_at.raw : currentRequestTime },
-    sender: cellName || 'Cell', subject: currentRequestLabel || 'Waiting for your response', label: currentIsReview ? 'Review' : 'Question', node: children,
+    sender: cellName || 'Cell', subject: currentRequestLabel || 'Waiting for your response', subjectIsPrompt: currentSubjectIsPrompt, label: currentIsReview ? 'Review' : 'Question', node: children,
   } : undefined;
+  if (onSnapshot && !page && !error) return <p role="status">Loading history…</p>;
+  const selected = occurrence ?? requestId;
+  const matches = selected === undefined ? [] : entries.filter(entry => entry.entry_id === selected || (occurrence === undefined && entry.request_id === selected));
   return <section aria-label={folded ? 'Thread messages' : 'Input history'}>
     {error && <Alert type="warning" message="History unavailable" description={error} />}
     {page?.diagnostics?.map((d, i) => <Alert key={i} type="info" message={d.message} />)}
-    {(occurrence !== undefined || requestId !== undefined) && <HistoricalRequest key={`${identity}\0${occurrence ?? requestId}`} tenant={tenant} job={job} entry={occurrence ?? requestId!} legacy={occurrence === undefined} onBack={onBack} />}
+    {selected !== undefined && (page && 'current_input' in page
+      ? matches.length === 1
+        ? <RecordedRequest tenant={tenant} job={job} detail={threadReviewDetail(matches[0],page.snapshot_token)} onBack={onBack} onError={failure => { if (failure instanceof APIError && failure.code === 'history_snapshot_expired') void refreshThread(); }} />
+        : <Alert type="warning" message="Request unavailable" description={matches.length ? 'Request identity is ambiguous. Open its occurrence link.' : 'The selected request is not retained.'} />
+      : (!onSnapshot || page) && <HistoricalRequest key={`${identity}\0${occurrence ?? requestId}`} tenant={tenant} job={job} entry={occurrence ?? requestId!} legacy={occurrence === undefined} onBack={onBack} />)}
     {/* Keep arriving activity below the historical reader so it does not move the reading position. */}
     {activity && <span role="status">New thread activity available</span>}
     {!folded && page && !entries.length && !page.merges?.length && <p>No retained events in this history.</p>}
@@ -461,7 +521,7 @@ function Conversation({ tenant, job, onInventory, occurrence, requestId, onOpen,
     {page?.next_page_token && <Button disabled={busy || !!error} onClick={() => void load(page.next_page_token)}>Load more events</Button>}
     {!page && !error && <p role="status">Loading history…</p>}
     {!(folded && (current || terminal)) && <CurrentActivity inline={folded} metadata={observed ?? (latest?.status === 'PENDING_JOBS' ? latest : undefined)} freshness={error ? 'failed' : 'loaded'}
-      dependencies={folded && latest?.status === 'PENDING_JOBS' && <ThreadDependencies tenant={tenant} job={job} details={{...latest,wait_for:latest.wait_for ?? metadata?.wait_for,blocking_wait:latest.blocking_wait ?? metadata?.blocking_wait}} />} />}
+      dependencies={folded && latest?.status === 'PENDING_JOBS' && <ThreadDependencies fromHistory={!!page && 'current_input' in page} tenant={tenant} job={job} details={{...latest,wait_for:latest.wait_for ?? metadata?.wait_for,blocking_wait:latest.blocking_wait ?? metadata?.blocking_wait}} />} />}
     {!folded && <FinalDocuments tenant={tenant} job={job} terminal={!page?.activity?.value || isFinishedJob(page.activity.value)} manifest={page?.final_documents?.availability === 'available' ? page.final_documents.value : undefined} error={page && page.final_documents?.availability !== 'available' ? 'Returned documents could not be read.' : undefined} stale={!!error} onRetry={()=>void load()}/>}
 
 

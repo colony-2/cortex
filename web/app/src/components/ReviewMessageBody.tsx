@@ -1,7 +1,8 @@
+import type { ReactNode } from 'react';
 import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import MarkdownTable from './review/MarkdownTable';
-import ThreadMessageLabel from './ThreadMessageLabel';
+import { storedDocumentURL, type ReviewV2Request } from '@colony2/shared';
 
 type Node = { type: string; value?: string; children?: Node[] };
 // Preserve authored prose breaks without interpreting newlines inside fenced
@@ -33,10 +34,30 @@ const components: Components = {
 };
 const remarkPlugins = [remarkGfm, proseBreaks];
 
-export default function ReviewQuestion({ question, showMessageLabel }: { question: string; showMessageLabel?: boolean }) {
-  const sender = <strong>Agent</strong>;
-  return <article className="review-v2-turn agent">
-    {showMessageLabel ? <span className="thread-message-meta">{sender}<ThreadMessageLabel label="Question" /></span> : sender}
-    <div className="review-v2-question-markdown"><Markdown skipHtml remarkPlugins={remarkPlugins} components={components}>{question}</Markdown></div>
-  </article>;
+export default function ReviewMessageBody({ request, tenant, hasDocument, children }: {
+  request: ReviewV2Request;
+  tenant: string;
+  hasDocument: boolean;
+  children?: ReactNode;
+}) {
+  const lastTurn = request.conversation[request.conversation.length - 1];
+  const answer = lastTurn?.role === 'agent' ? lastTurn : undefined;
+  const hasPrompt = !!request.question.trim();
+  if (!answer?.text.trim() && !answer?.attachments.length && !hasPrompt && !children) return null;
+
+  return <>
+    <section aria-label="Review message" className="review-message-body">
+      {answer?.text.trim() && <p className="review-message-answer">{answer.text}</p>}
+      {answer?.attachments.map(({ name, stored }, index) =>
+        <p key={index}><a href={storedDocumentURL(tenant, stored.key)} download>
+          Download {(name || stored.key.name).split('/').pop()}
+        </a></p>
+      )}
+      {hasPrompt && <div className="review-v2-question-markdown">
+        <Markdown skipHtml remarkPlugins={remarkPlugins} components={components}>{request.question}</Markdown>
+      </div>}
+      {children}
+    </section>
+    {hasDocument && <hr className="review-message-divider" />}
+  </>;
 }

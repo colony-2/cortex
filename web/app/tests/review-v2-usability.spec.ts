@@ -142,10 +142,10 @@ for(const width of [1680,1320,320,390])test(`L01–05 response and attachments, 
  await expect.poll(()=>page.getByRole('button',{name:'Send · Ask a question'}).evaluate(element=>{const box=element.getBoundingClientRect();return element.contains(document.elementFromPoint(box.x+box.width/2,box.y+box.height/2));})).toBe(true);
  await page.getByRole('button',{name:'Back',exact:true}).click();await geometry(page);
 });
-test('P01/P05/N09 accepted question shows pending in discussion; successor retains document and uses new native request',async({page})=>{
+test('P01/P05/N09 accepted question shows pending; successor retains document and uses new native request',async({page})=>{
  await page.setViewportSize({width:1440,height:900});const f=await reviewV2BrowserFixture(page);await page.goto(v2Path);await v2Selected(page,0);await v2Catalog(page,1);await v2ClosePreview(page);
  await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)').fill('Does Back preserve a file draft?');
- await page.getByRole('button',{name:'Send · Ask a question'}).click();await expect(page.getByRole('region',{name:'Discussion'}).getByText('Response pending',{exact:true})).toBeVisible();await geometry(page);await screenshot(page,'v2-response-pending.png');
+ await page.getByRole('button',{name:'Send · Ask a question'}).click();await expect(page.getByText('Response pending',{exact:true})).toBeVisible();await geometry(page);await screenshot(page,'v2-response-pending.png');
  expect(f.state.submits[0].request_id).toBe('native-one');expect(f.state.submits[0].response.direction).toBe('ask');
  await f.successor();await page.getByRole('button',{name:'Refresh',exact:true}).click();
  await expect(page.getByText('Response pending',{exact:true})).toHaveCount(0);await v2Selected(page,0);
@@ -155,6 +155,19 @@ test('P01/P05/N09 accepted question shows pending in discussion; successor retai
  await page.getByRole('button',{name:'Send · Approve direction',exact:true}).click();await expect.poll(()=>f.state.submits.length).toBe(2);expect(f.state.submits[1]).toMatchObject({request_id:'native-two',response:{direction:'go',feedback:'',attachments:[],settings:{}}});
  await expect(page.getByText('Response pending',{exact:true})).toHaveCount(0);
 });
+test('choosing Request changes at the bottom brings Send into view and focuses feedback', async ({page}) => {
+ await page.setViewportSize({width:1280, height:640});
+ await reviewV2BrowserFixture(page);
+ await page.goto(v2Path);
+ await v2Selected(page,0);
+ await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+ const changes = page.getByRole('button', {name:'Request changes', exact:true});
+ await expect(changes).toBeInViewport({ratio:1});
+ await changes.click();
+ await expect(page.getByRole('textbox', {name:'Question or requested change (required)'})).toBeFocused();
+ await expect(page.getByRole('button', {name:'Send · Request changes'})).toBeInViewport({ratio:1, timeout:3000});
+});
+
 test('the inline reply can switch between a recipe choice, feedback and approval without posting a draft', async ({page})=>{
  const fixture=await reviewV2BrowserFixture(page);await page.goto(v2Path);await v2Selected(page,0);
  const composer=page.getByRole('region',{name:'Response composer'});
@@ -187,41 +200,32 @@ test('L07–09 the simulated keyboard leaves the full-screen reply and its send 
  await page.evaluate(()=>{Object.defineProperty(window.visualViewport!,'offsetTop',{configurable:true,value:30});window.visualViewport!.dispatchEvent(new Event('scroll'));});
  await expect.poll(async () => (await reply.boundingBox())?.y).toBe(30);
  await closeReply(page);
- await discussionPane(page).getByRole('article').last().scrollIntoViewIfNeeded();await expect(discussionPane(page).getByRole('heading',{name:'Ready to proceed?'})).toBeVisible();
+ await reviewMessage(page).scrollIntoViewIfNeeded();await expect(reviewMessage(page).getByRole('heading',{name:'Ready to proceed?'})).toBeVisible();
  await page.getByRole('link',{name:'Back to inbox'}).click();
  await expect.poll(()=>page.evaluate(()=>document.documentElement.style.getPropertyValue('--review-action-height'))).toBe('');
  await page.evaluate(()=>window.dispatchEvent(new Event('resize')));expect(await page.evaluate(()=>document.documentElement.style.getPropertyValue('--review-action-height'))).toBe('');
 });
-test('L04 the document and discussion share the page scroll above the response controls',async({page})=>{
- await page.setViewportSize({width:1680,height:900});const f=await reviewV2BrowserFixture(page);
- f.state.request.conversation=Array.from({length:30},(_,index)=>({role:'agent',text:`Earlier answer ${index}. `+'Review discussion context. '.repeat(8),attachments:[]}));
- await page.goto(v2Path);await v2Selected(page,0);
- await page.getByRole('button',{name:'Ask a question',exact:true}).click();
- await page.getByLabel('Question or requested change (required)').fill('Keep the last answer reachable.');
- await page.getByLabel('Attach notes').setInputFiles({name:'notes.md',mimeType:'text/markdown',buffer:Buffer.from('notes')});
+for (const width of [390, 1680]) test(`the latest answer and prompt precede the primary document at ${width}px`, async ({page}) => {
+ const fixture = await reviewV2BrowserFixture(page);
+ fixture.state.request.conversation = [
+  {role:'agent', text:'Earlier answer', attachments:[]},
+  {role:'human', direction:'ask', text:'My follow-up', attachments:[], receipt:{}},
+  {role:'agent', text:'Latest answer', attachments:[]},
+ ];
+ await page.setViewportSize({width, height:900});
+ await page.goto(v2Path);
+ await v2Selected(page,0);
+ const message = reviewMessage(page);
+ await expect(message).toHaveText('Latest answer' + fixture.state.request.question);
+ await expect(page.getByRole('button', {name:/show earlier turns/i})).toHaveCount(0);
+ const answer = (await message.getByText('Latest answer').boundingBox())!;
+ const prompt = (await message.getByText(fixture.state.request.question).boundingBox())!;
+ const line = (await page.locator('.review-message-divider').boundingBox())!;
+ const primary = (await v2Primary(page).boundingBox())!;
+ expect(answer.y + answer.height).toBeLessThanOrEqual(prompt.y);
+ expect(prompt.y + prompt.height).toBeLessThanOrEqual(line.y);
+ expect(line.y + line.height).toBeLessThanOrEqual(primary.y);
  await geometry(page);
- const discussion=page.getByRole('region',{name:'Discussion'});
- const document=page.getByRole('article',{name:'Rendered document'});
- for (const surface of [document, discussion]) {
-  await page.evaluate(()=>window.scrollTo(0,0));
-  const metrics=await surface.evaluate(element=>{
-   const {x,y,width}=element.getBoundingClientRect();
-   return {x:x+width/2,y:y+30,overflow:element.scrollHeight-element.clientHeight};
-  });
-  expect(metrics.overflow).toBeLessThanOrEqual(1);
-  await page.mouse.move(metrics.x, metrics.y);
-  await page.mouse.wheel(0, 380);
-  await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBeGreaterThan(0);
-  expect(await surface.evaluate(element=>element.scrollTop)).toBe(0);
- }
- const last=discussion.getByRole('article').last();
- await expect(last).toContainText(f.state.request.question);
- await last.scrollIntoViewIfNeeded();
- const turn=await last.boundingBox();const pane=await page.locator('.review-v2-response').boundingBox();
- expect(turn!.y+turn!.height).toBeLessThanOrEqual(pane!.y);
- const bounds=await discussion.boundingBox();expect(turn!.y+turn!.height).toBeLessThanOrEqual(bounds!.y+bounds!.height);
- await expect(last).toBeInViewport({ratio:1});
- await screenshot(page,'v2-discussion-last-turn.png');
 });
 test.describe('actual browser zoom',()=>{
  test.use({nativeZoom:true});
@@ -238,159 +242,41 @@ test.describe('actual browser zoom',()=>{
    await captureNativeZoom(page,test.info().outputPath('v2-browser-zoom-200.png'));
    await closeReply(page);
   }
-  await expect(page.getByRole('separator')).toHaveCount(0);const question=discussionPane(page).getByRole('article').last();await question.scrollIntoViewIfNeeded();await expect(question.getByRole('heading',{name:'Ready to proceed?'})).toBeVisible();await geometry(page);
+  await expect(page.locator('.review-message-divider')).toBeVisible();const question=reviewMessage(page);await question.scrollIntoViewIfNeeded();await expect(question.getByRole('heading',{name:'Ready to proceed?'})).toBeVisible();await geometry(page);
   await question.locator('pre').scrollIntoViewIfNeeded();const finalCode=(await question.locator('pre').boundingBox())!,response=(await page.locator('.review-v2-response').boundingBox())!;expect(finalCode.y+finalCode.height).toBeLessThanOrEqual(response.y+1);
-  await captureNativeZoom(page,test.info().outputPath('v2-browser-zoom-discussion-200.png'));
+  await captureNativeZoom(page,test.info().outputPath('v2-browser-zoom-message-200.png'));
  });
 });
 
 const formattedQuestion = '# Ready to proceed?\n\nReview the **formatted** instructions.\nKeep this authored line break.\n\n- Compare the plan\n- Confirm the checks\n\n[Public reference](https://example.com)\n\n| Check | Result |\n| --- | --- |\n| Formatting | Preserved |\n\n```ts\nconst proceed = true;\n```';
-const discussionPane = (page:Page) => page.getByRole('region',{name:'Discussion'});
-const discussionSeparator = (page:Page) => page.getByRole('separator',{name:'Resize discussion'});
+const reviewMessage = (page:Page) => page.locator('.review-v2-layout').getByRole('region',{name:'Review message'});
 async function widthOf(page:Page,selector:string){return page.locator(selector).evaluate(el=>el.getBoundingClientRect().width);}
-async function dragDiscussion(page:Page,delta:number){
- const box=await discussionSeparator(page).boundingBox();
- const y=Math.max(100,Math.min(450,box!.y+30));
- await page.mouse.move(box!.x+box!.width/2,y);await page.mouse.down();await page.mouse.move(box!.x+box!.width/2+delta,y,{steps:8});await page.mouse.up();
-}
-
 test('B01 formatted question stays final through waiting, saved review and successor replacement',async({page})=>{
  await page.setViewportSize({width:1680,height:1000});const f=await reviewV2BrowserFixture(page);f.state.request.question=formattedQuestion;
  await page.goto(v2Path);await v2Selected(page,0);
- const last=discussionPane(page).getByRole('article').last();
- await expect(last).toHaveClass('review-v2-turn agent');await expect(last.getByRole('heading',{name:'Ready to proceed?'})).toHaveCount(1);
+ const last=reviewMessage(page);
+ await expect(last.getByRole('heading',{name:'Ready to proceed?'})).toHaveCount(1);
  await expect(page.getByRole('heading',{name:'Ready to proceed?'})).toHaveCount(1);await expect(last.locator('time')).toHaveCount(0);
  await expect(last.getByRole('table')).toHaveCount(1);await expect(last.locator('pre code')).toContainText('const proceed = true;');
  await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)').fill('Does the formatting survive submission?');
- await page.getByRole('button',{name:'Send · Ask a question'}).click();await expect(discussionPane(page).getByRole('status')).toHaveText('Response pending');
+ await page.getByRole('button',{name:'Send · Ask a question'}).click();await expect(page.getByText('Response pending',{exact:true})).toBeVisible();
  await expect(last.getByRole('heading',{name:'Ready to proceed?'})).toHaveCount(1);
- expect(await discussionPane(page).evaluate(el=>el.lastElementChild?.tagName)).toBe('ARTICLE');
+ await expect(reviewMessage(page)).not.toContainText('Does the formatting survive submission?');
  await page.reload();await v2Selected(page,0);await expect(last.getByRole('heading',{name:'Ready to proceed?'})).toHaveCount(1);
  await f.successor();f.state.request.question='## Successor question\n\nThe next **decision**.';
  await page.getByRole('button',{name:'Refresh',exact:true}).click();await expect(last.getByRole('heading',{name:'Successor question'})).toHaveCount(1);
- await expect(page.getByRole('heading',{name:'Ready to proceed?'})).toHaveCount(0);await expect(discussionPane(page).getByText('Response pending',{exact:true})).toHaveCount(0);
+ await expect(page.getByRole('heading',{name:'Ready to proceed?'})).toHaveCount(0);await expect(page.getByText('Response pending',{exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'Approve direction',exact:true}).click();
  await page.getByRole('button',{name:'Send · Approve direction',exact:true}).click();await expect(page.locator('.review-v2-response')).toContainText('Response sent');
  await page.reload();await v2Selected(page,0);await expect(last.getByRole('heading',{name:'Successor question'})).toHaveCount(1);
 });
 
-test('B02–05/B09 discussion resizes beside the response and retain previews, response drafts, files and settings',async({page})=>{
- await page.setViewportSize({width:1920,height:1100});const f=await reviewV2BrowserFixture(page);f.state.request.question=formattedQuestion;await page.goto(v2Path);await v2Selected(page,0);
- const originalURL=page.url();const reads=f.state.reads.length;
- await page.getByRole('article',{name:'Rendered document'}).evaluate(el=>el.setAttribute('data-preview-identity','kept'));
- await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow','320');
- await expect.poll(()=>page.evaluate(()=>{
-  const reader=document.querySelector('.review-reading-track')!.getBoundingClientRect();
-  const divider=document.querySelector('.review-v2-separator')!.getBoundingClientRect();
-  const discussion=document.querySelector('.review-v2-discussion')!.getBoundingClientRect();
-  return [reader.right-divider.left, divider.right-discussion.left];
- })).toEqual([0,0]);
- const discussionBefore=await widthOf(page,'.review-v2-discussion'),readerBefore=await widthOf(page,'.review-reading-track');
- await dragDiscussion(page,-96);
- const discussionWidth=await widthOf(page,'.review-v2-discussion');
- expect(discussionWidth).toBeCloseTo(discussionBefore+96,0);
- expect(await widthOf(page,'.review-reading-track')).toBeCloseTo(readerBefore-96,0);
- await page.getByRole('button',{name:'Ask a question',exact:true}).click();const editor=page.getByLabel('Question or requested change (required)');await editor.fill('Keep my pane comparison.');
- await page.getByLabel('Attach notes').setInputFiles({name:'comparison.md',mimeType:'text/markdown',buffer:Buffer.from('draft')});
- await page.getByRole('button',{name:'Review settings'}).click();await page.getByRole('dialog').getByLabel('Example count').fill('3');await page.getByRole('button',{name:'Done',exact:true}).click();
- await discussionPane(page).getByRole('button',{name:'Hide discussion',exact:true}).click();await expect(page.getByRole('separator')).toHaveCount(0);await expect(discussionPane(page)).toHaveCount(0);
- expect(await widthOf(page,'.review-reading-track')).toBeCloseTo(await widthOf(page,'.review-v2-layout'),0);expect(await widthOf(page,'.review-reading-track')).toBeGreaterThan(900);
- await screenshot(page,'v2-reader-only.png');
- const button=v2Primary(page).locator('.review-document-options').getByRole('button',{name:'Show discussion',exact:true});await expect(button).toBeVisible();await button.hover();
- await expect(page.getByRole('tooltip',{name:'Show discussion',exact:true})).toBeVisible();
- const id=await button.getAttribute('aria-controls');expect(id).toBeTruthy();expect(await page.evaluate(id=>!!document.getElementById(id!),id)).toBe(true);
- await button.click();
- await expect(discussionPane(page).getByRole('button',{name:'Hide discussion',exact:true})).toHaveAttribute('aria-expanded','true');
- expect(await widthOf(page,'.review-v2-discussion')).toBeCloseTo(discussionWidth,0);
- await expect(page.getByRole('article',{name:'Rendered document'})).toHaveAttribute('data-preview-identity','kept');expect(f.state.reads.length).toBe(reads);expect(page.url()).toBe(originalURL);expect(f.state.submits).toHaveLength(0);
- await expect(editor).toHaveValue('Keep my pane comparison.');await expect(page.getByRole('button',{name:'Remove comparison.md (1)'})).toBeVisible();
- await page.getByRole('button',{name:'Review settings'}).click();await expect(page.getByRole('dialog').getByLabel('Example count')).toHaveValue('3');await page.getByRole('button',{name:'Done',exact:true}).click();
- await page.getByRole('button',{name:'Back',exact:true}).click();
- await page.mouse.move(400,110);await page.evaluate(()=>window.scrollTo(0,0));await screenshot(page,'v2-formatted-resized-panes.png');
-});
-
-test('B06–08 keyboard, focus recovery, clamp limits and pointer cancellation',async({page})=>{
- await page.setViewportSize({width:1680,height:1000});const f=await reviewV2BrowserFixture(page);f.state.request.question='[Public reference](https://example.com)';await page.goto(v2Path);await v2Selected(page,0);
- const separator=discussionSeparator(page);
- await separator.focus();const initial=Number(await separator.getAttribute('aria-valuenow'));
- await page.keyboard.press('ArrowRight');await expect(separator).toHaveAttribute('aria-valuenow',String(initial-16));
- await page.keyboard.press('ArrowLeft');await expect(separator).toHaveAttribute('aria-valuenow',String(initial));
- await page.keyboard.press('Home');await expect(separator).toHaveAttribute('aria-valuenow','240');
- await page.keyboard.press('End');expect(Number(await separator.getAttribute('aria-valuenow'))).toBe(Number(await separator.getAttribute('aria-valuemax')));
- expect(await widthOf(page,'.review-reading-track')).toBeGreaterThanOrEqual(359);
- await separator.press('Home');
- await page.evaluate(()=>window.scrollTo(0,0));
- await dragDiscussion(page,500);await expect(separator).toHaveAttribute('aria-valuenow','240');
- await dragDiscussion(page,-2000);expect(await separator.getAttribute('aria-valuenow')).toBe(await separator.getAttribute('aria-valuemax'));
- await separator.press('Home');
- // Programmatic activation leaves focus in the pane, exercising explicit focus recovery.
- await discussionPane(page).getByRole('link',{name:'Public reference'}).focus();await expect(discussionPane(page).getByRole('link',{name:'Public reference'})).toBeFocused();
- await page.getByRole('button',{name:'Hide discussion',exact:true}).evaluate((el:HTMLButtonElement)=>el.click());await expect(page.getByRole('button',{name:'Show discussion',exact:true})).toBeFocused();
- await expect(page.getByRole('link',{name:'Public reference'})).toHaveCount(0);await page.keyboard.press('Tab');expect(await page.evaluate(()=>document.activeElement?.closest('.review-v2-discussion')!==null)).toBe(false);
- await page.getByRole('button',{name:'Show discussion',exact:true}).click();
- await page.evaluate(()=>window.scrollTo(0,0));const box=(await separator.boundingBox())!;
- await page.mouse.move(box.x+4,box.y+30);await page.mouse.down();await page.mouse.move(box.x-70,box.y+30);await expect(separator).toHaveClass(/dragging/);
- await separator.dispatchEvent('pointercancel',{pointerId:1});const stopped=await widthOf(page,'.review-v2-discussion');await page.mouse.move(box.x-130,box.y+30);await page.mouse.up();expect(await widthOf(page,'.review-v2-discussion')).toBe(stopped);await expect(page.locator('.review-v2-layout .dragging')).toHaveCount(0);
- const next=(await separator.boundingBox())!;await page.mouse.move(next.x+4,next.y+30);await page.mouse.down();await page.getByRole('button',{name:'Hide discussion',exact:true}).evaluate((el:HTMLButtonElement)=>el.click());await page.mouse.up();await expect(page.locator('.review-v2-layout .dragging')).toHaveCount(0);
-});
-
-test('B08 touch capture resizes discussion and releases on cancellation',async({page})=>{
- await page.setViewportSize({width:1680,height:1000});await reviewV2BrowserFixture(page);await page.goto(v2Path);await v2Selected(page,0);
- const box=(await discussionSeparator(page).boundingBox())!;const start=Number(await discussionSeparator(page).getAttribute('aria-valuenow'));
- const session=await page.context().newCDPSession(page);
- try{
-  await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+4,y:box.y+40}]});
-  await session.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:box.x-60,y:box.y+40}]});
-  await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow',String(start+64));
-  await session.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});await expect(page.locator('.review-v2-layout .dragging')).toHaveCount(0);
- }finally{await session.detach();}
-});
-
-test('B10/B14 clamping, stacking, successor continuity and navigation reset preserve preferences',async({page})=>{
- await page.setViewportSize({width:1920,height:1000});const f=await reviewV2BrowserFixture(page);await page.goto(v2Path);await v2Selected(page,0);
- await dragDiscussion(page,-480);
- const saved = await widthOf(page,'.review-v2-discussion');
- await page.setViewportSize({width:1001,height:1000});
- await expect.poll(() => widthOf(page,'.review-v2-discussion')).toBeLessThan(saved);
- await expect(page.locator('.review-v2-layout')).not.toHaveClass(/stacked/);await geometry(page);
- await page.setViewportSize({width:980,height:1000});await expect(page.locator('.review-v2-layout')).toHaveClass(/stacked/);await expect(page.getByRole('separator')).toHaveCount(0);
- await expect(page.getByRole('navigation',{name:'Review attachments'})).toBeVisible();await geometry(page);
- await page.setViewportSize({width:1920,height:1000});await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow',String(saved));
- await page.getByRole('button',{name:'Ask a question',exact:true}).click();
- await page.getByLabel('Question or requested change (required)').fill('Continue');
- await page.getByRole('button',{name:'Send · Ask a question'}).click();
- await expect(discussionPane(page).getByRole('status')).toHaveText('Response pending');
- await f.successor();
- await expect(discussionPane(page).getByText('The documents and drafts stay available. I can proceed after your approval.',{exact:true})).toBeVisible();
- await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow',String(saved));
- await page.getByRole('button',{name:'Hide discussion',exact:true}).click();await page.reload();await v2Selected(page,0);await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow','320');
- await page.getByRole('button',{name:'Hide discussion',exact:true}).click();const target=page.url();await page.getByRole('link',{name:'Back to inbox'}).click();await page.goto(target);await v2Selected(page,0);await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow','320');
-});
-
-test('B11 discussion shares the page reading position and reveals older turns in place',async({page})=>{
- await page.setViewportSize({width:1680,height:1000});const f=await reviewV2BrowserFixture(page);f.state.request.conversation=Array.from({length:60},(_,i)=>({role:'agent',text:`Recorded answer ${i}. `+'Earlier context. '.repeat(15),attachments:[]}));f.state.request.question=formattedQuestion;
- await page.goto(v2Path);await v2Selected(page,0);const discussion=discussionPane(page);
- expect(await page.evaluate(()=>window.scrollY)).toBe(0);
- expect(await page.evaluate(()=>document.activeElement?.closest('.review-v2-discussion')!==null)).toBe(false);
- // A failed explicit send triggers refresh without changing the existing thread.
- f.state.rejected=true;await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)').fill('Retain position');await page.getByRole('button',{name:'Send · Ask a question'}).click();await expect(page.getByRole('alert')).toContainText('could not be accepted');
- expect(await page.evaluate(()=>window.scrollY)).toBeGreaterThan(0);
- await page.evaluate(()=>window.scrollTo(0,0));
- await discussion.getByRole('button',{name:'Show earlier turns (40)'}).click();
- await expect(discussion.getByRole('article').first()).toContainText('Recorded answer 20.');
- await expect(discussion.getByRole('article').first()).toBeInViewport();
- await page.getByRole('button',{name:'Hide discussion',exact:true}).click();
- await page.getByRole('button',{name:'Show discussion',exact:true}).click();
- await expect(discussion.getByRole('article').first()).toContainText('Recorded answer 20.');
- expect(await discussion.evaluate(el=>el.scrollTop)).toBe(0);
-});
-
 for(const width of [320,390,980])test(`B12/13 long formatted question, code and tables remain reachable at ${width}px`,async({page})=>{
  await page.setViewportSize({width,height:900});const f=await reviewV2BrowserFixture(page);f.state.request.question=formattedQuestion+'\n\n'+('Long question paragraph with more review instructions.\n\n'.repeat(30))+'```text\n'+('very_long_value_'.repeat(50))+'\n```\n\n| '+('Wide column '.repeat(20))+' | Result |\n| --- | --- |\n| value | passes |\n\nFINAL QUESTION CONTENT';
  await page.goto(v2Path);await v2Selected(page,0);
- await expect(page.getByRole('separator')).toHaveCount(0);await geometry(page);
- const resultCell=discussionPane(page).getByRole('table').last().getByRole('columnheader',{name:'Result',exact:true});expect(await resultCell.evaluate(el=>el.getBoundingClientRect().width)).toBeGreaterThanOrEqual(96);
- const tail=discussionPane(page).getByText('FINAL QUESTION CONTENT',{exact:true});await tail.scrollIntoViewIfNeeded();await expect(tail).toBeInViewport();const bounds=(await tail.boundingBox())!,response=(await page.locator('.review-v2-response').boundingBox())!;expect(bounds.y+bounds.height).toBeLessThanOrEqual(response.y+1);
+ await expect(page.locator('.review-message-divider')).toBeVisible();await geometry(page);
+ const resultCell=reviewMessage(page).getByRole('table').last().getByRole('columnheader',{name:'Result',exact:true});expect(await resultCell.evaluate(el=>el.getBoundingClientRect().width)).toBeGreaterThanOrEqual(96);
+ const tail=reviewMessage(page).getByText('FINAL QUESTION CONTENT',{exact:true});await tail.scrollIntoViewIfNeeded();await expect(tail).toBeInViewport();const bounds=(await tail.boundingBox())!,response=(await page.locator('.review-v2-response').boundingBox())!;expect(bounds.y+bounds.height).toBeLessThanOrEqual(response.y+1);
  await askQuestion(page);await page.getByLabel('Question or requested change (required)').fill('Reach the final content');
  await page.getByRole('button',{name:'Send · Ask a question'}).scrollIntoViewIfNeeded();
  await expect(page.getByRole('button',{name:'Send · Ask a question'})).toBeInViewport();await geometry(page);await screenshot(page,`v2-long-question-${width}.png`);
@@ -482,11 +368,11 @@ for (const width of [1040, 390]) test.describe(`review Markdown tables at ${widt
     }));
     await page.goto(selectedReview(fixture.state.request.review_id));
     await v2Selected(page, 0);
-    await expect(page.getByRole('separator')).toHaveCount(width === 390 ? 0 : 1);
+    await expect(page.locator('.review-message-divider')).toBeVisible();
 
     for (const [surface, root] of [
       ['attachment', page.getByLabel('Rendered document')],
-      ['question', discussionPane(page).locator('.review-v2-question-markdown')],
+      ['question', reviewMessage(page).locator('.review-v2-question-markdown')],
     ] as const) {
       const regions = root.getByRole('region', {name: 'Markdown table'});
       await expect(regions).toHaveCount(2);

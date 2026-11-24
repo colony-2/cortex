@@ -307,9 +307,7 @@ test('embedded review preserves draft through sidebar expansion and Settings, an
   const attachment = page.getByRole('dialog', { name: 'Acceptance checks', exact: true });
   await attachment.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(link).toBeFocused();
-  await expect(page.getByText('2 earlier messages')).toBeVisible();
   const earlier = page.locator('.inbox-history-message').first();
-  await earlier.locator('summary').click();
   await expect(earlier.getByLabel('Accepted response', { exact: true })).toBeVisible();
   await earlier.locator('summary').click();
   await page.locator('.embedded-review').getByRole('heading', { name: 'Viewer changes', exact: true }).evaluate(element => element.scrollIntoView({ block: 'start' }));
@@ -340,8 +338,7 @@ test('embedded review preserves draft through sidebar expansion and Settings, an
   await page.keyboard.press('Control+Enter');
   expect(fixture.state.submits).toHaveLength(0);
   await page.getByRole('tab', { name: 'Thread', exact: true }).click();
-  const discussion = page.getByRole('button', { name: 'Hide discussion', exact: true });
-  await discussion.focus();
+  await page.getByRole('button', { name: 'Document options', exact: true }).focus();
   await page.keyboard.press('Control+Enter');
   await expect.poll(() => fixture.state.submits.length).toBe(1);
   expect(fixture.state.submits[0].response.feedback).toBe('Keep this response while I inspect the cell list.');
@@ -438,11 +435,11 @@ test('old review links redirect to the inbox and the matching thread document', 
   await v2Selected(page, 2);
 });
 
-test('a completed review shows its reply attachment in the response message', async ({ page }) => {
+test('a recorded review question aligns with other thread messages and shows its reply attachment', async ({ page }) => {
   const fixture = await inboxFixture(page);
   fixture.state.pending = false;
   fixture.state.output = {
-    response: { direction: 'fix', feedback: 'Please read the retained note.', settings: {}, attachments: [
+    response: { direction: 'ask', feedback: 'Please read the retained note.', settings: {}, attachments: [
       { kind: 'stored', name: 'note.md', stored: { key: { jobId: 'producer', taskOrdinal: 1, name: 'review/note.md', sizeBytes: 16 } } },
     ] },
     receipt: { actor: { id: 'review@example.com' } },
@@ -453,8 +450,10 @@ test('a completed review shows its reply attachment in the response message', as
   await page.goto('/project/v2/jobs/one/story');
   const request = page.locator('details.inbox-history-message[data-occurrence="entry"]').filter({ hasText: fixture.state.request.title });
   const response = page.locator('details.inbox-history-message[data-occurrence="entry"]').filter({ hasText: 'Please read the retained note.' });
-  await page.getByText('4 earlier messages', { exact: true }).click();
-  await request.locator('summary').click();
+  await expect(response.locator('summary')).toContainText('Question');
+  const card = response.getByLabel('Accepted response', {exact:true});
+  await expect(card).toHaveCSS('border-left-width', '0px');
+  await expect(card).toHaveCSS('margin-left', '0px');
   await expect(request.getByRole('region', { name: 'Recorded request' })).toBeVisible();
   await expect(request).not.toContainText('Please read the retained note.');
   await expect(request).not.toContainText('Accepted response');

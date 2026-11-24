@@ -15,6 +15,8 @@ import (
 
 	"github.com/colony-2/c2j/pkg/artifacts"
 	"github.com/colony-2/c2j/pkg/input"
+	"github.com/colony-2/c2j/pkg/jobdbschema"
+	"github.com/colony-2/c2j/pkg/story"
 	workerops "github.com/colony-2/c2j/pkg/worker/ops"
 	c2workflow "github.com/colony-2/c2j/pkg/worker/workflow"
 	"github.com/colony-2/colony2/server/internal/testjobdb"
@@ -45,6 +47,8 @@ func TestConversationSQLiteReopening(t *testing.T) {
 	for _, id := range []string{"review-one", "review-two"} {
 		forms = append(forms, input.InputForm{Kind: "review", Title: id, RequestID: id, Documents: map[string]artifacts.Ref{"brief": artifacts.NewStoredRef(key)}, Fields: []input.FormField{{ID: "decision", Type: input.FieldTypeShortAnswer, Question: "Decision", Required: true}, {ID: "attachment", Type: input.FieldTypeFileUpload, Question: "Attachment"}}})
 	}
+	// Force the second frozen form into JobDB's artifact store.
+	forms[1].Fields[0].Question = strings.Repeat("Explain the decision. ", 6500)
 	worker := workflow.ExecutionWorker{JobType: "recipe", Execute: func(c workflow.ExecutionContext, _ jobdb.JobData) (jobdb.JobData, error) {
 		for i, form := range forms {
 			raw, e := json.Marshal(form)
@@ -106,7 +110,43 @@ func TestConversationSQLiteReopening(t *testing.T) {
 		require.Equal(t, status, w.Code, w.Body.String())
 		return w.Body.String()
 	}
+	checkThread := func(expected *input.UserInputDetails, count int) {
+		beforeArtifacts := reader.artifactReads
+		engine := &threadReadCounts{Engine: server.engine, JobRunReader: rt}
+		history, err := input.NewHistoryService(input.HistoryConfig{Reader: conversationHistoryReader{HistoryReader: reader, runtime: engine}})
+		require.NoError(t, err)
+		pages := &singleEntryThreadHistory{HistoryService: history, HistorySnapshotService: history.(input.HistorySnapshotService)}
+		storyReader, err := story.New(story.ServiceConfig{Engine: snapshotStoryEngine{jobdbschema.WorkflowEngine{Engine: engine, Registry: rt}}})
+		require.NoError(t, err)
+		threadServer := &Server{engine: engine, history: pages, story: storyReader}
+		w := httptest.NewRecorder()
+		threadServer.handleThreadConversation(w, withHistoryVars(httptest.NewRequest("GET", "/conversation?thread=true", nil).WithContext(ctx), "tenant", "job"))
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		var result struct {
+			Entries        []conversationEntry
+			NextPageToken  string              `json:"next_page_token"`
+			CurrentInput   json.RawMessage     `json:"current_input"`
+			Documents      conversationSection `json:"final_documents"`
+			InputArtifacts json.RawMessage     `json:"input_artifacts"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+		require.Len(t, result.Entries, count)
+		require.Equal(t, count, pages.reads, "continuations are served by the same retained snapshot")
+		require.Empty(t, result.NextPageToken)
+		require.NotEmpty(t, result.InputArtifacts)
+		require.Equal(t, "available", result.Documents.Availability)
+		expectedJSON, err := json.Marshal(expected)
+		require.NoError(t, err)
+		require.JSONEq(t, string(expectedJSON), string(result.CurrentInput))
+		require.Equal(t, 1, engine.scans)
+		require.Equal(t, 1, engine.lists)
+		require.Equal(t, 1, engine.details)
+		require.Equal(t, count-1, reader.artifactReads-beforeArtifacts, "only the second frozen form needs an artifact read")
+	}
 	run()
+	current, err := runtime.GetDetails(ctx, "tenant", "job")
+	require.NoError(t, err)
+	checkThread(current, 1)
 	var first input.JobInputStoryPage
 	body := read("tenant", "", 200)
 	require.NoError(t, json.Unmarshal([]byte(body), &first))
@@ -134,6 +174,9 @@ func TestConversationSQLiteReopening(t *testing.T) {
 	_, err = runtime.SubmitFormResponse(ctx, "tenant", "job", input.FormSubmission{RequestID: forms[0].RequestID, SubmissionID: "accept-one", Fields: map[string]any{"decision": "approve", "attachment": jobdb.NewArtifactFromBytes("answer.md", []byte("accepted response attachment"))}}, input.Actor{ID: "reviewer", Kind: "human"})
 	require.NoError(t, err)
 	run()
+	current, err = runtime.GetDetails(ctx, "tenant", "job")
+	require.NoError(t, err)
+	checkThread(current, 2)
 	var second input.JobInputStoryPage
 	require.NoError(t, json.Unmarshal([]byte(read("tenant", "", 200)), &second))
 	require.Len(t, second.Entries, 2)
@@ -203,6 +246,7 @@ func TestConversationSQLiteReopening(t *testing.T) {
 	_, err = runtime.SubmitFormResponse(ctx, "tenant", "job", input.FormSubmission{RequestID: forms[1].RequestID, SubmissionID: "accept-two", Fields: map[string]any{"decision": "approve"}}, input.Actor{ID: "reviewer", Kind: "human"})
 	require.NoError(t, err)
 	run()
+	checkThread(nil, 2)
 	require.Equal(t, "first original document", read("tenant", memberQuery, 200))
 	var continued input.JobInputStoryPage
 	require.NoError(t, json.Unmarshal([]byte(read("tenant", "?page_size=1&page_token="+url.QueryEscape(paged.NextPageToken), 200)), &continued))
@@ -225,7 +269,12 @@ func TestConversationSQLiteReopening(t *testing.T) {
 
 type countingHistoryReader struct {
 	input.HistoryReader
-	runReads int
+	runReads, artifactReads int
+}
+
+func (r *countingHistoryReader) GetArtifactLazy(ctx context.Context, tenant string, key jobdb.ArtifactKey) jobdb.Artifact {
+	r.artifactReads++
+	return r.HistoryReader.GetArtifactLazy(ctx, tenant, key)
 }
 
 func (r *countingHistoryReader) GetJobRun(ctx context.Context, req jobdb.GetJobRunRequest) (jobdb.GetJobRunResponse, error) {
@@ -235,4 +284,42 @@ func (r *countingHistoryReader) GetJobRun(ctx context.Context, req jobdb.GetJobR
 
 func withHistoryVars(r *http.Request, tenant, job string) *http.Request {
 	return mux.SetURLVars(r, map[string]string{"projectId": tenant, "jobId": job})
+}
+
+type threadReadCounts struct {
+	workflow.Engine
+	jobdb.JobRunReader
+	scans, lists, details int
+}
+
+func (r *threadReadCounts) GetJobRun(ctx context.Context, req jobdb.GetJobRunRequest) (jobdb.GetJobRunResponse, error) {
+	return jobdb.GetJobRun(ctx, r, req)
+}
+func (r *threadReadCounts) ListJobs(ctx context.Context, req jobdb.ListJobsRequest) (jobdb.ListJobsResponse, error) {
+	r.lists++
+	return r.JobRunReader.ListJobs(ctx, req)
+}
+func (r *threadReadCounts) GetJob(ctx context.Context, key jobdb.JobKey) (jobdb.JobInfo, error) {
+	r.details++
+	return r.JobRunReader.GetJob(ctx, key)
+}
+func (r *threadReadCounts) ListChapters(ctx context.Context, req jobdb.ListChaptersRequest) ([]jobdb.Chapter, error) {
+	r.scans++
+	if req.StartOrdinal != 0 || req.EndOrdinal != nil {
+		panic("expected one unbounded chapter scan")
+	}
+	return r.JobRunReader.ListChapters(ctx, req)
+}
+
+// Exercise the continuation path with a two-message SQLite fixture.
+type singleEntryThreadHistory struct {
+	input.HistoryService
+	input.HistorySnapshotService
+	reads int
+}
+
+func (h *singleEntryThreadHistory) ListJobInputStory(ctx context.Context, req input.ListJobInputStoryRequest) (*input.JobInputStoryPage, error) {
+	h.reads++
+	req.PageSize = 1
+	return h.HistoryService.ListJobInputStory(ctx, req)
 }

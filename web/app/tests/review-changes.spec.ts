@@ -68,7 +68,7 @@ test('unchanged handoffs recover original saved bytes without attaching the patc
   await capture(page, info, 'saved-diff-unchanged-handoffs.png');
 });
 
-test('v2 opens saved bytes directly and preserves documents, discussion, settings and original contribution', async ({ page, request }, info) => {
+test('v2 opens saved bytes directly and preserves documents, the review message, settings and original contribution', async ({ page, request }, info) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
   const oracle = await (await request.get('/fixture/v2')).json();
   const legacyRequests: string[] = [];
@@ -96,8 +96,7 @@ test('v2 opens saved bytes directly and preserves documents, discussion, setting
   await expect(feedback).toHaveValue('Can you explain these saved changes?');
   await expect(page.getByText('v2-notes.md (21 bytes)', { exact: true })).toBeVisible();
   await closeChanges(page);
-  await page.getByRole('button', { name: 'Hide discussion', exact: true }).click();
-  await page.getByRole('button', { name: 'Show discussion', exact: true }).click();
+  await expect(page.getByRole('region', {name:'Review message'})).toBeVisible();
   await expect(page.getByRole('region', { name: 'Job changes' })).toBeHidden();
   await expect(page.getByLabel('Markdown source')).toBeVisible();
   await changesAttachment(page).click();
@@ -128,7 +127,7 @@ test('empty, missing and document-free reviews have distinct messages and no inv
   const reads: string[] = [];
   page.on('request', request => { if (request.url().includes('/workspace-diff')) reads.push(request.url()); });
   await page.goto(review('v2-empty'));
-  await expect(page.getByRole('region', { name: 'Discussion' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Review message' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Selected document' })).toHaveCount(0);
   await expect(changesAttachment(page)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Ask a question', exact: true })).toBeVisible();

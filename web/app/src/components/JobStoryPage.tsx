@@ -1,3 +1,4 @@
+import { hasThreadInput, ThreadSnapshotContext, useThreadInput, type ThreadSnapshot } from '../hooks/useThreadInput';
 import { object, valueText } from './conversationPresentation';
 import { messagePreview, readInboxSort, threadTitle } from '../utils/jobInbox';
 import { useInboxReadReceipt, useOptionalJobInbox } from '../hooks/useJobInbox';
@@ -49,7 +50,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import ReactJson from 'react-json-view';
-import { API_BASE, inputActivityService, type FormResponse, useInputActivity, useCurrentInput } from '@colony2/shared';
+import { API_BASE, inputActivityService, type FormResponse, useInputActivity } from '@colony2/shared';
 import InputFormRenderer from './InputFormRenderer';
 import AttemptTabs from './AttemptTabs';
 import CancelJobButton from './CancelJobButton';
@@ -261,7 +262,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   // Node/tab selections must retain the originating goal/list entry.
   const setSearchParams: typeof setURLSearchParams = (next, options) =>
     setURLSearchParams(next, { state: location.state, ...options });
-  const { pendingInputs, currentProjectId, refresh: refreshPendingInputs, setCurrentProjectId } = useInputActivity();
+  const { pendingInputs, discoveryStatus, currentProjectId, refresh: refreshPendingInputs, setCurrentProjectId } = useInputActivity();
 
   useEffect(() => {setCurrentProjectId(projectId);}, [projectId, setCurrentProjectId]);
 
@@ -322,18 +323,21 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const [loadedThread, setLoadedThread] = useState<string>();
   const threadVisited = loadedThread === artifactIdentity;
   useEffect(() => { if (activeTab === 'conversation') setLoadedThread(artifactIdentity); }, [activeTab, artifactIdentity]);
+  const [snapshot, setSnapshot] = useState<ThreadSnapshot>();
   const [inputInventory, setInputInventory] = useState<{ owner: string; artifacts?: InputArtifact[]; error?: string }>();
   const [inputRetry, setInputRetry] = useState(0);
   const [openedOriginal, setOpenedOriginal] = useState<string>();
   const openOriginal = useCallback(() => setOpenedOriginal(artifactIdentity), [artifactIdentity]);
-  const inputs = inputInventory?.owner === artifactIdentity ? inputInventory : undefined;
+  const missingThreadInventory = snapshot?.page && 'current_input' in snapshot.page && !snapshot.page.input_artifacts;
+  const inputs = missingThreadInventory ? {error:'The conversation could not read the input attachments.', artifacts:undefined}
+    : inputInventory?.owner === artifactIdentity ? inputInventory : undefined;
   const [inventoryObserved, setInventoryObserved] = useState<string>();
   const promptInventory = useMemo(() => inputs?.artifacts?.filter(a => a.inputOrdinal === 0), [inputs?.artifacts]);
   const receiveInventory = useCallback((rows?: InputArtifact[]) => {
     setInventoryObserved(artifactIdentity);
     if (rows) setInputInventory({ owner: artifactIdentity, artifacts: sortInputArtifacts(rows) });
   }, [artifactIdentity]);
-  const fallbackInputInventory = openedOriginal === artifactIdentity && inventoryObserved === artifactIdentity && !inputs?.artifacts;
+  const fallbackInputInventory = !missingThreadInventory && openedOriginal === artifactIdentity && inventoryObserved === artifactIdentity && !inputs?.artifacts;
   useEffect(() => {
     // Older history responses can omit the inventory. Read it once for this thread.
     if (!fallbackInputInventory) return;
@@ -349,7 +353,14 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
 
   const [historyRevision, setHistoryRevision] = useState(0);
   const pendingHistoryRevision = stringifyJobJSON(pendingInputs.filter(input => input.id === jobId));
-  const historyRefreshKey = useMemo(() => ({ revision: historyRevision, pending: pendingHistoryRevision }), [historyRevision, pendingHistoryRevision]);
+  const lastPending = useRef<string>();
+  useEffect(() => {
+    if (discoveryStatus !== 'current' || currentProjectId !== projectId) return;
+    if (lastPending.current !== undefined && lastPending.current !== pendingHistoryRevision) {
+      setHistoryRevision(revision => revision + 1);
+    }
+    lastPending.current = pendingHistoryRevision;
+  }, [currentProjectId, projectId, discoveryStatus, pendingHistoryRevision]);
   const dagIdentity = JSON.stringify([projectId, jobId]);
   const [dagVisited, setDagVisited] = useState<string>();
   useEffect(() => { if (activeTab === 'dag') setDagVisited(dagIdentity); }, [activeTab, dagIdentity]);
@@ -377,7 +388,11 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const taskOrdinalParamRaw = searchParams.get('taskOrdinal');
   const taskOrdinalParam = taskOrdinalParamRaw ? Number(taskOrdinalParamRaw) : null;
 
-  const selectedInput = useCurrentInput(projectId, jobId, (activeTab !== 'runtime' || threadVisited) && requestId === null);
+  const refreshThread = useCallback(async () => setHistoryRevision(value => value + 1), []);
+  const loadingThread = useMemo<ThreadSnapshot>(() => ({refresh:refreshThread}), [refreshThread]);
+  const thread = activeTab === 'conversation' || threadVisited ? snapshot ?? loadingThread : undefined;
+  const unified = hasThreadInput(thread);
+  const selectedInput = useThreadInput(projectId, jobId, (activeTab !== 'runtime' || threadVisited) && requestId === null, thread);
   const isPendingInput = !!selectedInput.version;
   const pendingInputDetails = selectedInput.details ?? (selectedInput.discovery.status !== 'current' || wantInput ? selectedInput.readableDetails : undefined);
   const pendingForm = pendingInputDetails?.form;
@@ -386,7 +401,8 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const currentReviewId = pendingForm?.presentation?.type === 'review/v2' && typeof reviewRequest.review_id === 'string'
     ? reviewRequest.review_id : undefined;
   const threadReviewId = threadParams.get('review_id') ?? currentReviewId;
-  const pendingLabel = messagePreview(pendingForm?.title || pendingForm?.question || valueText(reviewRequest.title || reviewRequest.question || ''));
+  const pendingTitle = pendingForm?.title?.trim() || valueText(reviewRequest.title ?? '').trim();
+  const pendingLabel = messagePreview(pendingTitle || pendingForm?.question || valueText(reviewRequest.question ?? ''));
   const pendingInputError = selectedInput.error;
   const pendingInputLoading = selectedInput.loading || (wantInput && selectedInput.discovery.status === 'loading');
 
@@ -417,11 +433,15 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     jobId: string; projectId: string; job?: RecipeJob; observedJob?: RecipeJob;
     status: 'loading' | 'loaded' | 'failed'; error?: string;
   }>();
-  useInboxReadReceipt(projectId, loadedJob?.projectId === projectId && loadedJob?.jobId === jobId && loadedJob?.status === 'loaded' ? loadedJob.job : undefined);
   const metadataGeneration = useRef(0);
   const crashMutationBusy = useRef(false);
-  const metadata = loadedJob?.jobId === jobId && loadedJob.projectId === projectId ? loadedJob : undefined;
+  const separateMetadata = loadedJob?.jobId === jobId && loadedJob.projectId === projectId ? loadedJob : undefined;
+  const metadata = activeTab === 'conversation' && unified ? {
+    status: snapshot?.error ? 'failed' as const : snapshot?.page ? 'loaded' as const : 'loading' as const,
+    job: snapshot?.page?.activity?.value, observedJob:snapshot?.page?.activity?.value, error:snapshot?.error,
+  } : separateMetadata;
   const job = metadata?.job;
+  useInboxReadReceipt(projectId, metadata?.status === 'loaded' ? job : undefined);
   const activityJob = job ?? metadata?.observedJob;
   const activityStatus = activityJob ? jobStatusValue(activityJob) : undefined;
   const prompt = job?.prompt?.trim() ? job.prompt : undefined;
@@ -432,6 +452,10 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const pendingReview = isPendingInput || (currentProjectId === projectId && pendingInputs.some(input => input.id === jobId));
   const displayStatus = job && jobStatus(job, pendingReview);
   const loadMetadata = async (force = false): Promise<RecipeJob | undefined> => {
+    if (activeTab === 'conversation' && unified) {
+      if (snapshot?.page || snapshot?.error) await snapshot.refresh();
+      return snapshot?.page?.activity?.value;
+    }
     if (crashMutationBusy.current && !force) return;
     const generation = ++metadataGeneration.current;
     setLoadedJob(previous => ({ projectId, jobId, status: 'loading',
@@ -503,14 +527,15 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     setError(null);
     setLoading(false);
     setExpandedKeys([]);
-    loadMetadata();
     return () => { ++metadataGeneration.current; ++storyGeneration.current; inFlight.current = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, jobId]);
 
+  const needsMetadata = activeTab !== 'conversation' || !unified;
+  useEffect(() => { if (needsMetadata) void loadMetadata(); }, [needsMetadata, projectId, jobId]);
   const previousPendingInput = useRef(isPendingInput);
   useEffect(() => {
-    if (previousPendingInput.current !== isPendingInput) loadMetadata();
+    if (needsMetadata && previousPendingInput.current !== isPendingInput) loadMetadata();
     previousPendingInput.current = isPendingInput;
     // Input activity can change scheduler state without changing retained history.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -518,7 +543,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
 
   const load = async () => {
     setHistoryRevision(value => value + 1);
-    loadMetadata();
+    if (needsMetadata) loadMetadata();
     if (storyDemand) await loadStory();
   };
 
@@ -630,13 +655,13 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   // Conversation completion must keep refreshing even if execution inspection
   // is unavailable or hidden. Metadata polling is independent of story polling.
   useEffect(() => {
-    if (!autoRefresh || !activityJob || !activityStatus || isFinishedJob(activityJob)) return;
+    if (!needsMetadata || !autoRefresh || !activityJob || !activityStatus || isFinishedJob(activityJob)) return;
     const timer = window.setInterval(() => {
       loadMetadata();
     }, refreshIntervalMs);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRefresh, refreshIntervalMs, projectId, jobId, activityStatus, story?.status]);
+  }, [needsMetadata, autoRefresh, refreshIntervalMs, projectId, jobId, activityStatus, story?.status]);
 
   const openArtifact = (artifact: ArtifactKey, attachments = selectedNode?.artifact_keys || []) => {
     artifactOpener.current = document.activeElement as HTMLElement;
@@ -883,7 +908,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
           waitingForInventory={!inputs?.artifacts && !inputs?.error} /> : <p>No prompt recorded for this job.</p>}
       </section>
       {inputs?.error ? <Alert type="warning" message="Unable to load attachments" description={inputs.error}
-        action={<Button onClick={() => setInputRetry(value => value + 1)}>Retry</Button>} />
+        action={<Button onClick={() => missingThreadInventory ? void snapshot.refresh() : setInputRetry(value => value + 1)}>Retry</Button>} />
         : !inputs?.artifacts ? <Text type="secondary">Checking attachments…</Text>
         : inputs.artifacts.length > 0 && <ReviewDocuments attachmentLayout="attachments" attachmentsLabel="Input attachments"
           projectId={projectId} jobId={jobId} requestId={jobId}
@@ -893,7 +918,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   } : undefined;
 
   return (
-    <div className="app-page job-story-page inbox-story" style={{ padding: 20 }}>
+    <ThreadSnapshotContext.Provider value={thread}><div className="app-page job-story-page inbox-story" style={{ padding: 20 }}>
       <Space direction="vertical" style={{ width: '100%' }} size="small">
         <div className="job-story-header" data-testid="job-story-header">
           <div className="inbox-story-subject">
@@ -901,7 +926,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
             <div className="inbox-story-heading">
               <div className="inbox-story-title">
                 {job && <span className="inbox-story-cell" aria-label="Job cell" title={cellLabel(job.cell_name)}>{cellLabel(job.cell_name)}</span>}
-                <Title level={3} title={job && threadTitle(job)} style={{ margin: 0 }}>{job ? threadTitle(job) : 'Thread'}</Title>
+                <Title level={3} className={prompt && !job?.title?.trim() ? 'inbox-prompt-title' : undefined} title={job && threadTitle(job)} style={{ margin: 0 }}>{job ? threadTitle(job) : 'Thread'}</Title>
               </div>
               {(displayStatus || hasDraft) && <div className="inbox-story-meta">
                 {displayStatus && <Tag color={displayStatus.color} aria-label="Job status">{displayStatus.label}</Tag>}
@@ -963,14 +988,14 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         {threadWantsInput && !threadReviewId && threadRequestId === null && !pendingInputLoading && !pendingInputDetails && !pendingInputError && <Alert type={selectedInput.discovery.status === 'unavailable' ? 'warning' : 'info'} showIcon
           message={selectedInput.discovery.status === 'unavailable' ? 'Pending request availability is unavailable.' : 'No outstanding input request.'}
           action={<Button onClick={() => void selectedInput.refresh().catch(() => {})}>{selectedInput.discovery.status === 'unavailable' ? 'Retry' : 'Refresh'}</Button>} />}
-        {(activeTab === 'conversation' || threadVisited) && <JobConversation folded metadata={job}
+        {(activeTab === 'conversation' || threadVisited) && <JobConversation folded onSnapshot={setSnapshot} metadata={job}
           initial={initialMessage}
           currentIsReview={pendingIsReview || !!threadReviewId}
           currentReviewId={threadReviewId}
           currentRequestTime={pendingInputDetails?.startTime}
-          currentRequestLabel={pendingLabel} openCurrent={threadWantsInput || threadParams.has('review_id')} currentRequestId={threadRequestId === null ? pendingInputDetails?.form.request_id : undefined} cellName={job?.cell_name} onInventory={receiveInventory} onBack={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('occurrenceId'); next.delete('requestId'); return next; })} tenant={projectId} job={jobId} occurrence={threadParams.get('occurrenceId') ?? undefined}
+          currentRequestLabel={pendingLabel} currentSubjectIsPrompt={!pendingTitle && !!pendingLabel} openCurrent={threadWantsInput || threadParams.has('review_id')} currentRequestId={threadRequestId === null && (!threadReviewId || threadReviewId === currentReviewId) ? pendingInputDetails?.form.request_id : undefined} cellName={job?.cell_name} onInventory={receiveInventory} onBack={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('occurrenceId'); next.delete('requestId'); return next; })} tenant={projectId} job={jobId} occurrence={threadParams.get('occurrenceId') ?? undefined}
           autoRefresh={autoRefresh && activeTab === 'conversation'} refreshIntervalMs={refreshIntervalMs} requestId={threadParams.get('requestId') ?? undefined}
-          refreshKey={historyRefreshKey} onOpen={entry => setSearchParams(previous => {
+          refreshKey={historyRevision} onOpen={entry => setSearchParams(previous => {
             const next = new URLSearchParams(previous); next.set('occurrenceId', entry); next.set('tab', 'conversation');
             next.delete('requestId'); next.delete('input'); return next;
           })}>
@@ -1764,6 +1789,6 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
           await loadMetadata();
         }} />}
 
-    </div>
+    </div></ThreadSnapshotContext.Provider>
   );
 }

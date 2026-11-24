@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { APIError, getConversation, getConversationEntry, inputActivityService, useCurrentInput, type ReviewV2Output, type ReviewV2Request, type UserInputDetails } from '@colony2/shared';
+import { hasThreadInput, useThreadInput, ThreadSnapshotContext } from './useThreadInput';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { APIError, getConversation, getConversationEntry, inputActivityService, type ReviewV2Output, type ReviewV2Request, type UserInputDetails } from '@colony2/shared';
 import { reconcileReviewV2, reviewV2FromForm, type RecordedReview, type ReviewV2View } from '../utils/reviewV2State';
 import { isFinishedJob } from '../utils/jobStatus';
 import { object } from '../components/conversationPresentation';
 
 export function useReviewV2(tenant: string, job: string, selected: string, initial?: UserInputDetails, contextJob?: ReviewV2View['job']) {
-  const selectedInput = useCurrentInput(tenant, job);
+  const thread = useContext(ThreadSnapshotContext);
+  const unified = hasThreadInput(thread);
+  const selectedInput = useThreadInput(tenant, job);
   const currentRef = useRef(selectedInput); currentRef.current = selectedInput;
-  const retained = useRef<{detail?: RecordedReview; job?: ReviewV2View['job']; declarations: Record<string,ReviewV2Request>; limitations: string}>();
+  const retained = useRef<{detail?: RecordedReview; job?: ReviewV2View['job']; limitations: string}>();
   const [historyVersion, setHistoryVersion] = useState(0);
   const [view,setView] = useState<ReviewV2View>();
   const [error,setError] = useState('');
@@ -21,6 +24,7 @@ export function useReviewV2(tenant: string, job: string, selected: string, initi
   const generation = useRef(0);
   const inFlight=useRef(false);
   const refresh = useCallback((): Promise<void> => {
+    if (unified) return Promise.resolve();
     const observation = currentRef.current;
     const form = observation.details?.form;
     if (provisional.current?.output.receipt.request_id !== form?.request_id && observation.discovery.status === 'current' &&
@@ -35,7 +39,6 @@ export function useReviewV2(tenant: string, job: string, selected: string, initi
       try {
         // Acquire a complete immutable snapshot. Snapshot expiry restarts once.
         let detail: RecordedReview | undefined;
-        const declarations:Record<string,ReviewV2Request>=Object.create(null);
         let page;
         for (let attempt=0;attempt<2;attempt++) {
           try {
@@ -47,10 +50,6 @@ export function useReviewV2(tenant: string, job: string, selected: string, initi
               entries.push(...page.entries);
             }
             page = first;
-            for(const entry of entries) {
-              if(!entry.request_id)continue;
-              try {const frozen=reviewV2FromForm(entry.form_fields);if(frozen?.review_id===selected)declarations[entry.request_id]=frozen;}catch{/* Retained raw data remains readable; unknown labels fall back to IDs. */}
-            }
             if(abort.signal.aborted || turn !== generation.current || !active.current)return;
             const matches = entries.filter(e => object(e.form_fields.presentation).type === 'review/v2' && object(e.form_fields.request).review_id === selected)
               .sort((a,b) => (b.locator.collection_ordinals?.[0] ?? b.locator.generation_ordinal ?? 0) - (a.locator.collection_ordinals?.[0] ?? a.locator.generation_ordinal ?? 0));
@@ -64,7 +63,7 @@ export function useReviewV2(tenant: string, job: string, selected: string, initi
         if (abort.signal.aborted || !active.current || turn !== generation.current) return;
         const jobValue = page?.activity?.availability === 'available' ? page.activity.value : undefined;
         const limitations = [page?.activity?.availability !== 'available' ? 'Job status is unavailable.' : '', ...(page?.diagnostics ?? []).map(d=>d.message)];
-        retained.current = {detail, job: jobValue, declarations, limitations: limitations.filter(Boolean).join(' ')};
+        retained.current = {detail, job: jobValue, limitations: limitations.filter(Boolean).join(' ')};
         setHistoryVersion(value => value + 1);
       } catch (e) {
         if (abort.signal.aborted || !active.current || turn !== generation.current) return;
@@ -76,7 +75,7 @@ export function useReviewV2(tenant: string, job: string, selected: string, initi
       }
     };
     running.current=run(); return running.current;
-  },[tenant,job,selected]);
+  },[tenant,job,selected,unified]);
   useEffect(() => {
     active.current=true;
     if (initial) {
@@ -99,34 +98,37 @@ export function useReviewV2(tenant: string, job: string, selected: string, initi
     void refresh();
   }, [discovering, selectedInput.version, selectedInput.details, selectedInput.discovery.status, refresh]);
   useEffect(() => {
-    const saved = retained.current;
+    const page = unified ? thread?.page : undefined;
+    const entry = page?.entries.filter(entry => object(entry.form_fields.presentation).type === 'review/v2' && object(entry.form_fields.request).review_id === selected).pop();
+    const saved = unified ? {
+      detail:entry && {...entry, raw_form:entry.form_fields, raw_accepted_output:entry.accepted_response.raw},
+      job:page?.activity?.value,
+      limitations:thread?.error,
+    } : retained.current;
     const current = selectedInput.details ?? undefined;
     try {
       const next = reconcileReviewV2(selected,current,saved?.detail,saved?.job ?? contextJob,provisional.current,latest.current, selectedInput.discovery.status === 'current' && !selectedInput.loading && !selectedInput.error);
-      next.declarations = {...saved?.declarations};
-      if (current?.form.request_id) {const live = reviewV2FromForm(current.form); if (live?.review_id === selected) next.declarations[current.form.request_id] = live;}
       if (inFlight.current) {next.phase = 'sending'; next.current = undefined;}
       latest.current = next; setView(next);
       setError([saved?.limitations, selectedInput.error, selectedInput.discovery.error].filter(Boolean).join(' '));
     } catch (error) {
       if (!selectedInput.loading && selectedInput.discovery.status === 'current') setError(error instanceof Error ? error.message : String(error));
     }
-  }, [historyVersion, selectedInput.details, selectedInput.loading, selectedInput.error, selectedInput.discovery, selected, contextJob]);
+  }, [historyVersion, selectedInput.details, selectedInput.loading, selectedInput.error, selectedInput.discovery, selected, contextJob, thread, unified]);
   const retry = useCallback(async () => {
     await Promise.all([refresh(), currentRef.current.refresh().catch(() => {})]);
   }, [refresh]);
   useEffect(()=>{
-    if (view?.job && isFinishedJob(view.job)) return;
+    if (unified || (view?.job && isFinishedJob(view.job))) return;
     if (!view || !['waiting','unavailable','sending'].includes(view.phase)) return;
     const timer=window.setTimeout(()=>{void refresh();},5000);
     return ()=>window.clearTimeout(timer);
-  },[view,busy,refresh]);
+  },[view,busy,refresh,unified]);
   const sending=()=>{inFlight.current=true;if(latest.current){const next={...latest.current,current:undefined,phase:'sending' as const};latest.current=next;setView(next);}};
   const accepted=(request:ReviewV2Request,output:ReviewV2Output)=>{
     inFlight.current=false;provisional.current={request,output};
     const next=reconcileReviewV2(selected,undefined,undefined,latest.current?.job,provisional.current,latest.current);
-    next.declarations={...latest.current?.declarations,[String(output.receipt.request_id)]:request};
-    latest.current=next;setView(next);void refresh();
+    latest.current=next;setView(next);void (unified && thread ? thread.refresh() : refresh());
   };
   const safeView = view?.current && (view.current !== selectedInput.details || selectedInput.discovery.status !== 'current')
     ? {...view, current: undefined, phase: 'unavailable' as const} : view;

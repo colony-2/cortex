@@ -182,11 +182,11 @@ it('A11/A12 invalid applicable settings block sending while inapplicable setting
  await screen.findByText(/Connection lost/);expect(vi.mocked(inputActivityService.submitReviewV2).mock.calls[0][3].settings).toEqual({});
  expect(screen.getByText(/Retained locally; applies to Request changes/)).toBeVisible();
 });
-it('P01/P03/P05 accepted continuing response waits in discussion, then actual answer restores actions without focus movement',()=>{
+it('P01/P03/P05 accepted continuing response shows pending, then actual answer restores actions without focus movement',()=>{
  const output:ReviewV2Output={response:{direction:'ask',feedback:'Question',attachments:[],settings:{}},receipt:{request_id:'native-one',submission_id:'s'}};
  const human={role:'human' as const,direction:'ask',text:'Question',attachments:[],receipt:output.receipt};
  view={...view,phase:'waiting',output,conversation:[human],job:{status:'ACTIVE',cell_name:'cortex'} as any};
- const {rerender}=render(component());expect(within(screen.getByRole('region',{name:'Discussion'})).getByText('Response pending')).toBeVisible();
+ const {rerender}=render(component());expect(screen.getByText('Response pending')).toBeVisible();
  const refresh=screen.getByRole('button',{name:'Refresh'});refresh.focus();
  successor(output);rerender(component());expect(screen.queryByText('Response pending')).not.toBeInTheDocument();expect(screen.getByText('Your question was accepted.')).toBeVisible();
  expect(screen.getByRole('button',{name:'Approve direction',exact:true})).toBeVisible();expect(screen.getByRole('button',{name:'Approve direction',exact:true})).not.toHaveFocus();

@@ -11,6 +11,11 @@ import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 
+function storedUploadPath(tenant: string, {jobId, taskOrdinal, name}: {jobId: string; taskOrdinal: number; name: string}) {
+  const query = new URLSearchParams({ordinal:String(taskOrdinal), name});
+  return `/api/projects/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(jobId)}/stored-document?${query}`;
+}
+
 async function openPendingInput(page: Page) {
   await page.getByRole('tab', { name: 'Thread', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Submit', exact: true })).toBeVisible();
@@ -1209,7 +1214,7 @@ test.describe('review/v2 continuous discussion',()=>{
       await expect(page.getByText('Review state unavailable',{exact:true})).toBeVisible();
       await expect(original).toBeVisible();
       expect(await reader!.evaluate(el=>el.isConnected)).toBe(true);
-      await expect(page.getByText('Keep this document open while answering.',{exact:true})).toBeVisible();
+      await expect(inline.getByRole('region',{name:'Review message'})).toContainText('Approve this direction so detailed planning can begin?');
     } finally {release();await page.unrouteAll({behavior:'wait'});}
   });
   test('preserves incompatible drafts until explicit removal before clean approval',async({page,recipeRun},testInfo)=>{
@@ -1312,7 +1317,7 @@ test.describe('review/v2 continuous discussion',()=>{
     expect(inputReads).toHaveLength(gapReads);
     await page.reload();
     await expect(page.getByText('Response pending',{exact:true})).toBeVisible();
-    await expect(page.getByText(exactQuestion,{exact:true})).toBeVisible();
+    await expect(page.getByRole('region',{name:'Review message'}).getByText(exactQuestion,{exact:true})).toHaveCount(0);
     await capture('review-v2-waiting.png');
     expect(inputReads).toHaveLength(gapReads);
     expect(inputReads.every(status=>status===200 || status===204)).toBe(true);
@@ -1331,10 +1336,7 @@ test.describe('review/v2 continuous discussion',()=>{
     await expect(page.getByText('Earlier notes keep their original producer references.',{exact:true})).toBeVisible({timeout:30000});
     await expect.poll(() => [...inputReads]).toEqual([200,200,200]);
     await stopWorker();
-    const links=page.getByRole('link',{name:'Download notes.md',exact:true});
-    await expect(links).toHaveCount(2);
-    expect(await (await request.get((await links.nth(0).getAttribute('href'))!)).text()).toBe('first note');
-    expect(await (await request.get((await links.nth(1).getAttribute('href'))!)).text()).toBe('second note');
+    await expect(page.getByRole('region',{name:'Review message'}).getByRole('link',{name:'Download notes.md'})).toHaveCount(0);
     await page.setViewportSize({width:390,height:844});
     await capture('review-v2-phone.png');
     await page.getByRole('button',{name:'Approve direction',exact:true}).click();
@@ -1351,6 +1353,10 @@ test.describe('review/v2 continuous discussion',()=>{
     expect(output.first.response.feedback).toBe(exactQuestion);
     expect(output.second.response.attachments).toHaveLength(2);
     expect(output.second.response.attachments[0].stored.key.name).not.toBe(output.second.response.attachments[1].stored.key.name);
+    for (const [index, content] of ['first note', 'second note'].entries()) {
+      const key = output.second.response.attachments[index].stored.key;
+      expect(await (await request.get(storedUploadPath(tenant, key))).text()).toBe(content);
+    }
     expect(output.first.receipt.actor).toEqual({id:'browser@example.com',kind:'human'});
     expect(output.final.response.direction).toBe('approve');
   });
@@ -1366,7 +1372,12 @@ test.describe('review/v2 acceptance races',()=>{
   const bodies:string[]=[];
   await page.route(`**/api/projects/${tenant}/reviews/${jobID}/respond`,async route=>{
    bodies.push(route.request().postData()??'');const result=await route.fetch();expect(result.status()).toBe(200);
-   if(bodies.length===1)await route.abort('failed');else await route.fulfill({response:result});
+   if (bodies.length === 1) {
+     const output = await result.json();
+     const saved = await request.get(storedUploadPath(tenant, output.response.attachments[0].stored.key));
+     expect(await saved.text()).toBe('Already accepted notes');
+     await route.abort('failed');
+   } else await route.fulfill({response:result});
   });
   await page.getByRole('button',{name:'Review settings',exact:true}).click();
   const modal=page.getByRole('dialog');
@@ -1378,7 +1389,7 @@ test.describe('review/v2 acceptance races',()=>{
   await page.getByRole('button',{name:'Send · Ask a question',exact:true}).dblclick();
   await expect(page.getByText('Response pending',{exact:true})).toBeVisible();
   await expect(other.getByText('Response pending',{exact:true})).toBeVisible();
-  await expect(page.getByRole('region',{name:'Discussion'}).getByText('Was this response accepted?',{exact:true})).toHaveCount(1);
+  await expect(page.getByRole('region',{name:'Review message'}).getByText('Was this response accepted?',{exact:true})).toHaveCount(0);
   expect(bodies).toHaveLength(1);await expect(page.getByRole('button',{name:'Send · Ask a question',exact:true})).toHaveCount(0);
   startWorker();
   await expect(page.getByText('Saved drafts return when you reopen the app.',{exact:true})).toBeVisible({timeout:30000});
@@ -1388,9 +1399,7 @@ test.describe('review/v2 acceptance races',()=>{
   await expect(page.getByRole('region',{name:'Response composer'})).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Remove accepted-notes.md (1)',exact:true})).toHaveCount(0);
   await expect(page.getByText(/Check the refreshed request before retrying/)).toHaveCount(0);
-  const saved=page.getByRole('link',{name:'Download accepted-notes.md',exact:true});
-  await expect(saved).toHaveCount(1);
-  expect(await (await request.get((await saved.getAttribute('href'))!)).text()).toBe('Already accepted notes');
+  await expect(page.getByRole('region',{name:'Review message'}).getByRole('link',{name:'Download accepted-notes.md'})).toHaveCount(0);
   await page.getByRole('button',{name:'Review settings',exact:true}).click();
   await expect(modal.getByLabel('Example count',{exact:true})).toHaveValue('0');
   await modal.getByRole('button',{name:'Done',exact:true}).click();
@@ -1407,14 +1416,14 @@ test.describe('review/v2 acceptance races',()=>{
   expect(bodies[1]).not.toContain('accepted-notes.md');expect(bodies[1]).not.toContain('Was this response accepted?');
   await other.close();
  });
- test('shows actual cancellation with the saved question readable',async({page,request,recipeRun})=>{
+ test('shows actual cancellation with the review prompt readable',async({page,request,recipeRun})=>{
   const {tenant,jobID,stopWorker}=recipeRun;await stopWorker();await page.goto(`/project/${tenant}/reviews/${jobID}`);
   await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)',{exact:true}).fill('Retain this question.');
   await page.getByRole('button',{name:'Send · Ask a question',exact:true}).click();
   await expect(page.getByText('Response pending',{exact:true})).toBeVisible();
   const cancelled=await request.post(`/api/projects/${tenant}/jobs/${jobID}/cancel`);expect(cancelled.status()).toBe(204);
   await expect(page.getByText('Job cancelled.',{exact:true})).toBeVisible();
-  await expect(page.getByText('Retain this question.',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Ask a question',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('region',{name:'Review message'})).toBeVisible();await expect(page.getByRole('button',{name:'Ask a question',exact:true})).toHaveCount(0);
  });
 });
 

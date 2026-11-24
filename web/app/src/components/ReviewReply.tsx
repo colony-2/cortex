@@ -89,6 +89,7 @@ export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,do
   }, [submitted, onSubmitted]);
   const feedbackInput=useRef<InputRef>(null);
   const sendButton=useRef<HTMLButtonElement>(null);
+  const revealSendOnOpen = useRef(false);
   useEffect(() => {
     if (!composing || view?.phase !== 'actionable') return;
     const send = sendButton.current;
@@ -139,8 +140,11 @@ export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,do
   },[view]);
   useEffect(()=>{
     if(opensInWindow || !composerOpen || !direction || view?.phase !== 'actionable') return;
-    if (policy?.mode !== 'forbidden') feedbackInput.current?.focus();
-    else sendButton.current?.focus();
+    const revealSend = revealSendOnOpen.current;
+    revealSendOnOpen.current = false;
+    if (policy?.mode !== 'forbidden') feedbackInput.current?.focus({preventScroll:revealSend});
+    else sendButton.current?.focus({preventScroll:revealSend});
+    if (revealSend) sendButton.current?.scrollIntoView({block:'nearest', inline:'nearest'});
   },[composerOpen,direction,opensInWindow,policy?.mode,view?.phase]);
   useEffect(()=>{
     if(!view||requestRef.current===view.request)return;
@@ -194,13 +198,14 @@ export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,do
   const status=phase==='waiting'?'Response accepted':phase==='sending'?'Sending response…':phase==='sent'?'Response sent':phase==='terminal'?view.message:phase==='other'?view.message:phase==='unavailable'?'Review state unavailable':undefined;
   const choose=(id:string)=>{
     if(!ready||!current||submitBusy.current)return;
+    revealSendOnOpen.current = !docked && !opensInWindow && !composing;
     setDirection(id);setSubmitError('');setComposerOpen(true);setOpenWindow(true);
   };
   const icon = selected && responseIcon(selected);
   const settingsButton = !!request.settings?.length && <Tooltip title="Review settings"><Button ref={gear} type="text" icon={<SettingOutlined aria-hidden />} aria-label="Review settings" disabled={!ready} onClick={()=>setSettingsOpen(true)}/></Tooltip>;
   const response=<section className="review-v2-response" aria-label="Your response">
     <div className="review-v2-response-inner">
-    {status ? <div role="status">{status}</div> : ready && view.conversation[view.conversation.length - 1]?.role==='agent' && <span className="sr-only" role="status">New answer available in the discussion.</span>}
+    {status ? <div role="status">{status}</div> : ready && view.conversation[view.conversation.length - 1]?.role==='agent' && <span className="sr-only" role="status">New review answer available.</span>}
     {view.message&&phase==='unavailable'&&<p>{view.message}</p>}
     {error&&<Alert type="warning" message={error}/>}
     {(submitError||(composing&&draftConflict))&&<Alert type="error" message={submitError||draftConflict}/>}

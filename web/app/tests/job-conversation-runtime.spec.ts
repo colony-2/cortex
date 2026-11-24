@@ -26,12 +26,20 @@ test('CC-022 CT-014,015,028–031 real SQLite reviews survive restart, archive a
   const initial = await list();
   expect(initial.entries).toHaveLength(1);
   const firstID = initial.entries[0].entry_id;
+  const reads: string[] = [];
+  page.on('request', req => {
+    const url = new URL(req.url());
+    if ([job, job + '/conversation', job + '/conversation/entry', '/api/projects/history-browser/user-inputs/reviews'].includes(url.pathname)) {
+      reads.push(url.pathname + (url.searchParams.has('thread') ? '?thread=' + url.searchParams.get('thread') : ''));
+    }
+  });
   await page.goto('/project/history-browser/jobs/reviews/story');
   await expect(page.locator(`[data-occurrence="${firstID}"]`).first()).toBeVisible();
   const current = page.locator(`.inbox-history-message[data-occurrence="${firstID}"]`);
   await expect(current).toHaveAttribute('open', '');
   await expect(current.getByRole('heading', { name: 'first-review' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Job completion' })).toHaveCount(0);
+  expect(reads).toEqual([job + '/conversation?thread=true']);
   await accept('first-review', 'Approved first original');
   const second = await list();
   expect(second.entries).toHaveLength(2);
@@ -44,7 +52,7 @@ test('CC-022 CT-014,015,028–031 real SQLite reviews survive restart, archive a
   await control('reopen');
   const reopened = await context.newPage();
   await reopened.goto(`/project/history-browser/jobs/reviews/story?occurrenceId=${encodeURIComponent(firstID)}`);
-  const original = reopened.getByRole('region', { name: 'Recorded request', exact: true });
+  const original = reopened.getByRole('region', { name: 'Recorded request', exact: true }).filter({has:reopened.getByRole('button',{name:'Back to thread'})});
   await expect(original.getByLabel('Recorded answers')).toContainText('Approved first original');
   await expect(original.getByLabel('Rendered document')).toContainText('Original first review document, retained in SQLite.');
   await expect(original.getByRole('button', { name: /Submit/ })).toHaveCount(0);
@@ -73,8 +81,6 @@ test('CC-022 CT-014,015,028–031 real SQLite reviews survive restart, archive a
   const publication = reopened.locator('summary').filter({
     has: reopened.locator('.thread-message-sender').getByText('Publication', { exact: true }),
   });
-  const earlier = reopened.locator('.inbox-history-middle:not([open])').filter({ has: publication });
-  if (await earlier.count()) await earlier.locator(':scope > summary').click();
   if (!(await publication.evaluate(node => (node.parentElement as HTMLDetailsElement).open))) await publication.click();
   await expect(reopened.getByLabel('Verified publication')).toContainText('Commit message not recorded');
   await reopened.screenshot({path:info.outputPath('native-subjectless-publication.png'),animations:'disabled',fullPage:true});

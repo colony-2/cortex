@@ -1,3 +1,5 @@
+import { hasThreadInput, useThreadInput, ThreadSnapshotContext } from '../hooks/useThreadInput';
+import { useContext } from 'react';
 import { clearReviewDraft } from '../hooks/useReviewDraft';
 import { useCompact } from '../hooks/useCompact';
 import ReviewJobContext from './ReviewJobContext';
@@ -6,7 +8,7 @@ import { useParams, useNavigate, useSearchParams, useLocation, Navigate } from '
 import { reviewReturnSearch } from '../utils/reviewFilters';
 import { Card, Button, Space, Typography, message, Spin, Alert } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
-import { inputActivityService, useCurrentInput, useInputActivity, getJob, type FormResponse, type RecipeJob, parseReviewV2 } from '@colony2/shared';
+import { inputActivityService, useInputActivity, getJob, type FormResponse, type RecipeJob, parseReviewV2 } from '@colony2/shared';
 import ReviewWorkspace from './ReviewWorkspace';
 import InputFormRenderer from './InputFormRenderer';
 import { adaptInputFormConfig } from '../utils/formAdapter';
@@ -36,7 +38,9 @@ export function InputRequestReader({ projectId, embedded = false, metadata }: In
   const location = useLocation();
   const [params] = useSearchParams();
   const reviewsPath = `/project/${encodeURIComponent(projectId)}/reviews${reviewReturnSearch(params)}`;
-  const selectedInput = useCurrentInput(projectId, jobId ?? '');
+  const thread = useContext(ThreadSnapshotContext);
+  const unified = hasThreadInput(thread);
+  const selectedInput = useThreadInput(projectId, jobId ?? '');
   const details = selectedInput.details ?? selectedInput.readableDetails;
   const [jobError, setJobError] = useState<string>();
   const [jobRetry, setJobRetry] = useState(0);
@@ -51,6 +55,7 @@ export function InputRequestReader({ projectId, embedded = false, metadata }: In
   const submitBusy = useRef(false);
   const cancelBusy = useRef(false);
   useEffect(() => {
+    if (unified) {setJobChecking(false); setJobError(undefined); return;}
     let active = true;
     setJobChecking(true); setJobError(undefined);
     if (!jobId) {setJobChecking(false); setJobError('No job ID provided'); return;}
@@ -58,7 +63,7 @@ export function InputRequestReader({ projectId, embedded = false, metadata }: In
       if (active) setJobChecking(false);
     }, error => { if (active) {setJobChecking(false); setJobError(error instanceof Error ? error.message : String(error));} });
     return () => { active = false; };
-  }, [projectId, jobId, jobRetry]);
+  }, [projectId, jobId, jobRetry, unified]);
 
   const refresh = () => {setJobRetry(value => value + 1); void selectedInput.refresh().catch(() => {});};
   const requestIdentity = JSON.stringify([projectId, jobId, details?.form.request_id ?? selectedInput.readableVersion]);

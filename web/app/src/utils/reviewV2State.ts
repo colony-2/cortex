@@ -7,7 +7,7 @@ export type RecordedReview = Pick<HistoryDetail, 'request_id' | 'raw_form' | 'ra
 export interface ReviewV2View {
   request: ReviewV2Request; current?: UserInputDetails; history?: RecordedReview; phase: ReviewV2Phase;
   documentHistory?: RecordedReview;
-  declarations?: Record<string, ReviewV2Request>; message?: string; conversation: ReviewV2Turn[]; output?: ReviewV2Output; job?: RecipeJob;
+  message?: string; conversation: ReviewV2Turn[]; output?: ReviewV2Output; job?: RecipeJob;
 }
 export function reviewV2FromForm(form: unknown): ReviewV2Request | undefined {
   const f = object(form);

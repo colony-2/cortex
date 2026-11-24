@@ -51,9 +51,22 @@ type conversationInventory struct {
 	rows        *[]inputDocument
 	launches    map[int64]string
 	nextOrdinal int64
+	thread      *threadObservation
 }
 type inventoryContextKey struct{}
 
+func (r *conversationInventory) ListJobs(ctx context.Context, req jobdb.ListJobsRequest) (jobdb.ListJobsResponse, error) {
+	if r.thread != nil {
+		return r.thread.ListJobs(ctx, req)
+	}
+	return r.JobRunReader.ListJobs(ctx, req)
+}
+func (r *conversationInventory) GetJob(ctx context.Context, key jobdb.JobKey) (jobdb.JobInfo, error) {
+	if r.thread != nil {
+		return r.thread.GetJob(ctx, key)
+	}
+	return r.JobRunReader.GetJob(ctx, key)
+}
 func (r *conversationInventory) ListChapters(ctx context.Context, req jobdb.ListChaptersRequest) ([]jobdb.Chapter, error) {
 	chapters, err := r.JobRunReader.ListChapters(ctx, req)
 	if err == nil && req.JobKey == r.key {
@@ -137,6 +150,11 @@ func (s *Server) handleConversation(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	inventory := &conversationInventory{key: jobdb.JobKey{TenantId: s.tenantID(r), JobId: mux.Vars(r)["jobId"]}}
+	thread, _ := ctx.Value(threadObservationKey{}).(*threadObservation)
+	inventory.thread = thread
+	if thread != nil {
+		size = 500
+	}
 	if r.URL.Query().Get("page_token") == "" {
 		ctx = context.WithValue(ctx, inventoryContextKey{}, inventory)
 	}
@@ -144,6 +162,20 @@ func (s *Server) handleConversation(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		historyError(w, err)
 		return
+	}
+	if thread != nil {
+		all := *page
+		all.Entries = append([]input.JobInputStoryEntry(nil), page.Entries...)
+		for all.NextPageToken != "" {
+			next, err := s.history.ListJobInputStory(ctx, input.ListJobInputStoryRequest{TenantID: key.TenantId, JobID: key.JobId, PageToken: all.NextPageToken, PageSize: 500})
+			if err != nil {
+				historyError(w, err)
+				return
+			}
+			all.Entries = append(all.Entries, next.Entries...)
+			all.NextPageToken = next.NextPageToken
+		}
+		page = &all
 	}
 	if inventory.nextOrdinal > 0 {
 		if _, err := s.indexReviewPages(ctx, key, inventory.nextOrdinal, page, ""); err != nil {
@@ -153,6 +185,7 @@ func (s *Server) handleConversation(w http.ResponseWriter, r *http.Request) {
 	// Use the exact input page observation for publication and ordering data.
 	// Older HistoryService implementations remain usable with explicit coverage.
 	type conversationPage struct {
+		*threadInput
 		InputArtifacts *[]inputDocument     `json:"input_artifacts,omitempty"`
 		Activity       *conversationSection `json:"activity,omitempty"`
 		FinalDocuments *conversationSection `json:"final_documents,omitempty"`
@@ -162,13 +195,21 @@ func (s *Server) handleConversation(w http.ResponseWriter, r *http.Request) {
 		Events              []input.HistoryEvent      `json:"events"`
 		PublicationCoverage string                    `json:"publication_coverage"`
 	}
-	entries, err := s.conversationEntries(ctx, page, r.URL.Query().Get("include_review_attachments") == "true")
+	entries, err := s.conversationEntries(ctx, page, thread != nil || r.URL.Query().Get("include_review_attachments") == "true")
 	if err != nil {
 		historyError(w, err)
 		return
 	}
 	result := conversationPage{InputArtifacts: inventory.rows, JobInputStoryPage: page, Entries: entries, Merges: []input.HistoryMergeEntry{}, Events: []input.HistoryEvent{}, PublicationCoverage: "recorded"}
-	if r.URL.Query().Get("include_sections") != "false" {
+	if thread != nil {
+		current, err := thread.pendingInput(page, inventory)
+		if err != nil {
+			historyError(w, err)
+			return
+		}
+		result.threadInput = current
+	}
+	if thread != nil || r.URL.Query().Get("include_sections") != "false" {
 		activity, documents := s.conversationSections(r, inventory)
 		result.Activity, result.FinalDocuments = &activity, &documents
 	}
@@ -211,7 +252,7 @@ func (s *Server) conversationEntries(ctx context.Context, page *input.JobInputSt
 		if includeReviewAttachments {
 			var presentation struct{ Type string }
 			_ = json.Unmarshal(entry.FormFields["presentation"], &presentation)
-			if entry.Kind == "review" || presentation.Type == "review/v2" {
+			if ctx.Value(threadObservationKey{}) != nil || entry.Kind == "review" || presentation.Type == "review/v2" {
 				detail, err := s.retainedConversationEntry(ctx, input.GetJobInputStoryEntryRequest{
 					TenantID: page.TenantID, JobID: page.JobID, EntryID: entry.EntryID, SnapshotToken: page.SnapshotToken,
 				})
@@ -353,7 +394,13 @@ func (s *Server) conversationSections(r *http.Request, inventory *conversationIn
 	readJob := func() (recipejob.RecipeJob, error) {
 		return recipejob.GetRecipeJob(ctx, archivedJobReader{s.engine}, recipejob.GetRecipeJobRequest{TenantID: key.TenantId, JobID: key.JobId})
 	}
-	before, err := readJob()
+	var before recipejob.RecipeJob
+	var err error
+	if inventory.thread != nil {
+		before = inventory.thread.job
+	} else {
+		before, err = readJob()
+	}
 	if err != nil {
 		return unavailable, unavailable
 	}
@@ -382,36 +429,42 @@ func (s *Server) conversationSections(r *http.Request, inventory *conversationIn
 	if err != nil || manifest == nil {
 		return activity, unavailable
 	}
-	after, err := readJob()
-	if err != nil {
-		return unavailable, unavailable
-	}
-	activity.Value = withExecutionRequirements(after)
-	activity.AttemptOrdinal = nil
-	later := run
-	if reader, ok := s.chapters.(chapterLookup); ok && inventory.run != nil {
-		// Detect a new attempt committed while composing the terminal sections.
-		_, probeErr := reader.GetChapter(ctx, jobdb.ChapterRef{JobKey: key, Ordinal: inventory.nextOrdinal})
-		if !errors.Is(probeErr, jobdb.ErrChapterNotFound) {
+	if inventory.thread != nil {
+		if manifest.JobID != key.JobId || !reflect.DeepEqual(manifest.AttemptOrdinal, activity.AttemptOrdinal) {
 			return activity, unavailable
 		}
 	} else {
-		later, err = s.engine.GetJobRun(ctx, jobdb.GetJobRunRequest{JobKey: key})
-	}
-	if err == nil && len(later.Attempts) > 0 {
-		ordinal := later.Attempts[len(later.Attempts)-1].Ordinal
-		activity.AttemptOrdinal = &ordinal
-	}
-	if err != nil || !reflect.DeepEqual(before, after) || !reflect.DeepEqual(run.Attempts, later.Attempts) || manifest.JobID != key.JobId {
-		return activity, unavailable
-	}
-	if len(later.Attempts) > 0 {
-		latest := later.Attempts[len(later.Attempts)-1].Ordinal
-		if manifest.AttemptOrdinal == nil || *manifest.AttemptOrdinal != latest {
+		after, err := readJob()
+		if err != nil {
+			return unavailable, unavailable
+		}
+		activity.Value = withExecutionRequirements(after)
+		activity.AttemptOrdinal = nil
+		later := run
+		if reader, ok := s.chapters.(chapterLookup); ok && inventory.run != nil {
+			// Detect a new attempt committed while composing the terminal sections.
+			_, probeErr := reader.GetChapter(ctx, jobdb.ChapterRef{JobKey: key, Ordinal: inventory.nextOrdinal})
+			if !errors.Is(probeErr, jobdb.ErrChapterNotFound) {
+				return activity, unavailable
+			}
+		} else {
+			later, err = s.engine.GetJobRun(ctx, jobdb.GetJobRunRequest{JobKey: key})
+		}
+		if err == nil && len(later.Attempts) > 0 {
+			ordinal := later.Attempts[len(later.Attempts)-1].Ordinal
+			activity.AttemptOrdinal = &ordinal
+		}
+		if err != nil || !reflect.DeepEqual(before, after) || !reflect.DeepEqual(run.Attempts, later.Attempts) || manifest.JobID != key.JobId {
 			return activity, unavailable
 		}
-	} else if manifest.AttemptOrdinal != nil {
-		return activity, unavailable
+		if len(later.Attempts) > 0 {
+			latest := later.Attempts[len(later.Attempts)-1].Ordinal
+			if manifest.AttemptOrdinal == nil || *manifest.AttemptOrdinal != latest {
+				return activity, unavailable
+			}
+		} else if manifest.AttemptOrdinal != nil {
+			return activity, unavailable
+		}
 	}
 	identity := finalManifestID(manifest)
 	return activity, conversationSection{Availability: "available", Value: struct {

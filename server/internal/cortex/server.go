@@ -137,6 +137,7 @@ func (s *Server) buildRouter(inputService ops.ManagementService) http.Handler {
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/stored-document", s.handleStoredDocument).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/input-document", s.requireArchivedJob(s.handleInputDocument)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/input-artifacts", s.requireArchivedJob(s.handleInputArtifacts)).Methods(http.MethodGet, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/conversation", s.handleThreadConversation).Queries("thread", "true").Methods(http.MethodGet)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/conversation", s.requireArchivedJob(s.handleConversation)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/conversation/entry", s.requireArchivedJob(s.handleConversationEntry)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/conversation/artifact", s.requireArchivedJob(s.handleConversationArtifact)).Methods(http.MethodGet, http.MethodOptions)

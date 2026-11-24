@@ -114,7 +114,7 @@ beforeEach(() => {
   vi.mocked(listCells).mockResolvedValue({ cells: [registryCell()] });
   vi.mocked(getCell).mockResolvedValue(registryCell());
   vi.mocked(getFinalDocuments).mockReset().mockResolvedValue({job_id:'job',manifest_id:'empty',state:'empty',documents:[]});
-  vi.mocked(getConversation).mockReset().mockRejectedValue(new Error('History unavailable'));
+  vi.mocked(getConversation).mockReset().mockImplementation(async (tenant_id, job_id) => ({tenant_id, job_id, entries:[], snapshot_token:'snapshot', snapshot_revision:1, observed_at:'now', completeness:'complete'}));
   vi.mocked(getJobInputArtifacts).mockReset().mockResolvedValue({ artifacts: [] });
   vi.mocked(getJob).mockReset().mockResolvedValue({ ...jobIdentity, job_id: 'job', goal_id: 'goal' } as RecipeJob);
   vi.mocked(cancelJob).mockReset().mockImplementation(async (...args) => (await vi.importActual<typeof import('@colony2/shared/api')>('@colony2/shared/api')).cancelJob(...args));
@@ -770,7 +770,7 @@ describe('job story context', () => {
     expect(screen.getByRole('heading', { name: /^(Untitled thread|Thread)$/ })).toBeVisible();
     vi.mocked(getJob).mockResolvedValue(metadata({ prompt: 'Fresh prompt' }));
     fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
-    expect(await screen.findByRole('heading', { name: 'Fresh prompt' })).toBeVisible();
+    expect(await screen.findByText('Fresh prompt', {selector:'.inbox-original .thread-message-subject, .inbox-original .job-prompt-markdown p'})).toBeVisible();
     expect(screen.queryByText('Job details unavailable')).toBeNull();
   });
   it('keeps simultaneous metadata and story errors independently retryable', async () => {
@@ -784,7 +784,7 @@ describe('job story context', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Thread', exact: true }));
     vi.mocked(getJob).mockResolvedValue(metadata({ prompt: 'Loaded prompt' }));
     fireEvent.click(screen.getByText('Job details unavailable').closest('[role="alert"]')!.querySelector('button')!);
-    expect(await screen.findByRole('heading', { name: 'Loaded prompt' })).toBeVisible();
+    expect(await screen.findByText('Loaded prompt', {selector:'.inbox-original .thread-message-subject, .inbox-original .job-prompt-markdown p'})).toBeVisible();
     expect(screen.getByLabelText('Job cell')).toHaveTextContent(`${jobIdentity.cell_name}`); // JC-006
     fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
     expect(await screen.findByText('Failed to load job story')).toBeVisible();
@@ -815,7 +815,10 @@ describe('job story context', () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => story });
     await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
     expect(screen.getByRole('switch', { name: 'Auto-refresh' })).toBeChecked();
-    await act(async () => { final.resolve(metadata({ status: 'COMPLETED', store: 'ACTIVE', completion_status: 'failed_app', completion_detail: 'Final diagnostic' })); });
+    const completed = metadata({ status: 'COMPLETED', store: 'ACTIVE', completion_status: 'failed_app', completion_detail: 'Final diagnostic' });
+    await act(async () => { final.resolve(completed); });
+    vi.mocked(getConversation).mockResolvedValue({tenant_id:'tenant',job_id:'job',entries:[],current_input:null,
+      activity:{availability:'available',value:completed},snapshot_token:'s',snapshot_revision:1,observed_at:'now',completeness:'complete'});
     fireEvent.click(screen.getByRole('tab',{name:'Thread',exact:true}));
     expect(await screen.findByText('Final diagnostic')).toBeVisible();
   });
@@ -1514,9 +1517,9 @@ describe('Conversation tab layout', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Execution unavailable')));
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     renderContext(false);
-    expect(await screen.findByRole('heading', { name: 'Still available' })).toBeVisible();
+    expect(await screen.findByText('Still available', {selector:'.inbox-original .thread-message-subject, .inbox-original .job-prompt-markdown p'})).toBeVisible();
     expect(screen.getByRole('tabpanel')).toHaveAccessibleName('Thread');
-    expect(await screen.findByText('History unavailable', { selector: '.ant-alert-message' })).toBeVisible();
+    expect(screen.queryByText('History unavailable')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
     expect(await screen.findByText('Failed to load job story')).toBeVisible();
@@ -2420,6 +2423,34 @@ describe('embedded current request', () => {
     vi.spyOn(inputActivityService, 'getInputDetails').mockResolvedValue({ jobId: 'job', status: 'pending', startTime: '', form: review });
   });
   afterEach(() => vi.mocked(inputActivityService.getInputDetails).mockRestore());
+  it('loads the prompt, earlier messages and live review from one history response', async () => {
+    const snapshot = deferred<Awaited<ReturnType<typeof getConversation>>>();
+    vi.mocked(getConversation).mockReturnValue(snapshot.promise);
+    mount('?review_id=review-one');
+    expect(screen.queryByText('Waiting for your response')).toBeNull();
+    const request = amendedReviewV2Fixture();
+    request.documents = {};
+    delete request.document_metadata;
+    delete request.overview_document_id;
+    await act(async () => snapshot.resolve({
+      tenant_id:'tenant', job_id:'job', entries:[{
+        entry_id:'old', kind:'input', title:{present:true,raw:'Earlier message'}, summary:{present:false},
+        requested_at:{present:false}, state:'answered', locator:{invocation_id:'old'}, form_fields:{question:'Earlier question'},
+        accepted_response:{present:true,raw:'Earlier answer'}, response_source:'submission', actor:{provenance:'submission_receipt',legacy_user_id:{present:false}},
+      }], input_artifacts:[], snapshot_token:'s', snapshot_revision:1, observed_at:'now', completeness:'complete',
+      activity:{availability:'available',value:metadata({prompt:'Original prompt',status:'READY',store:'ACTIVE'})},
+      current_input:{jobId:'job',status:'pending',startTime:'now',form:{
+        request_id:'first',presentation:{type:'review/v2'},request,request_schema:{},response_schema:{},
+      }},
+    }));
+    expect(await screen.findByRole('button',{name:'Request changes'})).toBeVisible();
+    expect(screen.getByText('Earlier question')).toBeVisible();
+    expect(screen.getByRole('region',{name:'Job prompt'})).toHaveTextContent('Original prompt');
+    expect(getConversation).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(getConversation).mock.calls[0][2]?.thread).toBe(true);
+    expect(getJob).not.toHaveBeenCalled();
+    expect(inputActivityService.getInputDetails).not.toHaveBeenCalled();
+  });
   it('opens the full reader inside Conversation without a route transition', async () => {
     mount('', null);
     expect(await screen.findByRole('heading', { name: 'Release design' })).toBeVisible();

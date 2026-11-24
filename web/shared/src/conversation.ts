@@ -1,4 +1,5 @@
 import type { RecipeJob } from './types';
+import type { UserInputDetails } from './services/inputActivityService';
 import { API_BASE } from './apiBase';
 import { APIError, type InputArtifact } from './api';
 import { parseJobJSON } from './jobJSON';
@@ -16,6 +17,8 @@ export interface HistoryEntry {
 }
 export interface ConversationSection<T> { availability: 'available' | 'unavailable'; value?: T; diagnostic?: string; observed_at?: string; attempt_ordinal?: number }
 export interface HistoryPage {
+  current_input_entry_id?: string;
+  current_input?: UserInputDetails | null;
   review_id?: string;
   input_artifacts?: InputArtifact[];
   activity?: ConversationSection<RecipeJob>; final_documents?: ConversationSection<FinalDocuments>;
@@ -46,8 +49,9 @@ async function read<T>(url: string, signal?: AbortSignal): Promise<T> {
   }
   return parseJobJSON(text) as T;
 }
-export async function getConversation(tenant: string, job: string, options: { pageToken?: string; pageSize?: number; includeSections?: boolean; includeReviewAttachments?: boolean; reviewId?: string; signal?: AbortSignal } = {}): Promise<HistoryPage> {
+export async function getConversation(tenant: string, job: string, options: { thread?: boolean; pageToken?: string; pageSize?: number; includeSections?: boolean; includeReviewAttachments?: boolean; reviewId?: string; signal?: AbortSignal } = {}): Promise<HistoryPage> {
   const query = new URLSearchParams({ page_size: String(options.pageSize ?? 50) });
+  if (options.thread) query.set('thread','true');
   if (options.includeSections === false) query.set('include_sections', 'false');
   if (options.includeReviewAttachments) query.set('include_review_attachments', 'true');
   if (options.reviewId) query.set('review_id', options.reviewId);
@@ -56,6 +60,7 @@ export async function getConversation(tenant: string, job: string, options: { pa
   if (page.tenant_id !== tenant || page.job_id !== job || !Array.isArray(page.entries)) throw new Error('History response does not match the selected job');
   if (page.activity?.value && (page.activity.value.tenant_id !== tenant || page.activity.value.job_id !== job)) throw new Error('Activity does not match the selected job');
   if (page.final_documents?.value && page.final_documents.value.job_id !== job) throw new Error('Returned documents do not match the selected job');
+  if (page.current_input && page.current_input.jobId !== job) throw new Error('Input request does not match the selected job');
   return page;
 }
 export function getConversationEntry(tenant: string, job: string, entry: string, options: { snapshotToken?: string; signal?: AbortSignal } = {}): Promise<HistoryDetail> {
