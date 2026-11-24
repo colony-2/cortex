@@ -1,12 +1,16 @@
 import { listJobs } from '@colony2/shared/api';
-import type { RecipeJobSummary } from '@colony2/shared/types';
+import type { RecipeJobStatus, RecipeJobSummary } from '@colony2/shared/types';
+import { failedJobStatuses } from './jobStatus';
 
 export type InboxJob = RecipeJobSummary & { inboxArchived: boolean };
 const inboxScanLimit = 5000;
 const inboxPageSize = 200;
 
-export async function loadVisibleInboxPage(tenant: string, cell: { id: string; name: string } | undefined, pageToken: string | undefined, signal: AbortSignal) {
-  const page = await listJobs(tenant, { includeHidden: false, status: [], pageSize: inboxPageSize, pageToken,
+const folderStatuses: Record<string, RecipeJobStatus[]> = { active: ['ACTIVE', 'READY'], waiting: ['PENDING_JOBS', 'AWAITING_FUTURE'] };
+
+export async function loadVisibleInboxPage(tenant: string, cell: { id: string; name: string } | undefined, pageToken: string | undefined, signal: AbortSignal, folder?: 'active' | 'waiting' | 'failed') {
+  const page = await listJobs(tenant, { includeHidden: false, pageSize: inboxPageSize, pageToken,
+    ...(folder === 'failed' ? { displayStatus: [...failedJobStatuses] } : { status: folder ? folderStatuses[folder] : [] }),
     ...(cell && { cellNames: [cell.name] }),
   }, signal);
   if (page.jobs.some(job => job.tenant_id !== tenant)) throw new Error('Inbox response did not match this tenant.');
@@ -48,11 +52,17 @@ export async function loadArchivedInbox(tenant: string, signal?: AbortSignal): P
   return [...all.values()].filter(job => !visible.has(job.job_id)).map(job => ({ ...job, inboxArchived: true }));
 }
 
-export function inboxUpdate(job: RecipeJobSummary, requestedAt?: string): string | undefined {
-  // These are persisted activity timestamps. Submission and observation time
-  // cannot stand in for the missing execution-activity projection.
-  return [job.archived_at, requestedAt].filter((value): value is string => !!value && Number.isFinite(Date.parse(value)) && !value.startsWith('0001-'))
+function isRecordedDate(value?: string): value is string {
+  return typeof value === 'string' && !value.startsWith('0001-') && Number.isFinite(Date.parse(value));
+}
+
+function inboxActivity(job: RecipeJobSummary, requestedAt?: string): string | undefined {
+  return [job.archived_at, requestedAt].filter(isRecordedDate)
     .sort((a, b) => Date.parse(b) - Date.parse(a))[0];
+}
+
+export function inboxDate(job: RecipeJobSummary, requestedAt?: string): string | undefined {
+  return inboxActivity(job, requestedAt) ?? [job.submitted_at, job.created_at].find(isRecordedDate);
 }
 
 export function formatInboxUpdate(timestamp: string, today: Date): string {
@@ -65,7 +75,7 @@ export function formatInboxUpdate(timestamp: string, today: Date): string {
   });
 }
 export function inboxRevision(job: RecipeJobSummary, requestedAt?: string, requestId?: string): string {
-  return JSON.stringify([job.status, job.completion_status, job.cancel_requested, job.client_payload_revision?.toString(), inboxUpdate(job, requestedAt), requestId]);
+  return JSON.stringify([job.status, job.completion_status, job.cancel_requested, job.client_payload_revision?.toString(), inboxActivity(job, requestedAt), requestId]);
 }
 export function inboxReadKey(user: string, tenant: string, job: string): string {
   return `cortex:inbox:seen:${JSON.stringify([user, tenant, job])}`;

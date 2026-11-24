@@ -46,15 +46,13 @@ func TestGoalAttachmentDecode(t *testing.T) {
 		{"ATT-024 repeated", []goalPart{valid, valid}, 400},
 		{"ATT-024 unknown metadata", []goalPart{{field: "submission", data: `{"unknown":true}`}}, 400},
 		{"ATT-024 trailing JSON", []goalPart{{field: "submission", data: `{} {}`}}, 400},
-		{"ATT-024 oversized metadata", []goalPart{{field: "submission", data: strings.Repeat(" ", 1<<20) + "{}"}}, 413},
+		{"large message metadata", []goalPart{{field: "submission", data: `{"cell":"platform","inputs":{"prompt":"` + strings.Repeat("a", 1<<20) + `"}}`}}, 0},
 		{"ATT-025 unknown text", []goalPart{valid, {field: "other", data: "x"}}, 400},
 		{"ATT-025 text files", []goalPart{valid, {field: "files", data: "x"}}, 400},
 		{"ATT-025 binary submission", []goalPart{valid, {field: "submission", name: "x", binary: true}}, 400},
 		{"ATT-025 unknown file", []goalPart{valid, {field: "other", name: "x", binary: true}}, 400},
 		{"ATT-027 duplicates", []goalPart{valid, file("x", "1"), file("x", "2")}, 400},
-		{"ATT-008 exact single", []goalPart{valid, file("big", strings.Repeat("a", goalFileBytes))}, 0},
-		{"ATT-029 file overflow", []goalPart{valid, file("big", strings.Repeat("a", goalFileBytes+1))}, 413},
-		{"ATT-029 body overflow", []goalPart{valid, file("big", strings.Repeat("a", 33<<20))}, 413},
+		{"attachment above the former request cap", []goalPart{valid, file("big", strings.Repeat("a", 33<<20))}, 0},
 	}
 	for _, name := range []string{"../x", "/x", "a/b", `a\b`, "C:x", "=x", ".", "..", " ", ""} {
 		tests = append(tests, struct {
@@ -63,23 +61,15 @@ func TestGoalAttachmentDecode(t *testing.T) {
 			status int
 		}{"ATT-026 " + name, []goalPart{valid, file(name, "x")}, 400})
 	}
-	ten := []goalPart{valid}
-	for i := 0; i < 10; i++ {
-		data := ""
-		if i == 0 {
-			data = strings.Repeat("a", goalFileBytes)
-		}
-		ten = append(ten, file(fmt.Sprint(i), data))
+	many := []goalPart{valid}
+	for i := 0; i < 11; i++ {
+		many = append(many, file(fmt.Sprint(i), ""))
 	}
 	tests = append(tests, struct {
 		name   string
 		parts  []goalPart
 		status int
-	}{"ATT-007 exact ten", ten, 0}, struct {
-		name   string
-		parts  []goalPart
-		status int
-	}{"ATT-007 eleven", append(append([]goalPart{}, ten...), file("eleven", "")), 400})
+	}{"attachments above the former count cap", many, 0})
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -107,7 +97,9 @@ func TestGoalAttachmentDecode(t *testing.T) {
 			req.ContentLength = -1
 			req.Header.Set("Content-Type", writer.FormDataContentType())
 			var input submitJobRequest
-			artifacts, status, err := decodeGoalSubmission(httptest.NewRecorder(), req, &input)
+			var uploads goalUploads
+			defer uploads.cleanup()
+			artifacts, status, err := decodeGoalSubmission(req, &input, &uploads)
 			if status != tt.status || (err != nil) != (tt.status != 0) {
 				t.Fatalf("status %d error %v, want %d", status, err, tt.status)
 			}
@@ -152,6 +144,7 @@ func TestGoalAttachmentDecode(t *testing.T) {
 					}
 				}
 			}
+			uploads.cleanup()
 			entries, _ := os.ReadDir(dir)
 			if len(entries) != 0 {
 				t.Fatal("temporary files leaked")
@@ -168,7 +161,9 @@ func TestGoalAttachmentMediaAndMalformed(t *testing.T) {
 		r := httptest.NewRequest("POST", "/", strings.NewReader(tt.body))
 		r.Header.Set("Content-Type", tt.media)
 		var req submitJobRequest
-		_, status, err := decodeGoalSubmission(httptest.NewRecorder(), r, &req)
+		var uploads goalUploads
+		_, status, err := decodeGoalSubmission(r, &req, &uploads)
+		uploads.cleanup()
 		if status != tt.want {
 			t.Fatalf("%s %d %v", tt.media, status, err)
 		}
@@ -192,7 +187,9 @@ func TestGoalAttachmentPartialParseCleanup(t *testing.T) {
 	r := httptest.NewRequest("POST", "/", bytes.NewReader(raw[:len(raw)-100]))
 	r.Header.Set("Content-Type", w.FormDataContentType())
 	var req submitJobRequest
-	_, status, err := decodeGoalSubmission(httptest.NewRecorder(), r, &req)
+	var uploads goalUploads
+	_, status, err := decodeGoalSubmission(r, &req, &uploads)
+	uploads.cleanup()
 	if status != 400 || err == nil {
 		t.Fatalf("%d %v", status, err)
 	}
@@ -214,7 +211,9 @@ func TestGoalAttachmentLegacyJSON(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := httptest.NewRequest("POST", "/", strings.NewReader(tc.body))
 			var req submitJobRequest
-			artifacts, _, err := decodeGoalSubmission(httptest.NewRecorder(), r, &req)
+			var uploads goalUploads
+			defer uploads.cleanup()
+			artifacts, _, err := decodeGoalSubmission(r, &req, &uploads)
 			if (err != nil) != tc.invalid || len(artifacts) != 0 {
 				t.Fatalf("artifacts %v error %v", artifacts, err)
 			}

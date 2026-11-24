@@ -179,7 +179,7 @@ test('NAV badges update through activity events in both widths', async ({ page }
   await page.goto('/project/navigation/goals');
   await expect.poll(() => page.evaluate(() => (window as any).navStreams.length)).toBeGreaterThan(0);
   const navigation = page.locator('.desktop-navigation').getByRole('navigation', { name: 'Inboxes' });
-  const waiting = navigation.getByRole('link', { name: 'Waiting', exact: true });
+  const reviews = navigation.getByRole('link', { name: 'Reviews', exact: true });
   const cell = navigation.getByRole('link', { name: 'platform', exact: true });
   for (const collapsed of [false, true]) {
     if (collapsed) await page.getByRole('button', { name: 'Collapse navigation' }).click();
@@ -195,7 +195,7 @@ test('NAV badges update through activity events in both widths', async ({ page }
       if (count) await expect(cell.locator('.inbox-badge')).toHaveAttribute('aria-label', `${count} pending responses`);
       await expect(navigation.getByRole('link', { name: 'Archive', exact: true }).locator('.inbox-badge')).toHaveCount(0);
       await expect(page.locator('.desktop-navigation')).toHaveCSS('width', collapsed ? '76px' : '256px');
-      const badge = waiting.locator('.inbox-badge');
+      const badge = reviews.locator('.inbox-badge');
       if (!count) { await expect(badge).toHaveCount(0); continue; }
       await expect(badge).toHaveCount(1);
       await expect(badge).toHaveAttribute('aria-label', `${count} pending responses`);

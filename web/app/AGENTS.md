@@ -40,7 +40,7 @@ Primary routes:
 
 - `/project/:projectId/jobs`
 - `/project/:projectId/jobs/:jobId/story`
-- `/project/:projectId/reviews`
+- `/project/:projectId/jobs?inbox=reviews`
 - `/project/:projectId/cells`
 - `/project/:projectId/cells/:cellId`
 - `/project/:projectId/admin`

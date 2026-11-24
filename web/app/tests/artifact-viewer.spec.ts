@@ -326,13 +326,13 @@ for (const width of [1280, 390]) {
     await page.goto('/project/tenant/jobs/job/story');
     await page.getByRole('tab', { name: 'Thread', exact: true }).click();
     await originalRequest(page);
-    await expect(page.getByText('Attachments (5)', { exact: true })).toBeVisible();
+    const inputPane = page.getByRole('region', { name: 'Input attachments' });
+    await expect(inputPane.getByRole('heading', { name: 'Attachments', exact: true })).toBeVisible();
+    await expect(inputPane.getByRole('button')).toHaveCount(5);
     // The dev app uses StrictMode, which may repeat the initial effect.
     const loadedInventoryRequests = inventoryRequests;
     await capture(`input-artifacts-${width}.png`, true);
     const runSummary = page.locator('.story-summary-disclosure');
-    const inputPane = page.getByRole('region', { name: 'Input attachments' });
-    await expect(inputPane.getByRole('heading', { name: 'Attachments (5)', exact: true })).toBeVisible();
     await expect(inputPane.locator(':scope > summary')).toHaveCount(0);
     await expect(inputPane).not.toHaveAttribute('open');
     await expect(page.getByRole('button', { name: longName, exact: true })).toBeVisible();
@@ -354,13 +354,13 @@ for (const width of [1280, 390]) {
     await page.keyboard.press('End');
     await expect(page.getByRole('tab', { name: 'Trace', exact: true })).toBeFocused();
     await expect(runSummary.getByRole('heading', { name: 'Run Summary', exact: true })).toBeVisible();
-    for (const name of ['Lease timeline', 'DAG', 'Env', 'Relationships', 'Thread']) {
+    for (const name of ['Graph', 'Execution', 'Thread']) {
       await page.keyboard.press('ArrowLeft');
       const tab = page.getByRole('tab', { name, exact: true });
       await expect(tab).toBeFocused();
       await expect(tab).toHaveAttribute('aria-selected', 'true');
       await expect(page.getByRole('tabpanel', { name, exact: true })).toBeVisible();
-      if (name === 'Env') {
+      if (name === 'Execution') {
         await expect(page.getByRole('heading', { name: 'Execution requirements', exact: true })).toBeVisible();
         await expect(page.getByRole('button', { name: longName, exact: true })).not.toBeVisible();
       }
@@ -374,7 +374,7 @@ for (const width of [1280, 390]) {
     await expect(modal.getByRole('heading', { name: 'Submission brief' })).toBeVisible();
     await expect(modal.getByRole('img', { name: 'wide.png' })).toBeVisible();
     await capture(`input-markdown-${width}.png`);
-    await modal.getByRole('button', { name: 'next', exact: true }).click();
+    await modal.getByRole('link', { name: 'next', exact: true }).click();
     await expect(modal.getByRole('heading', { name: 'Next input' })).toBeVisible();
     await modal.getByRole('button', { name: 'Close', exact: true }).first().click();
     await expect(modal).not.toBeVisible();
@@ -385,12 +385,16 @@ for (const width of [1280, 390]) {
     await modal.getByRole('button', { name: 'Close', exact: true }).first().click();
     await expect(modal).not.toBeVisible();
     for (const [name, bytes] of [['input.bin', Buffer.from([0, 255, 1])], ['empty', Buffer.alloc(0)]] as const) {
-      const button = page.getByRole('button', { name: `Download ${name}`, exact: true });
-      await expect(button).toBeInViewport();
+      await inputPane.getByRole('button', { name, exact: true }).click();
+      const preview = page.getByRole('dialog', { name, exact: true });
+      await preview.getByRole('button', { name: 'Document options', exact: true }).click();
+      const downloadLink = page.getByRole('dialog', { name: 'Document options', exact: true }).getByRole('link', { name: 'Download' });
       const pending = page.waitForEvent('download');
-      await button.click();
+      await downloadLink.click();
       const download = await pending;
       expect(await readFile((await download.path())!)).toEqual(bytes);
+      await preview.getByRole('button', { name: 'Close', exact: true }).click();
+      await expect(preview).toBeHidden();
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
@@ -425,21 +429,25 @@ for (const width of [1280,390]) {
       await route.fulfill({json:body});
     });
     await page.goto('/project/tenant/jobs/job/story?tab=input-artifacts');
-    await expect(page.getByRole('heading',{name:'Attachments (6)'})).toBeVisible();
-    await expect(page.getByText('External reference — content not loaded')).toBeVisible();
-    await expect(page.getByText('Attachment · Document')).toBeVisible();
-    expect(await page.getByRole('button',{name:'Download external.md'}).count()).toBe(0);
+    const inputPane=page.getByRole('region',{name:'Input attachments'});
+    await expect(inputPane.getByRole('button')).toHaveCount(6);
+    const external=inputPane.getByRole('button',{name:'external.md',exact:true});
+    await expect(external).toBeDisabled();
+    await expect(external).toHaveAttribute('title','External reference — content not loaded');
     await page.screenshot({animations:'disabled',path:testInfo.outputPath(`documents-${width}.png`),fullPage:true});
     await page.getByRole('button',{name:'docs/alias.md',exact:true}).click();
-    const modal=page.getByRole('dialog');
+    const modal=page.locator('.review-preview-modal');
+    const options=page.getByRole('dialog',{name:'Document options',exact:true});
+    const openOptions=()=>modal.getByRole('button',{name:'Document options',exact:true}).click();
     await expect(modal.getByRole('heading',{name:'Stored alias'})).toBeVisible();
-    const storedDownload=page.waitForEvent('download');await modal.getByRole('button',{name:'Download'}).click();
+    await openOptions();
+    const storedDownload=page.waitForEvent('download');await options.getByRole('link',{name:'Download'}).click();
     expect(await readFile((await (await storedDownload).path())!,'utf8')).toBe('# Stored alias\n\n[next](inline.md)');
-    await modal.getByRole('button',{name:'next',exact:true}).click();
+    await modal.getByRole('link',{name:'next',exact:true}).click();
     await expect(modal.getByRole('heading',{name:'Inline bytes'})).toBeVisible();
-    await expect(modal.getByRole('button',{name:'Download'})).toBeInViewport();
     await page.screenshot({animations:'disabled',path:testInfo.outputPath(`inline-viewer-${width}.png`)});
-    const pending=page.waitForEvent('download');await modal.getByRole('button',{name:'Download'}).click();
+    await openOptions();
+    const pending=page.waitForEvent('download');await options.getByRole('link',{name:'Download'}).click();
     expect(await readFile((await (await pending).path())!,'utf8')).toBe('# Inline bytes');
     await modal.getByRole('button',{name:'Close',exact:true}).last().click();
     await expect(modal).not.toBeVisible();
@@ -452,6 +460,8 @@ for (const width of [1280,390]) {
     await expect(modal).not.toBeVisible();
     await page.getByRole('button',{name:'direct.md',exact:true}).click();
     await expect(modal.getByRole('heading',{name:'Direct bytes'})).toBeVisible();
+    await openOptions();
+    await expect(options.getByText('Attachment · Document')).toBeVisible();
     expect(externalRequests).toEqual([]);
   });
 }

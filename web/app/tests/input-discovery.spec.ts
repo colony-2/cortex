@@ -44,9 +44,11 @@ for(const width of [1440,390]) test(`shared input discovery retains reviews and 
  expect(statuses).toEqual([200,200]);
  if(width===1440){
   await page.goto('/project/v2/reviews');
-  await expect(page.getByText('Job ID: one',{exact:true})).toBeVisible();
+  const review = page.getByRole('list',{name:'Jobs'}).getByRole('link',{name:/^platform:/});
+  await expect(review).toBeVisible();
   await page.evaluate(()=>{for(const s of (window as any).sources)s.onerror?.();});
-  await expect(page.getByText('Last known: Showing 1 of 1 pending requests',{exact:true})).toBeVisible();
+  await expect(page.getByText('Showing last known review requests',{exact:true})).toBeVisible();
+  await expect(review).toBeVisible();
   await capture('discovery-list-unavailable.png');
   expect(statuses).toEqual([200,200]);
  }

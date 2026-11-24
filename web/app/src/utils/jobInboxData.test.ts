@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { listJobs } from '@colony2/shared/api';
-import { loadArchivedInbox, loadVisibleInboxPage, inboxUpdate, inboxRevision, inboxReadKey } from './jobInboxData';
+import { loadArchivedInbox, loadVisibleInboxPage, inboxDate, inboxRevision, inboxReadKey } from './jobInboxData';
 import type { RecipeJobSummary } from '@colony2/shared/types';
 vi.mock('@colony2/shared/api', () => ({ listJobs: vi.fn() }));
 const job = (id: string, extra = {}) => ({ tenant_id: 'tenant', job_id: id, cell_id: 'cell', cell_name: 'Cell', status: 'COMPLETED', store: 'ARCHIVED', ...extra }) as RecipeJobSummary;
@@ -34,11 +34,17 @@ it('stops superseded requests without issuing more reads', async () => {
   await expect(loadArchivedInbox('tenant', AbortSignal.abort())).rejects.toThrow('superseded');
   expect(listJobs).toHaveBeenCalledTimes(1);
 });
-it('retains unavailable update times rather than using submission, lease or browser time', () => {
+it('uses recorded activity first, then submission or creation, and skips invalid dates and lease expiry', () => {
   const base = job('first', { created_at: '2026-01-01T00:00:00Z', lease_expires_at: '2026-01-02T00:00:00Z' });
-  expect(inboxUpdate(base)).toBeUndefined();
-  expect(inboxUpdate(base, 'invalid')).toBeUndefined();
-  expect(inboxUpdate({ ...base, archived_at: '2026-01-02T00:00:00Z' }, '2026-01-03T00:00:00Z')).toBe('2026-01-03T00:00:00Z');
+  expect(inboxDate(base)).toBe(base.created_at);
+  expect(inboxDate({ ...base, submitted_at: '0001-01-01T00:00:00Z' }, 'invalid')).toBe(base.created_at);
+  const submitted = { ...base, submitted_at: '2026-01-01T06:00:00Z' };
+  expect(inboxDate(submitted)).toBe(submitted.submitted_at);
+  const archived = { ...submitted, archived_at: '2026-01-02T00:00:00Z' };
+  expect(inboxDate(archived)).toBe(archived.archived_at);
+  expect(inboxDate(archived, '2026-01-03T00:00:00Z')).toBe('2026-01-03T00:00:00Z');
+  expect(inboxDate({ ...base, created_at: 'invalid' })).toBeUndefined();
+  expect(inboxRevision(submitted)).toBe(inboxRevision(base));
 });
 it('uses separate browser read identities and detects new requests independently of read state', () => {
   const base = { ...job('first'), inboxArchived: false };

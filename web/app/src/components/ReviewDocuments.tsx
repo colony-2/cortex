@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Alert, Button, Card, Empty, Select, Spin, Tabs, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Empty, Modal, Select, Spin, Tabs, Tag, Typography } from 'antd';
+import { CodeOutlined, DiffOutlined, FileExcelOutlined, FileImageOutlined, FileMarkdownOutlined, FilePdfOutlined, FileTextOutlined, FileWordOutlined, FileZipOutlined, PaperClipOutlined } from '@ant-design/icons';
 import { useCompact } from '../hooks/useCompact';
 import { inputActivityService, storedDocumentURL, type ReviewDocument, type ReviewDocumentMetadata } from '@colony2/shared';
 import { orderedReviewDocumentIds, startingReviewDocument } from '../utils/reviewDocumentLocation';
@@ -9,14 +10,133 @@ import { resolveArtifactLink, type NavigationIntent } from './review/artifactLin
 import { loadDocument, type DocumentData } from './review/document';
 
 export interface DocumentSource { identity: string; contentIdentity?: (id: string) => string; url: (id: string) => string; onError?: (error: unknown) => void }
-export type ReaderDocument = { name?: string; stored?: ReviewDocument['stored']; sizeBytes?: number };
+export type ReaderDocument = { name?: string; stored?: ReviewDocument['stored']; sizeBytes?: number; details?: ReactNode; unavailableReason?: string; hideIdentifier?: boolean };
 export interface ReviewDocumentLayout { navigationVisible: boolean; stacked: boolean; navigationId: string; separator: ReactNode }
-interface Props { changes?: ReactNode; layout?: ReviewDocumentLayout; navigationDefault?: boolean; stackNavigation?: boolean; source?: DocumentSource; projectId: string; jobId: string; requestId: string; documents: Record<string, ReaderDocument>; documentMetadata?: Record<string, ReviewDocumentMetadata>; overviewDocumentId?: string; response?: ReactNode; selection?: { documentId: string | undefined; onSelect: (id: string) => void } }
+interface DocumentSelection { documentId: string | undefined; onSelect: (id: string, options?: { replace?: boolean }) => void }
+interface Props { changes?: ReactNode; layout?: ReviewDocumentLayout; attachmentLayout?: 'primary' | 'attachments'; attachmentsLabel?: string; primaryActions?: ReactNode; navigationDefault?: boolean; stackNavigation?: boolean; source?: DocumentSource; projectId: string; jobId: string; requestId: string; documents: Record<string, ReaderDocument>; documentMetadata?: Record<string, ReviewDocumentMetadata>; overviewDocumentId?: string; response?: ReactNode; selection?: DocumentSelection }
+type DocumentIntent = NavigationIntent & { documentId: string };
+interface ReaderProps extends Props {
+  bare?: boolean;
+  primary?: boolean;
+  openLinkedDocument?: (id: string, fragment?: string, trigger?: HTMLElement) => void;
+  linkedIntent?: DocumentIntent;
+}
+
+const filename = (id: string, doc?: ReaderDocument) => doc?.name || doc?.stored?.key.name || id;
+const documentTitle = (id: string, doc?: ReaderDocument, metadata?: ReviewDocumentMetadata) => metadata?.title?.trim() || filename(id, doc);
+
+const attachmentIcons: Record<string, typeof PaperClipOutlined> = {
+  md: FileMarkdownOutlined, markdown: FileMarkdownOutlined,
+  txt: FileTextOutlined, log: FileTextOutlined,
+  png: FileImageOutlined, jpg: FileImageOutlined, jpeg: FileImageOutlined, gif: FileImageOutlined,
+  svg: FileImageOutlined, webp: FileImageOutlined, bmp: FileImageOutlined, avif: FileImageOutlined,
+  pdf: FilePdfOutlined, csv: FileExcelOutlined, xlsx: FileExcelOutlined, xls: FileExcelOutlined,
+  doc: FileWordOutlined, docx: FileWordOutlined,
+  zip: FileZipOutlined, tar: FileZipOutlined, gz: FileZipOutlined, tgz: FileZipOutlined,
+  bz2: FileZipOutlined, xz: FileZipOutlined, '7z': FileZipOutlined, rar: FileZipOutlined,
+  json: CodeOutlined, jsonl: CodeOutlined, ndjson: CodeOutlined, yaml: CodeOutlined, yml: CodeOutlined,
+  xml: CodeOutlined, html: CodeOutlined, htm: CodeOutlined,
+  patch: DiffOutlined, diff: DiffOutlined,
+};
+const attachmentColors = new Map<typeof PaperClipOutlined, string>([
+  [FileMarkdownOutlined, '#1d4ed8'],
+  [FileTextOutlined, '#475569'],
+  [FileImageOutlined, '#7e22ce'],
+  [FilePdfOutlined, '#b91c1c'],
+  [FileExcelOutlined, '#047857'],
+  [FileWordOutlined, '#0e7490'],
+  [FileZipOutlined, '#806015'],
+  [CodeOutlined, '#9d174d'],
+  [DiffOutlined, '#b44b13'],
+]);
+
+function attachmentIcon(name: string) {
+  const extension = name.toLowerCase().match(/\.([a-z\d]+)$/)?.[1] ?? '';
+  const Icon = Object.prototype.hasOwnProperty.call(attachmentIcons, extension) ? attachmentIcons[extension] : PaperClipOutlined;
+  return <Icon aria-hidden style={{ color: attachmentColors.get(Icon) }} />;
+}
+
 export default function ReviewDocuments(props: Props) {
   // A fresh review identity owns all preview state; response drafts live above this component.
-  return <ReviewReader key={JSON.stringify([props.projectId, props.jobId, props.requestId, props.source?.identity])} {...props} />;
+  const Reader = props.attachmentLayout ? ReviewAttachmentReader : ReviewReader;
+  return <Reader key={JSON.stringify([props.projectId, props.jobId, props.requestId, props.source?.identity])} {...props} />;
 }
-function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata = {}, overviewDocumentId, source, response, navigationDefault=false, stackNavigation=false, layout, changes, selection: controlled }: Props) {
+
+function ReviewAttachmentReader({ changes, selection, documents, documentMetadata = {}, overviewDocumentId, attachmentLayout, attachmentsLabel, primaryActions, ...props }: Props) {
+  const primary = attachmentLayout === 'primary' ? startingReviewDocument(documents, documentMetadata, overviewDocumentId) : undefined;
+  const [picked, setPicked] = useState<string>();
+  const [showChanges, setShowChanges] = useState(false);
+  const [intent, setIntent] = useState<DocumentIntent>();
+  const nextIntent = useRef(0);
+  const track = useRef<HTMLDivElement>(null);
+  const opener = useRef<HTMLElement>();
+  const selected = (selection ? selection.documentId : picked) ?? primary;
+  const attachment = selected !== primary && selected !== undefined && Object.prototype.hasOwnProperty.call(documents, selected) ? selected : undefined;
+  const open = attachment !== undefined || showChanges;
+  const select = selection?.onSelect ?? setPicked;
+  const title = (id: string) => documentTitle(id, documents[id], documentMetadata[id]);
+  const openDocument = (id: string, fragment?: string, trigger?: HTMLElement) => {
+    if (!open) opener.current = trigger;
+    setShowChanges(false);
+    setIntent({ documentId: id, fragment, token: ++nextIntent.current });
+    select(id);
+  };
+  useEffect(() => {
+    setIntent(previous => previous?.documentId === selected ? previous : undefined);
+    setShowChanges(false);
+  }, [selected]);
+  const close = () => {
+    setShowChanges(false);
+    setIntent(undefined);
+    if (attachment && primary !== undefined) select(primary, { replace: true });
+    else setPicked(undefined);
+  };
+  const restoreFocus = () => {
+    if (open) return;
+    let trigger = opener.current;
+    opener.current = undefined;
+    if (trigger instanceof HTMLAnchorElement && !trigger.isConnected) {
+      // The Markdown renderer can recreate links while the preview is open.
+      const href = trigger.getAttribute('href');
+      const label = trigger.textContent;
+      trigger = Array.from(track.current?.querySelectorAll<HTMLAnchorElement>('a[href]') ?? [])
+        .find(link => link.getAttribute('href') === href && link.textContent === label);
+    }
+    trigger?.focus({ preventScroll: true });
+    if (!trigger || document.activeElement !== trigger) {
+      track.current?.querySelector<HTMLButtonElement>('.review-primary-document .review-document-options button')?.focus({ preventScroll: true });
+    }
+  };
+  const reader = { ...props, documents, documentMetadata, overviewDocumentId, openLinkedDocument: openDocument, bare: true };
+  const attachments = orderedReviewDocumentIds(documents, documentMetadata).filter(id => id !== primary);
+  return <div ref={track} className="review-reading-track">
+    {primary !== undefined && <ReviewReader {...reader} primary primaryActions={primaryActions} selection={{ documentId: primary, onSelect: select }}
+      linkedIntent={intent?.documentId === primary ? intent : undefined} />}
+    {(attachments.length > 0 || changes) && <section className="review-attachments" aria-label={attachmentsLabel}>
+      <Typography.Title level={5}>Attachments</Typography.Title>
+      <nav aria-label={attachmentsLabel ?? 'Review attachments'}>
+        {attachments.map(id => {
+          const document = documents[id];
+          const name = filename(id, document);
+          return <Button key={id} icon={attachmentIcon(name)} disabled={!!document.unavailableReason}
+            title={document.unavailableReason ?? name} onClick={event => openDocument(id, undefined, event.currentTarget)}>{title(id)}</Button>;
+        })}
+        {changes && <Button icon={<DiffOutlined aria-hidden style={{ color: attachmentColors.get(DiffOutlined) }} />} onClick={event => {
+          opener.current = event.currentTarget;
+          setShowChanges(true);
+        }}>Changes</Button>}
+      </nav>
+    </section>}
+    <Modal className="review-preview-modal" open={open} title={showChanges ? 'Changes' : attachment && title(attachment)}
+      width="95vw" centered footer={null} destroyOnHidden onCancel={close} focusTriggerAfterClose={false} afterClose={restoreFocus}
+      styles={{ content: { height: '95dvh', display: 'flex', flexDirection: 'column' },
+        body: { minHeight: 0, maxHeight: 'none', overflow: 'auto' } }}>
+      {showChanges ? changes : attachment && <ReviewReader {...reader} selection={{ documentId: attachment, onSelect: select }} linkedIntent={intent?.documentId === attachment ? intent : undefined} />}
+    </Modal>
+  </div>;
+}
+
+function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata = {}, overviewDocumentId, source, response, navigationDefault=false, stackNavigation=false, layout, changes, selection: controlled, bare, primary, primaryActions, openLinkedDocument, linkedIntent }: ReaderProps) {
   const [readerTab, setReaderTab] = useState('documents');
   const small = useCompact();
   const compact = layout ? layout.stacked : small || stackNavigation;
@@ -28,7 +148,7 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
   const [selection, setSelection] = useState(initial);
   const selected = controlled ? controlled.documentId : attached(selection) ? selection : initial;
   const catalog = useRef<HTMLDivElement>(null);
-  const [navigationIntent, setNavigationIntent] = useState<(NavigationIntent & { documentId: string })>();
+  const [navigationIntent, setNavigationIntent] = useState<DocumentIntent>();
   const [dual, setDual] = useState(false);
   const [markdownSource, setMarkdownSource] = useState(false);
   const [content, setContent] = useState<{ url: string; data: DocumentData }>();
@@ -52,13 +172,13 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
       if (controlled && pendingSelection.current !== selected) {
         // A parent-driven change (including Back/Forward) has no old link intent.
         setNavigationIntent(undefined);
-        reveal.current = true;
+        reveal.current = linkedIntent?.documentId !== selected;
       }
       setReaderTab('documents');
       previousSelection.current = selected;
       pendingSelection.current = undefined;
     }
-  }, [selected, controlled]);
+  }, [selected, controlled, linkedIntent]);
   useEffect(() => {
     if (reveal.current && (error || contentIdentity === contentKey)) {
       previewRoot.current?.scrollIntoView?.({ block: 'start' });
@@ -84,10 +204,14 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
     }).catch(e => { if (!controller.signal.aborted) { setFailure({ key: contentKey, message: e.message }); source?.onError?.(e); } });
     return () => controller.abort();
   }, [contentKey, name, retry, !!url]);
-  const filename = (id: string) => documents[id]?.name || documents[id]?.stored?.key.name || id;
-  const title = (id: string) => documentMetadata[id]?.title?.trim() ? documentMetadata[id].title! : filename(id);
-  const openDocument = (id: string, focus = false, fragment?: string) => {
+  const nameOf = (id: string) => filename(id, documents[id]);
+  const title = (id: string) => documentTitle(id, documents[id], documentMetadata[id]);
+  const openDocument = (id: string, focus = false, fragment?: string, trigger?: HTMLElement) => {
     if (!attached(id)) return false;
+    if (openLinkedDocument && id !== selected) {
+      openLinkedDocument(id, fragment, trigger);
+      return true;
+    }
     setReaderTab('documents');
     if (controlled) {
       if (id !== selected) { pendingSelection.current = id; controlled.onSelect(id); }
@@ -106,8 +230,9 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
     const role = metadata?.role === 'primary' ? 'Primary' : metadata?.role === 'supporting' ? 'Supporting' : metadata?.role === 'diagnostic' ? 'Diagnostic' : undefined;
     return <div className="review-document-summary">
       <strong>{title(id)}</strong>{role && <Tag>{role}</Tag>}
-      <Typography.Text type="secondary">{id}{title(id) !== filename(id) ? ` · ${filename(id)}` : ''}</Typography.Text>
+      {!documents[id]?.hideIdentifier && <Typography.Text type="secondary">{id}{title(id) !== nameOf(id) && id !== nameOf(id) ? ` · ${nameOf(id)}` : ''}</Typography.Text>}
       {metadata?.description && <p>{metadata.description}</p>}
+      {documents[id]?.details}
     </div>;
   };
   const sources = (id: string) => {
@@ -116,15 +241,18 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
       ? <a key={source} href={documentURL(source)} onClick={event => {
         if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
-        openDocument(source, true);
-      }}>{title(source)}{title(source) !== filename(source) ? ` · ${filename(source)}` : ''} ({source})</a>
+        openDocument(source, true, undefined, event.currentTarget);
+      }}>{title(source)}{title(source) !== nameOf(source) ? ` · ${nameOf(source)}` : ''} ({source})</a>
       : <span key={source}>{source} (unavailable)</span>)}</div> : null;
   };
+  const details = selected !== undefined ? <div className={bare ? 'review-document-menu-details' : 'review-selected-details'}>{summary(selected)}{sources(selected)}<Button disabled={!url} href={url || undefined} download={name}>Download</Button></div> : null;
+  const storedBytes = doc?.sizeBytes ?? doc?.stored?.key.sizeBytes;
+  const activeIntent = navigationIntent?.documentId === selected ? navigationIntent : linkedIntent;
   const preview = selected === undefined ? null : error ? <Alert type="error" showIcon message={error} action={<Button onClick={() => { cached.current = undefined; setContent(undefined); setRetry(v => v + 1); }}>Retry</Button>} />
     : !content || contentIdentity !== contentKey ? <Spin aria-label="Loading document" />
-    : <DocumentPreview htmlContext={{canonicalPath: path(selected), attachments: Object.keys(documents).filter(id => !!documentURL(id)).map(id => ({key:id, path:path(id), url:documentURL(id)}))}} reviewOptions={{ storedBytes: doc?.sizeBytes ?? doc?.stored?.key.sizeBytes, scrollMarkdownTables: !!layout }} key={contentKey} data={content.data} name={name} markdownSource={markdownSource} setMarkdownSource={setMarkdownSource} dual={dual} setDual={setDual} navigationIntent={navigationIntent?.documentId === selected ? navigationIntent : undefined} navigation={{
+    : <DocumentPreview htmlContext={{canonicalPath: path(selected), attachments: Object.keys(documents).filter(id => !!documentURL(id)).map(id => ({key:id, path:path(id), url:documentURL(id)}))}} reviewOptions={{ storedBytes, scrollMarkdownTables: bare || !!layout, details: bare ? details : undefined, actions: primaryActions }} key={contentKey} data={content.data} name={name} markdownSource={markdownSource} setMarkdownSource={setMarkdownSource} dual={dual} setDual={setDual} navigationIntent={activeIntent} navigation={{
       resolve: reference => resolveArtifactLink(reference, path(selected), Object.entries(documents).map(([key, d]) => ({key, path: path(key), aliases: [key, ...(d.name ? [d.name] : [])]}))),
-      open: (key, fragment) => openDocument(key, true, fragment),
+      open: (key, fragment, trigger) => openDocument(key, true, fragment, trigger),
       url: source ? documentURL : undefined,
     }} resolveAttachment={reference => {
       const target = resolveArtifactLink(reference, path(selected), Object.entries(documents).map(([key, d]) => ({ key, path: path(key), aliases: [key, ...(d.name ? [d.name] : []), path(key)] })));
@@ -132,13 +260,14 @@ function ReviewReader({ projectId, jobId, requestId, documents, documentMetadata
       const id = target.key, d = documents[id];
       return { key: id, name: d.name || path(id), url: documentURL(id), onError: source?.onError };
     }} />;
-  const details = selected !== undefined ? <div className="review-selected-details">{summary(selected)}{sources(selected)}<Button disabled={!url} href={url || undefined} download={name}>Download</Button></div> : null;
-  const documentPanel = <Card><section ref={previewRoot} className="review-document-content" aria-label="Selected document">
+  const documentContent = <section ref={previewRoot} className={`review-document-content${bare ? ' review-v2-document' : ''}${primary ? ' review-primary-document' : ''}`} aria-label="Selected document">
     {selected === undefined ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents attached" /> : <>
-      {(!content || contentIdentity !== contentKey || error) && <DocumentOptions key={url} storedBytes={doc?.sizeBytes ?? doc?.stored?.key.sizeBytes} />}
-      {preview}{details}
+      {(!content || contentIdentity !== contentKey || error) && <DocumentOptions key={url} storedBytes={storedBytes} details={bare ? details : undefined} actions={primaryActions} />}
+      {preview}{!bare && details}
     </>}
-  </section></Card>;
+  </section>;
+  if (bare) return documentContent;
+  const documentPanel = <Card>{documentContent}</Card>;
   return <>
     {!layout && <Button aria-expanded={showNavigation} onClick={() => setShowNavigation(!showNavigation)}>{showNavigation ? 'Hide documents' : 'Show documents'}</Button>}
     <div className={`review-reading-layout ${layout ? 'review-v2-document-tracks' : ''} ${showNavigation && !compact ? 'with-navigation' : ''}`}>

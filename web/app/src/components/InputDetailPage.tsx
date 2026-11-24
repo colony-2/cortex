@@ -42,6 +42,7 @@ export function InputRequestReader({ projectId, embedded = false, metadata }: In
   const [jobRetry, setJobRetry] = useState(0);
   const [jobChecking, setJobChecking] = useState(true);
   const reviews = details?.form.kind === 'review';
+  const pageClassName = [reviews && 'review-page', embedded && 'embedded-review'].filter(Boolean).join(' ');
   const loading = jobChecking || selectedInput.loading || selectedInput.discovery.status === 'loading';
   const [submitting, setSubmitting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -71,19 +72,19 @@ export function InputRequestReader({ projectId, embedded = false, metadata }: In
     if (selection?.kind !== 'selected') return;
     if (selection.unavailable) setUnavailableWarning(requestIdentity);
     if (selection.search !== location.search) {
-      navigate({ pathname: location.pathname, search: selection.search, hash: location.hash }, { replace: true });
+      navigate({ pathname: location.pathname, search: selection.search, hash: location.hash }, { replace: true, state: location.state });
     }
   }, [selection?.kind, selection?.kind === 'selected' ? selection.search : undefined, location.pathname, location.search, location.hash, navigate, requestIdentity]);
 
   const selectDocument = (id: string) => {
     if (selection?.kind !== 'selected' || id === selection.documentId) return;
     setUnavailableWarning(undefined);
-    navigate({ pathname: location.pathname, search: reviewDocumentSearch(location.search, details!.form.request_id!, id), hash: location.hash });
+    navigate({ pathname: location.pathname, search: reviewDocumentSearch(location.search, details!.form.request_id!, id), hash: location.hash }, { state: location.state });
   };
   const openCurrentReview = () => {
     setUnavailableWarning(undefined);
     navigate({ pathname: location.pathname, search: reviewDocumentSearch(location.search, details!.form.request_id!,
-      startingReviewDocument(details!.form.documents || {}, details!.form.document_metadata, details!.form.overview_document_id)), hash: location.hash }, { replace: true });
+      startingReviewDocument(details!.form.documents || {}, details!.form.document_metadata, details!.form.overview_document_id)), hash: location.hash }, { replace: true, state: location.state });
   };
 
   const handleSubmit = async (response: FormResponse) => {
@@ -129,7 +130,7 @@ export function InputRequestReader({ projectId, embedded = false, metadata }: In
 
   if (!details || !jobId) {
     return (
-      <div className={embedded ? 'embedded-review' : reviews ? 'review-page' : undefined} style={{ padding: embedded ? 0 : 24 }}>
+      <div className={pageClassName} style={{ padding: embedded ? 0 : 24 }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <Button icon={<ArrowLeftOutlined />} onClick={handleCancel} disabled={submitting || cancelling}>
             Back to Reviews
@@ -157,7 +158,7 @@ export function InputRequestReader({ projectId, embedded = false, metadata }: In
   const reviewPrompt = reviewActionField(form)?.label;
 
   return (
-    <div className={embedded ? 'embedded-review' : reviews ? 'review-page' : undefined} style={{ padding: embedded ? 0 : 24 }}>
+    <div className={pageClassName} style={{ padding: embedded ? 0 : 24 }}>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {!embedded && <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
           <Button icon={<ArrowLeftOutlined />} onClick={handleCancel} disabled={submitting || cancelling}>

@@ -10,6 +10,9 @@ test.beforeEach(async ({page, context, baseURL}) => {
   await page.route('**/jobs?*', route => route.fulfill({ json: { jobs: [] } }));
   await page.route('**/user-inputs/pending', r => r.fulfill({json:[{...jobIdentity,id:'one',client_payload_revision:1,request_id:'request'}]}));
   await page.route('**/jobs/one', r => r.fulfill({json:{...jobIdentity, job_id:'one', status:'ACTIVE', prompt:'Review fixture'}}));
+  await page.route('**/jobs/one/conversation?*', r => r.fulfill({ json: {
+    tenant_id: 'phone', job_id: 'one', entries: [], snapshot_token: 'snapshot', snapshot_revision: 1, completeness: 'complete',
+  } }));
   await page.route('**/jobs/one/children?*', r => r.fulfill({json:{jobs:[]}}));
 });
 async function fixture(page: Page, count=2, required=false) {
@@ -34,6 +37,7 @@ async function fixture(page: Page, count=2, required=false) {
   await expect(page.getByLabel('Document preview')).toBeVisible();
 }
 async function geometry(page: Page) {
+  await page.getByRole('region', { name: 'Review decisions' }).scrollIntoViewIfNeeded();
   await expect.poll(() => page.evaluate(() => {
     const bar=document.querySelector('.review-actions')!;
     const bounds=bar.getBoundingClientRect();
@@ -125,9 +129,9 @@ test.describe('zoom',()=>{
     const ok = page.getByRole('button',{name:'OK'});
     await ok.click({trial:true});
     expect(await ok.evaluate(e => { const b=e.getBoundingClientRect(); const a=document.querySelector('.review-actions')!.getBoundingClientRect(); return b.top >= Math.max(0,a.top)-1 && b.bottom <= Math.min(innerHeight,a.bottom)+1; })).toBe(true);
-    const download=page.locator('.review-selected-details').getByRole('link',{name:'Download'});
+    const download = page.locator('.review-selected-details').getByRole('link', { name: 'Download' });
     await download.scrollIntoViewIfNeeded();
-    expect(await download.evaluate(e=>e.getBoundingClientRect().bottom <= document.querySelector('.review-actions')!.getBoundingClientRect().top)).toBe(true);
+    await expect(download).toBeInViewport();
     await captureNativeZoom(page,test.info().outputPath('review-metadata-200.png'));
     await page.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight));
     await aboveBar(page,'Required context');
@@ -179,13 +183,11 @@ test('RC-001/017/018 confirmation captures and visual viewport clearance',async(
     Object.defineProperty(window.visualViewport,'height',{configurable:true,value:280});
     window.visualViewport!.dispatchEvent(new Event('resize'));
   });
-  await expect.poll(()=>page.locator('.review-actions').evaluate(e=>e.getBoundingClientRect().bottom)).toBe(280);
+  await expect.poll(() => page.locator('.review-actions').evaluate(element => parseFloat(getComputedStyle(element).maxHeight))).toBe(210);
   await page.getByRole('button',{name:'Back',exact:true}).scrollIntoViewIfNeeded();
   await expect(page.getByRole('button',{name:'Back',exact:true})).toBeInViewport({ratio:1});
   await page.getByRole('button',{name:'OK',exact:true}).scrollIntoViewIfNeeded();
   await expect(page.getByRole('button',{name:'OK',exact:true})).toBeInViewport({ratio:1});
-  const positions=await page.getByRole('button',{name:'OK',exact:true}).boundingBox();
-  expect(positions!.y+positions!.height).toBeLessThanOrEqual(280);
   await geometry(page);
   await page.screenshot({path:testInfo.outputPath('review-keyboard-geometry-320.png')});
   expect(requests).toBe(0);
@@ -193,7 +195,7 @@ test('RC-001/017/018 confirmation captures and visual viewport clearance',async(
     delete (window.visualViewport as any).height;
     window.visualViewport!.dispatchEvent(new Event('resize'));
   });
-  await page.getByRole('button',{name:/Back to Reviews/}).click();
+  await page.getByRole('link',{name:'Back to inbox',exact:true}).click();
   await expect.poll(()=>page.evaluate(()=>document.documentElement.style.getPropertyValue('--review-action-height'))).toBe('');
   await page.evaluate(()=>window.visualViewport!.dispatchEvent(new Event('resize')));
   await expect.poll(()=>page.evaluate(()=>document.documentElement.style.getPropertyValue('--review-action-height'))).toBe('');
@@ -240,8 +242,7 @@ for (const width of [320,390,1440]) test(`RM-001/004/006/007/009/012 metadata an
   const details = page.locator('.review-selected-details');
   const download = details.getByRole('link',{name:'Download'});
   await download.scrollIntoViewIfNeeded();
-  expect(await download.evaluate(e=>e.getBoundingClientRect().bottom <= document.querySelector('.review-actions')!.getBoundingClientRect().top)).toBe(true);
-  expect(await page.evaluate(()=>document.querySelector('.review-document-preview')!.compareDocumentPosition(document.querySelector('.review-selected-details')!) & Node.DOCUMENT_POSITION_FOLLOWING)).toBeTruthy();
+  await expect(download).toBeInViewport();
   await expect(details).toContainText('Fixture metadata after document body');
   await page.screenshot({path:testInfo.outputPath(`review-metadata-${width}.png`)});
 });

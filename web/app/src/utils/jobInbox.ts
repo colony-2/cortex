@@ -1,7 +1,15 @@
+import { failedJobStatuses } from './jobStatus';
+
 // Browser inbox presentation. Pending counts come from tenant discovery.
 export type InboxJobIdentity = { tenantId: string; jobId: string };
-export type InboxMembership = { archived: boolean; cellId: string; waiting?: boolean };
-export type InboxSelection = { kind: 'all' | 'waiting' | 'drafts' } | { kind: 'archive' } | { kind: 'cell'; cellId: string };
+export type InboxMembership = { archived: boolean; cellId: string; waiting?: boolean; status?: string };
+export type InboxSelection = { kind: 'all' | 'reviews' | 'drafts' | 'archive' | 'active' | 'waiting' | 'failed' } | { kind: 'cell'; cellId: string };
+
+export function inboxFolder(value: string | null): InboxSelection['kind'] {
+  if (value === 'dependent') return 'waiting';
+  return value === 'reviews' || value === 'drafts' || value === 'archive' || value === 'active'
+    || value === 'waiting' || value === 'failed' || value === 'cell' ? value : 'all';
+}
 
 export const inboxSortOptions = [
   { key: 'newest', label: 'Date (newest first)' },
@@ -19,7 +27,10 @@ export function inboxJobKey({ tenantId, jobId }: InboxJobIdentity): string {
 export function isInInbox(job: InboxMembership, selection: InboxSelection): boolean {
   if (selection.kind === 'archive') return job.archived;
   if (job.archived || selection.kind === 'drafts') return false;
-  if (selection.kind === 'waiting') return !!job.waiting;
+  if (selection.kind === 'reviews') return !!job.waiting;
+  if (selection.kind === 'active') return !job.waiting && (job.status === 'ACTIVE' || job.status === 'READY');
+  if (selection.kind === 'waiting') return job.status === 'PENDING_JOBS' || job.status === 'AWAITING_FUTURE';
+  if (selection.kind === 'failed') return failedJobStatuses.some(status => status === job.status);
   return selection.kind !== 'cell' || job.cellId === selection.cellId;
 }
 
@@ -76,7 +87,7 @@ export function inboxPendingCounts(tenantId: string, snapshot: InboxPendingSnaps
 // Undefined means there is no badge. Unknown data remains explicit rather than
 // looking like confirmed zero. Archive never shows a pending badge.
 export function inboxPendingBadge(counts: InboxPendingCounts, selection: InboxSelection): number | '?' | undefined {
-  if (selection.kind === 'archive' || selection.kind === 'drafts') return undefined;
+  if (selection.kind !== 'all' && selection.kind !== 'reviews' && selection.kind !== 'cell') return undefined;
   if (counts.status !== 'current') return '?';
   const count = selection.kind === 'cell' ? counts.byCell.get(selection.cellId) ?? 0 : counts.total;
   return count || undefined;

@@ -54,7 +54,7 @@ it.each(['history','successor'])('clears confirmed contributions recovered throu
   await waitFor(()=>expect(screen.queryByText(/Connection lost/)).not.toBeInTheDocument());
  }
  successor(output);rerender(component());
- await waitFor(()=>expect(screen.getByLabelText('Question or requested change (optional)')).toHaveValue(''));
+ await waitFor(()=>expect(screen.getByRole('group',{name:'Review actions'})).toBeVisible());
  expect(screen.queryByRole('radio')).not.toBeInTheDocument();
  expect(screen.queryByRole('button',{name:'Remove notes.md (1)'})).not.toBeInTheDocument();
  expect(screen.queryByText(/Connection lost/)).not.toBeInTheDocument();
@@ -64,7 +64,7 @@ it.each(['history','successor'])('clears confirmed contributions recovered throu
  expect(within(dialog).getByLabelText('Example count')).toHaveValue(0); // Inapplicable draft survives.
  fireEvent.click(within(dialog).getByRole('button',{name:'Done'}));
  fireEvent.click(screen.getByRole('button',{name:'Approve direction',exact:true}));
-
+ fireEvent.click(screen.getByRole('button',{name:'Send · Approve direction'}));
  await waitFor(()=>expect(inputActivityService.submitReviewV2).toHaveBeenCalledTimes(2));
  expect(vi.mocked(inputActivityService.submitReviewV2).mock.calls[1].slice(2,5)).toEqual(['native-two',{direction:'go',feedback:'',attachments:[],settings:{}},[]]);
 });
@@ -97,10 +97,10 @@ it.each(['actionable','other','unavailable','sent','waiting','loading'] as const
  if(phase==='loading')vi.mocked(useReviewV2).mockReturnValue({view:undefined,error:'',busy:true,refresh:vi.fn(),sending:vi.fn(),accepted:vi.fn(),failed:vi.fn()});
  else view={...view,phase};
  render(<MemoryRouter initialEntries={['/project/tenant/reviews/job?q=foo+bar&cellId=platform&sort=title&order=descend&request_id=native&document_id=plan&unrelated=drop']}>
-  <Routes><Route path="/project/tenant/reviews/job" element={<ReviewV2 tenant="tenant" job="job" reviewId="review-one"/>}/><Route path="/project/tenant/reviews" element={<QueueLocation/>}/></Routes>
+  <Routes><Route path="/project/tenant/reviews/job" element={<ReviewV2 tenant="tenant" job="job" reviewId="review-one"/>}/><Route path="/project/tenant/jobs" element={<QueueLocation/>}/></Routes>
  </MemoryRouter>);
  fireEvent.click(screen.getByRole('button',{name:phase==='other'?'Open pending reviews':/Back to Reviews/}));
- expect(await screen.findByText('/project/tenant/reviews?q=foo+bar&cellId=platform&sort=title&order=descend')).toBeVisible();
+ expect(await screen.findByText('/project/tenant/jobs?q=foo+bar&cellId=platform&sort=title&order=descend&inbox=reviews')).toBeVisible();
 });
 
 it('submits long feedback intact and preserves it after an uncertain failure',async()=>{
@@ -119,10 +119,12 @@ it('submits long feedback intact and preserves it after an uncertain failure',as
 it('A01/A02/R01 action labels keep declaration order, focus sends nothing, and rapid clean activation posts the clicked action once',async()=>{
  vi.mocked(inputActivityService.submitReviewV2).mockImplementation(()=>new Promise(()=>{}));
  render(component());
- expect(within(screen.getByLabelText('Review actions')).getAllByRole('button').map(b=>b.textContent)).toEqual(view.request.directions.map(d=>d.label));
+ expect(within(screen.getByLabelText('Review actions')).getAllByRole('button').map(b=>b.textContent).filter(Boolean)).toEqual(view.request.directions.map(d=>d.label));
  expect(screen.queryByRole('radio')).toBeNull();expect(screen.queryByRole('button',{name:'Continue'})).toBeNull();
  const approve=screen.getByRole('button',{name:'Approve direction',exact:true});approve.focus();expect(inputActivityService.submitReviewV2).not.toHaveBeenCalled();
  fireEvent.click(approve);fireEvent.click(approve);
+ expect(inputActivityService.submitReviewV2).not.toHaveBeenCalled();
+ const send=screen.getByRole('button',{name:'Send · Approve direction'});fireEvent.click(send);fireEvent.click(send);
  expect(inputActivityService.submitReviewV2).toHaveBeenCalledTimes(1);
  expect(vi.mocked(inputActivityService.submitReviewV2).mock.calls[0].slice(2,5)).toEqual(['native-one',{direction:'go',feedback:'',attachments:[],settings:{}},[]]);
 });
@@ -132,7 +134,7 @@ it('A03/A05/A10 required composer focuses feedback, keeps multiline drafts on Ba
  fireEvent.change(input,{target:{value:' \n\ufeff'}});fireEvent.click(screen.getByRole('button',{name:'Send · Ask a question'}));
  expect(inputActivityService.submitReviewV2).not.toHaveBeenCalled();expect(screen.getByRole('alert')).toHaveTextContent('requires feedback');
  fireEvent.change(input,{target:{value:'Exact\nquestion '}});fireEvent.keyDown(input,{key:'Enter'});expect(inputActivityService.submitReviewV2).not.toHaveBeenCalled();
- fireEvent.click(screen.getByRole('button',{name:'Back',exact:true}));expect(ask).toHaveFocus();
+ fireEvent.click(screen.getByRole('button',{name:'Back',exact:true}));await waitFor(()=>expect(ask).toHaveFocus());
  expect(screen.getByText(/Unsent feedback draft retained/)).toBeVisible();fireEvent.click(ask);expect(input).toHaveValue('Exact\nquestion ');
  fireEvent.click(screen.getByRole('button',{name:'Send · Ask a question'}));await screen.findByText(/Connection lost/);
  expect(vi.mocked(inputActivityService.submitReviewV2).mock.calls[0][3].feedback).toBe('Exact\nquestion ');
@@ -157,7 +159,7 @@ it('A08/A09 clean approval exposes whitespace and empty files without dropping o
  expect(inputActivityService.submitReviewV2).not.toHaveBeenCalled();expect(screen.getByLabelText('Question or requested change (not allowed)')).toHaveValue(' ');
  expect(screen.getByRole('button',{name:'Remove empty.md (1)'})).toBeVisible();
  fireEvent.click(screen.getByRole('button',{name:'Remove feedback draft'}));fireEvent.click(screen.getByRole('button',{name:'Remove empty.md (1)'}));
- expect(inputActivityService.submitReviewV2).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:'Approve direction',exact:true}));
+ expect(inputActivityService.submitReviewV2).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:'Send · Approve direction'}));
  await screen.findByText(/Connection lost/);expect(inputActivityService.submitReviewV2).toHaveBeenCalledTimes(1);
 });
 it('A06 permitted new upload satisfies required feedback and upload failure preserves the File object',async()=>{
@@ -176,6 +178,7 @@ it('A11/A12 invalid applicable settings block sending while inapplicable setting
  fireEvent.click(screen.getByRole('button',{name:'Remove feedback draft'}));
  fireEvent.click(screen.getByRole('button',{name:'Back',exact:true}));
  fireEvent.click(screen.getByRole('button',{name:'Approve direction',exact:true}));
+ fireEvent.click(screen.getByRole('button',{name:'Send · Approve direction'}));
  await screen.findByText(/Connection lost/);expect(vi.mocked(inputActivityService.submitReviewV2).mock.calls[0][3].settings).toEqual({});
  expect(screen.getByText(/Retained locally; applies to Request changes/)).toBeVisible();
 });

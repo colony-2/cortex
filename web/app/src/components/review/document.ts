@@ -3,6 +3,7 @@ import { APIError } from '@colony2/shared';
 export const TEXT_LIMIT = 2 * 1024 * 1024;
 export const STRUCTURED_LIMIT = 1024 * 1024;
 export const IMAGE_LIMIT = 16 * 1024 * 1024;
+export class ImagePixelLimitError extends Error {}
 export const HEX_LIMIT = 64 * 1024;
 export type Format = 'markdown' | 'diff' | 'json' | 'jsonl' | 'source' | 'html' | 'svg' | 'image' | 'container' | 'binary';
 export interface DocumentData { bytes: Uint8Array; text: string; format: Format; truncated: boolean; mime?: string }
@@ -129,7 +130,7 @@ export function imageDimensions(b: Uint8Array, mime: string): [number, number] {
     }
   } catch { throw new Error('Invalid image dimensions. Download the original.'); }
   if (!w || !h || !Number.isFinite(w * h)) throw new Error('Image dimension inspection is unsupported or invalid. Download the original.');
-  if (w * h > 32000000) throw new Error('Image exceeds the 32 megapixel preview limit. Download the original.');
+  if (w * h > 32000000) throw new ImagePixelLimitError('Image exceeds the 32 megapixel preview limit. Download the original.');
   return [w, h];
 }
 export function hexDump(bytes: Uint8Array): string {

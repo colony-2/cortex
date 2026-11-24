@@ -174,7 +174,9 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 	var req submitJobRequest
-	artifacts, status, err := decodeGoalSubmission(w, r, &req)
+	var uploads goalUploads
+	defer uploads.cleanup()
+	artifacts, status, err := decodeGoalSubmission(r, &req, &uploads)
 	if err != nil {
 		writeHTTPError(w, status, err)
 		return

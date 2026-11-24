@@ -128,7 +128,7 @@ for (const width of [1440, 390]) {
     const rows=page.locator('.inbox-job-row');
     await expect(rows.first().getByRole('link')).toHaveAttribute('href','/project/flat/jobs/job-000/story');
     await expect(rows.first().locator('time')).toHaveAttribute('datetime','2026-11-20T12:00:00Z');
-    await expect(rows.nth(1).locator('time')).toHaveText('Update unavailable');
+    await expect(rows.nth(1).locator('time')).toHaveAttribute('datetime', '2026-11-10T00:00:00Z');
     await expect(rows.locator('script')).toHaveCount(0);
     const initial=queries.length;
     await page.evaluate(() => window.scrollTo(0, 0));

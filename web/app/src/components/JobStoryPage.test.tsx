@@ -577,8 +577,10 @@ describe('job story context', () => {
     expect(cell.textContent).toBe(`${cell_name}`);
     const heading = screen.getByRole('heading', { name: 'Title' });
     const prompt = await screen.findByRole('region', { name: 'Job prompt' });
-    expect(heading.compareDocumentPosition(cell) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(cell.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const back = screen.getByRole('link', { name: 'Back to inbox' });
+    expect(back.compareDocumentPosition(cell) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(cell.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(heading.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(cell.querySelector('img')).toBeNull();
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/cells'))).toBe(false);
   });
@@ -706,7 +708,7 @@ describe('job story context', () => {
     vi.mocked(getJob).mockResolvedValue(metadata({ title: 'Recovered', prompt: 'New prompt', completion_status: 'failed_system', completion_detail: 'New detail' }));
     fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
     await screen.findByRole('heading', { name: 'Recovered' });
-    expect(screen.getByText('New prompt', { selector: '.inbox-original .thread-message-subject' })).toBeVisible();
+    expect(screen.getByText('New prompt', { selector: '.inbox-original .thread-message-subject, .inbox-original .job-prompt-markdown p' })).toBeVisible();
     expect(screen.getByText('New detail')).toBeVisible();
     expect(screen.queryByText('Job details unavailable')).toBeNull();
   });
@@ -748,17 +750,17 @@ describe('job story context', () => {
     const reads = fetchMock.mock.calls.length;
     vi.mocked(getJob).mockResolvedValue(metadata({ title: 'Recovered', prompt: 'Recovered prompt', completion_status: 'failed_app', completion_detail: 'Recovered diagnostic' }));
     fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
-    expect(await screen.findByText('Recovered prompt', { selector: '.inbox-original .thread-message-subject' })).toBeVisible();
+    expect(await screen.findByText('Recovered prompt', { selector: '.inbox-original .thread-message-subject, .inbox-original .job-prompt-markdown p' })).toBeVisible();
     expect(screen.getByLabelText('Job cell')).toHaveTextContent(`${jobIdentity.cell_name}`); // JC-006
     expect(screen.getByText('Recovered diagnostic')).toBeVisible();
-    expect(getJob).toHaveBeenLastCalledWith('tenant', 'job', true);
+    expect(getJob).toHaveBeenLastCalledWith('tenant', 'job');
     expect(fetchMock.mock.calls.length).toBe(reads);
     expect(screen.queryByText('Job details unavailable')).toBeNull();
   });
   it('clears context after a failed refresh and recovers with Refresh', async () => {
     vi.mocked(getJob).mockResolvedValue(metadata({ title: 'Old', prompt: 'Old prompt', completion_status: 'failed_app', completion_detail: 'Old diagnostic' }));
     mount('');
-    await screen.findByText('Old prompt', { selector: '.inbox-original .thread-message-subject' });
+    await screen.findByText('Old prompt', { selector: '.inbox-original .thread-message-subject, .inbox-original .job-prompt-markdown p' });
     vi.mocked(getJob).mockRejectedValueOnce(new Error('refresh failed'));
     fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
     await screen.findByText('Job details unavailable');
@@ -1100,6 +1102,7 @@ it('REL-001,010,030,031 keeps URL relationships through past-attempt selection a
   vi.mocked(listJobChildren).mockReset().mockRejectedValueOnce(new Error('offline'));
   mount();
   fireEvent.click(screen.getByRole('tab', { name: 'Graph', exact: true }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Related jobs and goals' }));
   await screen.findByText('Child jobs unavailable');
   expect(screen.getByRole('link',{name:'Job · parent'})).toHaveAttribute('href','/project/tenant/jobs/parent/story');
   expect(screen.getByRole('link',{name:'Goal · parent-goal'})).toHaveAttribute('href','/project/tenant/goals/parent-goal');
@@ -1112,6 +1115,7 @@ it('REL-001,010,030,031 keeps URL relationships through past-attempt selection a
   expect(listJobChildren).toHaveBeenCalledWith('tenant','job',{pageSize:20,pageToken:undefined});
   expect(getJob).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('tab', { name: 'Graph', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Related jobs and goals' }));
   expect(screen.getByRole('link',{name:'Job · parent'})).toBeVisible();
 });
 
@@ -1213,7 +1217,7 @@ describe('input artifact inventory', () => {
     mount('?tab=execution', {...story, input_artifacts: artifacts});
     await screen.findByText('Recipe metadata');
     showInputAttachments();
-    expect(await screen.findByRole('heading', {name: 'Attachments (2)'})).toBeVisible();
+    expect(await screen.findByRole('region', { name: 'Input attachments' })).toBeVisible();
     expect(getJobInputArtifacts).not.toHaveBeenCalled();
   });
   it('reuses the Conversation inventory when opening the original message', async () => {
@@ -1221,7 +1225,7 @@ describe('input artifact inventory', () => {
     mount('?tab=conversation');
     await waitFor(() => expect(screen.queryByText('Loading history…')).toBeNull());
     showInputAttachments();
-    expect(screen.getByRole('heading',{name:'Attachments (2)'})).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Input attachments' })).toBeVisible();
     expect(getJobInputArtifacts).not.toHaveBeenCalled();
   });
   it.each([{ saved: artifacts }, { saved: [] }])('ENV-21 IA-016 retains a loaded inventory across Env visits: $saved', async ({ saved }) => {
@@ -1273,14 +1277,13 @@ describe('input artifact inventory', () => {
     vi.mocked(getJobInputArtifacts).mockImplementationOnce(() => new Promise(r => { resolve = r; }));
     const fetch = mount('', { job_id: 'job', status: 'running', root: null });
     showInputAttachments();
-    showInputAttachments();
-  await waitFor(() => expect(getJobInputArtifacts).toHaveBeenCalled());
+    await waitFor(() => expect(getJobInputArtifacts).toHaveBeenCalled());
     await act(async () => resolve({ artifacts }));
-    expect(await screen.findByText('Attachments (2)')).toBeVisible();
-    const buttons = screen.getAllByRole('button').filter(b => ['a.bin', 'docs/brief.md'].includes(b.textContent || ''));
+    const attachments = await screen.findByRole('region', { name: 'Input attachments' });
+    const buttons = within(attachments).getAllByRole('button');
     expect(buttons.map(b => b.textContent)).toEqual(['a.bin', 'docs/brief.md']);
-    expect(screen.getByText('0 B')).toBeVisible();
-    expect(screen.getByText('120 B')).toBeVisible();
+    expect(buttons[0].querySelector('svg')).toHaveAttribute('data-icon', 'paper-clip');
+    expect(buttons[1].querySelector('svg')).toHaveAttribute('data-icon', 'file-markdown');
     fetch.mockResolvedValue(new Response('# Input brief'));
     const opener = screen.getByRole('button', { name: 'docs/brief.md', exact: true });
     opener.focus(); fireEvent.click(opener);
@@ -1304,11 +1307,14 @@ describe('input artifact inventory', () => {
     vi.mocked(getJobInputArtifacts).mockResolvedValue({ artifacts });
     const fetch = mount();
     showInputAttachments();
-    await screen.findByText('Attachments (2)');
+    await screen.findByRole('region', { name: 'Input attachments' });
     fetch.mockResolvedValue({ ok: false });
     fireEvent.click(screen.getByRole('button', { name: 'docs/brief.md', exact: true }));
     expect(await screen.findByText(/Could not load this document/)).toBeVisible();
-    expect(screen.getByRole('button', { name: 'docs/brief.md', exact: true })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Document options' }));
+    const options = within(await screen.findByRole('dialog', { name: 'Document options' }));
+    expect(options.getByText('Stored size: 120 bytes')).toBeVisible();
+    expect(options.getByRole('link', { name: 'Download' })).toHaveAttribute('download', 'docs/brief.md');
     fetch.mockResolvedValue(new Response('# Recovered input'));
     fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
     expect(await screen.findByRole('heading', { name: 'Recovered input' })).toBeVisible();
@@ -1335,7 +1341,7 @@ it.each(['other/job', 'tenant/other'])('DOC-14 IA-014 aborts inventory and previ
   render(<MemoryRouter initialEntries={['/project/tenant/jobs/job/story']}><Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<Host />} /></Routes></MemoryRouter>);
   showInputAttachments();
   fireEvent.click(await screen.findByRole('button', { name: 'input.md', exact: true }));
-  await screen.findByLabelText('Loading artifact');
+  await screen.findByLabelText('Loading document');
   fireEvent.click(screen.getByRole('button', { name: 'Switch job' }));
   await waitFor(() => expect(previewSignal?.aborted).toBe(true));
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -1358,7 +1364,7 @@ it('IA-012 keeps same-name inputs and outputs in separate navigation and image c
   showInputAttachments();
   fireEvent.click(await screen.findByRole('button', { name: 'docs/brief.md', exact: true }));
   await screen.findByRole('heading', { name: 'Input', exact: true });
-  fireEvent.click(screen.getByRole('button', { name: 'next', exact: true }));
+  fireEvent.click(screen.getByRole('link', { name: 'next', exact: true }));
   await screen.findByRole('heading', { name: 'Input target' });
   const requests = fetch.mock.calls.map(c => String(c[0])).filter(url => url.includes('/artifacts/'));
   expect(requests).toContainEqual(expect.stringContaining('/tasks/0/artifacts/docs%2Fimage.png'));
@@ -1791,22 +1797,28 @@ it('DOC-05,08,09,12 documents retain distinct bindings, source labels and blocke
     { id:'document:bad', kind:'invalid', binding:'bad', name:'invalid.md', sizeBytes:-1, sources:['Document'], reason:'Invalid document: missing payload' },
   ] });
   const fetch = mount('?tab=input-artifacts');
-  expect(await screen.findByRole('heading', {name:'Attachments (4)'})).toBeVisible();
-  expect(screen.getByText('Binding: a')).toBeVisible();
-  expect(screen.getByText('Binding: b')).toBeVisible();
-  expect(screen.getByText('External reference — content not loaded')).toBeVisible();
-  expect(screen.queryByRole('button', {name:'Download remote.md'})).toBeNull();
-  expect(screen.getByText('Invalid document: missing payload')).toBeVisible();
+  const attachments = within(await screen.findByRole('region', { name: 'Input attachments' }));
+  const remote = attachments.getByRole('button', { name: 'remote.md' });
+  expect(remote).toBeDisabled();
+  expect(remote).toHaveAttribute('title', 'External reference — content not loaded');
+  const invalid = attachments.getByRole('button', { name: 'invalid.md' });
+  expect(invalid).toBeDisabled();
+  expect(invalid).toHaveAttribute('title', 'Invalid document: missing payload');
   const buttons=screen.getAllByRole('button',{name:'same.md',exact:true});
   fetch.mockResolvedValue(new Response('# First binding'));
   fireEvent.click(buttons[0]);
   expect(await screen.findByRole('heading',{name:'First binding'})).toBeVisible();
   expect(fetch).toHaveBeenLastCalledWith(expect.stringContaining('/input-document?binding=a'),expect.anything());
+  fireEvent.click(screen.getByRole('button', { name: 'Document options' }));
+  expect(await screen.findByText('Binding: a')).toBeVisible();
+  expect(screen.getByText('Document', { exact: true })).toBeVisible();
   fireEvent.click(screen.getAllByRole('button',{name:'Close',exact:true}).at(-1)!);
   fetch.mockResolvedValue(new Response('# Second binding'));
   fireEvent.click(buttons[1]);
   expect(await screen.findByRole('heading',{name:'Second binding'})).toBeVisible();
   expect(fetch).toHaveBeenLastCalledWith(expect.stringContaining('/input-document?binding=b'),expect.anything());
+  fireEvent.click(screen.getByRole('button', { name: 'Document options' }));
+  expect(await screen.findByText('Binding: b')).toBeVisible();
 });
 
 describe('JS shared story actions', () => {
@@ -2144,7 +2156,7 @@ describe('C1 source recovery',()=>{
     await waitFor(()=>expect(sessionStorage.getItem('json-patch-v2:cortex:restart:tenant:job')).toBeNull());
     expect(screen.queryByRole('dialog')).toBeNull();
     // A keyed page remount loads the returned source identity.
-    await waitFor(()=>expect(getJob).toHaveBeenLastCalledWith('tenant','accepted-successor',true));
+    await waitFor(()=>expect(getJob).toHaveBeenLastCalledWith('tenant','accepted-successor'));
     expect(cancelJob).not.toHaveBeenCalled();
   });
   it('R08 R11 pending cancellation permits restart after its in-flight lock ends',async()=>{

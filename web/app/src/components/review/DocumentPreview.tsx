@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert, Button, Radio, Space } from 'antd';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -27,7 +27,7 @@ function AttachedImage({ id, name, url, onError }: { id: string; name: string; u
 }
 export type PreviewAttachment = { key: string; name: string; url: string; onError?: (error: unknown) => void };
 export type ResolvePreviewAttachment = (reference: string) => PreviewAttachment | undefined;
-interface Props { htmlContext?: HTMLContext; reviewOptions?: { storedBytes?: number; scrollMarkdownTables?: boolean }; markdownSource?: boolean; setMarkdownSource?: (source: boolean) => void; data: DocumentData; name: string; dual: boolean; setDual: (value: boolean) => void; resolveAttachment?: ResolvePreviewAttachment; navigation?: PreviewNavigation; navigationIntent?: NavigationIntent }
+interface Props { htmlContext?: HTMLContext; reviewOptions?: { storedBytes?: number; scrollMarkdownTables?: boolean; details?: ReactNode; actions?: ReactNode }; markdownSource?: boolean; setMarkdownSource?: (source: boolean) => void; data: DocumentData; name: string; dual: boolean; setDual: (value: boolean) => void; resolveAttachment?: ResolvePreviewAttachment; navigation?: PreviewNavigation; navigationIntent?: NavigationIntent }
 export default function DocumentPreview({ htmlContext, reviewOptions, data, name, markdownSource = false, setMarkdownSource, dual, setDual, resolveAttachment, navigation, navigationIntent }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const [linkNotice, setLinkNotice] = useState('');
@@ -66,7 +66,7 @@ export default function DocumentPreview({ htmlContext, reviewOptions, data, name
   </>;
   return <div ref={root} tabIndex={-1} aria-label="Document preview" className="review-document-preview">
     {linkNotice && <div role="status">{linkNotice}</div>}
-    {reviewOptions ? <DocumentOptions storedBytes={reviewOptions.storedBytes}>{controls}</DocumentOptions> : controls}
+    {reviewOptions ? <DocumentOptions storedBytes={reviewOptions.storedBytes} details={reviewOptions.details} actions={reviewOptions.actions}>{controls}</DocumentOptions> : controls}
 
     {format === 'source' && /\.(svg|html?)$/i.test(name) && <Alert type="info" message="Markup preview unavailable: unrecognized or conflicting document root; showing source." />}
     {(data.truncated || overrideLimited) && <Alert type="warning" message="Preview truncated. Search covers only loaded content. Download the complete original." />}
@@ -87,13 +87,13 @@ export default function DocumentPreview({ htmlContext, reviewOptions, data, name
             const url = navigation.url(resolution.key);
             return url ? <a href={url} onClick={event => {
               if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-              event.preventDefault(); navigation.open(resolution.key, resolution.fragment);
+              event.preventDefault(); navigation.open(resolution.key, resolution.fragment, event.currentTarget);
             }}>{children}</a> : <span>{children} (unavailable)</span>;
           }
-          return <button type="button" className="review-artifact-link" onClick={() => {
+          return <button type="button" className="review-artifact-link" onClick={event => {
             const current = navigation?.resolve(href || '') || resolveArtifactLink(href || '', name, []);
             if (current.kind === 'fragment') { scrollToFragment(current.fragment); return; }
-            if (current.kind === 'target' && navigation?.open(current.key, current.fragment)) { setLinkNotice(''); return; }
+            if (current.kind === 'target' && navigation?.open(current.key, current.fragment, event.currentTarget)) { setLinkNotice(''); return; }
             setLinkNotice(`Artifact unavailable: ${current.kind === 'unavailable' ? current.reason : 'outside-context'}`);
           }}>{children}</button>;
         },

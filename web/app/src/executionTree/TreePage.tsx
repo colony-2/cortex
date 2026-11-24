@@ -1,9 +1,9 @@
-import { Button, Tooltip } from 'antd';
-import { AimOutlined, ArrowLeftOutlined, ExportOutlined, FlagOutlined, ReloadOutlined, StopOutlined } from '@ant-design/icons';
+import { Button, Modal, Tooltip } from 'antd';
+import { AimOutlined, ArrowLeftOutlined, ExportOutlined, FlagOutlined, InfoCircleOutlined, ReloadOutlined, StopOutlined } from '@ant-design/icons';
 import JobActionDialog from '../components/JobActionDialog';
 import { isFinishedJob } from '../utils/jobStatus';
 import { useJobCancellation } from './useJobCancellation';
-import { useEffect, useReducer, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import type { TreeNode } from '@colony2/shared';
 import { dagPath, dagReturnPath } from './navigation';
@@ -21,12 +21,41 @@ export default function TreePage(){
   const returnTo=dagReturnPath(location.state?.treeWaitFrom,projectId);
   return <main>{returnTo&&<nav><Link className="compact-touch-link" to={returnTo}>Back to waiting job graph</Link></nav>}<TreeWorkspace key={JSON.stringify([projectId,jobId])} tenant={projectId} entry={jobId}/></main>;
 }
-export function TreeWorkspace({tenant,entry,active=true,embedded=false,onJobChanged}:{tenant:string;entry:string;active?:boolean;embedded?:boolean;onJobChanged?:(node:TreeNode)=>void}){
+function TreePrompt({ prompt }: { prompt: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const excerpt = prompt.match(/^\s*\S+(?:\s+\S+){74}(?=\s+\S)/)?.[0];
+  return <div className="tree-prompt">
+    <strong>Prompt</strong>
+    <p>{excerpt && !expanded ? `${excerpt.trim()}…` : prompt}</p>
+    {excerpt && <Button size="small" type="text" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? 'Show less' : 'Show more'}</Button>}
+  </div>;
+}
+export function TreeWorkspace({tenant,entry,active=true,embedded=false,onJobChanged,relationships}:{tenant:string;entry:string;active?:boolean;embedded?:boolean;onJobChanged?:(node:TreeNode)=>void;relationships?:ReactNode}){
   const inbox=useOptionalJobInbox();
   const pending=new Set(inbox?.tenant===tenant?inbox.pending.map(input=>input.id):[]);
   const [,update]=useReducer(n=>n+1,0),traversal=useRef<Traversal>();
   const [selected,select]=useState(entry),[reference,setReference]=useState<string>(),[collapsed,collapse]=useState(new Set<string>()),[search,setSearch]=useState(''),[zoom,setZoom]=useState(1),[preferredTarget,setPreferredTarget]=useState<string>();
   const cancellation=useJobCancellation(tenant,entry,onJobChanged),detailHeading=useRef<HTMLHeadingElement>(null),viewport=useRef<HTMLDivElement>(null),selectedCard=useRef<HTMLButtonElement>(null),initiallyRevealed=useRef(false);
+  const workspace = useRef<HTMLDivElement>(null);
+  const detailPane = useRef<HTMLElement>(null);
+  const pan = useRef<{ pointer: number; x: number; y: number; left: number; top: number }>();
+  const [showRelationships, setShowRelationships] = useState(false);
+  useEffect(() => { if (!active) setShowRelationships(false); }, [active]);
+  useLayoutEffect(() => { if (detailPane.current) detailPane.current.scrollTop = 0; }, [selected, reference]);
+  useLayoutEffect(() => {
+    const element = workspace.current;
+    if (!element || !active) return;
+    const measure = () => {
+      const top = element.getBoundingClientRect().top + window.scrollY;
+      const available = window.innerHeight - top - (embedded || window.innerWidth >= 768 ? 24 : 12);
+      element.style.setProperty('--tree-workspace-height', `${Math.max(280, available)}px`);
+    };
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure);
+    for (const header of document.querySelectorAll('.app-header, .job-story-header, .job-detail-tabs')) observer?.observe(header);
+    window.addEventListener('resize', measure);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
+  }, [active, embedded]);
   const [now,setNow]=useState(Date.now),[documentVisible,setDocumentVisible]=useState(document.visibilityState!=='hidden');
   const visible=active&&documentVisible,visibleRef=useRef(visible);visibleRef.current=visible;
   const previousConsumer=useRef(entry),focusedCard=useRef<HTMLElement>();
@@ -69,15 +98,26 @@ export function TreeWorkspace({tenant,entry,active=true,embedded=false,onJobChan
   const cycles=graph?.components().filter(c=>c.length>1||[...graph.edges.values()].some(e=>e.source===c[0]&&e.target===c[0]))||[];
   const returnTo=dagPath(tenant,entry,byID.get(entry)?.job_type);
   return <section className={embedded?'execution-tree':'app-page execution-tree'} onFocusCapture={e=>{const el=(e.target as HTMLElement).closest<HTMLElement>('[data-job-id],[data-wait-ref]');if(el)focusedCard.current=el;}}>
-    <div className="tree-workspace">
+    <div className="tree-workspace" ref={workspace}>
       <div className="tree-diagram-column">
         <div className="tree-toolbar" role="group" aria-label="Graph zoom">
           <button aria-label="Zoom out" onClick={()=>setZoom(z=>Math.max(.05,z-.2))}>−</button>
           <output aria-label="Zoom">{Math.round(zoom*100)}%</output>
           <button aria-label="Zoom in" onClick={()=>setZoom(z=>Math.min(2,z+.2))}>+</button>
-          <button onClick={()=>setZoom(Math.max(.05,Math.min(1,(viewport.current?.clientWidth||800)/canvasWidth)))}>Fit</button>
+          <button onClick={()=>setZoom(Math.max(.05,Math.min(1,(viewport.current?.clientWidth||800)/canvasWidth,(viewport.current?.clientHeight||500)/canvasHeight)))}>Fit</button>
+          {relationships && <Tooltip title="Related jobs and goals"><Button aria-label="Related jobs and goals" icon={<InfoCircleOutlined aria-hidden />} onClick={() => setShowRelationships(true)} /></Tooltip>}
         </div>
-        {state?.error?<div role="alert"><p>{state.error}</p><button onClick={()=>void controller?.run()}>Retry entry</button></div>:<div ref={viewport} className="tree-viewport" aria-label="Execution diagram"><div style={{width:canvasWidth*zoom,height:canvasHeight*zoom}}><div className="tree-canvas" style={{width:canvasWidth,height:canvasHeight,transform:`scale(${zoom})`}}>
+        {state?.error?<div role="alert"><p>{state.error}</p><button onClick={()=>void controller?.run()}>Retry entry</button></div>:<div ref={viewport} className="tree-viewport" aria-label="Execution diagram" onPointerDown={event => {
+          if (event.button !== 0 || (event.target as Element).closest('button, a')) return;
+          const element = event.currentTarget;
+          pan.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, left: element.scrollLeft, top: element.scrollTop };
+          element.setPointerCapture(event.pointerId);
+        }} onPointerMove={event => {
+          const start = pan.current;
+          if (start?.pointer !== event.pointerId) return;
+          event.currentTarget.scrollLeft = start.left + start.x - event.clientX;
+          event.currentTarget.scrollTop = start.top + start.y - event.clientY;
+        }} onLostPointerCapture={() => { pan.current = undefined; }}><div className="tree-zoom-frame" style={{width:canvasWidth*zoom,height:canvasHeight*zoom}}><div className="tree-canvas" style={{width:canvasWidth,height:canvasHeight,transform:`scale(${zoom})`}}>
           <svg aria-label="Runtime parent connections" width="100%" height="100%">{graph&&[...graph.edges.values()].filter(e=>e.kind==='child'&&routes.has(e.key)).map(e=><path key={e.key} data-parent={graph.nodes.get(e.source)?.id} data-child={graph.nodes.get(e.target)?.id} d={routes.get(e.key)!.path} className={e.previous?'tree-waits-previous':''}/>)}</svg>
           <svg className="tree-wait-connections" aria-label="Waits-for connections" width="100%" height="100%">
             <defs><marker id={`wait-arrow-${embedded?'embedded':'standalone'}`} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0,0 8,4 0,8" fill="#6941a5"/></marker></defs>
@@ -91,7 +131,7 @@ export function TreeWorkspace({tenant,entry,active=true,embedded=false,onJobChan
           })}
         </div></div></div>}
       </div>
-      <aside aria-label={reference?'Selected wait target':'Selected job details'} className="tree-details">
+      <aside ref={detailPane} aria-label={reference?'Selected wait target':'Selected job details'} className="tree-details" tabIndex={0}>
         {state&&!state.error&&<div className="tree-details-header"><h2 ref={detailHeading} tabIndex={-1}>{reference?'Selected wait target':'Selected job'}</h2>
           {detail&&!reference&&<div className="tree-detail-actions" role="group" aria-label="Selected job actions">
             {cancellation.eligible(detail)&&<Tooltip title="Cancel job" trigger={['hover','focus']}><Button className="tree-detail-action tree-detail-cancel" danger aria-label="Cancel job" icon={<StopOutlined/>} onClick={()=>cancellation.open(detail)}/></Tooltip>}
@@ -99,6 +139,7 @@ export function TreeWorkspace({tenant,entry,active=true,embedded=false,onJobChan
             {detail.job_type==='recipe'&&<Tooltip title="Open execution" trigger={['hover','focus']}><Link className="tree-detail-action" aria-label="Open execution" to={`${jobPath(tenant,detail.job_id)}/story`} state={{treeReturnTo:returnTo}}><ExportOutlined/></Link></Tooltip>}
           </div>}
         </div>}
+        {!reference && detail?.prompt && <TreePrompt key={detail.job_id} prompt={detail.prompt} />}
         <div className="tree-tools" role="group" aria-label="Graph tools">
           {!embedded&&<Tooltip title="Back to jobs"><Link className="tree-detail-action" aria-label="Back to jobs" to={`/project/${encodeURIComponent(tenant)}/jobs`}><ArrowLeftOutlined/></Link></Tooltip>}
           <Tooltip title="Refresh tree"><Button aria-label="Refresh tree" icon={<ReloadOutlined/>} onClick={()=>controller?.refresh()}/></Tooltip>
@@ -117,7 +158,7 @@ export function TreeWorkspace({tenant,entry,active=true,embedded=false,onJobChan
           {cancellationState?.busy&&<p role="status">Checking cancellation status…</p>}{cancellationState?.unavailable&&<p role="status">Status unavailable</p>}{cancellationState?.notice&&<p role="status">{cancellationState.notice}</p>}{cancellationState?.error&&<p role="alert">{cancellationState.error}</p>}
           {(!isFinishedJob(detail)&&!cancellation.eligible(detail)||cancellationState?.unavailable)&&<Button disabled={cancellationState?.busy} onClick={()=>void cancellation.refresh(detail)}>Refresh status</Button>}
           <TargetLink tenant={tenant} target={{key:graph!.key(selected),id:selected,kind:'job',rows:[]}} returnTo={returnTo}/>
-          <dl>{Object.entries({Tenant:detail.tenant_id,Job:detail.job_id,Title:detail.title||'Unavailable',Prompt:detail.prompt||'Unavailable',Cell:detail.cell||'Unknown',Type:detail.job_type,Goal:detail.goal_id||'None recorded',Store:detail.store||'Unavailable','Cancellation requested':detail.cancel_requested?'Yes':'No',Completion:detail.completion_status||'Unknown',Submitted:detail.created_at||'Unavailable',Updated:detail.updated_at||'Unavailable','Logical termination':detail.archived_at||'Unavailable','Runtime parent':detail.parent_job_id||'No recorded parent','Recipe attribution':detail.recipe_parent_job_id||'None recorded','Child coverage':branchText(detail.job_id),'Wait coverage':waits.state.stopped||waits.state.error||state.waits.get(detail.job_id)?.state||'pending'}).map(([key,value])=><div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>
+          <dl>{Object.entries({Tenant:detail.tenant_id,Job:detail.job_id,Title:detail.title||'Unavailable',Cell:detail.cell||'Unknown',Type:detail.job_type,Goal:detail.goal_id||'None recorded',Store:detail.store||'Unavailable','Cancellation requested':detail.cancel_requested?'Yes':'No',Completion:detail.completion_status||'Unknown',Submitted:detail.created_at||'Unavailable',Updated:detail.updated_at||'Unavailable','Logical termination':detail.archived_at||'Unavailable','Runtime parent':detail.parent_job_id||'No recorded parent','Recipe attribution':detail.recipe_parent_job_id||'None recorded','Child coverage':branchText(detail.job_id),'Wait coverage':waits.state.stopped||waits.state.error||state.waits.get(detail.job_id)?.state||'pending'}).map(([key,value])=><div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>
           {detail.job_type!=='recipe'&&<p>Generic job summary; no recipe story available.</p>}
           {state.branches.get(detail.job_id)?.state==='failed'&&<button disabled={state.loading} onClick={()=>void controller?.run(detail.job_id)}>Retry child page</button>}
           {(controller?.viewCapped||['limited','malformed'].includes(state.branches.get(detail.job_id)?.state||''))&&<p><Link className="compact-touch-link" to={dagPath(tenant,detail.job_id,detail.job_type)}>Open branch as entry</Link></p>}
@@ -135,6 +176,8 @@ export function TreeWorkspace({tenant,entry,active=true,embedded=false,onJobChan
         </section>
       </aside>
     </div>
+    {relationships && <Modal title="Job relationships" open={active && showRelationships} footer={null} onCancel={() => setShowRelationships(false)} width="min(760px, 94vw)"
+      styles={{ body: { maxHeight: '72dvh', overflow: 'auto' } }}>{relationships}</Modal>}
     {cancellation.target&&<JobActionDialog projectId={cancellation.target.tenant_id} jobIds={[cancellation.target.job_id]} action="cancel" scopeText="Cancel this job? Child jobs already submitted will not be cancelled. Running work may take time to stop, and actions already performed will not be undone." disabled={!cancellation.eligible(cancellation.overlay(cancellation.target))&&!cancellation.state(cancellation.target.job_id)?.busy} onBusyChange={cancellation.busy} onSettled={cancellation.settled} onClose={cancellation.close} onComplete={()=>{}} focusFallback={()=>detailHeading.current?.focus({preventScroll:true})}/>}
   </section>;
 }

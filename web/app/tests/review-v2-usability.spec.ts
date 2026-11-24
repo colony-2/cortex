@@ -1,14 +1,14 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { test, setNativeZoom, captureNativeZoom } from './helpers/nativeZoom';
-import { authorizeV2, reviewV2BrowserFixture, v2Path, v2Ids, v2Selected, v2Catalog } from './helpers/reviewV2';
+import { authorizeV2, reviewV2BrowserFixture, v2Path, v2Ids, v2Selected, v2Catalog, v2Attachment, v2Preview, v2Primary, v2ClosePreview } from './helpers/reviewV2';
 
 test.beforeEach(async({page,baseURL})=>authorizeV2(page,baseURL!));
 async function geometry(page:Page){
  await expect.poll(()=>page.evaluate(()=>{
-  const pane=document.querySelector('.review-v2-response')!;const box=pane.getBoundingClientRect();const viewport=window.visualViewport;
-  const bottom=viewport?viewport.height+viewport.offsetTop:innerHeight;
-  return {overflow:document.documentElement.scrollWidth>innerWidth+1,fixed:getComputedStyle(pane).position==='fixed',bounded:box.height<=.75*(viewport?.height??innerHeight)+1,bottom:Math.abs(box.bottom-bottom)<2,reserved:parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--review-action-height'))>=box.height-1};
- })).toEqual({overflow:false,fixed:true,bounded:true,bottom:true,reserved:true});
+  const pane=document.querySelector('.review-v2-response')!;
+  const review=document.querySelector('.review-v2-layout')!;
+  return {overflow:document.documentElement.scrollWidth>innerWidth+1,inline:getComputedStyle(pane).position==='static',below:pane.getBoundingClientRect().top>=review.getBoundingClientRect().bottom};
+ })).toEqual({overflow:false,inline:true,below:true});
 }
 async function screenshot(page:Page,name:string){await page.screenshot({path:test.info().outputPath(name),fullPage:false});}
 
@@ -17,14 +17,15 @@ for(const width of [1440,390])test(`N06–10 v2 history retains text, files, com
  await page.goto('/project/v2/reviews');await page.goto(v2Path+'?filter=one&filter=two#read');await v2Selected(page,0);
  const logical=new URL(page.url()).searchParams.get('review_id');expect(logical).toBe(fixture.state.request.review_id);
  const initialDetails=fixture.state.details;
- await expect(page.getByRole('region',{name:'Review context',exact:true}).getByText('platform',{exact:true})).toBeVisible();
+ await expect(page.locator('summary').filter({hasText:'Make reviews easier to read'}).getByText('platform',{exact:true})).toBeVisible();
  if(width===1440){
-  const opener=page.getByRole('button',{name:'Open navigation',exact:true});
+  const opener=page.getByRole('button',{name:'Collapse navigation',exact:true});
   const cellLink=page.getByRole('navigation',{name:'Inboxes',exact:true}).getByRole('link',{name:'platform',exact:true});
-  await opener.click();await expect(cellLink).toBeVisible();
-  await page.keyboard.press('Escape');await expect(cellLink).toBeHidden();await expect(opener).toBeFocused();
+  await expect(cellLink).toBeVisible();
+  await opener.click();await expect(page.locator('.desktop-navigation')).toHaveCSS('width','76px');
+  await page.getByRole('button',{name:'Expand navigation',exact:true}).click();
+  await expect(page.locator('.desktop-navigation')).toHaveCSS('width','256px');
  }
- await expect(page.getByRole('navigation',{name:'Job ancestors'}).getByRole('link')).toHaveText(['Build a useful job workspace','Improve the review reading and response flow','Review viewer usability']);
  await page.getByRole('button',{name:'Ask a question',exact:true}).click();
  const editor=page.getByLabel('Question or requested change (required)',{exact:true});await expect(editor).toBeFocused();
  await editor.fill('Keep these notes while I compare documents.');
@@ -32,50 +33,66 @@ for(const width of [1440,390])test(`N06–10 v2 history retains text, files, com
  await page.locator('#review-v2-files').evaluate(el=>el.setAttribute('data-retained','yes'));
  await page.getByRole('button',{name:'Review settings'}).click();
  await page.getByRole('dialog').getByLabel('Example count').fill('0');await page.getByRole('button',{name:'Done',exact:true}).click();
- await v2Catalog(page,1);await v2Catalog(page,2);
- await page.locator('.review-source-body').evaluate(el=>{el.scrollLeft=140;el.setAttribute('data-scroll-retained','yes');});
- const sourceScroll=await page.locator('.review-source-body').evaluate(el=>el.scrollLeft);
- await page.getByRole('button',{name:'Hide documents',exact:true}).click();await ensureDocuments(page);
- await page.getByRole('button',{name:'Hide discussion',exact:true}).click();await page.getByRole('button',{name:'Show discussion',exact:true}).click();
- await expect(page.locator('.review-source-body')).toHaveAttribute('data-scroll-retained','yes');expect(await page.locator('.review-source-body').evaluate(el=>el.scrollLeft)).toBe(sourceScroll);
+ const primary = v2Primary(page).getByRole('heading',{name:'Viewer changes'});
+ await primary.evaluate(element=>element.setAttribute('data-preview-identity','kept'));
+ await v2Catalog(page,1);
+ await v2Preview(page).getByRole('link',{name:'Read source notes',exact:true}).click();await v2Selected(page,2);
+ await expect(primary).toHaveAttribute('data-preview-identity','kept');
+ await expect.poll(async()=>(await v2Preview(page).boundingBox())?.width).toBeCloseTo(width*0.95,0);
+ await expect.poll(async()=>(await v2Preview(page).boundingBox())?.height).toBeCloseTo(900*0.95,0);
+ await expect.poll(()=>v2Preview(page).locator('.ant-modal-body').evaluate(el=>el.scrollHeight>el.clientHeight)).toBe(true);
+ const pageTop = await page.evaluate(()=>window.scrollY);
+ await v2Preview(page).locator('.ant-modal-body').hover();
+ await page.mouse.wheel(0,340);
+ await expect.poll(()=>v2Preview(page).locator('.ant-modal-body').evaluate(el=>el.scrollTop)).toBeGreaterThan(0);
+ expect(await page.evaluate(()=>window.scrollY)).toBe(pageTop);
  for(const [direction,index] of [['back',1],['back',0],['forward',1],['forward',2]] as const){
   if(direction==='back')await page.goBack();else await page.goForward();await v2Selected(page,index);
   await expect(editor).toHaveValue('Keep these notes while I compare documents.');await expect(page.locator('#review-v2-files')).toHaveAttribute('data-retained','yes');
   await expect(page.getByRole('button',{name:'Remove notes.md (1)'})).toBeVisible();await expect(page.locator('.review-v2-response')).toContainText('Retained locally; applies to Request changes');
  }
  expect(fixture.state.details).toBe(initialDetails);expect(fixture.state.submits).toHaveLength(0);expect(new URL(page.url()).searchParams.getAll('filter')).toEqual(['one','two']);expect(new URL(page.url()).hash).toBe('#read');
- await page.getByRole('button',{name:'Review settings'}).click();await expect(page.getByRole('dialog').getByLabel('Example count')).toHaveValue('0');
- await page.goBack();await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'Done',exact:true}).click();await v2Selected(page,1);
- const shared=page.url();await page.reload();await v2Selected(page,1);
+ await page.goBack();await v2Selected(page,1);
+ const shared=page.url();
+ await expect.poll(()=>v2Preview(page).evaluate(element=>element.contains(document.activeElement))).toBe(true);
+ await page.keyboard.press('Escape');await v2Selected(page,0);
+ await page.getByRole('button',{name:'Review settings'}).click();
+ await expect(page.getByRole('dialog',{name:'Review settings'}).getByLabel('Example count')).toHaveValue('0');
+ await page.getByRole('button',{name:'Done',exact:true}).click();
+ await page.goto(shared);await v2Selected(page,1);
+ await page.reload();await v2Selected(page,1);
  const other=await browser.newContext({baseURL});try{const recipient=await other.newPage();await authorizeV2(recipient,baseURL!);await reviewV2BrowserFixture(recipient);await recipient.goto(shared);await v2Selected(recipient,1);}finally{await other.close();}
 });
 test('N06/N08 catalog, source and Markdown links share history without same-document entries',async({page})=>{
  await page.setViewportSize({width:1440,height:900});await reviewV2BrowserFixture(page);await page.goto('/project/v2/reviews');await page.goto(v2Path);await v2Selected(page,0);
- await page.locator('.review-selected-details').getByRole('link',{name:/Acceptance checks/}).click();await v2Selected(page,1);
+ await v2Primary(page).getByRole('button',{name:'Document options',exact:true}).click();
+ const options=page.getByRole('dialog',{name:'Document options',exact:true});
+ await expect(options.getByRole('link',{name:'Download',exact:true})).toHaveAttribute('href',/plan.md/);
+ await options.getByRole('link',{name:/Acceptance checks/}).click();await v2Selected(page,1);
  await page.getByRole('link',{name:'Same heading',exact:true}).click();await page.goBack();await v2Selected(page,0);
  await page.getByRole('link',{name:'Open checks',exact:true}).click();await v2Selected(page,1);await page.getByRole('link',{name:'Read source notes',exact:true}).click();await v2Selected(page,2);
- await v2Catalog(page,2);await page.goBack();await v2Selected(page,1);await page.goBack();await v2Selected(page,0);await page.goBack();await expect(page).toHaveURL(/\/project\/v2\/reviews$/);
+ await page.goBack();await v2Selected(page,1);await page.goBack();await v2Selected(page,0);await page.goBack();await expect(page).toHaveURL('/project/v2/jobs?inbox=reviews');
 });
 test('N10/N11 missing originals replace selection without losing drafts; Retry and late reads do not change history',async({page})=>{
  const f=await reviewV2BrowserFixture(page);await page.goto(v2Path);await v2Selected(page,0);
  await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)').fill('Retained after removal');
  f.state.failures.set(v2Ids[1],503);
- if(await page.getByRole('button',{name:'Show documents'}).isVisible())await page.getByRole('button',{name:'Show documents'}).click();
- await page.getByRole('navigation',{name:'Review documents'}).getByRole('button').nth(1).click();
- await expect(page.getByLabel('Selected document').getByRole('alert')).toContainText('Could not load this document');
- f.state.failures.delete(v2Ids[1]);await page.getByLabel('Selected document').getByRole('button',{name:'Retry',exact:true}).click();await v2Selected(page,1);
+ await v2Attachment(page,1).click();
+ await expect(v2Preview(page).getByLabel('Selected document').getByRole('alert')).toContainText('Could not load this document');
+ f.state.failures.delete(v2Ids[1]);await v2Preview(page).getByLabel('Selected document').getByRole('button',{name:'Retry',exact:true}).click();await v2Selected(page,1);
  let release!:()=>void;f.state.holds.set(v2Ids[2],new Promise(r=>{release=r;}));
  // Start the request without waiting for its preview.
- if(await page.getByRole('button',{name:'Show documents'}).isVisible())await page.getByRole('button',{name:'Show documents'}).click();
- await page.getByRole('navigation',{name:'Review documents'}).getByRole('button').nth(2).click();await expect.poll(()=>f.state.reads.includes(v2Ids[2])).toBe(true);
+ await v2Preview(page).getByRole('link',{name:'Read source notes',exact:true}).click();await expect.poll(()=>f.state.reads.includes(v2Ids[2])).toBe(true);
  await page.goBack();await v2Selected(page,1);release();await expect.poll(()=>f.state.complete.includes(v2Ids[2])).toBe(true);await v2Selected(page,1);
  delete f.state.request.documents[v2Ids[1]];delete f.state.request.document_metadata![v2Ids[1]];f.state.request.document_metadata![v2Ids[0]].source_document_ids=[];
- await page.getByRole('button',{name:'Review settings'}).click();await page.getByRole('button',{name:'Done',exact:true}).click();
- // A failed explicit submission triggers a fresh observation of the changed catalog.
- f.state.rejected=true;await page.getByRole('button',{name:'Send · Ask a question'}).click();
- await expect(page.getByText(/linked document is unavailable/)).toBeVisible();await v2Selected(page,0);
+ await v2ClosePreview(page);
+ f.state.rejected=true;
+ await page.getByRole('button',{name:'Send · Ask a question'}).click();
+ await expect(page.getByText(/could not be accepted/i)).toBeVisible();
  await expect(page.getByLabel('Question or requested change (required)')).toHaveValue('Retained after removal');
- await page.goBack();await v2Selected(page,0);
+ await page.goto(v2Path+'?document_id='+encodeURIComponent(v2Ids[1]));
+ await expect(page.getByText(/linked document is unavailable/)).toBeVisible();await v2Selected(page,0);
+
 });
 test('N04/R05 duplicate links fail closed and another retained review cannot answer the live request',async({page})=>{
  const f=await reviewV2BrowserFixture(page);await page.goto(v2Path+'?review_id='+encodeURIComponent(f.state.request.review_id)+'&review_id=other&document_id='+encodeURIComponent(v2Ids[0]));
@@ -83,37 +100,64 @@ test('N04/R05 duplicate links fail closed and another retained review cannot ans
  await page.getByRole('button',{name:'Open selected review'}).click();await v2Selected(page,0);
  f.state.liveReviewId='another-review';await page.reload();await v2Selected(page,0);await expect(page.locator('.review-v2-response')).toContainText('Another request is now pending');await expect(page.getByRole('button',{name:'Approve direction',exact:true})).toHaveCount(0);expect(f.state.submits).toHaveLength(0);
 });
-for(const width of [1680,1320,320,390])test(`L01–05 wide navigation, inline previews and fixed composer at ${width}px`,async({page})=>{
+for(const width of [1680,1320,320,390])test(`L01–05 response and attachments, inline previews and composer at ${width}px`,async({page})=>{
  await page.setViewportSize({width,height:900});await reviewV2BrowserFixture(page);await page.goto(v2Path);await v2Selected(page,0);await geometry(page);
- if(width===1680){await expect(page.getByRole('navigation',{name:'Review documents'})).toBeVisible();expect(await page.locator('.review-reading-track').evaluate(el=>el.clientWidth)).toBeGreaterThanOrEqual(720);await screenshot(page,'v2-wide-reading.png');await page.getByRole('navigation',{name:'Review documents'}).getByRole('button').first().focus();await page.setViewportSize({width:1320,height:900});await expect(page.getByRole('navigation',{name:'Review documents'})).toBeHidden();await expect(page.getByRole('button',{name:'Show documents',exact:true})).toBeFocused();await page.setViewportSize({width:1680,height:900});await expect(page.getByRole('navigation',{name:'Review documents'})).toBeVisible();}
- else{await expect(page.getByRole('navigation',{name:'Review documents'})).toBeHidden();if(width===1320){expect(await page.locator('.review-reading-track').evaluate(el=>el.clientWidth)).toBeGreaterThanOrEqual(720);await screenshot(page,'v2-near-fit-reading.png');}}
+ const attachments = page.getByRole('navigation',{name:'Review attachments'});
+ await expect(attachments.getByRole('button')).toHaveText(['Acceptance checks','Source notes','Code changes','Layout image','Changes']);
+ await expect(page.locator('.thread-message-subject').getByText('Make reviews easier to read',{exact:true})).toHaveCount(1);
+ await expect(page.getByRole('heading',{name:'Response',exact:true})).toHaveCount(0);
+ expect(await attachments.evaluate(nav => !!(nav.compareDocumentPosition(document.querySelector('.review-document-content')!) & Node.DOCUMENT_POSITION_PRECEDING))).toBe(true);
+ if(width>=1320){expect(await widthOf(page,'.review-reading-track')).toBeGreaterThanOrEqual(width-700);await screenshot(page,`v2-reading-${width}.png`);}
  await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)').fill('Can you confirm the response stays in view?');
  await page.getByLabel('Attach notes').setInputFiles({name:'my-review.md',mimeType:'text/markdown',buffer:Buffer.from('notes')});await geometry(page);
- await page.locator('.review-selected-details').scrollIntoViewIfNeeded();
- const tail=await page.locator('.review-selected-details').boundingBox();const bar=await page.locator('.review-v2-response').boundingBox();expect(tail!.y+tail!.height).toBeLessThanOrEqual(bar!.y);
+ await expect(page.locator('.review-selected-details')).toHaveCount(0);
+ await attachments.scrollIntoViewIfNeeded();
+ const tail=await attachments.boundingBox();const bar=await page.locator('.review-v2-response').boundingBox();expect(tail!.y+tail!.height).toBeLessThanOrEqual(bar!.y);
  for(const index of [2,3,4]){await v2Catalog(page,index);await geometry(page);}
  await v2Catalog(page,1);await geometry(page);
- await page.locator('.review-document-content').scrollIntoViewIfNeeded();
- if(width===1680||width===390||width===320)await screenshot(page,`v2-composer-${width}.png`);
- // Internal pane scrolling keeps the send button and removals reachable at small sizes.
+ await v2Catalog(page,0);
+ await expect(page.locator('.thread-message-subject').getByText('Make reviews easier to read',{exact:true})).toHaveCount(1);
+ await expect(page.getByRole('heading',{name:'Response',exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Send · Ask a question'}).scrollIntoViewIfNeeded();
  await expect(page.getByRole('button',{name:'Send · Ask a question'})).toBeInViewport();
+ if(width===1680||width===390||width===320)await screenshot(page,`v2-composer-${width}.png`);
  await expect.poll(()=>page.getByRole('button',{name:'Send · Ask a question'}).evaluate(element=>{const box=element.getBoundingClientRect();return element.contains(document.elementFromPoint(box.x+box.width/2,box.y+box.height/2));})).toBe(true);
  await page.getByRole('button',{name:'Back',exact:true}).click();await geometry(page);
- await page.getByRole('button',{name:'Hide documents',exact:true}).click();await page.setViewportSize({width:1600,height:900});await expect(page.getByRole('navigation',{name:'Review documents'})).toBeHidden();
- await page.getByRole('button',{name:'Show documents',exact:true}).click();await page.setViewportSize({width:390,height:900});await expect(page.getByRole('navigation',{name:'Review documents'})).toBeVisible();
 });
 test('P01/P05/N09 accepted question shows pending in discussion; successor retains document and uses new native request',async({page})=>{
- await page.setViewportSize({width:1440,height:900});const f=await reviewV2BrowserFixture(page);await page.goto(v2Path);await v2Selected(page,0);await v2Catalog(page,1);
+ await page.setViewportSize({width:1440,height:900});const f=await reviewV2BrowserFixture(page);await page.goto(v2Path);await v2Selected(page,0);await v2Catalog(page,1);await v2ClosePreview(page);
  await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)').fill('Does Back preserve a file draft?');
  await page.getByRole('button',{name:'Send · Ask a question'}).click();await expect(page.getByRole('region',{name:'Discussion'}).getByText('Response pending',{exact:true})).toBeVisible();await geometry(page);await screenshot(page,'v2-response-pending.png');
  expect(f.state.submits[0].request_id).toBe('native-one');expect(f.state.submits[0].response.direction).toBe('ask');
  await f.successor();await page.getByRole('button',{name:'Refresh',exact:true}).click();
- await expect(page.getByText('Response pending',{exact:true})).toHaveCount(0);await v2Selected(page,1);
+ await expect(page.getByText('Response pending',{exact:true})).toHaveCount(0);await v2Selected(page,0);
  await expect(page.getByText('The documents and drafts stay available. I can proceed after your approval.')).toBeVisible();
- await page.getByRole('button',{name:'Approve direction',exact:true}).click();await expect.poll(()=>f.state.submits.length).toBe(2);expect(f.state.submits[1]).toMatchObject({request_id:'native-two',response:{direction:'go',feedback:'',attachments:[],settings:{}}});
+ await page.getByRole('button',{name:'Approve direction',exact:true}).click();
+ expect(f.state.submits).toHaveLength(1);
+ await page.getByRole('button',{name:'Send · Approve direction',exact:true}).click();await expect.poll(()=>f.state.submits.length).toBe(2);expect(f.state.submits[1]).toMatchObject({request_id:'native-two',response:{direction:'go',feedback:'',attachments:[],settings:{}}});
  await expect(page.getByText('Response pending',{exact:true})).toHaveCount(0);
 });
-test('L07–09 simulated visual keyboard viewport bounds pane and unmount clears measurements',async({page})=>{
+test('the inline reply can switch between a recipe choice, feedback and approval without posting a draft', async ({page})=>{
+ const fixture=await reviewV2BrowserFixture(page);await page.goto(v2Path);await v2Selected(page,0);
+ const composer=page.getByRole('region',{name:'Response composer'});
+ await expect(composer).toHaveCount(0);
+ await page.getByRole('button',{name:'Another recipe choice',exact:true}).click();
+ await expect(composer.getByText('review@example.com')).toBeVisible();
+ const recipeType=composer.getByRole('button',{name:'Change response type: Another recipe choice'});
+ await expect(recipeType).toHaveText('Another recipe choice');
+ await composer.getByLabel('Question or requested change (optional)').fill('Keep this draft');
+ await recipeType.click();
+ await page.getByRole('menuitem',{name:'Approve direction'}).click();
+ await expect(composer.getByRole('button',{name:'Change response type: Approve direction'}).locator('svg[data-icon="check-circle"]')).toBeVisible();
+ await expect(composer.getByLabel('Question or requested change (not allowed)')).toHaveValue('Keep this draft');
+ expect(fixture.state.submits).toHaveLength(0);
+ await composer.getByRole('button',{name:'Remove feedback draft'}).click();
+ await expect(composer.getByRole('textbox')).toHaveCount(0);
+ await composer.getByRole('button',{name:'Send · Approve direction'}).click();
+ await expect.poll(()=>fixture.state.submits.length).toBe(1);
+ expect(fixture.state.submits[0].response).toMatchObject({direction:'go',feedback:''});
+});
+test('L07–09 the simulated keyboard leaves the inline reply and its send control reachable',async({page})=>{
  await page.setViewportSize({width:390,height:844});const fixture=await reviewV2BrowserFixture(page);fixture.state.request.question=formattedQuestion;await page.goto(v2Path);await v2Selected(page,0);
  await page.getByRole('button',{name:'Ask a question',exact:true}).click();
  await page.getByRole('button',{name:'Send · Ask a question'}).click();await expect(page.getByRole('alert')).toContainText('requires feedback');
@@ -121,12 +165,14 @@ test('L07–09 simulated visual keyboard viewport bounds pane and unmount clears
  // Exercise the browser viewport event target with a simulated keyboard height.
  await geometry(page);await page.getByRole('button',{name:'Send · Ask a question'}).scrollIntoViewIfNeeded();await expect(page.getByRole('button',{name:'Send · Ask a question'})).toBeInViewport();
  await page.evaluate(()=>{Object.defineProperty(window.visualViewport!,'offsetTop',{configurable:true,value:30});window.visualViewport!.dispatchEvent(new Event('scroll'));});await geometry(page);
- await discussionPane(page).getByRole('article').last().scrollIntoViewIfNeeded();await expect(discussionPane(page).getByRole('heading',{name:'Ready to proceed?'})).toBeVisible();await expect(page.getByRole('button',{name:'Send · Ask a question'})).toBeInViewport();
- await page.getByRole('button',{name:'Back to Reviews'}).click();
+ await discussionPane(page).getByRole('article').last().scrollIntoViewIfNeeded();await expect(discussionPane(page).getByRole('heading',{name:'Ready to proceed?'})).toBeVisible();
+ await page.getByRole('button',{name:'Send · Ask a question'}).scrollIntoViewIfNeeded();
+ await expect(page.getByRole('button',{name:'Send · Ask a question'})).toBeInViewport();
+ await page.getByRole('link',{name:'Back to inbox'}).click();
  await expect.poll(()=>page.evaluate(()=>document.documentElement.style.getPropertyValue('--review-action-height'))).toBe('');
  await page.evaluate(()=>window.dispatchEvent(new Event('resize')));expect(await page.evaluate(()=>document.documentElement.style.getPropertyValue('--review-action-height'))).toBe('');
 });
-test('L04 final discussion turn remains reachable above an expanded response pane',async({page})=>{
+test('L04 the document and discussion share the page scroll above the response controls',async({page})=>{
  await page.setViewportSize({width:1680,height:900});const f=await reviewV2BrowserFixture(page);
  f.state.request.conversation=Array.from({length:30},(_,index)=>({role:'agent',text:`Earlier answer ${index}. `+'Review discussion context. '.repeat(8),attachments:[]}));
  await page.goto(v2Path);await v2Selected(page,0);
@@ -135,11 +181,21 @@ test('L04 final discussion turn remains reachable above an expanded response pan
  await page.getByLabel('Attach notes').setInputFiles({name:'notes.md',mimeType:'text/markdown',buffer:Buffer.from('notes')});
  await geometry(page);
  const discussion=page.getByRole('region',{name:'Discussion'});
- await discussion.evaluate(element=>{element.scrollTop=element.scrollHeight;});
+ const document=page.getByRole('article',{name:'Rendered document'});
+ for (const surface of [document, discussion]) {
+  await page.evaluate(()=>window.scrollTo(0,0));
+  const metrics=await surface.evaluate(element=>{
+   const {x,y,width}=element.getBoundingClientRect();
+   return {x:x+width/2,y:y+30,overflow:element.scrollHeight-element.clientHeight};
+  });
+  expect(metrics.overflow).toBeLessThanOrEqual(1);
+  await page.mouse.move(metrics.x, metrics.y);
+  await page.mouse.wheel(0, 380);
+  await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBeGreaterThan(0);
+  expect(await surface.evaluate(element=>element.scrollTop)).toBe(0);
+ }
  const last=discussion.getByRole('article').last();
  await expect(last).toContainText(f.state.request.question);
- // Reach the last turn through both the discussion and the surrounding page.
- // The page head initially places the discussion below its sticky top inset.
  await last.scrollIntoViewIfNeeded();
  const turn=await last.boundingBox();const pane=await page.locator('.review-v2-response').boundingBox();
  expect(turn!.y+turn!.height).toBeLessThanOrEqual(pane!.y);
@@ -151,7 +207,7 @@ test.describe('actual browser zoom',()=>{
  test.use({nativeZoom:true});
  test('L06 200% zoom preserves reachable composer and context',async({page})=>{
   const f=await reviewV2BrowserFixture(page);f.state.request.question=formattedQuestion;await page.goto(v2Path);await v2Selected(page,0);await setNativeZoom(page,2);await geometry(page);
-  await expect(page.getByRole('navigation',{name:'Job ancestors'})).toBeVisible();await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)').fill('Zoomed feedback');await geometry(page);
+  await expect(page.getByRole('tab',{name:'Thread',exact:true})).toBeVisible();await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)').fill('Zoomed feedback');await geometry(page);
   const send=page.getByRole('button',{name:'Send · Ask a question'});
   await send.click({trial:true});await expect(send).toBeInViewport({ratio:1});
   await expect.poll(()=>send.evaluate(element=>{
@@ -166,13 +222,10 @@ test.describe('actual browser zoom',()=>{
 
 const formattedQuestion = '# Ready to proceed?\n\nReview the **formatted** instructions.\nKeep this authored line break.\n\n- Compare the plan\n- Confirm the checks\n\n[Public reference](https://example.com)\n\n| Check | Result |\n| --- | --- |\n| Formatting | Preserved |\n\n```ts\nconst proceed = true;\n```';
 const discussionPane = (page:Page) => page.getByRole('region',{name:'Discussion'});
-const docsSeparator = (page:Page) => page.getByRole('separator',{name:'Resize documents'});
 const discussionSeparator = (page:Page) => page.getByRole('separator',{name:'Resize discussion'});
 async function widthOf(page:Page,selector:string){return page.locator(selector).evaluate(el=>el.getBoundingClientRect().width);}
-async function ensureDocuments(page:Page){if(await page.getByRole('button',{name:'Show documents',exact:true}).isVisible())await page.getByRole('button',{name:'Show documents',exact:true}).click();}
-async function dragPane(page:Page,side:'documents'|'discussion',delta:number){
- const separator=side==='documents'?docsSeparator(page):discussionSeparator(page);
- const box=await separator.boundingBox();
+async function dragDiscussion(page:Page,delta:number){
+ const box=await discussionSeparator(page).boundingBox();
  const y=Math.max(100,Math.min(450,box!.y+30));
  await page.mouse.move(box!.x+box!.width/2,y);await page.mouse.down();await page.mouse.move(box!.x+box!.width/2+delta,y,{steps:8});await page.mouse.up();
 }
@@ -192,38 +245,39 @@ test('B01 formatted question stays final through waiting, saved review and succe
  await f.successor();f.state.request.question='## Successor question\n\nThe next **decision**.';
  await page.getByRole('button',{name:'Refresh',exact:true}).click();await expect(last.getByRole('heading',{name:'Successor question'})).toHaveCount(1);
  await expect(page.getByRole('heading',{name:'Ready to proceed?'})).toHaveCount(0);await expect(discussionPane(page).getByText('Response pending',{exact:true})).toHaveCount(0);
- await page.getByRole('button',{name:'Approve direction',exact:true}).click();await expect(page.locator('.review-v2-response')).toContainText('Response sent');
+ await page.getByRole('button',{name:'Approve direction',exact:true}).click();
+ await page.getByRole('button',{name:'Send · Approve direction',exact:true}).click();await expect(page.locator('.review-v2-response')).toContainText('Response sent');
  await page.reload();await v2Selected(page,0);await expect(last.getByRole('heading',{name:'Successor question'})).toHaveCount(1);
 });
 
-test('B02–05/B09 adjacent tracks resize independently and retain previews, response drafts, files and settings',async({page})=>{
- await page.setViewportSize({width:1920,height:1100});const f=await reviewV2BrowserFixture(page);f.state.request.question=formattedQuestion;await page.goto(v2Path);await v2Selected(page,0);await ensureDocuments(page);
+test('B02–05/B09 discussion resizes beside the response and retain previews, response drafts, files and settings',async({page})=>{
+ await page.setViewportSize({width:1920,height:1100});const f=await reviewV2BrowserFixture(page);f.state.request.question=formattedQuestion;await page.goto(v2Path);await v2Selected(page,0);
  const originalURL=page.url();const reads=f.state.reads.length;
  await page.getByRole('article',{name:'Rendered document'}).evaluate(el=>el.setAttribute('data-preview-identity','kept'));
+ await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow','320');
  await expect.poll(()=>page.evaluate(()=>{
-  const boxes=['.review-navigation-track','.review-v2-separator','.review-reading-track','.review-v2-separator + .review-v2-discussion'].map(selector=>document.querySelector(selector)?.getBoundingClientRect());
-  const tracks=Array.from(document.querySelectorAll('.review-v2-separator')).map(el=>el.getBoundingClientRect());
-  return [Math.abs(boxes[0]!.right-tracks[0].left),Math.abs(tracks[0].right-boxes[2]!.left),Math.abs(boxes[2]!.right-tracks[1].left),Math.abs(tracks[1].right-boxes[3]!.left)];
- })).toEqual([0,0,0,0]);
- await expect(docsSeparator(page)).toHaveAttribute('aria-orientation','vertical');await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow','320');
- const docBefore=await widthOf(page,'.review-navigation-track'),discussionBefore=await widthOf(page,'.review-v2-discussion'),readerBefore=await widthOf(page,'.review-reading-track');
- await dragPane(page,'documents',80);expect(await widthOf(page,'.review-navigation-track')).toBeCloseTo(docBefore+80,0);expect(await widthOf(page,'.review-v2-discussion')).toBeCloseTo(discussionBefore,0);expect(await widthOf(page,'.review-reading-track')).toBeCloseTo(readerBefore-80,0);
- await dragPane(page,'discussion',-96);expect(await widthOf(page,'.review-v2-discussion')).toBeCloseTo(discussionBefore+96,0);expect(await widthOf(page,'.review-navigation-track')).toBeCloseTo(docBefore+80,0);
- const docWidth=await widthOf(page,'.review-navigation-track'),discussionWidth=await widthOf(page,'.review-v2-discussion');
+  const reader=document.querySelector('.review-reading-track')!.getBoundingClientRect();
+  const divider=document.querySelector('.review-v2-separator')!.getBoundingClientRect();
+  const discussion=document.querySelector('.review-v2-discussion')!.getBoundingClientRect();
+  return [reader.right-divider.left, divider.right-discussion.left];
+ })).toEqual([0,0]);
+ const discussionBefore=await widthOf(page,'.review-v2-discussion'),readerBefore=await widthOf(page,'.review-reading-track');
+ await dragDiscussion(page,-96);
+ const discussionWidth=await widthOf(page,'.review-v2-discussion');
+ expect(discussionWidth).toBeCloseTo(discussionBefore+96,0);
+ expect(await widthOf(page,'.review-reading-track')).toBeCloseTo(readerBefore-96,0);
  await page.getByRole('button',{name:'Ask a question',exact:true}).click();const editor=page.getByLabel('Question or requested change (required)');await editor.fill('Keep my pane comparison.');
  await page.getByLabel('Attach notes').setInputFiles({name:'comparison.md',mimeType:'text/markdown',buffer:Buffer.from('draft')});
  await page.getByRole('button',{name:'Review settings'}).click();await page.getByRole('dialog').getByLabel('Example count').fill('3');await page.getByRole('button',{name:'Done',exact:true}).click();
- await page.getByRole('button',{name:'Hide documents',exact:true}).click();await expect(docsSeparator(page)).toHaveCount(0);await expect(page.getByRole('navigation',{name:'Review documents'})).toHaveCount(0);
- await expect(page.getByRole('button',{name:'Show documents',exact:true})).toHaveAttribute('aria-expanded','false');
- await page.getByRole('button',{name:'Hide discussion',exact:true}).click();await expect(page.getByRole('separator')).toHaveCount(0);await expect(discussionPane(page)).toHaveCount(0);
+ await discussionPane(page).getByRole('button',{name:'Hide discussion',exact:true}).click();await expect(page.getByRole('separator')).toHaveCount(0);await expect(discussionPane(page)).toHaveCount(0);
  expect(await widthOf(page,'.review-reading-track')).toBeCloseTo(await widthOf(page,'.review-v2-layout'),0);expect(await widthOf(page,'.review-reading-track')).toBeGreaterThan(900);
  await screenshot(page,'v2-reader-only.png');
- for(const side of ['documents','discussion']){
-  const button=page.getByRole('button',{name:`Show ${side}`,exact:true});await expect(button).toBeVisible();await button.hover();await expect(page.getByRole('tooltip',{name:`Show ${side}`,exact:true})).toBeVisible();
-  const id=await button.getAttribute('aria-controls');expect(id).toBeTruthy();expect(await page.evaluate(id=>!!document.getElementById(id!),id)).toBe(true);
-  await button.click();await expect(page.getByRole('button',{name:`Hide ${side}`,exact:true})).toHaveAttribute('aria-expanded','true');
- }
- expect(await widthOf(page,'.review-navigation-track')).toBeCloseTo(docWidth,0);expect(await widthOf(page,'.review-v2-discussion')).toBeCloseTo(discussionWidth,0);
+ const button=v2Primary(page).locator('.review-document-options').getByRole('button',{name:'Show discussion',exact:true});await expect(button).toBeVisible();await button.hover();
+ await expect(page.getByRole('tooltip',{name:'Show discussion',exact:true})).toBeVisible();
+ const id=await button.getAttribute('aria-controls');expect(id).toBeTruthy();expect(await page.evaluate(id=>!!document.getElementById(id!),id)).toBe(true);
+ await button.click();
+ await expect(discussionPane(page).getByRole('button',{name:'Hide discussion',exact:true})).toHaveAttribute('aria-expanded','true');
+ expect(await widthOf(page,'.review-v2-discussion')).toBeCloseTo(discussionWidth,0);
  await expect(page.getByRole('article',{name:'Rendered document'})).toHaveAttribute('data-preview-identity','kept');expect(f.state.reads.length).toBe(reads);expect(page.url()).toBe(originalURL);expect(f.state.submits).toHaveLength(0);
  await expect(editor).toHaveValue('Keep my pane comparison.');await expect(page.getByRole('button',{name:'Remove comparison.md (1)'})).toBeVisible();
  await page.getByRole('button',{name:'Review settings'}).click();await expect(page.getByRole('dialog').getByLabel('Example count')).toHaveValue('3');await page.getByRole('button',{name:'Done',exact:true}).click();
@@ -232,29 +286,28 @@ test('B02–05/B09 adjacent tracks resize independently and retain previews, res
 });
 
 test('B06–08 keyboard, focus recovery, clamp limits and pointer cancellation',async({page})=>{
- await page.setViewportSize({width:1680,height:1000});const f=await reviewV2BrowserFixture(page);f.state.request.question='[Public reference](https://example.com)';await page.goto(v2Path);await v2Selected(page,0);await ensureDocuments(page);
- for(const [side,separator,minimum] of [['documents',docsSeparator(page),180],['discussion',discussionSeparator(page),240]] as const){
-  await separator.focus();const initial=Number(await separator.getAttribute('aria-valuenow'));await page.keyboard.press('ArrowRight');await expect(separator).toHaveAttribute('aria-valuenow',String(initial+(side==='documents'?16:-16)));await page.keyboard.press('ArrowLeft');await expect(separator).toHaveAttribute('aria-valuenow',String(initial));
-  await page.keyboard.press('Home');await expect(separator).toHaveAttribute('aria-valuenow',String(minimum));await page.keyboard.press('ArrowLeft');if(side==='documents')await expect(separator).toHaveAttribute('aria-valuenow',String(minimum));
-  await page.keyboard.press('End');expect(Number(await separator.getAttribute('aria-valuenow'))).toBe(Number(await separator.getAttribute('aria-valuemax')));expect(await widthOf(page,'.review-reading-track')).toBeGreaterThanOrEqual(359);
-  await separator.press('Home');
- }
+ await page.setViewportSize({width:1680,height:1000});const f=await reviewV2BrowserFixture(page);f.state.request.question='[Public reference](https://example.com)';await page.goto(v2Path);await v2Selected(page,0);
+ const separator=discussionSeparator(page);
+ await separator.focus();const initial=Number(await separator.getAttribute('aria-valuenow'));
+ await page.keyboard.press('ArrowRight');await expect(separator).toHaveAttribute('aria-valuenow',String(initial-16));
+ await page.keyboard.press('ArrowLeft');await expect(separator).toHaveAttribute('aria-valuenow',String(initial));
+ await page.keyboard.press('Home');await expect(separator).toHaveAttribute('aria-valuenow','240');
+ await page.keyboard.press('End');expect(Number(await separator.getAttribute('aria-valuenow'))).toBe(Number(await separator.getAttribute('aria-valuemax')));
+ expect(await widthOf(page,'.review-reading-track')).toBeGreaterThanOrEqual(359);
+ await separator.press('Home');
  await page.evaluate(()=>window.scrollTo(0,0));
- await dragPane(page,'documents',-500);await expect(docsSeparator(page)).toHaveAttribute('aria-valuenow','180');
- await dragPane(page,'discussion',500);await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow','240');
- await dragPane(page,'documents',2000);expect(Number(await docsSeparator(page).getAttribute('aria-valuenow'))).toBe(Number(await docsSeparator(page).getAttribute('aria-valuemax')));await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow','240');expect(await widthOf(page,'.review-reading-track')).toBeGreaterThanOrEqual(359);await docsSeparator(page).press('Home');
- await page.evaluate(()=>window.scrollTo(0,0));await dragPane(page,'discussion',-2000);expect(Number(await discussionSeparator(page).getAttribute('aria-valuenow'))).toBe(Number(await discussionSeparator(page).getAttribute('aria-valuemax')));await expect(docsSeparator(page)).toHaveAttribute('aria-valuenow','180');expect(await widthOf(page,'.review-reading-track')).toBeGreaterThanOrEqual(359);await discussionSeparator(page).press('Home');
+ await dragDiscussion(page,500);await expect(separator).toHaveAttribute('aria-valuenow','240');
+ await dragDiscussion(page,-2000);expect(await separator.getAttribute('aria-valuenow')).toBe(await separator.getAttribute('aria-valuemax'));
+ await separator.press('Home');
  // Programmatic activation leaves focus in the pane, exercising explicit focus recovery.
  await discussionPane(page).getByRole('link',{name:'Public reference'}).focus();await expect(discussionPane(page).getByRole('link',{name:'Public reference'})).toBeFocused();
  await page.getByRole('button',{name:'Hide discussion',exact:true}).evaluate((el:HTMLButtonElement)=>el.click());await expect(page.getByRole('button',{name:'Show discussion',exact:true})).toBeFocused();
  await expect(page.getByRole('link',{name:'Public reference'})).toHaveCount(0);await page.keyboard.press('Tab');expect(await page.evaluate(()=>document.activeElement?.closest('.review-v2-discussion')!==null)).toBe(false);
  await page.getByRole('button',{name:'Show discussion',exact:true}).click();
- await page.getByRole('navigation',{name:'Review documents'}).getByRole('button').first().focus();await page.getByRole('button',{name:'Hide documents',exact:true}).evaluate((el:HTMLButtonElement)=>el.click());await expect(page.getByRole('button',{name:'Show documents',exact:true})).toBeFocused();await ensureDocuments(page);
- await page.evaluate(()=>window.scrollTo(0,0));const box=(await docsSeparator(page).boundingBox())!;
- await page.mouse.move(box.x+4,box.y+30);await page.mouse.down();await page.mouse.move(box.x+70,box.y+30);await expect(docsSeparator(page)).toHaveClass(/dragging/);
- await docsSeparator(page).dispatchEvent('pointercancel',{pointerId:1});const stopped=await widthOf(page,'.review-navigation-track');await page.mouse.move(box.x+130,box.y+30);await page.mouse.up();expect(await widthOf(page,'.review-navigation-track')).toBe(stopped);await expect(page.locator('.review-v2-layout .dragging')).toHaveCount(0);
- // Removing an active separator also releases the gesture and resize cursor.
- const next=(await docsSeparator(page).boundingBox())!;await page.mouse.move(next.x+4,next.y+30);await page.mouse.down();await page.getByRole('button',{name:'Hide documents',exact:true}).evaluate((el:HTMLButtonElement)=>el.click());await page.mouse.up();await expect(page.locator('.review-v2-layout .dragging')).toHaveCount(0);
+ await page.evaluate(()=>window.scrollTo(0,0));const box=(await separator.boundingBox())!;
+ await page.mouse.move(box.x+4,box.y+30);await page.mouse.down();await page.mouse.move(box.x-70,box.y+30);await expect(separator).toHaveClass(/dragging/);
+ await separator.dispatchEvent('pointercancel',{pointerId:1});const stopped=await widthOf(page,'.review-v2-discussion');await page.mouse.move(box.x-130,box.y+30);await page.mouse.up();expect(await widthOf(page,'.review-v2-discussion')).toBe(stopped);await expect(page.locator('.review-v2-layout .dragging')).toHaveCount(0);
+ const next=(await separator.boundingBox())!;await page.mouse.move(next.x+4,next.y+30);await page.mouse.down();await page.getByRole('button',{name:'Hide discussion',exact:true}).evaluate((el:HTMLButtonElement)=>el.click());await page.mouse.up();await expect(page.locator('.review-v2-layout .dragging')).toHaveCount(0);
 });
 
 test('B08 touch capture resizes discussion and releases on cancellation',async({page})=>{
@@ -270,50 +323,51 @@ test('B08 touch capture resizes discussion and releases on cancellation',async({
 });
 
 test('B10/B14 clamping, stacking, successor continuity and navigation reset preserve preferences',async({page})=>{
- await page.setViewportSize({width:1920,height:1000});const f=await reviewV2BrowserFixture(page);await page.goto(v2Path);await v2Selected(page,0);await ensureDocuments(page);
- await dragPane(page,'documents',120);await dragPane(page,'discussion',-150);
- const saved={documents:await widthOf(page,'.review-navigation-track'),discussion:await widthOf(page,'.review-v2-discussion')};
- // An explicit choice survives every width and same-review successor.
- await page.getByRole('button',{name:'Hide documents',exact:true}).click();await ensureDocuments(page);
+ await page.setViewportSize({width:1920,height:1000});const f=await reviewV2BrowserFixture(page);await page.goto(v2Path);await v2Selected(page,0);
+ await dragDiscussion(page,-480);
+ const saved = await widthOf(page,'.review-v2-discussion');
  await page.setViewportSize({width:1001,height:1000});
- await expect.poll(() => widthOf(page,'.review-v2-discussion')).toBeLessThan(saved.discussion);
+ await expect.poll(() => widthOf(page,'.review-v2-discussion')).toBeLessThan(saved);
  await expect(page.locator('.review-v2-layout')).not.toHaveClass(/stacked/);await geometry(page);
- const clampedDiscussion=await widthOf(page,'.review-v2-discussion'),clampedDocuments=await widthOf(page,'.review-navigation-track');
- await dragPane(page,'documents',-32);expect(await widthOf(page,'.review-v2-discussion')).toBe(clampedDiscussion);saved.documents=clampedDocuments-32;expect(await widthOf(page,'.review-navigation-track')).toBe(saved.documents);
- await page.setViewportSize({width:980,height:1000});await expect(page.locator('.review-v2-layout')).toHaveClass(/stacked/);await expect(page.getByRole('separator')).toHaveCount(0);await expect(page.getByRole('navigation',{name:'Review documents'})).toBeVisible();await geometry(page);
- await page.setViewportSize({width:1920,height:1000});await expect(docsSeparator(page)).toHaveAttribute('aria-valuenow',String(saved.documents));await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow',String(saved.discussion));
+ await page.setViewportSize({width:980,height:1000});await expect(page.locator('.review-v2-layout')).toHaveClass(/stacked/);await expect(page.getByRole('separator')).toHaveCount(0);
+ await expect(page.getByRole('navigation',{name:'Review attachments'})).toBeVisible();await geometry(page);
+ await page.setViewportSize({width:1920,height:1000});await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow',String(saved));
  await page.getByRole('button',{name:'Ask a question',exact:true}).click();
  await page.getByLabel('Question or requested change (required)').fill('Continue');
  await page.getByRole('button',{name:'Send · Ask a question'}).click();
  await expect(discussionPane(page).getByRole('status')).toHaveText('Response pending');
  await f.successor();
  await expect(discussionPane(page).getByText('The documents and drafts stay available. I can proceed after your approval.',{exact:true})).toBeVisible();
- await expect(docsSeparator(page)).toHaveAttribute('aria-valuenow',String(saved.documents));
- await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow',String(saved.discussion));
- await page.getByRole('button',{name:'Hide discussion',exact:true}).click();await page.reload();await v2Selected(page,0);await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow','320');await expect(docsSeparator(page)).toHaveAttribute('aria-valuenow','240');
- await page.getByRole('button',{name:'Hide discussion',exact:true}).click();const target=page.url();await page.getByRole('button',{name:'Back to Reviews'}).click();await page.goto(target);await v2Selected(page,0);await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow','320');
+ await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow',String(saved));
+ await page.getByRole('button',{name:'Hide discussion',exact:true}).click();await page.reload();await v2Selected(page,0);await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow','320');
+ await page.getByRole('button',{name:'Hide discussion',exact:true}).click();const target=page.url();await page.getByRole('link',{name:'Back to inbox'}).click();await page.goto(target);await v2Selected(page,0);await expect(discussionSeparator(page)).toHaveAttribute('aria-valuenow','320');
 });
 
-test('B11 initial final question reveal does not steal focus and older reading positions survive refresh, expansion and reopening',async({page})=>{
+test('B11 discussion shares the page reading position and reveals older turns in place',async({page})=>{
  await page.setViewportSize({width:1680,height:1000});const f=await reviewV2BrowserFixture(page);f.state.request.conversation=Array.from({length:60},(_,i)=>({role:'agent',text:`Recorded answer ${i}. `+'Earlier context. '.repeat(15),attachments:[]}));f.state.request.question=formattedQuestion;
  await page.goto(v2Path);await v2Selected(page,0);const discussion=discussionPane(page);
- await expect.poll(()=>discussion.evaluate(el=>Math.abs(el.scrollHeight-el.clientHeight-el.scrollTop))).toBeLessThan(2);
+ expect(await page.evaluate(()=>window.scrollY)).toBe(0);
  expect(await page.evaluate(()=>document.activeElement?.closest('.review-v2-discussion')!==null)).toBe(false);
- await discussion.evaluate(el=>{el.scrollTop=200;});const position=await discussion.evaluate(el=>el.scrollTop);
  // A failed explicit send triggers refresh without changing the existing thread.
- f.state.rejected=true;await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)').fill('Retain position');await page.getByRole('button',{name:'Send · Ask a question'}).click();await expect(page.getByRole('alert')).toContainText('could not be accepted');expect(await discussion.evaluate(el=>el.scrollTop)).toBe(position);
- const firstOld=discussion.getByRole('article').filter({hasText:'Recorded answer 40.'});const anchorOffset=await firstOld.evaluate(el=>el.getBoundingClientRect().top-el.parentElement!.getBoundingClientRect().top);
- await discussion.getByRole('button',{name:'Show earlier turns (40)'}).evaluate((el:HTMLButtonElement)=>el.click());
- await expect(firstOld).toHaveCount(1);expect(await firstOld.evaluate(el=>el.getBoundingClientRect().top-el.parentElement!.getBoundingClientRect().top)).toBeCloseTo(anchorOffset,0);
- await discussion.evaluate(el=>{el.scrollTop=250;});await page.getByRole('button',{name:'Hide discussion',exact:true}).click();await page.getByRole('button',{name:'Show discussion',exact:true}).click();expect(await discussion.evaluate(el=>el.scrollTop)).toBe(250);
+ f.state.rejected=true;await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)').fill('Retain position');await page.getByRole('button',{name:'Send · Ask a question'}).click();await expect(page.getByRole('alert')).toContainText('could not be accepted');
+ expect(await page.evaluate(()=>window.scrollY)).toBeGreaterThan(0);
+ await page.evaluate(()=>window.scrollTo(0,0));
+ await discussion.getByRole('button',{name:'Show earlier turns (40)'}).click();
+ await expect(discussion.getByRole('article').first()).toContainText('Recorded answer 20.');
+ await expect(discussion.getByRole('article').first()).toBeInViewport();
+ await page.getByRole('button',{name:'Hide discussion',exact:true}).click();
+ await page.getByRole('button',{name:'Show discussion',exact:true}).click();
+ await expect(discussion.getByRole('article').first()).toContainText('Recorded answer 20.');
+ expect(await discussion.evaluate(el=>el.scrollTop)).toBe(0);
 });
 
 for(const width of [320,390,980])test(`B12/13 long formatted question, code and tables remain reachable at ${width}px`,async({page})=>{
  await page.setViewportSize({width,height:900});const f=await reviewV2BrowserFixture(page);f.state.request.question=formattedQuestion+'\n\n'+('Long question paragraph with more review instructions.\n\n'.repeat(30))+'```text\n'+('very_long_value_'.repeat(50))+'\n```\n\n| '+('Wide column '.repeat(20))+' | Result |\n| --- | --- |\n| value | passes |\n\nFINAL QUESTION CONTENT';
- await page.goto(v2Path);await v2Selected(page,0);await ensureDocuments(page);
+ await page.goto(v2Path);await v2Selected(page,0);
  await expect(page.getByRole('separator')).toHaveCount(0);await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)').fill('Reach the final content');await geometry(page);
  const resultCell=discussionPane(page).getByRole('table').last().getByRole('columnheader',{name:'Result',exact:true});expect(await resultCell.evaluate(el=>el.getBoundingClientRect().width)).toBeGreaterThanOrEqual(96);
  const tail=discussionPane(page).getByText('FINAL QUESTION CONTENT',{exact:true});await tail.scrollIntoViewIfNeeded();await expect(tail).toBeInViewport();const bounds=(await tail.boundingBox())!,response=(await page.locator('.review-v2-response').boundingBox())!;expect(bounds.y+bounds.height).toBeLessThanOrEqual(response.y+1);
+ await page.getByRole('button',{name:'Send · Ask a question'}).scrollIntoViewIfNeeded();
  await expect(page.getByRole('button',{name:'Send · Ask a question'})).toBeInViewport();await geometry(page);await screenshot(page,`v2-long-question-${width}.png`);
 });
 
@@ -321,55 +375,44 @@ function selectedReview(reviewId: string) {
   return `${v2Path}?${new URLSearchParams({ review_id: reviewId })}`;
 }
 
-for (const width of [1920, 2560]) test(`review workspace and composer fill ${width}px and the drawer restores the desktop shell`, async ({page}) => {
+for (const width of [1920, 2560]) test(`review workspace and composer fill the thread at ${width}px`, async ({page}) => {
   await page.setViewportSize({width, height: 1050});
   const fixture = await reviewV2BrowserFixture(page);
   const target = selectedReview(fixture.state.request.review_id);
   await page.goto(target);
   await v2Selected(page, 0);
-  const opener = page.getByRole('button', {name: 'Open navigation'});
-  await expect(opener).toBeVisible();
-  await expect(page.locator('.desktop-navigation')).toHaveCount(0);
+  const collapse = page.getByRole('button', {name: 'Collapse navigation'});
+  await expect(collapse).toBeVisible();
+  await expect(page.locator('.desktop-navigation')).toHaveCSS('width','256px');
   await page.getByRole('button', {name: 'Ask a question', exact: true}).click();
-  for (const selector of ['.review-v2-layout', '.review-v2-response-inner', '#review-v2-feedback']) {
-    const bounds = await page.locator(selector).boundingBox();
-    const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
-    expect(bounds!.x).toBeCloseTo(24, 0);
-    expect(bounds!.x + bounds!.width).toBeCloseTo(clientWidth - 24, 0);
+  const panel = (await page.getByRole('tabpanel', {name:'Thread', exact:true}).boundingBox())!;
+  for (const selector of ['.review-v2-layout', '.review-v2-response-inner', '.review-v2-composer']) {
+    const bounds = (await page.locator(selector).boundingBox())!;
+    expect(bounds.x).toBeCloseTo(panel.x + 14, 0);
+    expect(bounds.x + bounds.width).toBeCloseTo(panel.x + panel.width - 14, 0);
   }
   await geometry(page);
   if (width === 2560) await screenshot(page, 'review-full-width-2560.png');
 
-  await opener.focus();
-  await page.keyboard.press('Enter');
-  const drawer = page.getByRole('dialog', {name: 'Navigation'});
-  await expect(drawer.getByRole('link', {name: 'All', exact: true})).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(drawer).toBeHidden();
-  await expect(opener).toBeFocused();
-  await page.keyboard.press('Enter');
-  const inbox = drawer.getByRole('link', {name: 'All', exact: true});
-  await inbox.focus();
-  await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(/\/project\/v2\/jobs$/);
-  await expect(page.getByRole('heading', {name: 'All', exact: true})).toBeVisible();
-  await expect(drawer).toBeHidden();
-  await expect(page.getByRole('button', {name: 'Collapse navigation'})).toBeVisible();
+  await collapse.click();
+  await expect(page.locator('.desktop-navigation')).toHaveCSS('width','76px');
+  await page.getByRole('button', {name: 'Expand navigation'}).click();
+  await expect(page.locator('.desktop-navigation')).toHaveCSS('width','256px');
 
   await page.goto(target);
   await v2Selected(page, 0);
-  await page.getByRole('button', {name: 'Back to Reviews'}).click();
+  await page.getByRole('link', {name: 'Back to inbox'}).click();
   await expect(page.getByRole('heading', {name: 'Reviews', exact: true})).toBeVisible();
   await expect(page.getByRole('button', {name: 'Collapse navigation'})).toBeVisible();
   await page.goto(`${target}&requestId=native-one`);
   await expect(page).toHaveURL(/\/project\/v2\/jobs\/one\/story\?/);
-  await expect(page.getByRole('button', {name: 'Expand navigation'})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Collapse navigation'})).toBeVisible();
 });
 
-const longHeader = 'A longer heading that wraps at spaces when the available pane becomes narrow';
+const longHeader = 'A longer heading that wraps at spaces when the available pane becomes narrow or the document is shown on a small screen';
 const tableFixture = [
   `| abcd | ${longHeader} |\n| ---: | :--- |\n| Entry | Ready |`,
-  '| Status | Group | Area | Owner | Release | Notes | Decision | Last column |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| Ready | Design | Documents | Review | Current | None | Proceed | Visible at the end |',
+  '| Status | Group | Area | Owner | Release | Notes | Decision | Last column |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| Ready | Platform-engineering | Documentation | Review-coordinator | Current | Compatibility | Approved | Visible at the end |',
 ].join('\n\n');
 
 async function headerLines(header: Locator) {
@@ -414,10 +457,7 @@ for (const width of [1040, 390]) test.describe(`review Markdown tables at ${widt
     }));
     await page.goto(selectedReview(fixture.state.request.review_id));
     await v2Selected(page, 0);
-    if (width !== 390) {
-      await ensureDocuments(page);
-      await expect(page.getByRole('separator')).toHaveCount(2);
-    }
+    await expect(page.getByRole('separator')).toHaveCount(width === 390 ? 0 : 1);
 
     for (const [surface, root] of [
       ['attachment', page.getByLabel('Rendered document')],

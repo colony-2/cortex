@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { JobInboxProvider } from '../hooks/useJobInbox';
@@ -10,15 +10,28 @@ import { inboxReadKey } from '../utils/jobInboxData';
 const activity = vi.hoisted(() => ({ pendingInputs: [{ id:'one',cell_id:'cell-platform',requested_at:'2026-11-21T12:00:00Z' }], discoveryStatus:'current', currentProjectId:'tenant', refresh: vi.fn() }));
 vi.mock('@colony2/shared', async original => ({ ...await original<typeof import('@colony2/shared')>(), useInputActivity: () => activity }));
 vi.mock('@colony2/shared/api', async original => ({ ...await original<typeof import('@colony2/shared/api')>(), listJobs:vi.fn(), listCells:vi.fn(), getJob:vi.fn() }));
-const jobs = ['one','two'].map(job_id=>({tenant_id:'tenant',job_id,title:'Same title',prompt:'Same prompt',goal_id:'same',cell_id:'cell-platform',cell_name:'platform',repo:'github.com/acme/platform',status:'COMPLETED',store:'ARCHIVED'}));
-beforeEach(() => {vi.mocked(listCells).mockResolvedValue({cells:[registryCell()]});localStorage.clear();vi.mocked(listJobs).mockImplementation(async(_,options)=>({jobs:options?.includeHidden?[...jobs,{...jobs[0],job_id:'hidden'}]:jobs} as any));});
+const jobs = ['one','two'].map(job_id=>({tenant_id:'tenant',job_id,title:'Same title',prompt:'Same prompt',goal_id:'same',cell_id:'cell-platform',cell_name:'platform',repo:'github.com/acme/platform',status:'COMPLETED',store:'ARCHIVED',
+  created_at:'2026-11-18T00:00:00Z', submitted_at: job_id === 'two' ? '2026-11-19T00:00:00Z' : undefined}));
+beforeEach(() => {
+  const storage = new Map<string, string>();
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => storage.set(key, value),
+  });
+  vi.mocked(listCells).mockResolvedValue({ cells: [registryCell()] });
+  vi.mocked(listJobs).mockImplementation(async (_, options) => ({
+    jobs: options?.includeHidden ? [...jobs, { ...jobs[0], job_id: 'hidden' }] : jobs,
+  } as any));
+});
+afterEach(() => vi.unstubAllGlobals());
 function mount(path='/project/tenant/jobs') {render(<MemoryRouter initialEntries={[path]}><JobInboxProvider tenant="tenant"><JobsListPage projectId="tenant" /></JobInboxProvider></MemoryRouter>);}
 it('renders individual job rows without goal grouping and opens exact Conversation links', async () => {
   mount(); const links=await screen.findAllByRole('link',{name:'platform: Same title'});
   expect(links).toHaveLength(2);
   expect(links[0]).toHaveAttribute('href','/project/tenant/jobs/one/story');
   expect(links[1]).toHaveAttribute('href','/project/tenant/jobs/two/story');
-  expect(screen.getByText('Update unavailable')).toBeVisible();
+  expect(links[0].querySelector('time')).toHaveAttribute('datetime', '2026-11-21T12:00:00Z');
+  expect(links[1].querySelector('time')).toHaveAttribute('datetime', '2026-11-19T00:00:00Z');
   fireEvent.click(links[0]);
   expect(localStorage.getItem(inboxReadKey(getUserEmail() ?? '', 'tenant', 'one'))).not.toBeNull();
 });

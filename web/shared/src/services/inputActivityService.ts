@@ -209,7 +209,7 @@ export type DiscoveryStatus = 'loading' | 'current' | 'unavailable';
 export interface InputDiscovery { status: DiscoveryStatus; inputs: PendingInput[]; error?: string }
 const initialDiscovery: InputDiscovery = { status: 'loading', inputs: [] };
 interface DetailAttempt {
-  key: string; epoch: number; promise: Promise<UserInputDetails | null>;
+  project: string; key: string; promise: Promise<UserInputDetails | null>;
   details?: UserInputDetails | null; error?: Error;
 }
 
@@ -237,19 +237,16 @@ class InputActivityService extends EventEmitter {
   private eventSource: EventSource | null = null;
   private currentProjectId: string | null = null;
   private epoch = 0;
-  private detailEpoch = 0;
-  private observation = 0;
   private discovery = new Map<string, InputDiscovery>();
   private pendingInputsCache = new Map<string, PendingInput[]>();
   private formDetailsCache = new Map<string, DetailAttempt>();
   private memberships = new Map<string, number>();
-  private pendingRead?: { project: string; epoch: number; observation: number; promise: Promise<PendingInput[]> };
+  private pendingReads = new Map<string, { discovery: InputDiscovery; promise: Promise<PendingInput[]> }>();
 
   getDiscovery(project: string): InputDiscovery { return this.discovery.get(project) ?? initialDiscovery; }
   private unavailable(project: string, error: unknown): void {
-    this.observation++; this.detailEpoch++;
     for (const [key, attempt] of this.formDetailsCache) {
-      if (attempt.details === undefined && !attempt.error) this.formDetailsCache.delete(key);
+      if (attempt.project === project && attempt.details === undefined && !attempt.error) this.formDetailsCache.delete(key);
     }
     this.discovery.set(project, { status: 'unavailable', inputs: this.getDiscovery(project).inputs,
       error: error instanceof Error ? error.message : 'Pending request availability is unavailable.' });
@@ -268,7 +265,6 @@ class InputActivityService extends EventEmitter {
         this.memberships.set(key, (this.memberships.get(key) ?? 0) + 1);
       }
     }
-    this.observation++;
     this.pendingInputsCache.set(project, inputs);
     this.discovery.set(project, {status: 'current', inputs});
     this.emit('discovery_changed');
@@ -319,37 +315,39 @@ class InputActivityService extends EventEmitter {
   disconnect(): void {
     const project = this.currentProjectId;
     this.eventSource?.close(); this.eventSource = null;
-    this.currentProjectId = null; this.epoch++; this.observation++;
-    this.pendingRead = undefined;
+    this.currentProjectId = null; this.epoch++;
+    this.pendingReads.clear();
     if (project) this.unavailable(project, new Error('Pending request connection closed.'));
     this.emit('disconnected');
   }
   async getPendingInputs(project: string, force = false): Promise<PendingInput[]> {
     if (!force && this.getDiscovery(project).status === 'current') return this.getDiscovery(project).inputs;
     if (force && this.currentProjectId === project && this.eventSource?.readyState === 2) this.connect(project);
-    const epoch = this.epoch, observation = this.observation;
-    if (this.pendingRead?.project === project && this.pendingRead.epoch === epoch && this.pendingRead.observation === observation) return this.pendingRead.promise;
+    const epoch = this.epoch, discovery = this.getDiscovery(project);
+    const pending = this.pendingReads.get(project);
+    if (pending?.discovery === discovery) return pending.promise;
     const accepted = () => {
       const state = this.getDiscovery(project);
       if (this.epoch === epoch && state.status === 'current') return state.inputs;
       throw new Error(state.error ?? 'Pending request availability is unavailable.');
     };
     let promise!: Promise<PendingInput[]>;
+    const current = () => this.pendingReads.get(project)?.promise === promise && this.getDiscovery(project) === discovery;
     promise = (async () => {
       try {
         const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(project)}/user-inputs/pending`, {cache: 'no-store'});
         if (!response.ok) throw new APIError(`Failed to fetch pending requests: ${response.statusText}`, response.status);
         const value = parseJobJSON(await response.text());
-        if (epoch !== this.epoch || observation !== this.observation) return accepted();
+        if (!current()) return accepted();
         return this.publish(project, value);
       } catch (error) {
-        if (epoch !== this.epoch || observation !== this.observation) return accepted();
+        if (!current()) return accepted();
         this.unavailable(project, error); throw error;
       } finally {
-        if (this.pendingRead?.promise === promise) this.pendingRead = undefined;
+        if (this.pendingReads.get(project)?.promise === promise) this.pendingReads.delete(project);
       }
     })();
-    this.pendingRead = {project, epoch, observation, promise};
+    this.pendingReads.set(project, {discovery, promise});
     return promise;
   }
   selectedVersion(project: string, job: string): string | undefined {
@@ -365,11 +363,10 @@ class InputActivityService extends EventEmitter {
     if (!key) return null;
     const previous = this.formDetailsCache.get(key);
     if (previous && (!force || previous !== before)) return previous.promise;
-    const epoch = this.detailEpoch;
     const row = this.getDiscovery(project).inputs.find(input => input.id === job)!;
-    const valid = () => this.detailEpoch === epoch && this.selectedVersion(project, job) === key && this.formDetailsCache.get(key) === attempt;
+    const valid = () => this.selectedVersion(project, job) === key && this.formDetailsCache.get(key) === attempt;
     const revalidate = () => { if (valid()) void this.getPendingInputs(project, true).catch(() => {}); };
-    const attempt: DetailAttempt = {key, epoch, promise: Promise.resolve(null)};
+    const attempt: DetailAttempt = {project, key, promise: Promise.resolve(null)};
     attempt.promise = (async () => {
       try {
         const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(project)}/user-inputs/${encodeURIComponent(job)}`, {cache: 'no-store'});
@@ -403,7 +400,7 @@ class InputActivityService extends EventEmitter {
     // A successor may be discovered before the completion's HTTP acknowledgement.
     // Only suppress the version captured when the operation started.
     if (key && this.selectedVersion(project, job) === key) {
-      this.formDetailsCache.set(key, {key, epoch: this.epoch, details: null, promise: Promise.resolve(null)});
+      this.formDetailsCache.set(key, {project, key, details: null, promise: Promise.resolve(null)});
     }
     this.emit('details_changed');
     this.emit('input_completed', {jobId: job});
@@ -516,8 +513,7 @@ class InputActivityService extends EventEmitter {
   clearCaches(): void {
     this.pendingInputsCache.clear();
     this.formDetailsCache.clear();
-    this.discovery.clear(); this.memberships.clear(); this.pendingRead = undefined;
-    this.observation++;
+    this.discovery.clear(); this.memberships.clear(); this.pendingReads.clear();
   }
 }
 

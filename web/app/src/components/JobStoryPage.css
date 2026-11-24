@@ -77,13 +77,6 @@
 /* This read-only tree does not need Ant Design's out-of-row drop target. */
 .story-tree-panel .ant-tree-treenode[draggable="false"]::before { display: none; }
 
-.input-artifacts .ant-list-item { gap: 12px; align-items: center; }
-.input-artifact-name.ant-btn { height: auto; white-space: normal; overflow-wrap: anywhere; text-align: left; min-width: 0; }
-.input-artifacts .ant-list-item > .ant-space { flex-shrink: 0; }
-@media (max-width: 600px) {
-  .input-artifacts .ant-list-item { flex-direction: column; align-items: flex-start; }
-}
-
 .job-detail-tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid #d9d9d9; }
 .job-detail-tabs button { font: inherit; background: transparent; color: inherit; border: 0; border-bottom: 3px solid transparent; padding: 10px 16px; min-height: 44px; cursor: pointer; }
 .job-detail-tabs button[aria-selected="true"] { color: #1677ff; border-bottom-color: #1677ff; }
@@ -92,7 +85,6 @@
 .job-detail-panel:not([hidden]) { display: flex; flex-direction: column; gap: 16px; }
 
 .job-detail-panel > .execution-tree { padding: 0; }
-.input-artifact-description { min-width: 0; overflow-wrap: anywhere; }
 
 .pending-request-callout .ant-alert-content { min-width: 0; }
 .pending-request-layout { display: flex; align-items: center; gap: 16px; }

@@ -180,11 +180,12 @@ func seed(ctx context.Context, rt jobdb.WorkflowRuntime, dir, scenario string, d
 		request := v2Form.Request.(map[string]any)
 		request["review_id"] = scenario
 		request["title"] = "Review committed changes"
-		request["question"] = "## Ready to proceed?\n\nInspect the **Changes** tab, then choose a direction."
+		request["question"] = "## Ready to proceed?\n\nInspect the **Changes** attachment, then choose a direction."
 		request["documents"] = map[string]any{"overview": doc, "notes": doc}
 		request["overview_document_id"] = "overview"
 		request["document_metadata"] = map[string]any{"overview": map[string]any{"title": "Implementation overview", "role": "primary"}, "notes": map[string]any{"title": "Supporting notes", "role": "supporting"}}
 		if scenario == "v2-empty" {
+			request["question"] = "## Ready to proceed?\n\nChoose a direction."
 			request["documents"] = map[string]any{}
 			delete(request, "document_metadata")
 			delete(request, "overview_document_id")

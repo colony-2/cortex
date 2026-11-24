@@ -354,7 +354,7 @@ body {
 .review-actions .ant-form-item { margin-bottom: 8px; }
 .review-actions .ant-input-textarea-show-count { margin-bottom: 18px; }
 .review-actions textarea { max-height: min(160px, 25dvh); }
-.review-page { padding-bottom: calc(var(--review-action-height, 90px) + 24px) !important; }
+.review-page:has(.review-actions) { padding-bottom: calc(var(--review-action-height, 90px) + 24px) !important; }
 html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-height, 0px) + 24px); }
 .review-page .review-document-content, .review-page .ant-form-item { scroll-margin-bottom: calc(var(--review-action-height, 0px) + 24px); scroll-margin-top: 16px; }
 
@@ -371,12 +371,14 @@ html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-heig
 .tree-coverage { font-size:12px; color:#526174; margin-top:12px; }
 .tree-coverage summary { cursor:pointer; }
 .tree-coverage p { margin: 5px 0; }
-.tree-workspace { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 16px; align-items: start; }
-.tree-viewport { overflow: auto; max-height: 650px; background: #f7f9fc; border: 1px solid #cad8e6; border-radius: 8px; }
+.tree-workspace { display: grid; height: var(--tree-workspace-height, 70dvh); grid-template-columns: minmax(0,1fr) 300px; grid-template-rows: minmax(0,1fr); gap: 12px; }
+.tree-viewport { flex: 1; min-height: 0; overflow: hidden; touch-action: none; cursor: grab; background: #f7f9fc; border: 1px solid #cad8e6; border-radius: 8px; }
+.tree-viewport:active { cursor: grabbing; }
+.tree-zoom-frame { overflow: hidden; }
 .tree-canvas { position: relative; transform-origin: top left; }
 .tree-canvas svg { position: absolute; inset: 0; pointer-events: none; }
 .tree-canvas path { fill: none; stroke: #6b83a1; stroke-width: 2; }
-.tree-diagram-column { min-width: 0; }
+.tree-diagram-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .tree-card { position: absolute; box-sizing: border-box; border-radius: 8px; border: 1px solid; }
 .execution-tree .tree-card > .tree-card-select { width: 100%; height: 100%; text-align: left; background: transparent; color: inherit; border: 0; border-radius: 7px; padding: 12px 14px 46px; display: flex; flex-direction: column; gap: 5px; font-size: 13px; line-height: 19px; }
 .tree-card span { display: block; }
@@ -388,8 +390,9 @@ html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-heig
 .tree-entry { outline: 3px solid #305f9c; outline-offset: 3px; }
 .tree-match::after { content: ''; position: absolute; top: -9px; right: -9px; width: 13px; height: 13px; border: 2px solid #614700; border-radius: 50%; background: #ffe58f; pointer-events: none; }
 .execution-tree .tree-branch { position: absolute; bottom: 5px; left: 12px; min-height: 36px; background: transparent; color: inherit; border-color: currentColor; }
-.tree-viewport { min-height: 300px; overscroll-behavior: contain; }
-.tree-details { background: white; border: 1px solid #cad8e6; border-radius: 8px; padding: 16px; overflow-wrap: anywhere; }
+.tree-details { min-height: 0; overflow: auto; overscroll-behavior: contain; background: white; border: 1px solid #cad8e6; border-radius: 8px; padding: 16px; overflow-wrap: anywhere; }
+.tree-prompt { margin-block: 12px; }
+.tree-prompt p { margin: 4px 0; white-space: pre-wrap; }
 .tree-details-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .tree-details-header h2 { margin: 0; font-size: 18px; line-height: 28px; }
 .tree-detail-actions { display: flex; gap: 4px; margin-left: auto; }
@@ -398,7 +401,7 @@ html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-heig
 .execution-tree .tree-detail-cancel { color: #cf1322; border-color: #ffa39e; }
 .execution-tree .tree-detail-cancel:hover { color: #a8071a; background: #fff1f0; border-color: #cf1322; }
 .tree-details dt { font-weight: 600; }.tree-details dd { margin: 0 0 10px; }
-@media (max-width: 767px) { .execution-tree { padding: 12px; } .tree-workspace { grid-template-columns: minmax(0,1fr); } .tree-viewport { max-height: 520px; } .execution-tree button { min-height: 44px; } .tree-details { min-width: 0; } }
+@media (max-width: 767px) { .execution-tree { padding: 12px; } .tree-workspace { grid-template-columns: minmax(0,1fr); grid-template-rows: minmax(0,1fr) minmax(0,1fr); } .execution-tree button { min-height: 44px; } .tree-details { min-width: 0; } }
 @media (max-width: 767px) { .execution-tree .tree-detail-action { width: 44px; height: 44px; } }
 
 

@@ -79,7 +79,7 @@ it('keeps rows after older-page failure, retries the same cursor and refreshes i
   click('Retry lease history'); await screen.findByRole('button',{name:'Refresh from first page'});
   expect(getEvents.mock.calls[2][2]?.pageToken).toBe('cursor');
   click('Refresh from first page');
-  expect(screen.queryAllByRole('row').slice(1)).toHaveLength(0);
+  expect(screen.getByRole('table', { name: 'Recorded leases' })).toBeVisible();
   await screen.findByText('No retained lease events are available.');
   expect(getEvents.mock.calls[3][2]?.pageToken).toBeUndefined();
 });
@@ -90,16 +90,18 @@ it.each([[403,'lease_permission_denied'],[401,'authentication_required'],[501,'u
   expect(screen.getByRole('button',{name:'Retry lease history'})).toBeEnabled();
   expect(screen.getByRole('button',{name:'Refresh timeline'})).toBeEnabled();
 });
-it('refresh clears rows and cursor immediately, aborts older work, and ignores late responses from transports that ignore abort', async () => {
+it('refresh retains the table while aborting older work and ignores late responses from transports that ignore abort', async () => {
   const older=deferred(), fresh=deferred();
   getEvents.mockResolvedValueOnce({events:[leaseEvent('first')],nextPageToken:'old-cursor'}).mockReturnValueOnce(older.promise).mockReturnValueOnce(fresh.promise);
   await mount(); await screen.findByRole('table', {name:'Recorded leases'}); click('Load older lease events');
   const signal=getEvents.mock.calls[1][3]!;
+  const table = screen.getByRole('table', {name:'Recorded leases'});
   click('Refresh timeline'); expect(signal.aborted).toBe(true);
-  expect(screen.queryAllByRole('row').slice(1)).toHaveLength(0);
+  expect(screen.getByRole('table', {name:'Recorded leases'})).toBe(table);
+  expect(screen.queryByText('Loading lease history…')).toBeNull();
   expect(getEvents.mock.calls[2][2]?.pageToken).toBeUndefined();
   await act(async()=>older.resolve({events:[leaseEvent('stale')],nextPageToken:'stale-cursor'}));
-  expect(screen.queryAllByRole('row').slice(1)).toHaveLength(0);
+  expect(screen.getByRole('table', {name:'Recorded leases'})).toBe(table);
   await act(async()=>fresh.resolve({events:[leaseEvent('fresh')]}));
   click('Expand row'); expect(screen.getByText('Lease renewed · fresh')).toBeVisible();
   expect(screen.queryByText('Lease renewed · stale')).toBeNull();

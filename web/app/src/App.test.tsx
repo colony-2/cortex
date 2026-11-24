@@ -31,7 +31,7 @@ it('shows pending counts without changing them on navigation width changes', () 
 });
 it('never shows another tenant count as current or empty', () => {
   activity.currentProjectId='other'; activity.pendingInputs=[{id:'one',cell_id:'cell-platform'}]; render(shell());
-  expect(screen.getByRole('link',{name:'Waiting',exact:true})).toHaveTextContent('?');
+  expect(screen.getByRole('link',{name:'Reviews',exact:true})).toHaveTextContent('?');
 });
 it('starts stories expanded and preserves mounted review text through width toggles', () => {
   render(shell('/project/navigation/jobs/one/story'));

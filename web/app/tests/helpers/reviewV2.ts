@@ -54,14 +54,35 @@ export async function authorizeV2(page:Page,baseURL:string){
  await page.context().addCookies([{name:'colony2:user:email',value:'review@example.com',url:baseURL}]);
  await page.addInitScript(()=>{(window as any).EventSource=class {readyState=1;close(){}addEventListener(){}removeEventListener(){}};});
 }
-export async function v2Selected(page:Page,index:number){
+const attachmentTitles = ['Acceptance checks','Source notes','Code changes','Layout image'];
+export const v2Preview = (page: Page) => page.locator('.review-preview-modal');
+export const v2Primary = (page: Page) => page.locator('.review-reading-track > .review-document-content');
+
+export async function v2Selected(page: Page, index: number) {
  await expect.poll(()=>new URL(page.url()).searchParams.get('document_id')).toBe(v2Ids[index]);
- await expect(page.getByLabel('Loading document')).toHaveCount(0);
- await expect(page.getByLabel('Selected document')).toContainText(index===0?'Viewer changes':index===1?'Acceptance checks':index===2?'Source notes':index===3?'Code changes':'Layout image');
+ await expect(v2Primary(page).getByRole('article',{name:'Rendered document'})).toBeVisible();
+ if (index === 0) {
+  await expect(v2Preview(page)).toBeHidden();
+  return;
+ }
+ const modal = page.getByRole('dialog',{name:attachmentTitles[index-1],exact:true});
+ await expect(modal).toBeVisible();
+ const preview = modal.getByLabel('Document preview');
+ await expect(preview).toBeVisible();
+ if (index === 1) await expect(preview.getByRole('heading',{name:'Acceptance checks',exact:true})).toBeVisible();
+ if (index === 2) await expect(preview.getByLabel('Document source')).toContainText('Source line');
+ if (index === 3) await expect(preview.getByLabel('Document source')).toContainText('DIFF END');
+ if (index === 4) await expect(preview.getByRole('img',{name:'image.png',exact:true})).toBeVisible();
 }
-export async function v2Catalog(page:Page,index:number){
- if(await page.getByRole('button',{name:'Show documents',exact:true}).isVisible())await page.getByRole('button',{name:'Show documents',exact:true}).click();
- const nav=page.getByRole('navigation',{name:'Review documents'});
- const buttons=nav.getByRole('button');
- await buttons.nth(index).click();await v2Selected(page,index);
+export function v2Attachment(page: Page, index: number) {
+ return page.getByRole('navigation',{name:'Review attachments'}).getByRole('button',{name:attachmentTitles[index-1],exact:true});
+}
+export async function v2ClosePreview(page: Page) {
+ await v2Preview(page).getByRole('button',{name:'Close',exact:true}).click();
+ await expect(v2Preview(page)).toBeHidden();
+}
+export async function v2Catalog(page: Page, index: number) {
+ if (await v2Preview(page).isVisible()) await v2ClosePreview(page);
+ if (index > 0) await v2Attachment(page,index).click();
+ await v2Selected(page,index);
 }

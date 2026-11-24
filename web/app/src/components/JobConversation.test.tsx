@@ -149,6 +149,11 @@ describe('CC compact occurrence and time provenance',()=>{
   for(const pair of container.querySelectorAll('.conversation-pair'))expect([...pair.children].map(el=>el.getAttribute('aria-label'))).toEqual(['Recorded request step','Accepted response']);
   expect(screen.getAllByText(/Reported time:/)).toHaveLength(2);
   expect(screen.getAllByText(/Reported time:/)[0]).toHaveAttribute('title');
+  const {container: folded} = render(<FoldedConversationTimeline entries={entries.slice(0, 1)} onOpen={vi.fn()} />);
+  const times = folded.querySelectorAll('summary .thread-message-time');
+  expect(Array.from(times, time => time.getAttribute('datetime'))).toEqual(['2025-01-02T14:30:00Z', '2025-01-02T14:35:00Z']);
+  fireEvent.mouseEnter(times[1]);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(/^Reported time:/);
  });
  it('CC-019 refreshes the whole visible range in one snapshot and retains entries on inconsistent refresh',async()=>{
   vi.mocked(getConversation).mockResolvedValueOnce(page([entry('one')],'next')).mockResolvedValueOnce(page([entry('two')])).mockResolvedValueOnce({...page([entry('new')],'fresh-next'),snapshot_token:'fresh'}).mockResolvedValueOnce({...page([entry('invalid')]),snapshot_token:'wrong'});
@@ -169,7 +174,7 @@ describe('current conversation activity', () => {
   render(<CurrentActivity metadata={metadata(status)} freshness="loaded" />);
   expect(screen.getByText(label)).toBeInTheDocument();
   expect(screen.getAllByLabelText('Current job activity')).toHaveLength(1);
-  if (status === 'PENDING_JOBS') expect(screen.getByText('Waiting for jobs')).toBeInTheDocument();
+  if (status === 'PENDING_JOBS') expect(screen.getByText('Waiting')).toBeInTheDocument();
   if (status === 'AWAITING_FUTURE') expect(screen.getByText('Scheduled')).toBeInTheDocument();
  });
  it('CV-010 gives cancellation request precedence', () => {

@@ -24,7 +24,7 @@ describe('job display status', () => {
 
   it('keeps running and retrying jobs active even if an old completion field is present', () => {
     expect(jobStatus({ ...job, status: 'ACTIVE', store: 'ACTIVE', completion_status: 'failed_system' })).toEqual({ label: 'Running', color: 'green' });
-    expect(jobStatus({ ...job, status: 'PENDING_JOBS', store: 'ACTIVE' })).toEqual({ label: 'Waiting for jobs', color: 'lime' });
+    expect(jobStatus({ ...job, status: 'PENDING_JOBS', store: 'ACTIVE' })).toEqual({ label: 'Waiting', color: 'lime' });
     expect(jobStatus({ ...job, status: 'AWAITING_FUTURE', store: 'ACTIVE', completion_status: 'failed_app' }).label).toBe('Scheduled');
   });
 
@@ -36,7 +36,7 @@ describe('job display status', () => {
   it('offers the displayed outcomes with a single Cancelled option and no generic Completed option', () => {
     const options = jobStatusOptions([{ ...job, completion_status: 'future_outcome' }], ['completion:previous_outcome']);
     expect(options.map(option => option.label)).toEqual([
-      'Ready', 'Waiting for jobs', 'Scheduled', 'Running', 'Job keeps failing', 'Expired',
+      'Ready', 'Waiting', 'Scheduled', 'Running', 'Job keeps failing', 'Expired',
       'Cancellation requested', 'Cancelled', 'Succeeded', 'Failed (application)', 'Failed (system)',
       'Timed out', 'Finished (outcome unavailable)', 'Finished (previous_outcome)', 'Finished (future_outcome)',
     ]);

@@ -2,194 +2,92 @@ import { test, expect } from '@playwright/test';
 import { jobIdentity, mockCells } from './helpers/cells';
 import { openTenantSwitcher } from './helpers/inbox';
 
-// These flows include real focus/tooltip transitions, reloads, and form submission.
-test.setTimeout(90_000);
+for (const width of [1440, 390]) test(`Reviews inbox search, sorting, and live updates at ${width}px`, async ({ page, context, baseURL }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  await page.clock.setFixedTime(new Date('2026-11-10T12:00:00Z'));
+  await context.addCookies([{ name: 'colony2:user:email', value: 'review@example.com', url: baseURL! }]);
+  await page.addInitScript(() => {
+    (window as any).queueEvents = {};
+    (window as any).EventSource = class {
+      readyState = 1;
+      close() {}
+      removeEventListener() {}
+      addEventListener(type: string, listener: unknown) { (window as any).queueEvents[type] = listener; }
+    };
+  });
+  const reads: string[] = [];
+  page.on('request', request => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith('/api/') && request.method() === 'GET') reads.push(path);
+  });
+  const row = (id: string, title: string, requested_at?: string) => ({
+    ...jobIdentity, id, job_id: id, tenant_id: 'queue', title, requested_at,
+    request_id: `request-${id}`, client_payload_revision: 1,
+  });
+  const first = row('first', 'First project review', '2026-11-08T12:00:00Z');
+  const latest = row('latest', 'Latest project review', '2026-11-10T11:45:00Z');
+  let rows = [first, latest, row('unknown', 'Another request')];
+  await page.route('**/api/**', route => route.fulfill({ status: 404, json: { error: 'No fixture for this endpoint' } }));
+  await page.route('**/api/projects', route => route.fulfill({ json: [{ tenant_id: 'queue' }, { tenant_id: 'other' }] }));
+  await mockCells(page, ['platform']);
+  await page.route('**/api/projects/queue/user-inputs/pending', route => route.fulfill({ json: rows }));
+  await page.route('**/api/projects/other/user-inputs/pending', route => route.fulfill({ json: [] }));
+  await page.route('**/jobs?*', route => route.fulfill({ json: { jobs: [] } }));
+  await page.route('**/jobs/first', route => route.fulfill({ json: { ...first, status: 'READY', store: 'ACTIVE' } }));
+  await page.route('**/jobs/first/conversation?*', route => route.fulfill({ json: {
+    tenant_id: 'queue', job_id: 'first', entries: [], snapshot_token: 'snapshot', snapshot_revision: 1, completeness: 'complete',
+  } }));
+  await page.route('**/user-inputs/first', route => route.fulfill({ json: {
+    jobId: 'first', status: 'pending', startTime: first.requested_at, form: { question: 'Confirm the request?', request_id: first.request_id },
+  } }));
+  await page.route('**/user-inputs/first/respond', route => {
+    rows = rows.filter(item => item.id !== 'first');
+    return route.fulfill({ json: {} });
+  });
 
-for (const width of [1440, 390]) test(`PR-009,013,014 queue at ${width}px`, async ({ page, context, baseURL }, testInfo) => {
- await page.setViewportSize({width,height:900});
- await page.clock.setFixedTime(new Date('2026-11-10T12:00:00Z'));
- await context.addCookies([{name:'colony2:user:email',value:'review@example.com',url:baseURL!}]);
- await page.addInitScript(() => {
-  (window as any).queueEvents = {};
-  (window as any).EventSource = class {
-   readyState=1; onopen:any; onerror:any;
-   constructor(){ setTimeout(()=>this.onopen?.(),0); }
-   close(){} removeEventListener(){}
-   addEventListener(type:string, listener:any){ (window as any).queueEvents[type]=listener; }
-  };
- });
- const row=(id:string,requested_at?:string)=>({...jobIdentity,id,client_payload_revision:1,job_id:id,tenant_id:'queue',title:`Review ${id}`,requested_at,request_id:`request-${id}`,task_ordinal:2});
- let rows=[row('recent','2026-11-10T11:59:30Z'),row('unknown'),row('oldest','2026-11-08T12:00:00Z'),row('middle','2026-11-10T10:00:00Z')];
- await page.route('**/api/projects',route=>route.fulfill({json:[{tenant_id:'queue'}]}));
- await mockCells(page,['platform']);
- await page.route('**/user-inputs/pending',route=>route.fulfill({json:rows}));
- await page.route('**/user-inputs/earliest', route=>route.fulfill({json:{jobId:'earliest',status:'pending',startTime:'2026-11-01T12:00:00Z',form:{question:'Confirm the earliest request?',request_id:'request-earliest',fields:[]}}}));
- await page.route('**/jobs/earliest',route=>route.fulfill({json:{...jobIdentity,job_id:'earliest',tenant_id:'queue',status:'READY',store:'ACTIVE',prompt:'Earliest request context'}}));
- await page.route('**/jobs/earliest/children',route=>route.fulfill({json:{jobs:[]}}));
- await page.route('**/jobs?*',route=>route.fulfill({json:{jobs:[]}}));
- await page.goto('/project/queue/reviews');
- const cards=page.locator('.review-page .ant-list .ant-card');
- await expect(cards).toHaveCount(4);
- await expect(cards.nth(0)).toContainText('Review oldest'); await expect(cards.nth(1)).toContainText('Review middle'); await expect(cards.nth(2)).toContainText('Review recent'); await expect(cards.nth(3)).toContainText('Request time unavailable');
- await expect(page.getByText('Showing 4 of 4 pending requests')).toBeVisible();
- await expect(cards.nth(0)).toContainText('Requested 2 days ago');
- await page.screenshot({path:testInfo.outputPath(`queue-${width}.png`),fullPage:true,animations:'disabled'});
- const age=cards.first().locator('time');
- await age.focus(); await page.keyboard.press('Tab'); await page.keyboard.press('Shift+Tab');
- await expect(age).toBeFocused(); await expect(page.getByRole('tooltip')).toBeVisible(); await expect(page.getByRole('tooltip')).toContainText('2026');
- await expect(page.locator('.ant-tooltip').filter({has:page.getByRole('tooltip')})).toHaveCSS('opacity','1');
- await expect(age).toHaveAttribute('datetime','2026-11-08T12:00:00Z'); await expect(age).toHaveAttribute('title',/2026/);
- await page.screenshot({path:testInfo.outputPath(`queue-exact-${width}.png`),fullPage:true,animations:'allow'});
- await age.blur(); await page.mouse.move(0,0);
- await expect(page.getByRole('tooltip')).toBeHidden();
- await age.hover(); await expect(page.getByRole('tooltip')).toContainText('UTC');
- await page.mouse.move(0,0); await expect(page.getByRole('tooltip')).toBeHidden();
- expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
- // Manual refresh uses exactly the same ordering.
- rows=[row('new','2026-11-10T11:58:00Z'),...rows.slice(2)];
- await page.getByRole('button',{name:/Refresh/}).click();
- await expect(cards).toHaveCount(3); await expect(cards.first()).toContainText('Review oldest'); await expect(cards.last()).toContainText('Review new');
- // A replacement snapshot inserts and removes cards immediately.
- rows=[row('future','2026-11-11T12:00:00Z'),row('earliest','2026-11-01T12:00:00Z')];
- await page.evaluate((inputs)=>{ (window as any).queueEvents.inputs_changed({data:JSON.stringify({inputs})}); },rows);
- await expect(cards).toHaveCount(2); await expect(cards.first()).toContainText('Review earliest'); await expect(cards.last()).toContainText('Requested just now');
- await cards.first().getByRole('button',{name:'Open Review'}).click(); await expect(page).toHaveURL(/\/project\/queue\/reviews\/earliest$/);
- await expect(page.getByRole('textbox',{name:'Confirm the earliest request?'})).toBeVisible();
-});
+  await page.goto('/project/queue/reviews');
+  await expect(page).toHaveURL('/project/queue/jobs?inbox=reviews');
+  const list = page.getByRole('list', { name: 'Jobs', exact: true });
+  const items = list.getByRole('listitem');
+  await expect(items).toHaveCount(3);
+  await expect(items.first()).toContainText('Latest project review');
+  await expect(items.last()).toContainText('Date unavailable');
+  const time = items.nth(1).locator('time');
+  await expect(time).toContainText('Nov 8');
+  await time.hover();
+  await expect(page.getByRole('tooltip')).toContainText('2026');
+  const search = page.getByRole('searchbox', { name: 'Search threads' });
+  await search.fill('project review');
+  await search.press('Enter');
+  await expect(items).toHaveCount(2);
+  await page.getByRole('button', { name: 'Sort threads' }).click();
+  await page.getByRole('menuitem', { name: 'Date (oldest first)' }).click();
+  await expect(items.first()).toContainText('First project review');
+  expect(reads.filter(path => /\/jobs(?:\/|$)|\/user-inputs\/(?!pending$)/.test(path))).toEqual([]);
 
-for (const width of [1440, 390]) test(`Reviews controls and return navigation at ${width}px`, async ({ page, context, baseURL }, testInfo) => {
- await page.setViewportSize({ width, height: 1000 });
- await page.clock.setFixedTime(new Date('2026-11-10T12:00:00Z'));
- await context.addCookies([{ name: 'colony2:user:email', value: 'review@example.com', url: baseURL! }]);
- await page.addInitScript(() => {
-  (window as any).queueEvents = {};
-  (window as any).EventSource = class {
-   onopen:any; readyState=1;
-   constructor(){ setTimeout(()=>this.onopen?.(),0); }
-   close(){} removeEventListener(){}
-   addEventListener(type:string, listener:any){ (window as any).queueEvents[type]=listener; }
-  };
- });
- const reads: string[] = [];
- page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/')) reads.push(new URL(request.url()).pathname); });
- const make=(id:string,title:string,cell:string,time?:string,prompt?:string)=>({...jobIdentity,id,client_payload_revision:1,job_id:id,tenant_id:'controls',title,prompt,cell_id:`cell-${cell}`,cell_name:cell,requested_at:time,task_ordinal:2});
- let rows=[make('alpha','Alpha food at the bar','Zeta','2026-11-08T12:00:00Z'), make('zeta','Zeta food at the bar','Alpha','2026-11-10T10:00:00Z'), make('unknown','Middle food at the bar','Alpha'), make('split','Food','Other',undefined,'bar')];
- await page.route('**/api/projects', route=>route.fulfill({json:[{tenant_id:'controls'}]}));
- await page.route('**/user-inputs/pending', route=>route.fulfill({json:rows}));
- await mockCells(page, ['Unrelated registry cell']);
- await page.route('**/jobs?*', route=>route.fulfill({json:{jobs:[]}}));
- await page.route('**/user-inputs/alpha', route=>route.request().method()==='POST' ? route.fulfill({json:{}}) : route.fulfill({json:{jobId:'alpha',status:'pending',startTime:'2026-11-08T12:00:00Z',task_ordinal:2,form:{question:'Confirm food?',type:'short_answer'}}}));
- await page.route('**/jobs/alpha', route=>route.fulfill({json:{...jobIdentity,job_id:'alpha',tenant_id:'controls',status:'READY',store:'ACTIVE',prompt:'Confirm food'}}));
- await page.route('**/jobs/alpha/children?*', route=>route.fulfill({json:{jobs:[]}}));
- await page.route('**/user-inputs/alpha/respond',route=>route.fulfill({json:{}}));
- await page.goto('/project/controls/reviews?unrelated=keep');
- const cards=page.locator('.review-page .ant-list .ant-card');
- await expect(cards).toHaveCount(4);
- // Registry and full-list scans belong to the inbox shell; reviews must not fetch per-job details.
- await expect(page.locator('.inbox-nav-notice').filter({hasText:'Cells unavailable'})).toHaveCount(0);
- await expect.poll(()=>reads.filter(path=>path.endsWith('/jobs')).length).toBeGreaterThanOrEqual(3);
- expect(reads.filter(path=>/\/jobs\/|\/user-inputs\/(?!pending)/.test(path))).toEqual([]);
- await page.waitForLoadState('networkidle');
- const baseline=reads.length;
- const controls=page.getByRole('button',{name:/Filters and sorting/});
- if(width<768){
-  await expect(page.getByRole('textbox',{name:'Search reviews'})).toBeHidden();
-  await controls.focus(); await page.keyboard.press('Enter');
- }
- const search=page.getByRole('textbox',{name:'Search reviews'});
- await search.fill('foo bar');
- await expect(cards).toHaveCount(3);
- await expect(page.getByText('Showing 3 of 4 pending requests')).toBeVisible();
- if(width<768) await page.getByRole('button',{name:'Open navigation',exact:true}).click();
- await expect(page.getByRole('navigation',{name:'Inboxes'}).getByRole('link',{name:'All',exact:true}).locator('.inbox-badge')).toHaveAttribute('aria-label','4 pending responses');
- if(width<768) await page.keyboard.press('Escape');
- const sort=page.getByRole('combobox',{name:'Sort by'});
- for(const [value,ids] of [
-  ['requested:ascend',['alpha','zeta','unknown']],['requested:descend',['zeta','alpha','unknown']],
-  ['title:ascend',['alpha','unknown','zeta']],['title:descend',['zeta','unknown','alpha']],
-  ['cell:ascend',['zeta','unknown','alpha']],['cell:descend',['alpha','zeta','unknown']],
- ] as const){
-  await sort.selectOption(value);
-  for(let index=0;index<ids.length;index++) await expect(cards.nth(index)).toContainText(`Job ID: ${ids[index]}`);
- }
- await sort.selectOption('requested:ascend');
- await page.screenshot({path:testInfo.outputPath(`reviews-controls-${width}.png`),fullPage:true,animations:'disabled'});
- const picker=page.getByRole('button',{name:'Cells: All',exact:true});
- await picker.focus(); await page.keyboard.press('Enter');
- let dialog=page.getByRole('dialog');
- // Choices come from pending rows, including rows excluded by search, not shell registry.
- await expect(dialog.getByRole('checkbox',{name:'Unrelated registry cell',exact:true})).toHaveCount(0);
- await expect(dialog.getByRole('checkbox',{name:'Other',exact:true})).toBeChecked();
- await dialog.getByRole('button',{name:'Select none'}).click();
- await page.keyboard.press('Escape');
- await expect(dialog).toBeHidden(); await expect(picker).toBeFocused();
- await expect(cards).toHaveCount(3);
- await picker.click(); dialog=page.getByRole('dialog');
- await dialog.getByRole('button',{name:'Select none'}).click();
- await dialog.getByRole('checkbox',{name:'Zeta',exact:true}).check();
- await page.screenshot({path:testInfo.outputPath(`reviews-picker-${width}.png`),fullPage:false,animations:'disabled'});
- await dialog.getByRole('button',{name:'Apply'}).click();
- await expect(cards).toHaveCount(1);
- expect(reads).toHaveLength(baseline);
- const listURL=page.url();
- await page.reload(); await expect(cards).toHaveCount(1);
- if(width<768){
-  await expect(controls).toHaveText('Filters and sorting (active)');
-  await page.screenshot({path:testInfo.outputPath(`reviews-collapsed-${width}.png`),fullPage:true,animations:'disabled'});
-  await controls.click();
- }
- await expect(search).toHaveValue('foo bar');
- await cards.first().getByRole('button',{name:'Open Review'}).click();
- await expect(page).toHaveURL(/\/reviews\/alpha\?q=foo\+bar&cellId=cell-Zeta$/);
- expect(page.url()).not.toContain('unrelated');
- await page.reload();
- await page.getByRole('button',{name:'Back to Reviews'}).click();
- await expect(page).toHaveURL(/\/reviews\?q=foo\+bar&cellId=cell-Zeta$/);
- await expect(cards).toHaveCount(1);
- await cards.first().getByRole('button',{name:'Open Review'}).click();
- await page.getByRole('textbox',{name:'Confirm food?'}).fill('yes');
- await page.getByRole('button',{name:'Submit',exact:true}).click();
- await expect(page).toHaveURL(/\/reviews\?q=foo\+bar&cellId=cell-Zeta$/);
- await expect(cards).toHaveCount(1);
- if(width<768) await controls.click();
- // SSE replacement retains a disappeared selection without borrowing its timing.
- const beforeLive=reads.length;
- rows=[make('replacement','Food bar','New')];
- await page.evaluate(inputs=>(window as any).queueEvents.inputs_changed({data:JSON.stringify({inputs})}),rows);
- await expect(page.getByText('No requests match these filters')).toBeVisible();
- await page.getByRole('button',{name:'Cells: 1 selected'}).click(); dialog=page.getByRole('dialog');
- await expect(dialog.getByRole('checkbox',{name:'Selected cell (cell-Zeta)'})).toBeChecked();
- await expect(dialog.getByRole('checkbox',{name:'New',exact:true})).not.toBeChecked();
- await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
- expect(reads).toHaveLength(beforeLive);
- await expect(page.locator('.ant-message-notice')).toHaveCount(0);
- await page.screenshot({path:testInfo.outputPath(`reviews-empty-${width}.png`),fullPage:true,animations:'disabled'});
- await page.getByRole('button',{name:'Reset',exact:true}).first().click();
- await expect(cards).toHaveCount(1); await expect(cards.first()).toContainText('Request time unavailable');
- await expect(page).toHaveURL(/\/reviews$/);
- await page.goBack(); await expect(page.getByText('No requests match these filters')).toBeVisible();
- await page.goForward(); await expect(cards).toHaveCount(1);
- // Existing Refresh reuses the active view.
- await search.fill('foo bar'); await sort.selectOption('title:descend');
- rows=[make('refreshed','Food bar refresh','New'),make('other','Unrelated','Other')];
- await page.getByRole('button',{name:/Refresh/}).click();
- await expect(cards).toHaveCount(1); await expect(cards.first()).toContainText('Job ID: refreshed');
- await expect(sort).toHaveValue('title:descend'); await expect(search).toHaveValue('foo bar');
- expect(reads.some(path=>path.includes('/cells'))).toBe(true);
- expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
- // A tenant change starts with its own default view and hides old rows.
- await page.route('**/api/projects/other/jobs?*', route => route.fulfill({ json: { jobs: [] } }));
- await mockCells(page, ['platform']);
- await (await openTenantSwitcher(page)).fill('other');
- await page.getByRole('button',{name:'Use',exact:true}).click();
- await expect(page).toHaveURL(/\/project\/other\/jobs$/);
- // The retained Reviews route is directly addressable; the inbox replaces its sidebar entry.
- await page.goto('/project/other/reviews');
- await expect(page).toHaveURL(/\/project\/other\/reviews$/);
- await expect(cards).toHaveCount(2);
- if (width < 768) await controls.click();
- await expect(search).toHaveValue('');
- await expect(sort).toHaveValue('requested:ascend');
- await expect(page.getByRole('button', { name: 'Cells: All', exact: true })).toBeVisible();
- expect(listURL).toContain('unrelated=keep');
+  await expect(page.getByRole('link', { name: 'platform: First project review' })).toBeVisible();
+  await page.getByRole('link', { name: 'platform: First project review' }).click();
+  await expect(page).toHaveURL(/\/project\/queue\/jobs\/first\/story\?/);
+  await page.getByRole('textbox', { name: 'Confirm the request?' }).fill('Yes');
+  await page.getByRole('button', { name: 'Submit', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Confirm the request?' })).toHaveCount(0);
+  await page.getByRole('link', { name: 'Back to inbox' }).click();
+  await expect(search).toHaveValue('project review');
+  await expect(items).toHaveCount(1);
+  await expect(items.first()).toContainText('Latest project review');
+
+  const replacement = row('replacement', 'Replacement project review');
+  rows = [replacement];
+  await page.evaluate(inputs => {
+    (window as any).queueEvents.inputs_changed({ data: JSON.stringify({ inputs }) });
+  }, rows);
+  await expect(items).toHaveCount(1);
+  await expect(items.first()).toContainText('Replacement project review');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  const tenant = await openTenantSwitcher(page);
+  await tenant.fill('other');
+  await tenant.press('Enter');
+  await expect(page).toHaveURL('/project/other/jobs');
+  await expect(search).toHaveValue('');
+  await expect(items).toHaveCount(0);
 });

@@ -1,41 +1,61 @@
 .review-v2 {padding:24px; overflow-wrap:anywhere}
-.review-v2-heading,.review-v2-response-title {display:flex;align-items:center;justify-content:space-between;gap:12px}
-.review-v2-context {margin-top:16px;color:#596579}
+.review-v2-heading {display:flex;align-items:center;justify-content:space-between;gap:12px}
+.review-v2-heading {flex-wrap:wrap;margin-block-end:8px}
+.review-v2-heading-links {display:flex;align-items:center;gap:8px;font-size:13px}
+.review-v2-heading .review-v2-title {font-size:16px;margin:0;flex:1}
+.review-v2-context {margin-bottom:8px;color:#596579;font-size:13px}
 .review-v2-context ol {display:flex;flex-wrap:wrap;gap:6px 12px;list-style:none;padding:0;margin:8px 0}
 .review-v2-context li:not(:last-child)::after {content:'›';margin-left:12px}
-.review-v2-workspace-toolbar {display:flex;justify-content:space-between;margin:8px 0}
 .review-v2-layout {display:grid;gap:0;align-items:start;min-width:0}
-.review-v2 .review-v2-reader,.review-v2 .review-v2-document-tracks {display:contents}
 .review-v2 .review-reading-track {width:100%;max-width:none;min-width:0}
-.review-v2 .review-navigation-track {min-width:0}
-.review-v2 .review-document-catalog .ant-card-body {padding:12px}
+.review-v2 .review-reading-track {gap:12px}
+.review-attachments {margin-block:8px}
+.review-attachments nav {display:flex;flex-wrap:wrap;gap:8px}
+.review-attachments nav .ant-btn {height:auto;min-height:32px;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.review-attachments nav .ant-btn-icon {font-size:12px}
+.review-attachments nav .ant-btn:disabled .ant-btn-icon {opacity:.45}
+.review-v2-document .review-markdown {border:0;background:transparent;padding:0;max-height:none;overflow:visible}
+.review-v2-document .review-document-options {margin-bottom:6px}
+.review-primary-document .review-document-options {align-items:center;gap:4px}
+.review-primary-document .review-document-preview {display:flow-root}
+.review-primary-document .review-document-preview > .review-markdown {overflow:visible}
+.review-primary-document .review-document-preview:has(> .review-markdown > :first-child:is(h1,h2,h3,h4,h5,h6)) > .review-document-options {float:inline-end;margin-inline-start:12px}
+.review-document-menu-details {margin-top:12px;padding-top:12px;border-top:1px solid #e3e7ef}
+.review-preview-modal.ant-modal {max-width:95vw;padding-bottom:0}
+.review-preview-modal :is(.review-markdown,.review-markdown-source,.review-source-body,.review-diff-scroll,.review-image-scroll) {max-height:none}
 .review-v2-separator {align-self:stretch;min-height:80px;position:relative;cursor:col-resize;touch-action:none;user-select:none;outline-offset:-2px}
 .review-v2-separator::before {content:'';position:absolute;top:0;bottom:0;left:3px;width:1px;background:#dce3ed}
 .review-v2-separator:hover::before,.review-v2-separator:focus-visible::before,.review-v2-separator.dragging::before {background:#1677ff;width:2px}
 .review-v2-layout:has(.dragging),.review-v2-layout:has(.dragging) * {cursor:col-resize!important;user-select:none!important}
 .review-v2-layout.stacked {row-gap:16px}
-.review-v2-layout.stacked .review-v2-discussion {position:static;max-height:none}
 .review-v2-question-markdown {min-width:0}
 .review-v2-question-markdown pre {overflow:auto;max-width:100%;white-space:pre;padding:8px;background:#f5f7fa}
 .review-table-scroll {max-width:100%;overflow-x:auto;overscroll-behavior-inline:contain}
 .review-table-scroll:focus-visible {outline:2px solid #1677ff;outline-offset:-2px}
-.review-v2 .review-table-scroll > table {display:table;table-layout:auto;overflow:visible;border-collapse:collapse;overflow-wrap:normal;word-break:normal}
+:is(.review-markdown,.review-v2-question-markdown) .review-table-scroll > table {display:table;table-layout:auto;overflow:visible;border-collapse:collapse;overflow-wrap:normal;word-break:normal}
 .review-v2-question-markdown th,.review-v2-question-markdown td {min-width:6rem;border:1px solid #dce3ed;padding:4px 8px}
 .review-v2-question-markdown ul,.review-v2-question-markdown ol {padding-left:24px}
-.review-v2-discussion {min-width:0;padding:20px;background:#f5f7fa;border:1px solid #dce3ed;border-radius:12px;max-height:calc(100dvh - var(--review-action-height,100px) - 40px);overflow:auto;position:sticky;top:16px}
+.review-v2-discussion {min-width:0;padding:20px;background:#f5f7fa;border:1px solid #dce3ed;border-radius:12px}
+.review-v2-discussion-heading {display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.review-v2-discussion-heading .ant-typography {margin:0}
 .review-v2-turn {min-width:0;padding:16px;margin:12px 0;background:#fff;border:1px solid #e3e7ef;border-radius:10px;white-space:normal}
 .review-v2-turn.human {border-left:3px solid #1677ff}
 .review-v2-turn.agent {border-left:3px solid #72899f}
 .review-v2-turn p {margin:8px 0}
 .review-v2-pending {padding:12px;border:1px dashed #72899f;border-radius:8px;color:#415c75}
-.review-v2-response-inner {display:flex;flex-direction:column;gap:8px}
-.review-v2-response-title {min-height:32px}
+.review-v2-response {margin-block:18px 8px}
+.review-v2-response-inner {display:flex;flex-direction:column;gap:8px;min-width:0}
 .review-v2-directions:not([hidden]) {display:flex;flex-wrap:wrap;gap:8px}
 .review-v2-directions button {white-space:normal;height:auto;min-height:36px;max-width:100%}
-.review-v2-composer:not([hidden]) {display:flex;flex-direction:column;gap:8px}
+.review-v2-composer {display:flex;flex-direction:column;gap:12px;padding:12px;border:1px solid #dce3ed;border-radius:10px;background:#fff}
+.review-v2-composer-header {display:flex;align-items:center;flex-wrap:wrap;gap:8px;color:#526174}
+.review-v2-composer-header > span {min-width:0;overflow-wrap:anywhere}
+.review-v2-composer-header .ant-btn {white-space:normal;height:auto;min-height:32px;max-width:100%}
+.review-v2-feedback {display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.review-v2-feedback > label {font-size:12px;color:#526174}
 .review-v2-upload {display:flex;flex-direction:column;gap:8px}
 .review-v2-upload input {max-width:100%}
 .review-v2-setting {margin:20px 0;padding-bottom:12px;border-bottom:1px solid #e5e7eb}
 .review-v2-setting p {margin:8px 0}
 
-@media(max-width:800px){.review-v2{padding:12px}.review-v2-heading{flex-wrap:wrap}.review-v2-response{padding-inline:12px}}
+@media(max-width:800px){.review-v2{padding:12px}.review-v2-heading{flex-wrap:wrap}}

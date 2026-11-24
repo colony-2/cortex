@@ -6,6 +6,7 @@ import { discardMessageDraft, messageDraftScope, type useSavedMessageDrafts } fr
 import { clearReviewDraft, type useSavedReviewDrafts } from '../hooks/useReviewDraft';
 import { messagePreview } from '../utils/jobInbox';
 import InboxSelectionToolbar from './InboxSelectionToolbar';
+import { reviewThreadPath } from '../utils/reviewDocumentLocation';
 
 export default function InboxDraftsPage({ tenant, messages, reviews, sending, openComposer, closeComposer }: {
   tenant: string;
@@ -25,9 +26,9 @@ export default function InboxDraftsPage({ tenant, messages, reviews, sending, op
     }),
     ...reviews.map(draft => {
       const title = `Review response · ${messagePreview(draft.title)}`;
-      const query = new URLSearchParams({ [draft.kind === 'review_id' ? 'review_id' : 'request_id']: draft.request });
       return { key: `review:${draft.identity}`, title, messageId: undefined, reviewId: draft.identity,
-        link: <Link state={{ openReviewDraft: true }} to={`/project/${encodeURIComponent(tenant)}/reviews/${encodeURIComponent(draft.job)}?${query}`}>{title}</Link> };
+        link: <Link state={{ openReviewDraft: true, inboxReturnTo: `/project/${encodeURIComponent(tenant)}/jobs?inbox=drafts` }} to={reviewThreadPath(tenant,draft.job,draft.request,draft.kind === 'review_id' ? 'review_id' : 'request_id')}
+          onClick={()=>{if (!sending.has(draft.identity)) closeComposer(draft.identity);}}>{title}</Link> };
     }),
   ];
   const selectedRows = rows.filter(row => selected.has(row.key));
@@ -37,10 +38,10 @@ export default function InboxDraftsPage({ tenant, messages, reviews, sending, op
     reviews: selectedRows.flatMap(row => row.reviewId ?? []),
   });
   const discardDrafts = () => {
-    if (!discard || discard.messages.some(id => sending.has(id))) return;
+    if (!discard || [...discard.messages,...discard.reviews].some(id => sending.has(id))) return;
     const scope = messageDraftScope(tenant);
     discard.messages.forEach(id => { closeComposer(id); discardMessageDraft(scope, id); });
-    discard.reviews.forEach(clearReviewDraft);
+    discard.reviews.forEach(id => { closeComposer(id); clearReviewDraft(id); });
     setSelected(previous => {
       const next = new Set(previous);
       discard.keys.forEach(key => next.delete(key));
@@ -53,7 +54,7 @@ export default function InboxDraftsPage({ tenant, messages, reviews, sending, op
     <InboxSelectionToolbar items={rows.length} selected={selectedRows.length} kind="drafts"
       onSelect={mode => setSelected(new Set(mode === 'all' ? rows.map(row => row.key) : []))}>
       {selectedRows.length > 0 && <Button type="text" icon={<DeleteOutlined aria-hidden="true" />}
-        disabled={selectedRows.some(row => row.messageId !== undefined && sending.has(row.messageId))}
+        disabled={selectedRows.some(row => sending.has(row.messageId ?? row.reviewId ?? ''))}
         onClick={beginDiscard}>Discard {selectedRows.length === 1 ? 'draft' : 'drafts'}</Button>}
     </InboxSelectionToolbar>
     <ul className="inbox-job-list inbox-drafts" aria-label="Drafts">
@@ -69,7 +70,7 @@ export default function InboxDraftsPage({ tenant, messages, reviews, sending, op
     </ul>
     {!rows.length && <Empty description="No saved drafts" />}
     {discard && <Modal open title={discard.keys.length === 1 ? 'Discard this draft?' : `Discard ${discard.keys.length} drafts?`}
-      okText="Discard" okButtonProps={{ danger: true, disabled: discard.messages.some(id => sending.has(id)) }}
+      okText="Discard" okButtonProps={{ danger: true, disabled: [...discard.messages,...discard.reviews].some(id => sending.has(id)) }}
       cancelText="Keep drafts" onOk={discardDrafts} onCancel={() => setDiscard(undefined)} />}
   </div>;
 }

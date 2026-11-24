@@ -1175,14 +1175,19 @@ test.describe('review/v2 continuous discussion',()=>{
     await expect(page.getByText('Original material remains readable while questions are answered.',{exact:true})).toBeVisible();
     await page.screenshot({path:testInfo.outputPath('review-v2-direct-reader-phone.png'),fullPage:true});
     await page.setViewportSize({width:1320,height:900});
-    const catalog=inline.getByRole('navigation',{name:'Review documents',exact:true});
-    await inline.getByRole('button',{name:'Show documents',exact:true}).click();
+    const catalog=inline.getByRole('navigation',{name:'Review attachments',exact:true});
     await catalog.getByRole('button',{name:'Recovery notes',exact:false}).first().click();
-    const original=page.getByRole('heading',{name:'Recovery',exact:true});
+    const preview=page.locator('.review-preview-modal');
+    await expect(preview.getByRole('heading',{name:'Recovery',exact:true})).toBeVisible();
+    await preview.getByRole('button',{name:'Document options',exact:true}).click();
+    await expect(page.getByRole('dialog',{name:'Document options',exact:true}).getByRole('link',{name:'Download',exact:true})).toHaveAttribute('href',/stored-document/);
+    await expect(page.getByRole('dialog',{name:'Document options',exact:true})).toBeFocused();
+    await page.keyboard.press('Escape');
+    await preview.getByRole('button',{name:'Close',exact:true}).click();
+    await expect(preview).toBeHidden();
+    const original=inline.getByRole('article',{name:'Rendered document'});
     await expect(original).toBeVisible();
     const reader=await original.elementHandle();
-    const download=page.getByRole('link',{name:'Download',exact:true});
-    const originalURL=await download.getAttribute('href');
     await page.getByRole('button',{name:'Ask a question',exact:true}).click();
     await page.getByLabel('Question or requested change (required)',{exact:true}).fill('Keep this document open while answering.');
     let release!:()=>void;
@@ -1195,7 +1200,6 @@ test.describe('review/v2 continuous discussion',()=>{
       await expect(page.getByText('Response pending',{exact:true})).toBeVisible();
       await expect(original).toBeVisible();
       expect(await reader!.evaluate(el=>el.isConnected)).toBe(true);
-      await expect(download).toHaveAttribute('href',originalURL!);
       await page.evaluate(()=>window.scrollTo(0,0));
       const session=await page.context().newCDPSession(page);
       const {cssContentSize}=await session.send('Page.getLayoutMetrics');
@@ -1205,7 +1209,6 @@ test.describe('review/v2 continuous discussion',()=>{
       await expect(page.getByText('Review state unavailable',{exact:true})).toBeVisible();
       await expect(original).toBeVisible();
       expect(await reader!.evaluate(el=>el.isConnected)).toBe(true);
-      await expect(download).toHaveAttribute('href',originalURL!);
       await expect(page.getByText('Keep this document open while answering.',{exact:true})).toBeVisible();
     } finally {release();await page.unrouteAll({behavior:'wait'});}
   });
@@ -1234,10 +1237,11 @@ test.describe('review/v2 continuous discussion',()=>{
     await expect(page.getByLabel('Question or requested change (not allowed)',{exact:true})).toHaveValue(exactDraft);
     await expect(page.getByText('comments.md (28 bytes)',{exact:true})).toBeVisible();
     await expect(page.getByText(/This direction does not allow feedback/)).toBeVisible();
-    await expect(page.getByRole('button',{name:'Send · Approve direction',exact:true})).toHaveCount(0);
+    await expect(page.getByRole('button',{name:'Send · Approve direction',exact:true})).toBeVisible();
     await capture('review-v2-approval-drafts.png');
     // Returning to a permitted direction recovers both drafts without filtering.
-    await page.getByRole('button',{name:'Request changes',exact:true}).click();
+    await page.getByRole('button',{name:'Change response type: Approve direction',exact:true}).click();
+    await page.getByRole('menuitem',{name:'Request changes',exact:true}).click();
     await expect(page.getByLabel('Question or requested change (required)',{exact:true})).toHaveValue(exactDraft);
     await expect(page.getByRole('button',{name:'Remove comments.md (1)',exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Review settings',exact:true}).click();
@@ -1251,10 +1255,10 @@ test.describe('review/v2 continuous discussion',()=>{
     await page.getByRole('button',{name:'Remove feedback draft',exact:true}).click();
     await expect(page.getByText(/This direction does not allow attachments/)).toBeVisible();
     await page.getByRole('button',{name:'Remove comments.md (1)',exact:true}).click();
-    await expect(page.getByRole('button',{name:'Approve direction',exact:true})).toBeVisible();
+    await expect(page.getByRole('button',{name:'Send · Approve direction',exact:true})).toBeVisible();
     await capture('review-v2-clean-approval.png');
     const posted=page.waitForRequest(r=>r.url().endsWith(`/reviews/${jobID}/respond`)&&r.method()==='POST');
-    await page.getByRole('button',{name:'Approve direction',exact:true}).click();
+    await page.getByRole('button',{name:'Send · Approve direction',exact:true}).click();
     const body=(await posted).postData()!;
     expect(body).toContain('"feedback":""');expect(body).toContain('"settings":{"response_style":"brief"}');
     expect(body).not.toContain('comments.md');expect(body).not.toContain('explain the recovery');expect(body).not.toContain('"examples"');
@@ -1276,9 +1280,11 @@ test.describe('review/v2 continuous discussion',()=>{
     await expect(page.getByRole('heading',{name:'Keep unsent drafts',exact:true})).toHaveCount(2); // title and immutable Markdown
     await expect(page).toHaveURL(/review_id=/);
     expect(inputReads).toEqual([200]);
-    await page.getByRole('button',{name:'Show documents',exact:true}).click();
-    await page.getByRole('button',{name:'Recovery notes',exact:false}).first().click();
-    await expect(page.getByRole('heading',{name:'Recovery',exact:true})).toBeVisible();
+    await page.getByRole('navigation',{name:'Review attachments',exact:true}).getByRole('button',{name:'Recovery notes',exact:false}).click();
+    const preview=page.locator('.review-preview-modal');
+    await expect(preview.getByRole('heading',{name:'Recovery',exact:true})).toBeVisible();
+    await preview.getByRole('button',{name:'Close',exact:true}).click();
+    await expect(preview).toBeHidden();
     await page.getByRole('button',{name:'Ask a question',exact:true}).click();
     await page.getByRole('button',{name:'Send · Ask a question',exact:true}).click();
     await expect(page.getByText('This direction requires feedback or a permitted attachment.',{exact:true})).toBeVisible();
@@ -1296,12 +1302,11 @@ test.describe('review/v2 continuous discussion',()=>{
     const exactQuestion='  What survives a restart?\n';
     await page.getByLabel('Question or requested change (required)',{exact:true}).fill(exactQuestion);
     await expect(page.locator('.review-v2-response').getByText('Response style:',{exact:false})).toBeVisible();
-    await page.getByRole('button',{name:'Hide documents',exact:true}).click();
     await page.evaluate(()=>window.scrollTo(0,0));
     await capture('review-v2-desktop.png');
     await page.getByRole('button',{name:'Send · Ask a question',exact:true}).click();
     await expect(page.getByText('Response pending',{exact:true})).toBeVisible();
-    await expect(page.getByRole('heading',{name:'Recovery',exact:true})).toBeVisible();
+    await expect(page.getByRole('article',{name:'Rendered document'})).toBeVisible();
     const gapReads=inputReads.length;
     await page.waitForTimeout(10_500); // Two history refresh periods without probing missing input.
     expect(inputReads).toHaveLength(gapReads);
@@ -1333,6 +1338,7 @@ test.describe('review/v2 continuous discussion',()=>{
     await page.setViewportSize({width:390,height:844});
     await capture('review-v2-phone.png');
     await page.getByRole('button',{name:'Approve direction',exact:true}).click();
+    await page.getByRole('button',{name:'Send · Approve direction',exact:true}).click();
     await expect(page.getByText('Response sent',{exact:true})).toBeVisible();
     startWorker();
     let output:any;
@@ -1379,8 +1385,7 @@ test.describe('review/v2 acceptance races',()=>{
   await stopWorker();
   await expect(other.getByText('Saved drafts return when you reopen the app.',{exact:true})).toBeVisible();
   await expect(page.getByRole('radio')).toHaveCount(0);
-  await expect(page.getByLabel('Question or requested change (optional)',{exact:true})).toHaveValue('');
-  await expect(page.getByLabel('Attach notes',{exact:true})).toHaveValue('');
+  await expect(page.getByRole('region',{name:'Response composer'})).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Remove accepted-notes.md (1)',exact:true})).toHaveCount(0);
   await expect(page.getByText(/Check the refreshed request before retrying/)).toHaveCount(0);
   const saved=page.getByRole('link',{name:'Download accepted-notes.md',exact:true});
@@ -1395,6 +1400,7 @@ test.describe('review/v2 acceptance races',()=>{
   await page.evaluate(()=>window.scrollTo(0,0));
   await page.screenshot({path:testInfo.outputPath('review-v2-recovered-approval.png'),fullPage:true});
   await page.getByRole('button',{name:'Approve direction',exact:true}).click();
+  await page.getByRole('button',{name:'Send · Approve direction',exact:true}).click();
   await expect(page.getByText('Response sent',{exact:true})).toBeVisible();
   expect(bodies).toHaveLength(2);
   expect(bodies[1]).toContain('"direction":"approve","feedback":"","attachments":[],"settings":{}');

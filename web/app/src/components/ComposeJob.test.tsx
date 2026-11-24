@@ -52,13 +52,15 @@ it('prevents concurrent sends and reuses the same identity after an uncertain re
   await waitFor(() => expect(state.close).toHaveBeenCalledTimes(1));
   expect(state.refresh).toHaveBeenCalledTimes(1);
 });
-it('keeps selected files and forwards the original file objects with the prompt', async () => {
+it('forwards the original file objects without the former size and count limits', async () => {
   await compose();
   const file = new File(['evidence'], 'notes.txt', { type: 'text/plain' });
-  fireEvent.change(screen.getByLabelText('Job attachments'), { target: { files: [file] } });
+  Object.defineProperty(file, 'size', { value: 26 * 1024 * 1024 });
+  const files = [file, ...Array.from({ length: 10 }, (_, index) => new File([], `attachment-${index}.txt`))];
+  fireEvent.change(screen.getByLabelText('Job attachments'), { target: { files } });
   expect(screen.getByText('notes.txt')).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'Send', exact: true }));
-  await waitFor(() => expect(submitJob).toHaveBeenCalledWith('tenant', expect.objectContaining({ inputs: { prompt: 'Please build this.', type: 'build' } }), [file]));
+  await waitFor(() => expect(submitJob).toHaveBeenCalledWith('tenant', expect.objectContaining({ inputs: { prompt: 'Please build this.', type: 'build' } }), files));
 });
 
 it('refreshes recipients on reopening while keeping the draft', async () => {

@@ -69,7 +69,13 @@ const disclosure=(page:Page)=>related(page).locator('details');
 async function selectStoryTab(page: Page, name: string) {
   if (!new URL(page.url()).pathname.endsWith('/story')) return;
   const tab = page.getByRole('tab', { name, exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Job relationships', exact: true });
+  if (name !== 'Graph' && await dialog.isVisible()) {
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(dialog).toBeHidden();
+  }
   if (await tab.getAttribute('aria-selected') !== 'true') await tab.click();
+  if (name === 'Graph' && !await dialog.isVisible()) await page.getByRole('button', { name: 'Related jobs and goals' }).click();
 }
 async function initiallyVisible(page:Page) {
   await selectStoryTab(page, 'Graph');
@@ -120,85 +126,56 @@ test('REL-001,010,011,012,030,033,038 story links navigate to correct identities
   await expect(page.getByText(/Job not found/).first()).toBeVisible();
 });
 
-test('REL-001,030,031,032,033,038 review context and document remain usable through child failure',async({page})=>{
-  pendingReview=true;
-  await page.setViewportSize({width:1440,height:1000});
+test('REL-001,030,031,032,033,038 thread review remains usable through child failure', async ({ page }) => {
+  pendingReview = true;
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/project/demo/reviews/evidence-105');
+  await expect(page).toHaveURL(/\/jobs\/evidence-105\/story\?/);
+  const document = page.getByText('API checks passed. Navigation evidence is ready.', { exact: true }).first();
+  await expect(document).toBeVisible();
   await initiallyVisible(page);
-  await capture(page,'review-desktop-direct.png');
-  await expect(related(page).getByRole('link',{name:'Job · release-104',exact:true})).toBeVisible();
-  await expect(related(page).getByRole('link',{name:'Goal · goal-api',exact:true})).toBeVisible();
-  await expect(page.getByRole('link',{name:'Open execution',exact:true})).toBeVisible();
-  await expect(page.getByRole('region',{name:'Goal prompt'})).toHaveText(/Prepare release evidence/);
-  expect(inspections).toEqual(Array(4).fill('evidence-105')); // Reader existence check and goal context, each with development StrictMode replay.
-  expect(await related(page).evaluate(e=>!!(e.previousElementSibling?.classList.contains('review-goal-context')))).toBe(true);
-  const document=page.getByText('API checks passed. Navigation evidence is ready.',{exact:true}).first();
-  await expect(document).toBeVisible();
-  await capture(page,'review-desktop-response.png');
-  failChildren=true;
-  await related(page).getByRole('button',{name:'Refresh relationships',exact:true}).click();
+  await expect(related(page).getByRole('link', { name: 'Job · release-104', exact: true })).toBeVisible();
+  await expect(related(page).getByRole('link', { name: 'Goal · goal-api', exact: true })).toBeVisible();
+  failChildren = true;
+  await related(page).getByRole('button', { name: 'Refresh relationships' }).click();
   await expect(related(page).getByText('Child jobs unavailable')).toBeVisible();
+  await selectStoryTab(page, 'Thread');
   await expect(document).toBeVisible();
-  await page.getByRole('button',{name:'Approve',exact:true}).click();
+  await capture(page, 'review-desktop-response.png');
+  await page.getByRole('button', { name: 'Approve', exact: true }).click();
   expect(submissions).toHaveLength(0);
-  await page.getByLabel('What should change?',{exact:true}).fill('Evidence reviewed');
-  await page.getByRole('button',{name:'OK',exact:true}).click();
-  await expect.poll(()=>submissions.length).toBe(1);
-  expect(submissions[0]).toMatchObject({request_id:'review-evidence',fields:{decision:'approve',feedback:'Evidence reviewed'}});
+  await page.getByLabel('What should change?', { exact: true }).fill('Evidence reviewed');
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect.poll(() => submissions.length).toBe(1);
+  expect(submissions[0]).toMatchObject({ request_id: 'review-evidence', fields: { decision: 'approve', feedback: 'Evidence reviewed' } });
 });
 
-for(const width of [1440,390,320]) test(`REL-034/D3,035,036,040,041,042 review ordering keyboard and wrapping ${width}`,async({page})=>{
-  pendingReview=true;
-  long=width!==390;
-  await page.setViewportSize({width,height:1000});
+for (const width of [1440, 390, 320]) test(`REL-034/D3,035,036,040,041,042 relationships and review wrapping at ${width}px`, async ({ page }) => {
+  pendingReview = true;
+  long = true;
+  await page.setViewportSize({ width, height: 1000 });
   await page.goto('/project/demo/reviews/evidence-105');
+  await expect(page).toHaveURL(/\/jobs\/evidence-105\/story\?/);
   await initiallyVisible(page);
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
-  if(width===390) await capture(page,'review-mobile-direct.png');
-  const requests=childRequests;
-  expect(childRequests).toBe(requests);
-  if(width===390) {
-    long=true;
-    await related(page).getByRole('button',{name:'Refresh relationships',exact:true}).click();
-    await expect(related(page).getByRole('link',{name:/Job · Check API compatibilityW/})).toBeVisible();
-  }
-  const link=related(page).getByRole('link',{name:'Job · release-104',exact:true});
+  const link = related(page).getByRole('link', { name: 'Job · release-104', exact: true });
   await expect(link).toBeVisible();
-  await link.focus(); await page.keyboard.press('Tab');
-  const goal=related(page).getByRole('link',{name:'Goal · goal-release',exact:true});
+  await link.focus();
+  await page.keyboard.press('Tab');
+  const goal = related(page).getByRole('link', { name: 'Goal · goal-release', exact: true });
   await expect(goal).toBeFocused();
-  expect(await goal.evaluate(e=>getComputedStyle(e).outlineStyle)).toBe('solid');
+  expect(await goal.evaluate(element => getComputedStyle(element).outlineStyle)).toBe('solid');
+  await expect(related(page).getByRole('link', { name: /Job · Check API compatibilityW/ })).toBeVisible();
   await expect(related(page).getByText('No goal recorded')).toBeVisible();
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
-  // D2 preserves context, documents, then response in both DOM and visual order.
-  const context=page.locator('.review-goal-context');
-  const documents=page.getByRole('region',{name:'Selected document',exact:true});
-  const response=page.getByText('Your response',{exact:true}).locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " ant-card ")][1]');
-  await expect(documents).toBeVisible();
-  await expect(response).toBeVisible();
-  expect(await related(page).evaluate(e=>e.closest('.review-goal-context')===null)).toBe(true);
-  {
-    for (const [before,after] of [[context,related(page)],[related(page),documents],[documents,response]]) {
-    const handle=await after.elementHandle();
-    expect(await before.evaluate((e,target)=>Boolean(e.compareDocumentPosition(target!) & Node.DOCUMENT_POSITION_FOLLOWING),handle)).toBe(true);
-    const beforeBox=await before.boundingBox(), afterBox=await after.boundingBox();
-    expect(beforeBox).not.toBeNull(); expect(afterBox).not.toBeNull();
-    expect(afterBox!.y).toBeGreaterThanOrEqual(beforeBox!.y+beforeBox!.height-1);
-  }
-  }
-  if(width<768){
-    expect(await related(page).evaluate(e=>e.closest('.review-secondary')!==null)).toBe(true);
-    expect(await page.locator('.review-goal-context').evaluate(e=>(e as HTMLDetailsElement).open)).toBe(false);
-    await page.locator('.review-goal-context > summary').click();
-    await page.locator('.review-goal-context > summary').click();
-    expect(await link.evaluate(e=>e.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
-    await expect(page.getByRole('button',{name:'Approve',exact:true})).toBeAttached();
-  }
-  if(width===390){
-    long=false; await related(page).getByRole('button',{name:'Refresh relationships',exact:true}).click();
-    await expect(related(page).getByRole('link',{name:'Job · Check API compatibility'})).toBeVisible();
-    await capture(page,'review-mobile-wrapped.png');
-  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+
+  await selectStoryTab(page, 'Thread');
+  const document = page.getByRole('region', { name: 'Selected document', exact: true });
+  const response = page.getByRole('region', { name: 'Review decisions', exact: true });
+  const documentBox = (await document.boundingBox())!;
+  const responseBox = (await response.boundingBox())!;
+  expect(responseBox.y).toBeGreaterThanOrEqual(documentBox.y + documentBox.height - 1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+  if (width === 390) await capture(page, 'review-mobile-wrapped.png');
 });
 
 for(const width of [1440,390,320]) test(`REL-040,041,042 story direct content and reload ${width}`,async({page})=>{
@@ -236,6 +213,7 @@ for(const width of [1280,390]) test(`JS-024,025,035,037 pages other attempts, re
     return route.fulfill({json:{jobs:[{...children[0],goal_id:'goal-evidence',title:'Archived earlier attempt'},{...children[1],goal_id:'goal-evidence'}]}});
   });
   await page.goto('/project/demo/jobs/evidence-105/story?tab=relationships');
+  await initiallyVisible(page);
   const attempts=page.getByRole('region',{name:'Other attempts at this goal'});
   await attempts.getByRole('button',{name:'Load more attempts'}).click();
   await expect(attempts.getByRole('link',{name:'Archived earlier attempt'})).toBeVisible();
@@ -248,6 +226,6 @@ for(const width of [1280,390]) test(`JS-024,025,035,037 pages other attempts, re
   await attempts.getByRole('link',{name:'Archived earlier attempt'}).click();
   await expect(page).toHaveURL(/\/jobs\/check-api-106\/story/);
   await expect(page.getByRole('link',{name:'Back to inbox',exact:true})).toHaveAttribute('href','/project/demo/jobs');
-  await page.getByRole('tab',{name:'Graph',exact:true}).click();
+  await selectStoryTab(page, 'Graph');
   await expect(attempts.getByRole('link',{name:'Goal · goal-api',exact:true})).toBeVisible();
 });

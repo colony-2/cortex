@@ -13,22 +13,20 @@ export default function JobEnvironment({ job, showHeading = true }: { job: Recip
     ['CPU', values.resources?.cpu ? `${cpuCores(values.resources.cpu)} cores` : undefined],
     ['Memory', values.resources?.memory ? memoryQuantity(values.resources.memory) : undefined],
     ['Ephemeral storage', values.resources?.['ephemeral-storage'] ? memoryQuantity(values.resources['ephemeral-storage']) : undefined],
-  ];
+    ['Legacy image', values.image],
+    ['Legacy platform', values.platform],
+  ].filter(([, value]) => !!value);
   return <section className="job-environment" aria-label="Execution requirements">
     {showHeading && <h2>Execution requirements</h2>}
     {message && <p>{message}</p>}
     {values && <>
-      <p className="job-environment-hint">Resource values are minimum requirements.</p>
-      <dl>{fields?.map(([label, value]) => <div key={label}><dt>{label}</dt><dd><span>{value || 'Not specified'}</span>
-        {label === 'Base' && value?.includes('*') && <p className="job-environment-hint">The * wildcard matches base names.</p>}
-      </dd></div>)}
-        <div><dt>Capabilities</dt><dd>{values.capabilities?.length ? <Values values={values.capabilities} /> : 'Not specified'}</dd></div>
-        {values.image && <div><dt>Legacy image</dt><dd>{values.image}</dd></div>}
-        {values.platform && <div><dt>Legacy platform</dt><dd>{values.platform}</dd></div>}
-      </dl>
+      {fields?.some(([label]) => label === 'CPU' || label === 'Memory' || label === 'Ephemeral storage') && <p className="job-environment-hint">Resource values are minimum requirements.</p>}
+      {((fields?.length ?? 0) > 0 || !!values.capabilities?.length) && <dl>{fields?.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
+        {!!values.capabilities?.length && <div><dt>Capabilities</dt><dd><Values values={values.capabilities} /></dd></div>}
+      </dl>}
       {!!values.packages?.length && <details><summary>Packages ({values.packages.length})</summary><Values values={values.packages} /></details>}
       {values.python && <details><summary>Python environment{values.python['requires-python'] ? ` · ${values.python['requires-python']}` : ''} · {values.python.dependencies?.length || 0} dependencies</summary>
-        <p>Python version: {values.python['requires-python'] || 'Not specified'}</p>
+        {values.python['requires-python'] && <p>Python version: {values.python['requires-python']}</p>}
         {values.python.dependencies?.length ? <Values values={values.python.dependencies} /> : <p>No dependencies specified.</p>}
       </details>}
     </>}

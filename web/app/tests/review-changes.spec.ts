@@ -8,12 +8,9 @@ const review = (job: string) => `/project/${tenant}/reviews/${job}`;
 async function capture(page: Page, info: TestInfo, name: string, zoom = false) {
   const directory = process.env.CORTEX_REVIEW_CAPTURE_DIR;
   if (directory) await mkdir(directory, { recursive: true });
-  await page.evaluate(async () => {
-    await Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})));
-  });
   const filename = directory ? path.join(directory, name) : info.outputPath(name);
   if (zoom) await captureNativeZoom(page, filename);
-  else await page.screenshot({ path: filename, fullPage: false });
+  else await page.screenshot({ path: filename, fullPage: false, animations: 'disabled' });
 }
 async function download(page: Page) {
   const pending = page.waitForEvent('download');
@@ -22,9 +19,15 @@ async function download(page: Page) {
   expect(file.suggestedFilename()).toBe('diff_from_base.diff');
   return readFile((await file.path())!);
 }
+const changesAttachment = (page: Page) => page.getByRole('navigation', { name: 'Review attachments' }).getByRole('button', { name: 'Changes', exact: true });
+const changesPreview = (page: Page) => page.getByRole('dialog', { name: 'Changes', exact: true });
+async function closeChanges(page: Page) {
+  await changesPreview(page).getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(changesPreview(page)).toBeHidden();
+}
 async function openChanges(page: Page, job: string) {
   await page.goto(review(job));
-  await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+  await (job.startsWith('v2') ? changesAttachment(page) : page.getByRole('tab', { name: 'Changes', exact: true })).click();
 }
 async function noOverflow(page: Page) {
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
@@ -61,7 +64,7 @@ test('unchanged handoffs recover original saved bytes without attaching the patc
   expect(refreshed.form.request.documents).toEqual(documents);
   expect(reads).toHaveLength(2);
   for (const read of reads) expect(new URL(read).search).toBe('');
-  await page.getByRole('tablist').scrollIntoViewIfNeeded();
+  await expect(changesPreview(page)).toBeVisible();
   await capture(page, info, 'saved-diff-unchanged-handoffs.png');
 });
 
@@ -81,25 +84,24 @@ test('v2 opens saved bytes directly and preserves documents, discussion, setting
   await page.getByRole('button', { name: 'Done', exact: true }).click();
   await page.getByRole('button', { name: 'Document options' }).click();
   await page.getByText('Markdown', { exact: true }).click();
-  await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+  await changesAttachment(page).click();
   await expect(page.getByLabel('Unified diff').last()).toBeVisible();
   expect(await download(page)).toEqual(Buffer.from(oracle.all));
   expect(legacyRequests).toEqual([]); expect(reads).toHaveLength(1); expect(new URL(reads[0]).search).toBe('');
   await expect(page.getByRole('combobox', { name: /From commit|Through commit/ })).toHaveCount(0);
   await expect(page.getByRole('group', { name: 'Commits oldest first' })).toHaveCount(0);
   await expect(page.getByText('Binary file changed. Its contents were not included in this saved diff.')).toBeVisible();
-  await page.getByRole('button', { name: 'Hide documents', exact: true }).click();
-  await page.getByRole('button', { name: 'Hide discussion', exact: true }).click();
-  await page.getByRole('button', { name: 'Show documents', exact: true }).click();
-  await page.getByRole('button', { name: 'Show discussion', exact: true }).click();
   await page.getByRole('button', { name: 'Refresh changes' }).click();
   await expect(page.getByLabel('Unified diff').last()).toBeVisible();
   await expect(feedback).toHaveValue('Can you explain these saved changes?');
   await expect(page.getByText('v2-notes.md (21 bytes)', { exact: true })).toBeVisible();
-  await page.getByRole('tab', { name: 'Documents', exact: true }).click();
+  await closeChanges(page);
+  await page.getByRole('button', { name: 'Hide discussion', exact: true }).click();
+  await page.getByRole('button', { name: 'Show discussion', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Job changes' })).toBeHidden();
   await expect(page.getByLabel('Markdown source')).toBeVisible();
-  await page.getByRole('tab', { name: 'Changes', exact: true }).click();
-  await page.getByRole('tablist').scrollIntoViewIfNeeded();
+  await changesAttachment(page).click();
+  await expect(changesPreview(page)).toBeVisible();
   await capture(page, info, 'saved-diff-desktop.png');
   await page.getByText('Side by side', { exact: true }).click();
   await expect(page.getByLabel('Side by side diff').last()).toContainText('+change 4');
@@ -109,6 +111,7 @@ test('v2 opens saved bytes directly and preserves documents, discussion, setting
   await page.getByRole('button', { name: 'Source', exact: true }).click();
   await expect(page.getByLabel('Document source')).toContainText('diff --git');
   await noOverflow(page);
+  await closeChanges(page);
   await page.getByRole('button', { name: 'Review settings' }).click();
   await expect(page.getByRole('dialog').getByLabel('Example count')).toHaveValue('0');
   await page.getByRole('button', { name: 'Done', exact: true }).click();
@@ -122,7 +125,15 @@ test('v2 opens saved bytes directly and preserves documents, discussion, setting
 });
 
 test('empty, missing and document-free reviews have distinct messages and no invented downloads', async ({ page }, info) => {
-  await openChanges(page, 'v2-empty');
+  const reads: string[] = [];
+  page.on('request', request => { if (request.url().includes('/workspace-diff')) reads.push(request.url()); });
+  await page.goto(review('v2-empty'));
+  await expect(page.getByRole('region', { name: 'Discussion' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Selected document' })).toHaveCount(0);
+  await expect(changesAttachment(page)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Ask a question', exact: true })).toBeVisible();
+  expect(reads).toEqual([]);
+  await openChanges(page, 'empty');
   await expect(page.getByText('No file changes in this saved comparison.')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Download saved diff' })).toHaveCount(1); // retained zero-byte file
   expect(await download(page)).toHaveLength(0);
@@ -273,7 +284,7 @@ test.describe('phone', () => {
     await page.goto(review('v2-paged'));
     await page.getByRole('button', { name: 'Ask a question', exact: true }).tap();
     await page.getByLabel('Question or requested change (required)', { exact: true }).fill('Explain the saved changes.');
-    await page.getByRole('tab', { name: 'Changes', exact: true }).tap();
+    await changesAttachment(page).tap();
     await expect(page.getByLabel('Unified diff').last()).toBeVisible();
     expect(await download(page)).toEqual(Buffer.from(oracle.all));
     await page.locator('.changes-preview').evaluate(el => el.scrollIntoView({ block: 'start' }));
@@ -281,7 +292,7 @@ test.describe('phone', () => {
     await page.getByText('Side by side', { exact: true }).tap();
     await expect(page.getByLabel('Side by side diff').last()).toBeVisible();
     await noOverflow(page);
-    await page.getByRole('tab', { name: 'Documents', exact: true }).tap();
+    await closeChanges(page);
     await expect(page.getByLabel('Question or requested change (required)', { exact: true })).toHaveValue('Explain the saved changes.');
   });
 });

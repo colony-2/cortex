@@ -6,7 +6,7 @@ type StatusPresentation = { label: string; color: string };
 
 export const filterStatuses = {
   READY: { label: 'Ready', color: 'blue' },
-  PENDING_JOBS: { label: 'Waiting for jobs', color: 'lime' },
+  PENDING_JOBS: { label: 'Waiting', color: 'lime' },
   AWAITING_FUTURE: { label: 'Scheduled', color: 'cyan' },
   ACTIVE: { label: 'Running', color: 'green' },
   CRASH_CONCERN: { label: 'Job keeps failing', color: 'orange' },
@@ -19,6 +19,8 @@ export const filterStatuses = {
   failed_timeout: { label: 'Timed out', color: 'red' },
   OUTCOME_UNAVAILABLE: { label: 'Finished (outcome unavailable)', color: 'default' },
 } satisfies Record<Exclude<RecipeJobFilterStatus, `completion:${string}`>, StatusPresentation>;
+
+export const failedJobStatuses = ['failed_app', 'failed_system', 'failed_timeout'] as const;
 
 export function isJobFilterStatus(value: string): value is RecipeJobFilterStatus {
   return Object.prototype.hasOwnProperty.call(filterStatuses, value)

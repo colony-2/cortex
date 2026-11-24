@@ -84,6 +84,21 @@ describe('shared discovery and selected request acquisition',()=>{
   await expect(a).rejects.toThrow();await expect(b).rejects.toThrow();expect(fetch).toHaveBeenCalledTimes(1);
   expect(service.getDiscovery('tenant').inputs).toEqual([row()]);
  });
+ it('keeps discovery and detail reads independent for a reply in another tenant', async () => {
+  const foreground = deferred<Response>();
+  const background = deferred<Response>();
+  const form = deferred<Response>();
+  vi.mocked(fetch).mockReturnValueOnce(foreground.promise).mockReturnValueOnce(background.promise).mockReturnValueOnce(form.promise);
+  const foregroundRead = service.getPendingInputs('tenant', true);
+  const backgroundRead = service.getPendingInputs('other', true);
+  background.resolve(new Response(JSON.stringify([row()])));
+  await expect(backgroundRead).resolves.toEqual([row()]);
+  const backgroundDetail = service.getInputDetails('other', 'job');
+  foreground.resolve(new Response('', {status:503}));
+  await expect(foregroundRead).rejects.toThrow();
+  form.resolve(new Response(JSON.stringify(details())));
+  await expect(backgroundDetail).resolves.toEqual(details());
+ });
  it('reads only matched selected jobs and coalesces consumers',async()=>{
   expect(await service.getInputDetails('tenant','job')).toBeNull();snapshot([row(),row({id:'other'})]);
   const read=deferred<Response>();vi.mocked(fetch).mockReturnValue(read.promise);

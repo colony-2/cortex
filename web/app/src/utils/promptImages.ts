@@ -1,7 +1,7 @@
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
-import { imageDimensions, IMAGE_LIMIT, rasterType } from '../components/review/document';
+import { imageDimensions, IMAGE_LIMIT, ImagePixelLimitError, rasterType } from '../components/review/document';
 import { validateGoalAttachments } from './goalAttachments';
 import type { ReviewImagePasteOutcome, ReviewImagePasteResult } from 'critrev/react';
 
@@ -26,13 +26,21 @@ export function markdownImages(markdown: string): string[] {
 }
 export const safeImageName = (name: string) => !!name && !/[\s/\\:?#%<>\x00-\x1f\x7f]/u.test(name) && name !== '.' && name !== '..';
 const supported = new Map([['image/png', 'png'], ['image/jpeg', 'jpg'], ['image/gif', 'gif'], ['image/webp', 'webp']]);
-export async function rasterPreview(file: Blob, signal?: AbortSignal): Promise<string> {
-  if (file.size > IMAGE_LIMIT) throw new Error('Image exceeds the 16 MiB preview limit.');
-  const bytes = new Uint8Array(await file.arrayBuffer());
+export function rasterPreview(file: Blob, signal?: AbortSignal): Promise<string>;
+export function rasterPreview(file: Blob, signal: AbortSignal, allowWithoutPreview: boolean): Promise<string | undefined>;
+export async function rasterPreview(file: Blob, signal?: AbortSignal, allowWithoutPreview = false): Promise<string | undefined> {
+  const oversized = file.size > IMAGE_LIMIT;
+  if (oversized && !allowWithoutPreview) throw new Error('Image exceeds the 16 MiB preview limit.');
+  const bytes = new Uint8Array(await (oversized ? file.slice(0, 512) : file).arrayBuffer());
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   const mime = rasterType(bytes);
   if (!mime || !supported.has(mime) || (file.type && file.type !== mime)) throw new Error('Use a valid PNG, JPEG, GIF, or WebP image with matching file type.');
-  imageDimensions(bytes, mime);
+  if (oversized) return;
+  try { imageDimensions(bytes, mime); }
+  catch (error) {
+    if (allowWithoutPreview && error instanceof ImagePixelLimitError) return;
+    throw error;
+  }
   const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
   try {
     await new Promise<void>((resolve, reject) => {
@@ -53,7 +61,10 @@ export class DraftImages {
   readonly entries = new Map<string, DraftImage>();
   private disposed = false;
   private staged: DraftImage[] = [];
-  constructor(private changed: () => void, private explicit: () => readonly File[]) {}
+  constructor(private changed: () => void, private explicit: () => readonly File[], private options?: {
+    validate?: typeof validateGoalAttachments;
+    allowWithoutPreview?: boolean;
+  }) {}
   activate() { this.disposed = false; }
   stage(files: readonly File[]): ReviewImagePasteResult {
     if (this.disposed) return { reject: true };
@@ -68,7 +79,7 @@ export class DraftImages {
       const file = new File([original], name, { type: original.type });
       return { file, original, status: 'pending' as const, controller: new AbortController() };
     });
-    validateGoalAttachments([...this.explicit(), ...this.files(), ...staged.map(item => item.file)]);
+    (this.options?.validate ?? validateGoalAttachments)([...this.explicit(), ...this.files(), ...staged.map(item => item.file)]);
     this.staged = staged;
     staged.forEach(item => this.add(item));
     this.changed();
@@ -80,9 +91,10 @@ export class DraftImages {
   }
   private add(item: DraftImage) {
     this.entries.set(item.file.name, item);
-    void rasterPreview(item.file, item.controller.signal).then(preview => {
-      if (this.disposed || this.entries.get(item.file.name) !== item) URL.revokeObjectURL(preview);
-      else { Object.assign(item, { status: 'ready', preview }); this.changed(); }
+    void rasterPreview(item.file, item.controller.signal, this.options?.allowWithoutPreview ?? false).then(preview => {
+      if (this.disposed || this.entries.get(item.file.name) !== item) {
+        if (preview) URL.revokeObjectURL(preview);
+      } else { Object.assign(item, { status: 'ready', preview }); this.changed(); }
     }, reason => {
       if (!this.disposed && this.entries.get(item.file.name) === item) { Object.assign(item, { status: 'invalid', error: (reason as Error).message }); this.changed(); }
     });
@@ -101,7 +113,7 @@ export class DraftImages {
   files() { return [...this.entries.values()].map(item => item.file); }
   previews() { return new Map([...this.entries].flatMap(([name, item]) => item.preview ? [[name, item.preview] as const] : [])); }
   submission(markdown: string, explicit: readonly File[]): File[] {
-    validateGoalAttachments([...explicit, ...this.files()]);
+    (this.options?.validate ?? validateGoalAttachments)([...explicit, ...this.files()]);
     const images = markdownImages(markdown).flatMap(name => {
       const image = this.entries.get(name);
       if (!image) {

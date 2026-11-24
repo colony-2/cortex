@@ -23,7 +23,8 @@ it('ENV-24,25 shows full escaped values and exact data, with source inside Detai
   expect(screen.getByText('<script>雪/*</script>')).toBeVisible();
   expect(container.querySelector('script')).toBeNull();
   expect(screen.getByText('0.5 cores')).toBeVisible(); expect(screen.getByText('8 GiB')).toBeVisible();
-  expect(screen.getByText('Not specified')).toBeVisible();
+  expect(screen.queryByText('Ephemeral storage')).toBeNull();
+  expect(screen.queryByText(/wildcard matches/)).toBeNull();
   expect(screen.getByText('docker')).toBeVisible(); expect(screen.getByText('network')).toBeVisible();
   fireEvent.click(screen.getByText('Packages (2)')); expect(screen.getByText('nix:two')).toBeVisible();
   fireEvent.click(screen.getByText(/Python environment/)); expect(screen.getByText('numpy')).toBeVisible();

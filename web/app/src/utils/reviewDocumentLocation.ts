@@ -1,4 +1,17 @@
 import type { ReviewDocumentMetadata } from '@colony2/shared';
+import { reviewReturnSearch } from './reviewFilters';
+
+export function reviewInboxPath(tenant: string, search: string) {
+  const params = new URLSearchParams(reviewReturnSearch(new URLSearchParams(search)));
+  params.set('inbox', 'reviews');
+  return `/project/${encodeURIComponent(tenant)}/jobs?${params}`;
+}
+
+export function reviewThreadPath(tenant: string, job: string, request?: string, kind: 'review_id' | 'request_id' = 'review_id') {
+  const params = new URLSearchParams({ input: '1' });
+  if (request !== undefined) params.set(kind, request);
+  return `/project/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(job)}/story?${params}`;
+}
 
 const utf8 = new TextEncoder();
 function compareDocumentIds(a: string, b: string): number {

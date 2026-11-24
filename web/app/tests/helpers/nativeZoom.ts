@@ -47,8 +47,12 @@ export async function captureNativeZoom(page: Page, path: string) {
   // Let Ant Design finish finite opening transitions before collecting evidence.
   await page.evaluate(async () => {
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    await Promise.all(document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity)
-      .map(animation => animation.finished.catch(() => {})));
+    const finiteTransitions = document.getAnimations().filter(animation =>
+      animation.playState === 'running' && animation.effect?.getComputedTiming().endTime !== Infinity);
+    await Promise.race([
+      Promise.all(finiteTransitions.map(animation => animation.finished.catch(() => {}))),
+      new Promise(resolve => setTimeout(resolve, 500)),
+    ]);
   });
   // Capture the compositor viewport directly; do not adjust its emulation size.
   const session = await page.context().newCDPSession(page);

@@ -99,7 +99,7 @@ for (const width of [1440, 390]) test(`H28-31 document history and response draf
   await page.goBack(); await selected(page, 1);
   await page.goBack(); await selected(page, 0);
   await page.goBack();
-  await expect(page).toHaveURL(/\/project\/history\/reviews$/);
+  await expect(page).toHaveURL('/project/history/jobs?inbox=reviews');
 });
 
 test('H29 mobile selector, cards, source and attachment links share one history', async ({ page }) => {
@@ -198,12 +198,16 @@ test('H34 missing document corrects once and stale or duplicate links require de
   await selected(page, 0);
   await expect(page.getByText(/linked document is unavailable/)).toBeVisible();
   await page.goBack();
-  await expect(page).toHaveURL(/\/project\/history\/reviews$/);
+  await expect(page).toHaveURL('/project/history/jobs?inbox=reviews');
   const before = state.requests.length;
   for (const invalid of [link('a', 'older-review'), link('a') + '&document_id=a']) {
     await page.goto(invalid);
     await expect(page.getByRole('button', { name: 'Open current review' })).toBeVisible();
-    expect(new URL(page.url()).pathname + new URL(page.url()).search).toBe(invalid);
+    const selectedURL = new URL(page.url());
+    expect(selectedURL.pathname).toBe('/project/history/jobs/one/story');
+    expect(selectedURL.searchParams.get('input')).toBe('1');
+    selectedURL.searchParams.delete('input');
+    expect(selectedURL.search).toBe(new URL(invalid, page.url()).search);
     await expect(page.getByLabel('Selected document')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0);
     expect(state.requests).toHaveLength(before);

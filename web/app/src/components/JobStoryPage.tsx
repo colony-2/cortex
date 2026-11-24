@@ -1,6 +1,8 @@
 import { object, valueText } from './conversationPresentation';
 import { messagePreview, readInboxSort, threadTitle } from '../utils/jobInbox';
 import { useInboxReadReceipt, useOptionalJobInbox } from '../hooks/useJobInbox';
+import { useSavedReviewDrafts } from '../hooks/useReviewDraft';
+import { reviewThreadPath } from '../utils/reviewDocumentLocation';
 import { InputRequestReader } from './InputDetailPage';
 import ReviewV2 from './ReviewV2';
 import { dagReturnPath } from '../executionTree/navigation';
@@ -10,6 +12,7 @@ import JobLeaseTimeline from './JobLeaseTimeline';
 import { launchPath } from '../runners/paths';
 import JobCrashConcern from './JobCrashConcern';
 import JobConversation from './JobConversation';
+import ReviewDocuments, { type ReaderDocument } from './ReviewDocuments';
 import JobEnvironment from './JobEnvironment';
 import JobDetailTabs, { jobDetailTab, type JobDetailTab } from './JobDetailTabs';
 import NodePayloadView from './NodePayloadView';
@@ -154,11 +157,6 @@ function artifactUrl(projectId: string, jobId: string, artifact: ArtifactKey): s
   if (artifact.storedKey) return storedDocumentURL(projectId, artifact.storedKey);
   if (artifact.contentBinding !== undefined) return `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(artifact.inputJobId || jobId)}/input-document?binding=${encodeURIComponent(artifact.contentBinding)}${artifact.inputOrdinal === undefined ? '' : `&ordinal=${artifact.inputOrdinal}`}`;
   return `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(artifact.jobId || jobId)}/tasks/${artifact.taskOrdinal}/artifacts/${encodeURIComponent(artifact.name)}`;
-}
-
-function artifactSize(bytes: number): string {
-  const unit = Math.min(3, Math.max(0, Math.floor(Math.log2(Math.max(1, bytes)) / 10)));
-  return `${unit === 0 ? bytes : (bytes / 1024 ** unit).toFixed(1)} ${['B', 'KB', 'MB', 'GB'][unit]}`;
 }
 
 function kindLabel(kind: StoryKind): string {
@@ -385,6 +383,9 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const pendingForm = pendingInputDetails?.form;
   const pendingIsReview = pendingForm?.kind === 'review' || object(pendingForm?.presentation).type === 'review/v2';
   const reviewRequest = object(pendingForm?.request);
+  const currentReviewId = pendingForm?.presentation?.type === 'review/v2' && typeof reviewRequest.review_id === 'string'
+    ? reviewRequest.review_id : undefined;
+  const threadReviewId = threadParams.get('review_id') ?? currentReviewId;
   const pendingLabel = messagePreview(pendingForm?.title || pendingForm?.question || valueText(reviewRequest.title || reviewRequest.question || ''));
   const pendingInputError = selectedInput.error;
   const pendingInputLoading = selectedInput.loading || (wantInput && selectedInput.discovery.status === 'loading');
@@ -424,6 +425,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const activityJob = job ?? metadata?.observedJob;
   const activityStatus = activityJob ? jobStatusValue(activityJob) : undefined;
   const prompt = job?.prompt?.trim() ? job.prompt : undefined;
+  const hasDraft = useSavedReviewDrafts(projectId).some(draft=>draft.job===jobId);
   const submittedBy = job?.metadata?.cortex_submitted_by;
   const sender = typeof submittedBy === 'string' && submittedBy.trim() ? submittedBy : 'Unknown';
   const terminalStatus = job ? jobStatusValue(job) : undefined;
@@ -436,7 +438,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
       job: previous?.projectId === projectId && previous.jobId === jobId ? previous.job : undefined,
       observedJob: previous?.projectId === projectId && previous.jobId === jobId ? previous.job ?? previous.observedJob : undefined }));
     try {
-      const detail = await getJob(projectId, jobId, true);
+      const detail = await getJob(projectId, jobId);
       if (!alive.current || generation !== metadataGeneration.current) return;
       // getJob is an exact read; reject a mismatched response as unavailable.
       if (detail.job_id !== jobId || (detail.tenant_id && detail.tenant_id !== projectId)) throw new Error('Job detail identity does not match the selected source');
@@ -851,8 +853,30 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     }
   };
 
+  const inputDocuments: Record<string, ReaderDocument> = Object.create(null);
+  const inputURLs: Record<string, string> = Object.create(null);
+  const inputOrder: Record<string, { order: number }> = Object.create(null);
+  inputs?.artifacts?.forEach((artifact, order) => {
+    const key = inputViewerArtifact(artifact, jobId);
+    const id = artifactRowKey(key, jobId);
+    inputDocuments[id] = {
+      name: artifact.name,
+      hideIdentifier: true,
+      sizeBytes: artifact.sizeBytes >= 0 ? artifact.sizeBytes : undefined,
+      unavailableReason: artifact.reason,
+      details: <>
+        {artifact.binding !== undefined && <div>Binding: {artifact.binding}</div>}
+        {artifact.sources?.length ? <div>{artifact.sources.join(' · ')}</div> : null}
+      </>,
+    };
+    inputURLs[id] = artifact.reason ? '' : artifactUrl(projectId, jobId, key);
+    inputOrder[id] = { order };
+  });
+
   const initialMessage = job ? {
     sender, subject: messagePreview(prompt) || 'Original message', onExpand: openOriginal, showAttachments: threadParams.get('tab') === 'input-artifacts',
+    subjectIsPrompt: !!prompt,
+    time: { value: job.submitted_at || job.created_at },
     node: <>
       <section aria-label="Job prompt">
         {prompt ? <GoalPrompt projectId={projectId} jobId={jobId} text={prompt} inventory={promptInventory}
@@ -861,22 +885,10 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
       {inputs?.error ? <Alert type="warning" message="Unable to load attachments" description={inputs.error}
         action={<Button onClick={() => setInputRetry(value => value + 1)}>Retry</Button>} />
         : !inputs?.artifacts ? <Text type="secondary">Checking attachments…</Text>
-        : inputs.artifacts.length > 0 && <section className="thread-attachments input-artifacts" aria-label="Input attachments">
-          <h4>Attachments ({inputs.artifacts.length})</h4>
-          <List size="small" dataSource={inputs.artifacts} renderItem={artifact => (
-            <List.Item key={artifact.id || JSON.stringify([projectId, artifact.jobId, artifact.taskOrdinal, artifact.name])}>
-              <div className="input-artifact-description">
-                {artifact.reason ? <Text>{artifact.name}</Text> : <Button type="link" className="input-artifact-name"
-                  onClick={() => openArtifact(inputViewerArtifact(artifact, jobId), inputs.artifacts!.filter(a => !a.reason).map(a => inputViewerArtifact(a, jobId)))}>{artifact.name}</Button>}
-                {artifact.binding !== undefined && <div><Text type="secondary">Binding: {artifact.binding}</Text></div>}
-                {artifact.sources && <div><Text type="secondary">{artifact.sources.join(' · ')}</Text></div>}
-                {artifact.reason && <div><Text type="secondary">{artifact.reason}</Text></div>}
-              </div>
-              {!artifact.reason && <Space><Text type="secondary">{artifact.sizeBytes >= 0 ? artifactSize(artifact.sizeBytes) : 'Size unknown'}</Text>
-                <Button aria-label={`Download ${artifact.name}`} icon={<DownloadOutlined />} onClick={() => downloadArtifact(inputViewerArtifact(artifact, jobId))} /></Space>}
-            </List.Item>
-          )} />
-        </section>}
+        : inputs.artifacts.length > 0 && <ReviewDocuments attachmentLayout="attachments" attachmentsLabel="Input attachments"
+          projectId={projectId} jobId={jobId} requestId={jobId}
+          documents={inputDocuments} documentMetadata={inputOrder}
+          source={{ identity: artifactIdentity, url: id => inputURLs[id] ?? '' }} />}
     </>,
   } : undefined;
 
@@ -886,9 +898,16 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         <div className="job-story-header" data-testid="job-story-header">
           <div className="inbox-story-subject">
             <Link className="inbox-back" aria-label="Back to inbox" to={returnTo}>←</Link>
-            <Title level={3} title={job && threadTitle(job)} style={{ margin: 0 }}>{job ? threadTitle(job) : 'Thread'}</Title>
-            {job && displayStatus && <div className="inbox-story-meta"><span aria-label="Job cell" title={cellLabel(job.cell_name)}>{cellLabel(job.cell_name)}</span>
-              <Tag color={displayStatus.color} aria-label="Job status">{displayStatus.label}</Tag></div>}
+            <div className="inbox-story-heading">
+              <div className="inbox-story-title">
+                {job && <span className="inbox-story-cell" aria-label="Job cell" title={cellLabel(job.cell_name)}>{cellLabel(job.cell_name)}</span>}
+                <Title level={3} title={job && threadTitle(job)} style={{ margin: 0 }}>{job ? threadTitle(job) : 'Thread'}</Title>
+              </div>
+              {(displayStatus || hasDraft) && <div className="inbox-story-meta">
+                {displayStatus && <Tag color={displayStatus.color} aria-label="Job status">{displayStatus.label}</Tag>}
+                {hasDraft && <Tag color="magenta">Draft</Tag>}
+              </div>}
+            </div>
           </div>
           <details className="inbox-story-more"><summary>More actions</summary><div className="job-story-actions" role="group" aria-label="Job actions" onClickCapture={event => {
             if (!(event.target as HTMLElement).closest('button:not([role="switch"]), a')) return;
@@ -941,28 +960,27 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         <div className="job-detail-panels">
         <section role="tabpanel" id="job-panel-conversation" aria-labelledby="job-tab-conversation" hidden={activeTab !== 'conversation'} tabIndex={0} className="job-detail-panel">
         {selectedInput.discovery.status === 'unavailable' && pendingInputDetails && threadRequestId === null && <Alert type="warning" showIcon message="Pending request availability is unavailable." description={selectedInput.discovery.error} action={<Button onClick={() => void selectedInput.refresh().catch(() => {})}>Retry</Button>} />}
-        {threadWantsInput && threadRequestId === null && !pendingInputLoading && !pendingInputDetails && !pendingInputError && <Alert type={selectedInput.discovery.status === 'unavailable' ? 'warning' : 'info'} showIcon
+        {threadWantsInput && !threadReviewId && threadRequestId === null && !pendingInputLoading && !pendingInputDetails && !pendingInputError && <Alert type={selectedInput.discovery.status === 'unavailable' ? 'warning' : 'info'} showIcon
           message={selectedInput.discovery.status === 'unavailable' ? 'Pending request availability is unavailable.' : 'No outstanding input request.'}
           action={<Button onClick={() => void selectedInput.refresh().catch(() => {})}>{selectedInput.discovery.status === 'unavailable' ? 'Retry' : 'Refresh'}</Button>} />}
         {(activeTab === 'conversation' || threadVisited) && <JobConversation folded metadata={job}
           initial={initialMessage}
-          currentIsReview={pendingIsReview || threadParams.has('review_id')}
+          currentIsReview={pendingIsReview || !!threadReviewId}
+          currentReviewId={threadReviewId}
+          currentRequestTime={pendingInputDetails?.startTime}
           currentRequestLabel={pendingLabel} openCurrent={threadWantsInput || threadParams.has('review_id')} currentRequestId={threadRequestId === null ? pendingInputDetails?.form.request_id : undefined} cellName={job?.cell_name} onInventory={receiveInventory} onBack={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('occurrenceId'); next.delete('requestId'); return next; })} tenant={projectId} job={jobId} occurrence={threadParams.get('occurrenceId') ?? undefined}
           autoRefresh={autoRefresh && activeTab === 'conversation'} refreshIntervalMs={refreshIntervalMs} requestId={threadParams.get('requestId') ?? undefined}
           refreshKey={historyRefreshKey} onOpen={entry => setSearchParams(previous => {
             const next = new URLSearchParams(previous); next.set('occurrenceId', entry); next.set('tab', 'conversation');
             next.delete('requestId'); next.delete('input'); return next;
           })}>
-          {threadRequestId === null && !threadParams.has('occurrenceId') && (threadParams.get('review_id')
-            ? <ReviewV2 key={JSON.stringify([projectId,jobId,threadParams.get('review_id')])} tenant={projectId} job={jobId} reviewId={threadParams.get('review_id')!} embedded metadata={job} />
+          {threadRequestId === null && !threadParams.has('occurrenceId') && (threadReviewId
+            ? <ReviewV2 key={JSON.stringify([projectId,jobId,threadReviewId])} tenant={projectId} job={jobId} reviewId={threadReviewId} embedded metadata={job} />
             : (pendingInputDetails || pendingInputLoading || pendingInputError) && <InputRequestReader key={JSON.stringify([projectId,jobId,pendingInputDetails?.form.request_id])} projectId={projectId} embedded metadata={job} />)}
         </JobConversation>}
         </section>
         <section role="tabpanel" id="job-panel-runtime" aria-labelledby="job-tab-runtime" hidden={activeTab !== 'runtime'} tabIndex={0} className="job-detail-panel">
-          {activeTab === 'runtime' && job && <>
-            {job.launch_id && <div><Text strong>Last recorded launch ID </Text><Link to={launchPath(projectId, job.launch_id, {jobId})}>{job.launch_id}</Link></div>}
-            <JobEnvironment job={job} />
-          </>}
+          {activeTab === 'runtime' && job && <JobEnvironment job={job} />}
           <JobCrashConcern key={dagIdentity} projectId={projectId} jobId={jobId} job={job} status={metadata?.status}
             pause={() => { crashMutationBusy.current = true; ++metadataGeneration.current; }}
             resume={() => { crashMutationBusy.current = false; }} refresh={() => loadMetadata(true)} />
@@ -970,8 +988,8 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         </section>
         <section role="tabpanel" id="job-panel-dag" aria-labelledby="job-tab-dag" hidden={activeTab !== 'dag'} tabIndex={0} className="job-detail-panel">
           {(activeTab === 'dag' || dagVisited === dagIdentity) && <>
-            <TreeWorkspace key={dagIdentity} tenant={projectId} entry={jobId!} active={activeTab === 'dag'} embedded onJobChanged={node => { if (node.tenant_id === projectId && node.job_id === jobId) { void loadMetadata(); void refreshPendingInputs(); } }} />
-            {job && <JobRelationships showAttempts projectId={projectId} jobId={jobId!} job={job} currentGoal={currentGoal} />}
+            <TreeWorkspace key={dagIdentity} tenant={projectId} entry={jobId!} active={activeTab === 'dag'} embedded onJobChanged={node => { if (node.tenant_id === projectId && node.job_id === jobId) { void loadMetadata(); void refreshPendingInputs(); } }}
+              relationships={job && <JobRelationships showAttempts projectId={projectId} jobId={jobId!} job={job} currentGoal={currentGoal} />} />
           </>}
         </section>
         <section role="tabpanel" id="job-panel-execution" aria-labelledby="job-tab-execution" hidden={activeTab !== 'execution'} tabIndex={0} className="job-detail-panel">
@@ -1280,7 +1298,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
 
                               {pendingInputDetails.form.kind === 'review' ? (
                                 <Card title={pendingInputDetails.form.title || 'Review'} size="small">
-                                  <Button type="primary" href={`/project/${projectId}/reviews/${jobId}`}>Open Review</Button>
+                                  <Link to={reviewThreadPath(projectId,jobId)}>Open Review</Link>
                                 </Card>
                               ) : pendingInputForm ? (
                                 <Card title={pendingInputForm.title} size="small">

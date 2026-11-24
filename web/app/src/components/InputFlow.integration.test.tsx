@@ -182,7 +182,7 @@ describe('Input Flow - Complete E2E Integration', () => {
     unmount();
 
     // Step 5-6: Render story page with form
-    render(
+    const { container } = render(
       <MemoryRouter initialEntries={[`/project/${projectId}/jobs/${jobId}/story?input=1`]}>
         <InputActivityProvider>
           <Routes>
@@ -195,7 +195,10 @@ describe('Input Flow - Complete E2E Integration', () => {
       </MemoryRouter>
     );
 
-    // User sees form
+    // The original prompt can be read alongside the pending form.
+    await waitFor(() => expect(container.querySelector('.inbox-original > summary')).toBeInTheDocument());
+    const original = container.querySelector<HTMLDetailsElement>('.inbox-original')!;
+    if (!original.open) fireEvent.click(original.querySelector('summary')!);
     expect(await screen.findByRole('region', { name: 'Job prompt' })).toHaveTextContent('Complete the input flow');
     expect(screen.queryByText('Job details unavailable')).not.toBeInTheDocument();
     await waitFor(
@@ -379,10 +382,10 @@ describe('MAL review draft preservation', () => {
       expect(submit).not.toHaveBeenCalled();
       const destination = (id: string) => ({pathname:'/project/tenant/reviews/review-job',search:`?request_id=request-1&document_id=${id}`,hash:''});
       expect(mockNavigate.mock.calls).toEqual([
-        [destination('a'), {replace:true}],
-        [destination('b')],
-        [destination('a')],
-        [destination('b')],
+        [destination('a'), {replace:true,state:null}],
+        [destination('b'), {state:null}],
+        [destination('a'), {state:null}],
+        [destination('b'), {state:null}],
       ]);
       expect(screen.getByLabelText('Review URL')).toHaveTextContent('/project/tenant/reviews/review-job?request_id=request-1&document_id=b');
       expect(fetcher.mock.calls.filter(([url])=>url.includes('/stored-document?')).map(([url])=>new URL(url).searchParams.get('name'))).toEqual(['bar.md','foo.md','bar.md','foo.md']);

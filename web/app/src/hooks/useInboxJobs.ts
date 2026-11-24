@@ -13,7 +13,7 @@ type InboxPage = {
 
 const emptyJobs: InboxJob[] = [];
 
-export function useInboxJobs(tenant: string, folder: 'all' | 'cell' | 'archive' | undefined,
+export function useInboxJobs(tenant: string, folder: 'all' | 'cell' | 'archive' | 'active' | 'waiting' | 'failed' | undefined,
   cell: { id: string; name: string } | undefined, complete: boolean, revision: number) {
   const cellId = cell?.id, cellName = cell?.name;
   const key = folder && (folder !== 'cell' || cellName) ? JSON.stringify([tenant, folder, cellId, cellName]) : undefined;
@@ -35,7 +35,8 @@ export function useInboxJobs(tenant: string, folder: 'all' | 'cell' | 'archive' 
     setPage(previous => ({ key, jobs: emptyJobs, loaded: false, ...(previous?.key === key ? previous : {}), loading: true, error: undefined, retryToken: token }));
     try {
       const next = folder === 'archive' ? { jobs: await loadArchivedInbox(tenant, controller.signal), nextPageToken: undefined }
-        : await loadVisibleInboxPage(tenant, cellId && cellName ? { id: cellId, name: cellName } : undefined, token, controller.signal);
+        : await loadVisibleInboxPage(tenant, cellId && cellName ? { id: cellId, name: cellName } : undefined, token, controller.signal,
+          folder === 'active' || folder === 'waiting' || folder === 'failed' ? folder : undefined);
       if (controller.signal.aborted) return;
       if (next.nextPageToken && (token === next.nextPageToken || tokens.current.has(next.nextPageToken))) {
         throw new Error('Inbox page cursor did not advance.');

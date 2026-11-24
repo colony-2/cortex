@@ -117,7 +117,10 @@ it('invalid signature, spoofed MIME, oversized and excessive dimensions never de
   const big = png.slice(); new DataView(big.buffer).setUint32(16, 100000);
   new DataView(big.buffer).setUint32(20, 100000);
   await expect(rasterPreview(new Blob([big], { type: 'image/png' }))).rejects.toThrow(/32 megapixel/);
-  const blob = new Blob(); Object.defineProperty(blob, 'size', { value: 17 * 1024 * 1024 });
+  const blob = new Blob([png], { type: 'image/png' }); Object.defineProperty(blob, 'size', { value: 17 * 1024 * 1024 });
   await expect(rasterPreview(blob)).rejects.toThrow(/16 MiB/);
+  const signal = new AbortController().signal;
+  await expect(rasterPreview(blob, signal, true)).resolves.toBeUndefined();
+  await expect(rasterPreview(new Blob([big], { type: 'image/png' }), signal, true)).resolves.toBeUndefined();
   expect(URL.createObjectURL).not.toHaveBeenCalled();
 });

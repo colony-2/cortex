@@ -75,8 +75,11 @@ func writeCell(w http.ResponseWriter, status int, cell jobdb.Cell) {
 }
 
 func decodeRequest(w http.ResponseWriter, r *http.Request, dst any) error {
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	decoder := json.NewDecoder(r.Body)
+	return decodeJSON(http.MaxBytesReader(w, r.Body, 1<<20), dst)
+}
+
+func decodeJSON(r io.Reader, dst any) error {
+	decoder := json.NewDecoder(r)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(dst); err != nil {
 		return err

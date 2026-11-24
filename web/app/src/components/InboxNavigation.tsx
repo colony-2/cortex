@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button, Input, Tooltip } from 'antd';
-import { EditOutlined, InboxOutlined, FolderOutlined, ClockCircleOutlined, FileTextOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
+import { EditOutlined, InboxOutlined, FolderOutlined, ClockCircleOutlined, FileTextOutlined, PlusOutlined, SearchOutlined, ThunderboltOutlined, AuditOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { useJobInbox } from '../hooks/useJobInbox';
-import { inboxPendingBadge, visibleInboxCells, type InboxSelection } from '../utils/jobInbox';
+import { inboxFolder, inboxPendingBadge, visibleInboxCells, type InboxSelection } from '../utils/jobInbox';
 import CreateCellDialog from './CreateCellDialog';
 
 export default function InboxNavigation({ rail, onCompose, onNavigate, onExpand, draftCount }: {
@@ -12,7 +12,7 @@ export default function InboxNavigation({ rail, onCompose, onNavigate, onExpand,
   const inbox = useJobInbox();
   const location = useLocation();
   const query = new URLSearchParams(location.search);
-  const folder = query.get('inbox') ?? 'all', selectedId = query.get('cellId') ?? undefined;
+  const folder = inboxFolder(query.get('inbox')), selectedId = query.get('cellId') ?? undefined;
   const [expanded, setExpanded] = useState(false);
   const [search, setSearch] = useState('');
   const [creating, setCreating] = useState(false);
@@ -30,8 +30,11 @@ export default function InboxNavigation({ rail, onCompose, onNavigate, onExpand,
   };
   return <nav className={`inbox-navigation${rail ? ' rail' : ''}`} aria-label="Inboxes">
     <Tooltip title={rail ? 'New message' : undefined} placement="right"><Button className="inbox-compose" type="primary" icon={<EditOutlined />} aria-label="New message" onClick={() => { onCompose(); onNavigate(); }}><span className="inbox-navigation-name">New message</span></Button></Tooltip>
-    {item({ kind: 'waiting' }, 'Waiting', <ClockCircleOutlined />)}
+    {item({ kind: 'reviews' }, 'Reviews', <AuditOutlined />)}
     {item({ kind: 'drafts' }, 'Drafts', <FileTextOutlined />)}
+    {item({ kind: 'active' }, 'Active', <ThunderboltOutlined />)}
+    {item({ kind: 'waiting' }, 'Waiting', <ClockCircleOutlined />)}
+    {item({ kind: 'failed' }, 'Failed', <CloseCircleOutlined />)}
     <div className="inbox-cell-heading"><span className="inbox-navigation-name">Cells</span><Button type="text" size="small" aria-label={expanded && !rail ? 'Show fewer cells' : 'Search all cells'} aria-expanded={expanded && !rail} onClick={() => { if (rail) { onExpand(); setExpanded(true); } else setExpanded(value => !value); }} icon={<SearchOutlined />} /></div>
     {expanded && !rail && <Input aria-label="Search cells" placeholder="Find a cell" allowClear value={search} onChange={event => setSearch(event.target.value)} />}
     <div className="inbox-cell-scroll">
@@ -39,7 +42,10 @@ export default function InboxNavigation({ rail, onCompose, onNavigate, onExpand,
       {!rail && !inbox.registry.loading && !cells.length && <p className="inbox-nav-notice">No matching cells</p>}
     </div>
     {inbox.registry.error && <p role="status" className="inbox-nav-notice">Cells unavailable <button onClick={inbox.registry.reload}>Retry</button></p>}
-    {expanded && !rail && <Button className="inbox-add-cell" type="text" icon={<PlusOutlined />} onClick={() => setCreating(true)}>Add cell</Button>}
+    {expanded && !rail && <div className="inbox-cell-actions">
+      <Link className="inbox-navigation-item" to={`/project/${encodeURIComponent(inbox.tenant)}/cells`} onClick={onNavigate}>All Cells</Link>
+      <Tooltip title="Add cell"><Button type="text" aria-label="Add cell" icon={<PlusOutlined />} onClick={() => setCreating(true)} /></Tooltip>
+    </div>}
     {item({ kind: 'all' }, 'All', <InboxOutlined />)}
     {item({ kind: 'archive' }, 'Archive', <FolderOutlined />)}
     {creating && <CreateCellDialog projectId={inbox.tenant} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); inbox.registry.reload(); }} />}

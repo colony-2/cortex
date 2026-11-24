@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Space, Typography } from 'antd';
 import type { RecipeJob, RecipeJobSummary } from '@colony2/shared/types';
+import { reviewThreadPath } from '../utils/reviewDocumentLocation';
 
 export const goalPath = (tenant: string, goal: string) => `/project/${encodeURIComponent(tenant)}/goals/${encodeURIComponent(goal)}`;
 export const jobPath = (tenant: string, job: string) => `/project/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(job)}/story`;
@@ -8,7 +9,7 @@ export const jobPath = (tenant: string, job: string) => `/project/${encodeURICom
 export default function JobWaitLinks({ job, projectId, details }: { job: RecipeJobSummary; projectId: string; details?: RecipeJob }) {
   if (job.store !== 'ACTIVE') return null;
   if (job.next_route?.taskType === 'input:collect_user_input') {
-    return <Link className="compact-touch-link" to={`/project/${encodeURIComponent(projectId)}/reviews/${encodeURIComponent(job.job_id)}`}>Open input/review</Link>;
+    return <Link className="compact-touch-link" to={reviewThreadPath(projectId, job.job_id)}>Open input/review</Link>;
   }
   const dependencies = details?.blocking_wait?.state === 'PENDING'
     ? details?.blocking_wait.dependencies.filter(item => item.state === 'PENDING') : [];

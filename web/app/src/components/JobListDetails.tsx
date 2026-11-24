@@ -51,7 +51,7 @@ export default function JobListDetails({ job, inspection, projectId, showPrompt 
   add('Deadline', jobTime(job.expires_at));
   add('Repository', job.repo);
   add('Ref', job.git_ref);
-  add('Waiting for jobs', job.wait_for?.length ? <Space wrap>{job.wait_for.map((id, index) => jobLink(id, projectId, `Dependency ${index + 1}`))}</Space> : undefined);
+  add('Dependencies', job.wait_for?.length ? <Space wrap>{job.wait_for.map((id, index) => jobLink(id, projectId, `Dependency ${index + 1}`))}</Space> : undefined);
   add('Parent job', job.parent?.job_id ? jobLink(job.parent.job_id, job.parent.tenant_id || projectId, 'View parent execution') : undefined);
   add('Parent step', job.parent?.op_step);
   add('Cancellation', job.cancel_requested ? 'Requested' : undefined);

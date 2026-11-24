@@ -79,7 +79,7 @@ for(const which of ['story','detail'] as const) {
     expect(fixture.requests[2].searchParams.has('pageToken')).toBe(false);
   });
 }
-test('older failure retains rows, invalid cursor refresh discards history before requesting page one',async({page})=>{
+test('older failure retains rows and invalid cursor refresh replaces history after page one loads',async({page})=>{
   const fixture=await fixtures(page); await surface(page,'story'); await timeline(page).click();
   await expect(pane(page).locator('tr.ant-table-row')).toHaveCount(1);
   fixture.setResponder(async route=>{await route.fulfill({status:503,json:{error:'backend offline',code:'backend_unavailable'}});});
@@ -94,7 +94,8 @@ test('older failure retains rows, invalid cursor refresh discards history before
   let release!:()=>void; const wait=new Promise<void>(resolve=>{release=resolve;});
   fixture.setResponder(async route=>{await wait; await route.fulfill({json:{events:[]}});});
   await pane(page).getByRole('button',{name:'Refresh from first page'}).click();
-  await expect(pane(page).getByRole('status')).toBeVisible(); await expect(pane(page).locator('tr.ant-table-row')).toHaveCount(0);
+  await expect(pane(page).getByRole('button',{name:'Refresh timeline'})).toHaveAttribute('aria-busy','true');
+  await expect(pane(page).locator('tr.ant-table-row')).toHaveCount(1);
   expect(fixture.requests[3].searchParams.has('pageToken')).toBe(false);
   release(); await expect(pane(page).getByText('No retained lease events are available.')).toBeVisible();
   await expect(pane(page).getByText(/Collection and retention/)).toBeVisible();
@@ -242,8 +243,8 @@ test('follows a lease to its Pulse provider, log and job-filtered launches', asy
     route.fulfill({json: {events: [leaseEvent('2', {workerId: 'old-launch', eventType: 'lease_acquired'})]}}));
   await page.goto('/project/tenant/jobs/job/story?tab=leases');
   const execution = page.getByRole('tabpanel', {name: 'Execution'});
-  await expect(execution.getByText('Last recorded launch ID')).toBeVisible();
-  await expect(execution.getByRole('link', {name: 'launch-1'}).first()).toHaveAttribute('href', /\/runners\/launches\/launch-1/);
+  await expect(execution.getByText('Last recorded launch ID')).toHaveCount(0);
+  await expect(execution.getByRole('link', {name: 'launch-1'})).toHaveAttribute('href', /\/runners\/launches\/launch-1/);
   await pane(page).getByRole('link', {name: 'launch-1'}).click();
   await expect(page.getByRole('heading', {name: 'Launch launch-1'})).toBeVisible();
   await expect(page.locator('pre.runner-log')).toHaveText('ready');

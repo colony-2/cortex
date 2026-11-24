@@ -13,12 +13,18 @@ import './conversation.css';
 import { ReviewV2Discussion } from './ReviewV2';
 import { parseReviewV2 } from '@colony2/shared';
 import ThreadMessageLabel, { reviewContributionLabel, type MessageLabel } from './ThreadMessageLabel';
+import ThreadMessageTime from './ThreadMessageTime';
+import ThreadDependencies from './ThreadDependencies';
 function Time({value, reported = false}: {value: HistoryValue; reported?: boolean}) {
   const time = recordedTime(value);
   return <span title={time.title}>{reported ? 'Reported time: ' : ''}{time.text}</span>;
 }
-export function HistoryPair({ entry, onOpen, part, inline = false }: {
-  entry: HistoryEntry; onOpen?: () => void; part?: 'request' | 'response'; inline?: boolean;
+function acceptedTime(entry: HistoryEntry) {
+  const receiptTime = object(entry.actor.receipt).submitted_at;
+  return { value: receiptTime ?? object(entry.accepted_response.raw).submitted_at, reported: receiptTime == null || entry.actor.provenance === 'reported_receipt' };
+}
+export function HistoryPair({ entry, onOpen, part, inline = false, attachments }: {
+  entry: HistoryEntry; onOpen?: () => void; part?: 'request' | 'response'; inline?: boolean; attachments?:ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
   const answer = savedAnswers(entry.form_fields, entry.accepted_response.raw, true);
@@ -28,14 +34,15 @@ export function HistoryPair({ entry, onOpen, part, inline = false }: {
   return <div className="conversation-pair" data-occurrence={entry.entry_id}>
     {part !== 'response' && <Card size="small" variant={inline ? 'borderless' : undefined} className="conversation-step" aria-label="Recorded request step">
       <div className="conversation-line"><strong>{entry.title?.present ? valueText(entry.title.raw) : `${entry.kind} request`}</strong>{onOpen && <Button size="small" onClick={onOpen}>{entry.kind === 'review' || object(entry.form_fields.presentation).type === 'review/v2' ? 'Open review' : 'Open recorded request'}</Button>}</div>
-      <div className="conversation-line"><Time value={entry.requested_at} /><span>State: {entry.state || 'unknown'}</span>{!entry.accepted_response.present && <span>{reviewer(entry)}</span>}</div>
+      <div className="conversation-line">{!inline && <Time value={entry.requested_at} />}<span>State: {entry.state || 'unknown'}</span>{!entry.accepted_response.present && <span>{reviewer(entry)}</span>}</div>
       {question && <div className="conversation-question" title={question}>{question}</div>}
 
     </Card>}
     {part !== 'request' && entry.accepted_response.present && <Card size="small" variant={inline ? 'borderless' : undefined} className="conversation-step conversation-response" aria-label="Accepted response">
-      {inline && !part && <ThreadMessageLabel label="Answer" />}
+      {inline && !part && <div className="thread-message-meta"><ThreadMessageLabel label="Answer" /><ThreadMessageTime {...acceptedTime(entry)} /></div>}
       <div className={expanded || inline ? 'conversation-answer expanded' : 'conversation-answer'}>{answer}</div>
-      <div className="conversation-line"><Time value={{present:Object.prototype.hasOwnProperty.call(receipt,'submitted_at'),raw:receipt.submitted_at}} reported={entry.actor.provenance === 'reported_receipt'} /><span title={reviewer(entry)}>{reviewer(entry)}</span></div>
+      {attachments}
+      <div className="conversation-line">{!inline && <Time value={{present:Object.prototype.hasOwnProperty.call(receipt,'submitted_at'),raw:receipt.submitted_at}} reported={entry.actor.provenance === 'reported_receipt'} />}<span title={reviewer(entry)}>{reviewer(entry)}</span></div>
       {!inline && <button className="conversation-expand" onClick={() => setExpanded(v => !v)}>{expanded ? 'Collapse feedback' : 'Expand feedback'}</button>}
     </Card>}
   </div>;
@@ -51,7 +58,7 @@ export function MergeCard({ merge, inline = false }: { merge: HistoryMerge; inli
       <p>Commit message: {subject == null || subject === '' ? 'Commit message not recorded' : subject}</p>
       <p>Job: {merge.job_id} · Attempt: {merge.job_attempt} · Task attempt: {merge.task_attempt}</p>
       <p style={{overflowWrap:'anywhere'}}>Source: {merge.invocation_id}</p><p>Result ordinal: {String(merge.result_ordinal)}</p>
-      <Time value={{present:!!merge.completed_at,raw:merge.completed_at}} />
+      {!inline && <Time value={{present:!!merge.completed_at,raw:merge.completed_at}} />}
     </details>
   </Card>;
 }
@@ -80,8 +87,8 @@ export function ConversationTimeline({page, entries, onOpen}: {page?: HistoryPag
     return entry && ['request_generation','response_acceptance'].includes(event.kind) ? <HistoryPair key={key} entry={entry} part={event.kind === 'request_generation' ? 'request' : 'response'} onOpen={() => onOpen(entry.entry_id)} /> : null;
   })}</>;
 }
-type ThreadItem = { key: string; occurrence?: string; sender: string; subject: string; label?: MessageLabel; node: ReactNode; ariaLabel?: string; forceOpen?: boolean };
-type InitialMessage = Omit<ThreadItem, 'key' | 'occurrence'> & { showAttachments?: boolean; onExpand?: () => void };
+type ThreadItem = { key: string; occurrence?: string; sender: string; subject: string; label?: MessageLabel; time?: { value?: unknown; reported?: boolean }; node: ReactNode; ariaLabel?: string; forceOpen?: boolean };
+type InitialMessage = Omit<ThreadItem, 'key' | 'occurrence'> & { subjectIsPrompt?: boolean; showAttachments?: boolean; onExpand?: () => void };
 
 export function FoldedConversationTimeline({
   page, entries, onOpen, currentRequestId, cellName, tenant, job, initial, trailing = [], selectedOccurrence, ready = true,
@@ -113,11 +120,13 @@ export function FoldedConversationTimeline({
       label = isReview ? reviewContributionLabel(direction) : 'Answer';
     }
     items.push({key: JSON.stringify([entry.entry_id, part]), occurrence: entry.entry_id, sender, subject: messagePreview(preview),
+      time: response ? acceptedTime(entry) : { value: entry.requested_at?.present ? entry.requested_at.raw : undefined },
       label, node: !response && isReview && tenant && job
         ? entry.review_attachments
-          ? <RecordedRequest tenant={tenant} job={job} detail={threadReviewDetail(entry)} />
-          : <HistoricalRequest tenant={tenant} job={job} entry={entry.entry_id} snapshotToken={page?.snapshot_token} />
-        : <HistoryPair inline entry={entry} part={part} onOpen={()=>onOpen(entry.entry_id)}/>});
+          ? <RecordedRequest inline tenant={tenant} job={job} detail={threadReviewDetail(entry,page?.snapshot_token)} />
+          : <HistoricalRequest inline tenant={tenant} job={job} entry={entry.entry_id} snapshotToken={page?.snapshot_token} />
+        : <HistoryPair inline entry={entry} part={part} onOpen={()=>onOpen(entry.entry_id)} attachments={response && isReview && tenant && job && <HistoryAttachments tenant={tenant} job={job}
+          entry={entry.entry_id} snapshotToken={page?.snapshot_token} members={entry.review_attachments?.response ?? []} />}/>});
   };
   const positioned = new Set<string>();
   for (const event of page?.events ?? []) {
@@ -126,7 +135,7 @@ export function FoldedConversationTimeline({
     positioned.add(key);
     if (event.kind === 'merge_completion') {
       const merge = page?.merges?.find(item => item.entry_id === event.entry_id);
-      if (merge) items.push({key, sender: 'Publication', subject: merge.candidate_subject || 'Recorded commit', label: 'Merge', node: <MergeCard inline merge={merge}/>});
+      if (merge) items.push({key, sender: 'Publication', subject: merge.candidate_subject || 'Recorded commit', label: 'Merge', time: { value: merge.completed_at }, node: <MergeCard inline merge={merge}/>});
       continue;
     }
     const entry = byID.get(event.entry_id);
@@ -154,12 +163,12 @@ export function FoldedConversationTimeline({
   function row(item: ThreadItem) {
     // A permalink already displays the selected request above the timeline.
     const defaultOpen = item.forceOpen || (item.key === lastKey && (!selectedOccurrence || item.occurrence !== selectedOccurrence));
-    return <ThreadMessage key={item.key} occurrence={item.occurrence} ariaLabel={item.ariaLabel} sender={item.sender} subject={item.subject} label={item.label} defaultOpen={defaultOpen}>
+    return <ThreadMessage key={item.key} occurrence={item.occurrence} ariaLabel={item.ariaLabel} sender={item.sender} subject={item.subject} label={item.label} time={item.time} defaultOpen={defaultOpen}>
       {item.node}
     </ThreadMessage>;
   }
   return <div className="inbox-history">
-    {initial && <ThreadMessage className="inbox-original" onExpand={initial.onExpand} sender={initial.sender} subject={initial.subject} defaultOpen={initial.showAttachments || (ready && !lastKey)}>
+    {initial && <ThreadMessage className="inbox-original" onExpand={initial.onExpand} sender={initial.sender} subject={initial.subject} subjectIsPrompt={initial.subjectIsPrompt} time={initial.time} defaultOpen={initial.showAttachments || (ready && !lastKey)}>
       {initial.node}
     </ThreadMessage>}
     {items.length > 2
@@ -168,8 +177,8 @@ export function FoldedConversationTimeline({
     {trailing.map(row)}
   </div>;
 }
-function ThreadMessage({ sender, subject, label, children, occurrence, ariaLabel, onExpand, defaultOpen = false, className = 'inbox-history-message' }: {
-  sender: string; subject: string; label?: MessageLabel; children: ReactNode; occurrence?: string; ariaLabel?: string; onExpand?: () => void; defaultOpen?: boolean; className?: string;
+function ThreadMessage({ sender, subject, subjectIsPrompt, label, time, children, occurrence, ariaLabel, onExpand, defaultOpen = false, className = 'inbox-history-message' }: {
+  sender: string; subject: string; subjectIsPrompt?: boolean; label?: MessageLabel; time?: ThreadItem['time']; children: ReactNode; occurrence?: string; ariaLabel?: string; onExpand?: () => void; defaultOpen?: boolean; className?: string;
 }) {
   const [expanded, setExpanded] = useState<boolean>();
   const [visited, setVisited] = useState(false);
@@ -180,7 +189,7 @@ function ThreadMessage({ sender, subject, label, children, occurrence, ariaLabel
       onExpand?.();
     }
   }, [open, onExpand]);
-  return <details className={`thread-message ${className}`} data-occurrence={occurrence} role={ariaLabel ? 'region' : undefined} aria-label={ariaLabel} open={open} onToggle={event => {
+  return <details className={`thread-message ${className}${subjectIsPrompt ? ' has-prompt-preview' : ''}`} data-occurrence={occurrence} role={ariaLabel ? 'region' : undefined} aria-label={ariaLabel} open={open} onToggle={event => {
     if (event.currentTarget.open !== open) setExpanded(event.currentTarget.open);
   }}>
     <summary onClick={event => {
@@ -190,13 +199,14 @@ function ThreadMessage({ sender, subject, label, children, occurrence, ariaLabel
       <span className="thread-message-meta">
         <span className="thread-message-sender" title={sender}>{sender}</span>
         {label && <ThreadMessageLabel label={label} />}
+        <ThreadMessageTime {...time} />
       </span>
-      {subject && <span className="thread-message-subject" title={subject}>{subject}</span>}
+      {subject && !(open && subjectIsPrompt) && <span className="thread-message-subject" title={subject}>{subject}</span>}
     </summary>
     {(open || visited) && <div className="thread-message-body">{children}</div>}
   </details>;
 }
-function HistoricalRequest({ tenant, job, entry, snapshotToken, legacy, onBack }: { tenant: string; job: string; entry: string; snapshotToken?: string; legacy?: boolean; onBack?: () => void }) {
+function HistoricalRequest({ tenant, job, entry, snapshotToken, legacy, onBack, inline }: { tenant: string; job: string; entry: string; snapshotToken?: string; legacy?: boolean; onBack?: () => void; inline?: boolean }) {
   const [detail, setDetail] = useState<HistoryDetail>();
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
@@ -241,22 +251,44 @@ function HistoricalRequest({ tenant, job, entry, snapshotToken, legacy, onBack }
   };
   if (!detail && error) return <Alert type="warning" message="Request unavailable" description={<>{error} <Button onClick={() => {recoveryUsed.current = false; setRetry(v => v + 1);}}>Retry request</Button></>} />;
   if (!detail) return <p role="status">Loading recorded request…</p>;
-  return <RecordedRequest tenant={tenant} job={job} detail={detail} onBack={onBack} onError={failure => void recover(failure)} error={error}
+  return <RecordedRequest inline={inline} tenant={tenant} job={job} detail={detail} onBack={onBack} onError={failure => void recover(failure)} error={error}
     onRetry={() => { recoveryUsed.current = false; setError(''); setRetry(v => v + 1); }} />;
 }
 
 type RecordedRequestDetail = HistoryEntry & Pick<HistoryDetail, 'raw_form' | 'request_manifest' | 'response_manifest'> & { snapshot_token?: string };
 
-function threadReviewDetail(entry: HistoryEntry): RecordedRequestDetail {
-  return { ...entry, raw_form: entry.form_fields, request_manifest: entry.review_attachments?.request ?? [], response_manifest: entry.review_attachments?.response ?? [] };
+function threadReviewDetail(entry: HistoryEntry, snapshot_token?: string): RecordedRequestDetail {
+  return { ...entry, snapshot_token, raw_form: entry.form_fields, request_manifest: entry.review_attachments?.request ?? [], response_manifest: entry.review_attachments?.response ?? [] };
 }
 
-function RecordedRequest({ tenant, job, detail, onBack, onError, error, onRetry }: {
-  tenant: string; job: string; detail: RecordedRequestDetail; onBack?: () => void; onError?: (failure: unknown) => void; error?: string; onRetry?: () => void;
+function retainedMemberURL(tenant:string, job:string, entry:string, member:HistoryMember, snapshotToken?:string) {
+  const ref=object(member.ref), key=object(object(ref.stored).key);
+  if (member.availability==='retained' && ref.kind==='stored' && typeof key.jobId==='string' && typeof key.name==='string' &&
+      (typeof key.taskOrdinal==='number' || typeof key.taskOrdinal==='bigint')) return storedDocumentURL(tenant,{jobId:key.jobId,taskOrdinal:key.taskOrdinal,name:key.name});
+  return snapshotToken && !member.reason ? conversationArtifactURL(tenant,job,entry,member.artifact_id,snapshotToken) : '';
+}
+
+function HistoryAttachments({ tenant,job,entry,snapshotToken,members }: {tenant:string;job:string;entry:string;snapshotToken?:string;members:HistoryMember[]}) {
+  if (!members.length) return null;
+  const urls:Record<string,string>=Object.create(null);
+  const documents=Object.fromEntries(members.map(member=>{
+    const ref=object(member.ref), key=object(object(ref.stored).key);
+    const name=ref.name || key.name || member.artifact_id;
+    const url=retainedMemberURL(tenant,job,entry,member,snapshotToken);
+    urls[member.artifact_id]=url;
+    return [member.artifact_id,{name,sizeBytes:key.sizeBytes,hideIdentifier:true,unavailableReason:url ? undefined : (member.reason || 'Attachment unavailable')}];
+  }));
+  return <ReviewDocuments attachmentLayout="attachments" attachmentsLabel="Recorded attachments" projectId={tenant} jobId={job} requestId={entry} documents={documents}
+    source={{identity:JSON.stringify([entry,snapshotToken]),url:id=>urls[id] ?? ''}} />;
+}
+
+function RecordedRequest({ tenant, job, detail, onBack, onError, error, onRetry, inline }: {
+  tenant: string; job: string; detail: RecordedRequestDetail; onBack?: () => void; onError?: (failure: unknown) => void; error?: string; onRetry?: () => void; inline?: boolean;
 }) {
   const catalog = historicalDocuments(detail);
   const rawForm = object(detail.raw_form);
   const form = object(rawForm.presentation).type === 'review/v2' ? object(rawForm.request) : rawForm;
+  const inlineReview=inline && (detail.kind==='review' || object(rawForm.presentation).type==='review/v2');
   let review;
   try {if(object(rawForm.presentation).type === 'review/v2')review=parseReviewV2(rawForm.request);}catch{/* raw output remains available */}
   const artifactURL = (id: string) => detail.snapshot_token ? conversationArtifactURL(tenant, job, detail.entry_id, id, detail.snapshot_token) : '';
@@ -271,17 +303,19 @@ function RecordedRequest({ tenant, job, detail, onBack, onError, error, onRetry 
   };
   return <section aria-label="Recorded request" data-occurrence={detail.entry_id}>
     {onBack && <Button onClick={onBack}>Back to thread</Button>}
-    <Typography.Title level={4}>{detail.title.present ? valueText(detail.title.raw) : 'Recorded request'}</Typography.Title>
-    <p>Read only</p>
+    {!inlineReview && <Typography.Title level={4}>{detail.title.present ? valueText(detail.title.raw) : 'Recorded request'}</Typography.Title>}
+    {!inlineReview && <p>Read only</p>}
     {review&&<ReviewV2Discussion showMessageLabels turns={review.conversation} request={review}/>}
     {object(rawForm.presentation).type&&object(rawForm.presentation).type!=='review/v2'&&<Alert type="warning" message="Unsupported recorded presentation. Raw data remains available."/>}
-    {(form.question || Array.isArray(form.fields)) && <section aria-label="Review context" style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{form.question ? valueText(form.question) : form.fields.map((field: unknown) => valueText(object(field).question || object(field).id)).join('\n')}</section>}
-    {detail.summary.present && <p>{valueText(detail.summary.raw)}</p>}
+    {!(inlineReview && review) && (form.question || Array.isArray(form.fields)) && <section aria-label="Review context" style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{form.question ? valueText(form.question) : form.fields.map((field: unknown) => valueText(object(field).question || object(field).id)).join('\n')}</section>}
+    {!inlineReview && detail.summary.present && <p>{valueText(detail.summary.raw)}</p>}
     {error && <Alert type="warning" message={error} action={<Button onClick={onRetry}>Retry request</Button>} />}
     {catalog.limited && <Alert type="info" message="Limited history: the original form or document metadata was not recorded. Available documents and answers are shown below." />}
-    <ReviewDocuments projectId={tenant} jobId={job} requestId={detail.request_id || detail.entry_id} documents={catalog.documents} documentMetadata={catalog.metadata} overviewDocumentId={catalog.overview} source={{identity:JSON.stringify([tenant,job,detail.entry_id,detail.snapshot_token]),url:id => catalog.documents[id]?.stored ? storedDocumentURL(tenant,catalog.documents[id].stored.key) : catalog.members[id] ? artifactURL(catalog.members[id]) : '',onError}} />
+    {((!review && !inlineReview) || Object.keys(catalog.documents).length > 0) && <ReviewDocuments attachmentLayout={review || inlineReview ? 'primary' : undefined} projectId={tenant} jobId={job} requestId={detail.request_id || detail.entry_id} documents={catalog.documents} documentMetadata={catalog.metadata} overviewDocumentId={catalog.overview} source={{identity:JSON.stringify([tenant,job,detail.entry_id,detail.snapshot_token]),url:id => catalog.documents[id]?.stored ? storedDocumentURL(tenant,catalog.documents[id].stored.key) : catalog.members[id] ? artifactURL(catalog.members[id]) : '',onError}} />}
+    {inlineReview ? <HistoryAttachments tenant={tenant} job={job} entry={detail.entry_id} snapshotToken={detail.snapshot_token}
+      members={detail.request_manifest.filter(member=>!Object.values(catalog.members).includes(member.artifact_id))} /> : <>
     {detail.accepted_response.present && <section aria-label="Recorded answers"><Typography.Title level={5}>Accepted response</Typography.Title><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{savedAnswers(Object.keys(form).length ? form : detail.form_fields,detail.accepted_response.raw)}</pre></section>}
-    <div className="conversation-line"><Time value={detail.requested_at} /><span>State: {detail.state || 'unknown'}</span><span>{reviewer(detail)}</span>{detail.accepted_response.present && <Time value={{present:!!object(detail.actor.receipt).submitted_at,raw:object(detail.actor.receipt).submitted_at}} reported={detail.actor.provenance === 'reported_receipt'} />}</div>
+    <div className="conversation-line">{!inline && <Time value={detail.requested_at} />}<span>State: {detail.state || 'unknown'}</span><span>{reviewer(detail)}</span>{!inline && detail.accepted_response.present && <Time value={{present:!!object(detail.actor.receipt).submitted_at,raw:object(detail.actor.receipt).submitted_at}} reported={detail.actor.provenance === 'reported_receipt'} />}</div>
     {([['Request documents', detail.request_manifest], ['Accepted attachments', detail.response_manifest]] as const).map(([label, members]) => <details key={label} open={!Object.keys(catalog.documents).length}>
       <summary>{label}</summary>
       {members?.length ? <ul>{members.map(member => {
@@ -290,23 +324,24 @@ function RecordedRequest({ tenant, job, detail, onBack, onError, error, onRetry 
           {url ? <a href={url}>Download {member.artifact_id}</a> : member.artifact_id} — {member.availability}{member.reason ? `: ${member.reason}` : ''}
         </li>;
       })}</ul> : <p>None recorded</p>}
-    </details>)}
+    </details>)}</>}
   </section>;
 }
-export function CurrentActivity({ metadata, freshness, inline = false }: { metadata?: RecipeJob; freshness?: 'loading' | 'loaded' | 'failed'; inline?: boolean }) {
+export function CurrentActivity({ metadata, freshness, inline = false, dependencies }: { metadata?: RecipeJob; freshness?: 'loading' | 'loaded' | 'failed'; inline?: boolean; dependencies?:ReactNode }) {
   if (metadata && isFinishedJob(metadata)) return null;
   const status = metadata ? jobStatusValue(metadata) : undefined;
   const label = status === 'ACTIVE' ? 'Running' : status === 'READY' || status === 'PENDING_JOBS' || status === 'AWAITING_FUTURE' ? 'Pending'
     : status && ['CANCEL_REQUESTED', 'CRASH_CONCERN', 'EXPIRED'].includes(status) ? jobStatusPresentation(status).label : 'Status unavailable';
-  const reason = status === 'PENDING_JOBS' ? 'Waiting for jobs' : status === 'AWAITING_FUTURE' ? 'Scheduled' : undefined;
+  const reason = status === 'PENDING_JOBS' || status === 'AWAITING_FUTURE' ? jobStatusPresentation(status).label : undefined;
   return <Card size="small" variant={inline ? 'borderless' : undefined} className={inline ? 'thread-activity' : 'conversation-step'} aria-label="Current job activity">
     <strong>{label}</strong>{reason && <p>{reason}</p>}
+    {dependencies}
     {metadata && freshness === 'failed' && <p role="status">Status stale — job details could not be refreshed.</p>}
     {metadata && freshness === 'loading' && <p>Refreshing status…</p>}
   </Card>;
 }
 type ConversationProps = {
-  children?: ReactNode; initial?: InitialMessage; currentRequestLabel?: string; currentIsReview?: boolean; openCurrent?: boolean; folded?: boolean; currentRequestId?: string; cellName?: string;
+  children?: ReactNode; initial?: InitialMessage; currentRequestLabel?: string; currentRequestTime?: string; currentReviewId?: string; currentIsReview?: boolean; openCurrent?: boolean; folded?: boolean; currentRequestId?: string; cellName?: string;
   onInventory?: (rows: HistoryPage['input_artifacts']) => void;
   tenant: string; job: string; occurrence?: string; requestId?: string; onOpen: (entry: string) => void; onBack?: () => void; refreshKey?: unknown;
   metadata?: RecipeJob; metadataFreshness?: 'loading' | 'loaded' | 'failed'; autoRefresh?: boolean; refreshIntervalMs?: number;
@@ -314,7 +349,7 @@ type ConversationProps = {
 export default function JobConversation(props: ConversationProps) {
   return <Conversation key={JSON.stringify([props.tenant,props.job])} {...props}/>;
 }
-function Conversation({ tenant, job, onInventory, occurrence, requestId, onOpen, onBack, refreshKey, folded=false, currentRequestId, cellName, children, initial, metadata, currentRequestLabel, currentIsReview, openCurrent, autoRefresh = false, refreshIntervalMs = 5000 }: ConversationProps) {
+function Conversation({ tenant, job, onInventory, occurrence, requestId, onOpen, onBack, refreshKey, folded=false, currentRequestId, cellName, children, initial, metadata, currentRequestLabel, currentRequestTime, currentReviewId, currentIsReview, openCurrent, autoRefresh = false, refreshIntervalMs = 5000 }: ConversationProps) {
   const [page, setPage] = useState<HistoryPage>();
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [error, setError] = useState('');
@@ -393,21 +428,23 @@ function Conversation({ tenant, job, onInventory, occurrence, requestId, onOpen,
   const failed = outcome === 'failed_app' || outcome === 'failed_system' || outcome === 'failed_timeout';
   const outcomeLabel = failed ? (outcome === 'failed_timeout' ? 'Job timed out' : 'Job failed') : outcome && jobStatusPresentation(outcome).label;
   const completionText = latest?.completion_detail?.trim() ? latest.completion_detail : failed ? 'No failure details recorded for this job.' : undefined;
-  const activeOccurrence = currentRequestId && entries.find(entry => entry.request_id === currentRequestId)?.entry_id;
+  const activeRequest = currentRequestId ? entries.find(entry => entry.request_id === currentRequestId) : undefined;
   const completionSender = outcome === 'CANCELLED' ? latest?.cancelled_by || 'Unknown' : cellName || 'Job status';
   const completion: ThreadItem | undefined = (terminal || manifest?.documents?.length) ? {
     key: 'completion', ariaLabel: 'Job completion', sender: completionSender, subject: outcomeLabel || 'Attachments',
     label: failed ? 'Failure' : outcome === 'CANCELLED' ? 'Cancellation' : terminal ? 'Completion' : undefined,
+    time: { value: latest?.archived_at },
     node: <div className="thread-completion">
       <div role={failed ? 'alert' : undefined}>
-        {latest?.archived_at && <Time value={{ present: true, raw: latest.archived_at }} />}
         {completionText && <p className="thread-completion-text">{completionText}</p>}
       </div>
       <FinalDocuments inline tenant={tenant} job={job} terminal={terminal || !!manifest?.documents?.length} manifest={manifest} onRetry={()=>void load()} />
     </div>,
   } : undefined;
   const current: ThreadItem | undefined = children ? {
-    key: currentRequestId || 'current', forceOpen: openCurrent, occurrence: activeOccurrence || undefined,
+    key: currentReviewId ? JSON.stringify(['review', currentReviewId]) : currentRequestId || 'current',
+    forceOpen: openCurrent, occurrence: activeRequest?.entry_id,
+    time: { value: activeRequest?.requested_at?.present ? activeRequest.requested_at.raw : currentRequestTime },
     sender: cellName || 'Cell', subject: currentRequestLabel || 'Waiting for your response', label: currentIsReview ? 'Review' : 'Question', node: children,
   } : undefined;
   return <section aria-label={folded ? 'Thread messages' : 'Input history'}>
@@ -423,7 +460,8 @@ function Conversation({ tenant, job, onInventory, occurrence, requestId, onOpen,
       : <ConversationTimeline page={loadedIdentity.current === identity ? page : undefined} entries={loadedIdentity.current === identity ? entries : []} onOpen={onOpen} />}
     {page?.next_page_token && <Button disabled={busy || !!error} onClick={() => void load(page.next_page_token)}>Load more events</Button>}
     {!page && !error && <p role="status">Loading history…</p>}
-    {!(folded && (current || terminal)) && <CurrentActivity inline={folded} metadata={page?.activity?.availability === 'available' ? page.activity.value : undefined} freshness={error ? 'failed' : 'loaded'} />}
+    {!(folded && (current || terminal)) && <CurrentActivity inline={folded} metadata={observed ?? (latest?.status === 'PENDING_JOBS' ? latest : undefined)} freshness={error ? 'failed' : 'loaded'}
+      dependencies={folded && latest?.status === 'PENDING_JOBS' && <ThreadDependencies tenant={tenant} job={job} details={{...latest,wait_for:latest.wait_for ?? metadata?.wait_for,blocking_wait:latest.blocking_wait ?? metadata?.blocking_wait}} />} />}
     {!folded && <FinalDocuments tenant={tenant} job={job} terminal={!page?.activity?.value || isFinishedJob(page.activity.value)} manifest={page?.final_documents?.availability === 'available' ? page.final_documents.value : undefined} error={page && page.final_documents?.availability !== 'available' ? 'Returned documents could not be read.' : undefined} stale={!!error} onRetry={()=>void load()}/>}
 
 

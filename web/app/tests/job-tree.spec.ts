@@ -9,9 +9,9 @@ const nodes=[
  {tenant_id:'demo',job_id:'entry',parent_job_id:'middle',job_type:'recipe',cell:'c2j',status:'READY',goal_id:'goal',title:'Build the readable family graph',prompt:'Full prompt <script>literal</script> 雪',created_at:'2026-11-12T09:00:10Z',completion_status:'failed_app'},
  {tenant_id:'demo',job_id:'sibling',parent_job_id:'root',job_type:'recipe',cell:'root',status:'COMPLETED',completion_status:'success',title:'Review graph changes',created_at:'2026-11-12T09:02:00Z',archived_at:'2026-11-12T09:10:00Z'},
 ];
-let fail=false, missing=false, large=false, repeated=false;
+let fail=false, missing=false, large=false, repeated=false, longPrompt=false;
 test.beforeEach(async({page})=>{
- fail=false;missing=false;large=false;repeated=false;
+ fail=false;missing=false;large=false;repeated=false;longPrompt=false;
  await page.clock.setFixedTime(new Date('2026-11-12T09:18:42Z'));
  await page.context().addCookies([{name:'colony2:user:email',value:'test@example.com',url:'http://127.0.0.1:15176'}]);
  await page.addInitScript(()=>{(window as any).EventSource=class{close(){}addEventListener(){}removeEventListener(){}};});
@@ -20,11 +20,12 @@ test.beforeEach(async({page})=>{
   if(u.pathname==='/api/projects')return route.fulfill({json:[{tenant_id:'demo'}]});
   if(u.pathname.endsWith('/tree-waits')) {const id=u.pathname.split('/').at(-2)!;return route.fulfill({json:{consumer:{tenant_id:'demo',job_id:id},waits:[],issues:[],observed_at:at,consumer_snapshot:{state:'available',observed_at:at,status:'READY'}}});}
   const match=u.pathname.match(/\/jobs\/([^/]+)\/(tree-node|tree-children)$/);
-  if(match){const id=decodeURIComponent(match[1]);if(match[2]==='tree-node'){const node=nodes.find(n=>n.job_id===id);return route.fulfill(missing||!node?{status:404,json:{error:'unavailable'}}:{json:{node,observed_at:at}});}
+  if(match){const id=decodeURIComponent(match[1]);const graphNodes = longPrompt ? nodes.map(node => node.job_id === 'entry' ? {...node,prompt:'Prompt opening. '+'Context for this job '.repeat(35)+'END OF PROMPT'} : node) : nodes;
+   if(match[2]==='tree-node'){const node=graphNodes.find(n=>n.job_id===id);return route.fulfill(missing||!node?{status:404,json:{error:'unavailable'}}:{json:{node,observed_at:at}});}
    if(large&&id==='root')return route.fulfill({json:{nodes:Array.from({length:1001},(_,i)=>({tenant_id:'demo',job_id:'wide-'+i,parent_job_id:'root',job_type:'generic',status:'READY'})),observed_at:at,next_page_token:'unconsumed'}});
    if(repeated&&id==='root')return route.fulfill({json:{nodes:[],observed_at:at,next_page_token:'repeated'}});
    if(fail&&id==='root')return route.fulfill({status:503,json:{error:'private backend error'}});
-   return route.fulfill({json:{nodes:nodes.filter(n=>n.parent_job_id===id),observed_at:at}});
+   return route.fulfill({json:{nodes:graphNodes.filter(n=>n.parent_job_id===id),observed_at:at}});
   }
   if(u.pathname.endsWith('/input-artifacts')) return route.fulfill({json:{artifacts:[]}});
   if(u.pathname.endsWith('/story')) return route.fulfill({json:{...jobIdentity,job_id:'entry',status:'completed',root:{id:'root',kind:'recipe',title:'Tree story',status:'completed',path:[],attempt:1,children:[]}}});
@@ -128,6 +129,7 @@ test('TREE-007 unavailable ancestor remains a boundary without inferred bridge e
 test('DAG-01,02,04,05,08,15 embedded DAG discovers lazily and retains local state', async ({page}) => {
  let discoveries = 0;
  page.on('request', r => { if (/tree-(node|children)/.test(r.url())) discoveries++; });
+ longPrompt = true;
  await page.goto('/project/demo/jobs/entry/story');
  await expect(page.getByRole('tab',{name:'Thread',exact:true})).toHaveAttribute('aria-selected','true');
  expect(discoveries).toBe(0);
@@ -136,15 +138,28 @@ test('DAG-01,02,04,05,08,15 embedded DAG discovers lazily and retains local stat
  await expect(page.getByText('Discovery finished',{exact:false})).toBeVisible();
  expect(discoveries).toBeGreaterThan(0);
  const panel = page.getByRole('tabpanel',{name:'Graph',exact:true});
- await expect(panel.getByRole('group',{name:'Graph zoom'}).getByRole('button')).toHaveCount(3);
+ const zoom = panel.getByRole('group',{name:'Graph zoom'});
+ await expect(zoom.getByRole('button')).toHaveCount(4);
  await expect(panel.getByText('Recorded submission family', {exact:false})).toHaveCount(0);
- const relationships = panel.getByRole('region', { name: 'Related jobs and goals' });
- await expect(relationships).toBeVisible();
- expect(await relationships.evaluate(element => !!(element.compareDocumentPosition(element.parentElement!.querySelector('.tree-workspace')!) & Node.DOCUMENT_POSITION_PRECEDING))).toBe(true);
+ const detail=panel.getByRole('complementary',{name:'Selected job details'});
+ await expect(detail.getByText(/END OF PROMPT/)).toHaveCount(0);
+ await detail.getByRole('button',{name:'Show more',exact:true}).click();
+ await expect(detail.getByText(/END OF PROMPT/)).toBeVisible();
+ const diagram = panel.getByLabel('Execution diagram');
+ const diagramTop = (await diagram.boundingBox())!.y;
+ await detail.hover();
+ await page.mouse.wheel(0, 150);
+ await expect.poll(() => detail.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+ expect((await diagram.boundingBox())!.y).toBe(diagramTop);
+ await expect(page.getByRole('region', { name: 'Related jobs and goals' })).toHaveCount(0);
+ await zoom.getByRole('button',{name:'Related jobs and goals'}).click();
+ const relationships = page.getByRole('dialog',{name:'Job relationships',exact:true});
+ await expect(relationships.getByRole('region',{name:'Related jobs and goals'})).toBeVisible();
+ await relationships.getByRole('button',{name:'Close',exact:true}).click();
+ await expect(relationships).toBeHidden();
  await expect(panel.getByRole('link',{name:'Back to jobs'})).toHaveCount(0);
  await panel.getByLabel('Execution diagram').getByRole('button',{name:'Review graph changes · root',exact:false}).click();
  await expect(page).toHaveURL(/entry\/story\?tab=dag$/);
- const detail=panel.getByRole('complementary',{name:'Selected job details'});
  await expect(detail.getByRole('link',{name:'Open execution'})).toHaveAttribute('href','/project/demo/jobs/sibling/story');
  await panel.getByRole('button',{name:'Zoom in'}).click();
  await panel.getByRole('button',{name:'Toggle branch Plan the DAG improvements'}).click();
@@ -498,7 +513,7 @@ for (const route of ['tree','story?tab=dag']) for (const width of [1440,390]) {
   const card=page.locator('.tree-card[data-job-id="middle"]');
   await card.locator('.tree-card-select').click();
   const details=page.getByRole('complementary',{name:'Selected job details'});
-  await expect(details).toContainText(width===390?'Waiting for jobs':'Job keeps failing');
+  await expect(details).toContainText(width===390?'Waiting':'Job keeps failing');
   await expect(details.getByRole('link',{name:'Open execution'})).toHaveCount(0);
   await card.getByRole('button',{name:'Toggle branch Validate compact records'}).click();
   await page.getByRole('searchbox',{name:'Search loaded jobs'}).fill('Review');

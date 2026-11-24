@@ -8,7 +8,7 @@ export type LinkResolution =
 export interface PreviewNavigation {
   url?: (key: string) => string;
   resolve: (reference: string) => LinkResolution;
-  open: (key: string, fragment?: string) => boolean;
+  open: (key: string, fragment?: string, trigger?: HTMLElement) => boolean;
 }
 export interface NavigationIntent { token: number; fragment?: string }
 const unavailable = (reason: Extract<LinkResolution, { kind: 'unavailable' }>['reason']): LinkResolution => ({ kind: 'unavailable', reason });

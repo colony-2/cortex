@@ -16,8 +16,6 @@ import CellsList from './components/CellsList';
 import CellPage from './components/CellPage';
 import AdminPage from './components/AdminPage';
 import JobsListPage from './components/JobsListPage';
-import PendingInputsListPage from './components/PendingInputsListPage';
-import InputDetailPage from './components/InputDetailPage';
 import JobStoryPage from './components/JobStoryPage';
 import { useCompact } from './hooks/useCompact';
 import AccountMenu from './components/AccountMenu';
@@ -27,8 +25,11 @@ import { createRequestId } from '@colony2/shared/cellProtocol';
 import { useSavedMessageDrafts } from './hooks/useMessageDrafts';
 import { useSavedReviewDrafts } from './hooks/useReviewDraft';
 import ComposeJob from './components/ComposeJob';
+import { ReviewReplyWindow } from './components/ReviewReply';
+import { ReviewReplyDock, reviewReplyKey, type ReviewReplyTarget } from './hooks/useReviewReplyDock';
 import InboxDraftsPage from './components/InboxDraftsPage';
 import { JobInboxProvider } from './hooks/useJobInbox';
+import { reviewInboxPath } from './utils/reviewDocumentLocation';
 import './inbox.css';
 
 const { Header, Content, Sider } = Layout;
@@ -68,7 +69,7 @@ function initialTenantId(search: string, pathname: string, defaultTenantId: stri
 }
 
 const reviewDetailPath = '/project/:projectId/reviews/:jobId';
-const isStoryInput = (selectors: URLSearchParams) => selectors.has('occurrenceId') || selectors.has('requestId');
+type DockEntry = { id:string; tenant:string; review?:ReviewReplyTarget };
 const sidebarWidth = 256;
 const railWidth = 76;
 
@@ -81,17 +82,17 @@ export function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
     return () => window.removeEventListener('cortex-ui-identity', changed);
   }, []);
   const tenant = initialTenantId(location.search, location.pathname, defaultTenantId);
-  return <JobInboxProvider key={JSON.stringify([tenant, identity])} tenant={tenant}><InboxShell defaultTenantId={defaultTenantId} /></JobInboxProvider>;
+  return <JobInboxProvider key={identity ?? ''} tenant={tenant}><InboxShell defaultTenantId={defaultTenantId} /></JobInboxProvider>;
 }
 function InboxShell({ defaultTenantId }: { defaultTenantId: string }) {
   const compact = useCompact();
   const location = useLocation();
   const selectors = new URLSearchParams(location.search);
-  const reviewOpen = !!matchPath(reviewDetailPath, location.pathname) && selectors.has('review_id') && !isStoryInput(selectors);
-  const openReviewPath = reviewOpen ? location.pathname : null;
-  const useNavigationDrawer = compact || reviewOpen;
+  const useNavigationDrawer = compact;
+  const tenantId = initialTenantId(location.search, location.pathname, defaultTenantId);
   const [collapsed, setCollapsed] = useState(false);
-  const [composers, setComposers] = useState<string[]>([]);
+  const [composers, setComposers] = useState<DockEntry[]>([]);
+  const visibleComposers = composers.filter(entry => entry.review || entry.tenant === tenantId);
   const [sendingComposers, setSendingComposers] = useState<Set<string>>(() => new Set());
   const [activeComposer, setActiveComposer] = useState<string>();
   const composerDock = useRef<HTMLDivElement>(null);
@@ -101,18 +102,21 @@ function InboxShell({ defaultTenantId }: { defaultTenantId: string }) {
     if (!dock || !active || dock.scrollWidth <= dock.clientWidth) return;
     const offset = active.getBoundingClientRect().right - dock.getBoundingClientRect().right;
     if (offset > 0) dock.scrollLeft += offset;
-  }, [activeComposer]);
-  const openComposer = (id: string) => {
-    setComposers(previous => previous.includes(id) ? previous : [...previous, id]);
+    const left = active.getBoundingClientRect().left - dock.getBoundingClientRect().left;
+    if (left < 0) dock.scrollLeft += left;
+  }, [activeComposer, visibleComposers.length]);
+  const openComposer = (id: string, review?:ReviewReplyTarget) => {
+    setComposers(previous => previous.some(entry => entry.id === id) ? previous : [...previous, {id,tenant:review?.tenant ?? tenantId,review}]);
     setActiveComposer(id);
   };
   const closeComposer = (id: string) => {
-    setComposers(previous => previous.filter(value => value !== id));
+    setComposers(previous => previous.filter(entry => entry.id !== id));
     setActiveComposer(previous => previous === id ? undefined : previous);
   };
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
-  useEffect(() => { setMenuOpen(false); }, [useNavigationDrawer, openReviewPath]);
+  useEffect(() => { setMenuOpen(false); }, [useNavigationDrawer, tenantId]);
+  useEffect(() => { setCollapsed(false); }, [tenantId]);
   const closeMenu = () => {
     if (!useNavigationDrawer) return;
     setMenuOpen(false);
@@ -120,7 +124,6 @@ function InboxShell({ defaultTenantId }: { defaultTenantId: string }) {
   };
   const [authenticated, setAuthenticated] = useState(isAuthenticated());
   const navigate = useNavigate();
-  const tenantId = initialTenantId(location.search, location.pathname, defaultTenantId);
   const { setCurrentProjectId } = useInputActivity();
   const messageDrafts = useSavedMessageDrafts(tenantId);
   const reviewDrafts = useSavedReviewDrafts(tenantId);
@@ -166,11 +169,21 @@ function InboxShell({ defaultTenantId }: { defaultTenantId: string }) {
   };
 
   const rail = !useNavigationDrawer && collapsed;
-  const navigation = <InboxNavigation rail={rail} draftCount={messageDrafts.length + reviewDrafts.length} onCompose={() => openComposer(createRequestId())} onNavigate={closeMenu}
+  const navigation = <InboxNavigation key={tenantId} rail={rail} draftCount={messageDrafts.length + reviewDrafts.length} onCompose={() => openComposer(createRequestId())} onNavigate={closeMenu}
     onExpand={() => setCollapsed(false)} />;
   const draftsPage = <InboxDraftsPage tenant={tenantId} messages={messageDrafts} reviews={reviewDrafts} sending={sendingComposers}
     openComposer={openComposer} closeComposer={closeComposer} />;
-  return (
+  const markSending = (id:string, sending:boolean) => setSendingComposers(previous => {
+    const next = new Set(previous);
+    if (sending) next.add(id); else next.delete(id);
+    return next;
+  });
+  const activeId = visibleComposers.find(entry => entry.id === activeComposer)?.id ?? visibleComposers[visibleComposers.length-1]?.id;
+  return <ReviewReplyDock.Provider value={{
+    open: target => openComposer(reviewReplyKey(target),target),
+    has: id => composers.some(entry => entry.id === id),
+    activate: setActiveComposer,
+  }}>
     <Layout className={`app-shell${rail ? ' inbox-rail' : ''}`}
       style={{ '--inbox-sidebar-width': useNavigationDrawer ? 'auto' : `${rail ? railWidth : sidebarWidth}px` } as CSSProperties}>
       <Header className="app-header">
@@ -208,9 +221,9 @@ function InboxShell({ defaultTenantId }: { defaultTenantId: string }) {
             <Route path="/project/:projectId/goals/:goalId" element={<Alert type="info" message="Goal links have been retired" description={<Link to={`/project/${encodeURIComponent(tenantId)}/jobs`}>Open All jobs</Link>} />} />
             <Route path="/project/:projectId/jobs/:jobId/tree" element={<TreePage />} />
             <Route path="/project/:projectId/jobs/:jobId/story" element={<StoryRoute fallbackProjectId={tenantId} />} />
-            <Route path="/reviews" element={<PendingInputsListPage projectId={tenantId} />} />
-            <Route path="/project/:projectId/reviews" element={<ReviewsRoute fallbackProjectId={tenantId} />} />
-            <Route path={reviewDetailPath} element={<InputRoute fallbackProjectId={tenantId} />} />
+            <Route path="/reviews" element={<LegacyReviewRedirect fallbackProjectId={tenantId} />} />
+            <Route path="/project/:projectId/reviews" element={<LegacyReviewRedirect fallbackProjectId={tenantId} />} />
+            <Route path={reviewDetailPath} element={<LegacyReviewRedirect fallbackProjectId={tenantId} />} />
             <Route path="/cells" element={<CellsList key={tenantId} projectId={tenantId} />} />
             <Route path="/project/:projectId/cells/:cellId" element={<CellRoute fallbackProjectId={tenantId} />} />
             <Route path="/project/:projectId/cells" element={<CellsRoute fallbackProjectId={tenantId} />} />
@@ -220,19 +233,14 @@ function InboxShell({ defaultTenantId }: { defaultTenantId: string }) {
           </Routes>
         </Content>
       </Layout>
-      {!!composers.length && <div ref={composerDock} className="inbox-composer-dock">
-        {composers.map(id => <ComposeJob key={id} id={id} open active={id === (activeComposer ?? composers[composers.length - 1])}
-          onActivate={() => setActiveComposer(id)} onClose={() => closeComposer(id)} onRemove={() => closeComposer(id)} onSendingChange={sending => {
-            setSendingComposers(previous => {
-              const next = new Set(previous);
-              if (sending) next.add(id);
-              else next.delete(id);
-              return next;
-            });
-          }} />)}
+      {!!visibleComposers.length && <div ref={composerDock} className="inbox-composer-dock">
+        {visibleComposers.map(({id,review}) => review ? <ReviewReplyWindow key={id} target={review} active={activeId === id}
+          onActivate={() => setActiveComposer(id)} onClose={() => closeComposer(id)} onSendingChange={sending=>markSending(id,sending)} />
+          : <ComposeJob key={id} id={id} open active={activeId === id} onActivate={() => setActiveComposer(id)}
+            onClose={() => closeComposer(id)} onRemove={() => closeComposer(id)} onSendingChange={sending=>markSending(id,sending)} />)}
       </div>}
     </Layout>
-  );
+  </ReviewReplyDock.Provider>;
 }
 
 function useRouteProjectId(fallbackProjectId: string): string {
@@ -246,17 +254,15 @@ function JobsRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
   return <JobsListPage key={projectId} projectId={projectId} goalId={goalId} />;
 }
 
-function ReviewsRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
-  return <PendingInputsListPage projectId={useRouteProjectId(fallbackProjectId)} />;
-}
-
-function InputRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
+function LegacyReviewRedirect({ fallbackProjectId }: { fallbackProjectId: string }) {
   const projectId = useRouteProjectId(fallbackProjectId);
   const { jobId } = useParams();
   const location = useLocation();
   const selectors = new URLSearchParams(location.search);
-  if (isStoryInput(selectors)) return <Navigate replace to={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId!)}/story${location.search}`} />;
-  return <InputDetailPage key={JSON.stringify([projectId, jobId])} projectId={projectId} />;
+  const path = `/project/${encodeURIComponent(projectId)}/jobs`;
+  if (jobId) selectors.set('input','1'); else selectors.set('inbox','reviews');
+  const state = jobId ? { inboxReturnTo: reviewInboxPath(projectId, location.search), ...location.state } : location.state;
+  return <Navigate replace state={state} to={{pathname:jobId ? `${path}/${encodeURIComponent(jobId)}/story` : path, search:`?${selectors}`, hash:location.hash}} />;
 }
 
 function CellsRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
