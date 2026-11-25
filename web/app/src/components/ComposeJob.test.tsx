@@ -21,6 +21,7 @@ async function compose() {
 }
 it('validates body and rechecks the active recipient before submission', async () => {
   await compose();
+  fireEvent.change(screen.getByLabelText('Subject'), { target: { value: 'Subject alone' } });
   fireEvent.change(screen.getByLabelText('Message'), { target: { value: '  ' } });
   fireEvent.click(screen.getByRole('button', { name: 'Send', exact: true }));
   expect(await screen.findByText('Enter a message with text or an image')).toBeVisible();
@@ -56,13 +57,16 @@ it('prevents concurrent sends and leaves job ID assignment to JobDB on every sub
 });
 it('forwards the original file objects without the former size and count limits', async () => {
   await compose();
+  const body = 'First line\n\n  Code example\n';
+  fireEvent.change(screen.getByLabelText('Subject'), { target: { value: '  Persist caller wait intent  ' } });
+  fireEvent.change(screen.getByLabelText('Message'), { target: { value: body } });
   const file = new File(['evidence'], 'notes.txt', { type: 'text/plain' });
   Object.defineProperty(file, 'size', { value: 26 * 1024 * 1024 });
   const files = [file, ...Array.from({ length: 10 }, (_, index) => new File([], `attachment-${index}.txt`))];
   fireEvent.change(screen.getByLabelText('Job attachments'), { target: { files } });
   expect(screen.getByText('notes.txt')).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'Send', exact: true }));
-  await waitFor(() => expect(submitJob).toHaveBeenCalledWith('tenant', expect.objectContaining({ inputs: { prompt: 'Please build this.', type: 'build' } }), files));
+  await waitFor(() => expect(submitJob).toHaveBeenCalledWith('tenant', {cell: 'platform', title: 'Persist caller wait intent', inputs: { prompt: body, type: 'build' }}, files));
 });
 
 it('refreshes recipients on reopening while keeping the draft', async () => {

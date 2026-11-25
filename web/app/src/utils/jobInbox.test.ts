@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  composeJobPrompt, inboxJobKey, inboxPendingBadge, inboxPendingCounts,
+  inboxJobKey, inboxPendingBadge, inboxPendingCounts,
   isInInbox, rankInboxCells, visibleInboxCells,
 } from './jobInbox';
 
@@ -114,16 +114,5 @@ describe('pending-response badges', () => {
     const request = { ...current, inputs: [current.inputs[0]] };
     expect(inboxPendingBadge(inboxPendingCounts('tenant', request), { kind: 'cell', cellId: 'one' })).toBe(1);
     expect(inboxPendingBadge(inboxPendingCounts('tenant', { ...request, inputs: [] }), { kind: 'cell', cellId: 'one' })).toBeUndefined();
-  });
-});
-
-describe('Compose prompt', () => {
-  it('JI-33 joins the optional subject and preserves the multiline body', () => {
-    const body = 'First line\n\n  Code example\n';
-    expect(composeJobPrompt('  Subject  ', body)).toBe(`Subject\n\n${body}`);
-    expect(composeJobPrompt(' \n ', body)).toBe(body);
-  });
-  it.each(['', ' ', '\n\t'])('JI-33 requires a nonblank message even with a subject', body => {
-    expect(() => composeJobPrompt('Subject', body)).toThrow('Write a message for this cell');
   });
 });

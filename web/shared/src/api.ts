@@ -125,6 +125,31 @@ export async function getJob(projectId: string, jobId: string, includeLaunch = f
   return job;
 }
 
+type RecordedArtifactKey = { jobId: string; taskOrdinal: number; name: string; sizeBytes?: number };
+
+interface RecordedTask {
+  path?: string[]; invoke_seq?: number; launch_id?: string;
+  input_artifacts?: {key?: RecordedArtifactKey; name: string}[];
+  id: string; title: string; invocation_id?: string; task_ordinal: number; attempt: number; job_attempt?: number;
+  started_at?: string; finished_at?: string; status: 'pending' | 'running' | 'failed' | 'succeeded' | 'unknown';
+  input?: unknown; output?: unknown; artifact_keys?: RecordedArtifactKey[];
+  error?: {message: string; code?: string}; restart_scope_id?: string; restart_chapter_ordinal?: number;
+}
+
+export async function getRecordedTrace(projectId: string, jobId: string, signal?: AbortSignal): Promise<{tasks: RecordedTask[]; terminal: boolean}> {
+  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/recorded-trace`, {signal});
+  await handleResponse(response, 'Load recorded tasks');
+  return parseJobJSON(await response.text()) as {tasks: RecordedTask[]; terminal: boolean};
+}
+
+export async function getRestartPoints(projectId: string, jobId: string, signal?: AbortSignal): Promise<import('./types').RestartScope[]> {
+  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/restart-points`, {signal});
+  await handleResponse(response, 'Load restart points');
+  const points = await response.json();
+  if (!Array.isArray(points)) throw new Error('Invalid restart points response');
+  return points;
+}
+
 export async function getRestartContext(projectId: string, jobId: string, boundary: number | string, signal?: AbortSignal): Promise<RestartContext> {
   const selector = typeof boundary === 'string' ? `scope_id=${encodeURIComponent(boundary)}` : `chapter_ordinal=${boundary}`;
   const response = await fetch(

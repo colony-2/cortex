@@ -142,7 +142,7 @@ func TestSavedReplayForwardingWithoutAdmissionPreflights(t *testing.T) {
 			}
 		}
 		first := service.calls[before]
-		if first.ProjectID != "tenant" || first.JobID != "source" || first.RequestID == "" {
+		if first.ProjectID != "tenant" || first.JobID != "source" || first.RequestID == "" || first.Goal.Mode != "new" {
 			t.Fatalf("identity lost: %+v", first)
 		}
 		if !reflect.DeepEqual(first, service.calls[before+1]) || !reflect.DeepEqual(first, service.calls[before+2]) {

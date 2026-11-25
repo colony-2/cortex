@@ -2,9 +2,9 @@ import { StrictMode } from 'react';
 import { act, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { expect, it, vi } from 'vitest';
-import { getTreeNode, getTreeChildren, getTreeWaits } from '@colony2/shared';
+import { getTreeNode, getTreeChildren, getTreeWaits, getRestartPoints } from '@colony2/shared';
 import { TreeWorkspace } from './TreePage';
-vi.mock('@colony2/shared', () => ({getTreeNode:vi.fn(), getTreeChildren:vi.fn(), getTreeWaits:vi.fn(async(tenant,job)=>({consumer:{tenant_id:tenant,job_id:job},waits:[],issues:[],observed_at:'2026-11-17T00:00:00Z',consumer_snapshot:{state:'available',observed_at:'2026-11-17T00:00:00Z',status:'READY'}}))}));
+vi.mock('@colony2/shared', async (original) => ({...await original<typeof import('@colony2/shared')>(), getRestartPoints:vi.fn(), getTreeNode:vi.fn(), getTreeChildren:vi.fn(), getTreeWaits:vi.fn(async(tenant,job)=>({consumer:{tenant_id:tenant,job_id:job},waits:[],issues:[],observed_at:'2026-11-17T00:00:00Z',consumer_snapshot:{state:'available',observed_at:'2026-11-17T00:00:00Z',status:'READY'}}))}));
 it('DAG-05,06,07 retains presentation while paused, and isolates keyed tenant/job identities under effect replay', async () => {
  const signals: AbortSignal[]=[];
  vi.mocked(getTreeNode).mockImplementation(async (tenant,id,signal) => {
@@ -331,4 +331,20 @@ it('DU09 cancellation of a selected external wait job updates its card and detai
  const card=await screen.findByRole('button',{name:'External dependency · Unknown cell'});fireEvent.click(card);fireEvent.click(screen.getByRole('button',{name:'Cancel job'}));
  const dialog=screen.getByRole('dialog');expect(dialog).toHaveTextContent('Job: target');fireEvent.click(within(dialog).getByRole('button',{name:'Cancel job',exact:true}));
  await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());expect(cancelJob).toHaveBeenCalledWith('t','target','Cancelled from Cortex');expect(card).toHaveTextContent('Succeeded');expect(screen.getByRole('complementary')).toHaveTextContent('Succeeded');expect(document.querySelectorAll('.tree-card')).toHaveLength(2);
+});
+
+it('opens the restart picker for the selected graph job', async () => {
+  const root = {tenant_id:'t', job_id:'root', job_type:'recipe', status:'READY', title:'Root'};
+  const child = {...root, job_id:'child', parent_job_id:'root', title:'Child'};
+  vi.mocked(getTreeNode).mockImplementation(async (_, id) => ({node:id === 'root' ? root : child, observed_at:'now'}));
+  vi.mocked(getTreeChildren).mockImplementation(async (_, id) => ({nodes:id === 'root' ? [child] : [], observed_at:'now'}));
+  vi.mocked(getRestartPoints).mockResolvedValue([{scope_id:'submission', chapter_ordinal:0, title:'Child submission', started_at:''}]);
+  render(<MemoryRouter><TreeWorkspace tenant="t" entry="root" /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('button', {name:'Child · Unknown cell'}));
+  const actions = within(screen.getByRole('group', {name:'Selected job actions'}));
+  expect(actions.getByRole('button', {name:'Archive'})).toBeEnabled();
+  fireEvent.click(actions.getByRole('button', {name:'Restart'}));
+  const dialog = screen.getByRole('dialog');
+  expect(await within(dialog).findByText(/Child submission · Chapter 0/)).toBeVisible();
+  expect(getRestartPoints).toHaveBeenCalledWith('t', 'child', expect.any(AbortSignal));
 });

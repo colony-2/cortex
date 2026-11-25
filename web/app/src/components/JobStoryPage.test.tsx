@@ -97,7 +97,10 @@ function Location() {
   return <output data-testid="location">{useLocation().search}</output>;
 }
 function mount(search = '?tab=execution', response: unknown = story) {
-  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => response });
+  const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+    const data = url.endsWith('/restart-points') ? (response as {restart_scopes?: unknown[]})?.restart_scopes ?? [] : response;
+    return {ok: true, json: async () => data, text: async () => JSON.stringify(data)};
+  });
   vi.stubGlobal('fetch', fetchMock);
   render(<MemoryRouter initialEntries={[`/project/tenant/jobs/job/story${search}`]}>
     <Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<><JobStoryPage projectId="tenant" /><Location /></>} /></Routes>
@@ -268,21 +271,22 @@ describe('job story history', () => {
     expect(tree).not.toHaveTextContent('git+');
     expect(screen.getByText(source, { exact: true })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Restart job' }));
-    const dialog = screen.getByRole('dialog');
+    let dialog = screen.getByRole('dialog');
     expect(within(dialog).getByRole('button', { name: 'Restart', exact: true })).toBeEnabled();
-    expect(within(dialog).getByText(text => text.startsWith('Run codex · Chapter 12 ·'))).toBeVisible();
+    expect(await within(screen.getByRole('dialog')).findByText(text => text.startsWith('Run codex · Chapter 12 ·'))).toBeVisible();
     // A manually chosen boundary must not leak into the next opening.
     fireEvent.mouseDown(within(dialog).getByRole('combobox', { name: 'Restart point' }));
     fireEvent.click(await screen.findByText(text => text.startsWith('Recipe body · Chapter 4 ·')));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: 'Restart job' }));
-    expect(within(dialog).getByText(text => text.startsWith('Run codex · Chapter 12 ·'))).toBeVisible();
+    expect(await within(screen.getByRole('dialog')).findByText(text => text.startsWith('Run codex · Chapter 12 ·'))).toBeVisible();
+    dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText('This restarts the containing scope, including its work before this task.')).toBeVisible();
     fetchMock.mockResolvedValueOnce({ ok: true, text: async () => JSON.stringify({
       project_id: 'tenant', job_id: 'job', chapter_ordinal: 12, scope_id: scopeID,
       job: { git: { author: 'old' }, existing: 'unchanged', secret: '[REDACTED]' }, visible: { vars: { example: 'available' } }, redacted_paths: ['/job/secret'],
     }) });
-    fireEvent.click(within(dialog).getByRole('switch'));
+    fireEvent.click(await within(dialog).findByRole('switch'));
     const before = await within(dialog).findByRole('region', { name: 'Context before patching' });
     expect(before).toHaveTextContent('unchanged');
     expect(before).toHaveTextContent('/job/secret');
@@ -317,7 +321,7 @@ describe('job story history', () => {
       expect.objectContaining({ method: 'POST', body: expect.stringContaining('"scope_id":"root"') }),
     ));
     const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/jobs/job/restart'))!;
-    expect(JSON.parse(call[1]!.body as string)).toEqual({ scope_id: 'root', goal: { mode: 'continue' }, request_id: expect.any(String), patch: [{op:'replace',path:'/context/git/author',value:'patched'}] });
+    expect(JSON.parse(call[1]!.body as string)).toEqual({ scope_id: 'root', goal: { mode: 'new' }, request_id: expect.any(String), patch: [{op:'replace',path:'/context/git/author',value:'patched'}] });
     expect(screen.queryByRole('tab', { name: /^Attempt / })).not.toBeInTheDocument();
   });
 
@@ -336,7 +340,7 @@ describe('job story history', () => {
     fetchMock.mockResolvedValueOnce({ ok: true, text: async () => JSON.stringify({
       project_id: 'tenant', job_id: 'job', chapter_ordinal: 4, scope_id: 'root', job: {}, visible: {}, redacted_paths: [],
     }) });
-    fireEvent.click(within(dialog).getByRole('switch'));
+    fireEvent.click(await within(dialog).findByRole('switch'));
     await within(dialog).findByRole('region', { name: 'Context before patching' });
     fireEvent.click(within(dialog).getAllByRole('button', { name: 'Add line' })[0]);
     fireEvent.change(within(dialog).getByPlaceholderText('e.g. git.author'), { target: { value: 'git.author' } });
@@ -354,14 +358,14 @@ describe('job story history', () => {
     ));
     const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/jobs/job/restart'))!;
     expect(JSON.parse(call[1]!.body as string)).toEqual({
-      scope_id: 'opaque-submission-id', goal: { mode: 'continue' }, request_id: expect.any(String),
+      scope_id: 'opaque-submission-id', goal: { mode: 'new' }, request_id: expect.any(String),
     });
   });
 
-  it('does not offer restarts without recorded scopes', async () => {
+  it('offers restart even without recorded scopes', async () => {
     await act(async () => { mount(); });
     expect(screen.getByText('Development.Design.Task 3.2')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Restart job' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Restart job' })).toBeEnabled();
   });
 
   it('shows c2j’s unavailable reason instead of inferring a target', async () => {
@@ -372,8 +376,8 @@ describe('job story history', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
     fireEvent.click(await screen.findByRole('button', { name: 'Restart job', exact: true }));
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByText('Recipe source resolution has no recipe scope.')).toBeVisible();
-    expect(within(dialog).getByRole('button', { name: 'Restart', exact: true })).toBeDisabled();
+    expect(await within(dialog).findByText('Recipe source resolution has no recipe scope.')).toBeVisible();
+    expect(within(dialog).getByRole('button', { name: 'Restart', exact: true })).toBeEnabled();
   });
 
   it('uses the recorded historical chapter even when the current attempt has the same scope ID', async () => {
@@ -390,7 +394,7 @@ describe('job story history', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
     fireEvent.click(await screen.findByRole('button', { name: 'Restart job', exact: true }));
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByText(/Previous body · Chapter 14/)).toBeVisible();
+    expect(await within(dialog).findByText(/Previous body · Chapter 14/)).toBeVisible();
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ job_id: 'new-job' }) });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Restart', exact: true }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
@@ -411,9 +415,9 @@ describe('job story history', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
     fireEvent.click(await screen.findByRole('button', { name: 'Restart job', exact: true }));
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByText(/Selected scope · Chapter 4/)).toBeVisible();
+    expect(await within(dialog).findByText(/Selected scope · Chapter 4/)).toBeVisible();
     fetch.mockResolvedValueOnce({ ok: true, text: async () => JSON.stringify({ project_id: 'tenant', job_id: 'job', scope_id: 'target/scope', chapter_ordinal: 4, job: { git: { author: 'old' } }, visible: {}, redacted_paths: [] }) });
-    fireEvent.click(within(dialog).getByRole('switch'));
+    fireEvent.click(await within(dialog).findByRole('switch'));
     await within(dialog).findByRole('region', { name: 'Context before patching' });
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('restart-context?scope_id=target%2Fscope'), expect.anything());
     sessionStorage.setItem('cells-v1:cortex:restart:tenant:job', 'legacy merge retry');
@@ -1083,7 +1087,7 @@ it('keeps story cancellation confirmed by default and retries only after an expl
   await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
   expect(changes).toEqual([]);
   fireEvent.click(within(dialog).getByRole('button', { name: 'Keep jobs', exact: true }));
-  await waitFor(() => expect(screen.getByText('More actions', { selector: 'summary' })).toHaveFocus());
+  await waitFor(() => expect(screen.getByLabelText('More actions', { selector: 'summary' })).toHaveFocus());
   expect(changes).toEqual([]);
   fireEvent.click(trigger);
   dialog = screen.getByRole('dialog');
@@ -1671,7 +1675,7 @@ it('CX-IN-01,08,10 refreshes Inbox snapshots without changing Outbox or structur
   fireEvent.click(inbox);fireEvent.click(await screen.findByRole('button',{name:'guide.md',exact:true}));
   await waitFor(()=>expect(resolveContent).toBeTypeOf('function'));
   const preview = screen.getByRole('dialog');
-  const refresh = screen.getByRole('button',{name:'reload Refresh',exact:true,hidden:true});
+  const refresh = screen.getByRole('button',{name:'Refresh',exact:true,hidden:true});
   let finishRefresh!: () => void;
   fetch.mockImplementationOnce(() => new Promise(resolve => {finishRefresh = () => resolve({ok:true,json:async()=>fixture()});}));
   fireEvent.click(refresh);
@@ -1681,7 +1685,7 @@ it('CX-IN-01,08,10 refreshes Inbox snapshots without changing Outbox or structur
   expect(screen.getByRole('dialog')).toBe(preview);
   expect(fetch.mock.calls.filter(([url])=>url.includes('/artifacts/'))).toHaveLength(1);
   next=fixture('replacement.md');
-  fireEvent.click(screen.getByRole('button',{name:'reload Refresh',exact:true,hidden:true}));
+  fireEvent.click(screen.getByRole('button',{name:'Refresh',exact:true,hidden:true}));
   expect(await screen.findByRole('button',{name:'replacement.md',exact:true})).toBeVisible();
   resolveContent(new Response('OLD CONTENT'));
   await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
@@ -1821,7 +1825,7 @@ describe('JS shared story actions', () => {
     fireEvent.click(actions.getByRole('button', {name:'Restart',exact:true}));
     const dialog = await screen.findByRole('dialog');
     await within(dialog).findByRole('combobox', {name:'Restart point'});
-    expect(within(dialog).getByRole('button', {name:'Restart',exact:true})).toBeDisabled();
+    expect(within(dialog).getByRole('button', {name:'Restart',exact:true})).toBeEnabled();
     expect(screen.getByTestId('location')).toHaveTextContent(`tab=${tab}`);
     if(tab!=='execution') {
       expect(construction.mock.calls.filter(([root])=>!!root)).toHaveLength(0);
@@ -1836,7 +1840,7 @@ describe('JS shared story actions', () => {
     expect(requests.mock.calls.filter(([url])=>String(url).endsWith('/story'))).toHaveLength(1);
     construction.mockRestore();
   });
-  it('JS-006,008 keeps an in-flight story when either consumer remains and rejects it after both leave', async () => {
+  it('JS-006,008 reads Trace and restart points independently when switching tabs', async () => {
     const requests = mount('');
     await screen.findByRole('link',{name:'Back to inbox'});
     const first = deferred<Response>(); requests.mockReturnValueOnce(first.promise);
@@ -1848,20 +1852,19 @@ describe('JS shared story actions', () => {
     expect(requests.mock.calls.filter(([url])=>String(url).endsWith('/story'))).toHaveLength(1);
     fireEvent.click(screen.getByRole('tab',{name:'Thread',exact:true}));
     fireEvent.click(within(screen.getByRole('group',{name:'Job actions'})).getByRole('button',{name:'Restart',exact:true}));
-    const second=deferred<Response>(); requests.mockReturnValueOnce(second.promise);
-    fireEvent.click(screen.getByRole('button',{name:/Refresh$/}));
+
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:'Cancel',exact:true}));
-    await act(async()=>second.reject(new Error('obsolete retrieval')));
+    expect(requests.mock.calls.filter(([url])=>String(url).endsWith('/restart-points'))).toHaveLength(2);
     expect(screen.queryByText('obsolete retrieval')).toBeNull();
   });
   it('JS-011 retries failed restart retrieval and explains empty recorded points', async () => {
     const requests=mount(''); await screen.findByRole('link',{name:'Back to inbox'});
-    requests.mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ok:true,json:async()=>({...story,restart_scopes:[]})});
+    requests.mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ok:true,json:async()=>[]});
     fireEvent.click(within(screen.getByRole('group',{name:'Job actions'})).getByRole('button',{name:'Restart',exact:true}));
     const dialog=screen.getByRole('dialog');
-    fireEvent.click(await within(dialog).findByRole('button',{name:'Retry story'}));
+    fireEvent.click(await within(dialog).findByRole('button',{name:'Retry points'}));
     await within(dialog).findByText('No recorded restart points are available.');
-    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
+    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
   });
 });
 
@@ -2030,7 +2033,7 @@ it('AR-002,010,011 retains accepted cancellation on failure and returns to Goals
 it.each(['restart','archive'].flatMap(action=>['job','tenant'].flatMap(change=>['success','failure'].map(outcome=>({action,change,outcome})))))('JS-009 ignores late $action $outcome after $change change', async ({action,change,outcome}) => {
   const pending=deferred<Response>();
   const data={...story,restart_scopes:[{scope_id:'point',chapter_ordinal:1,title:'Recorded point'}]};
-  const requests=vi.fn((url:string, init?:RequestInit)=>init?.method ? pending.promise : Promise.resolve({ok:true,json:async()=>data}));
+  const requests=vi.fn((url:string, init?:RequestInit)=>init?.method ? pending.promise : Promise.resolve({ok:true,json:async()=>data.restart_scopes}));
   vi.stubGlobal('fetch',requests);
   vi.mocked(getJob).mockImplementation(async (tenant,id)=>metadata({job_id:id,tenant_id:tenant,status:action==='restart'?'COMPLETED':'RUNNING',store:'ACTIVE'}));
   function Host(){const {projectId}=useParams(); const navigate=useNavigate(); return <><button onClick={()=>navigate(change==='job'?'/project/tenant/jobs/new/story':'/project/other/jobs/job/story')}>Switch identity</button><JobStoryPage projectId={projectId!}/><output data-testid="path">{useLocation().pathname}</output></>;}
@@ -2067,7 +2070,7 @@ it('JS-004,006 initial Trace deep links recover through StrictMode effect replay
   expect(screen.getByRole('heading',{name:'Run Summary'})).toBeVisible();
 });
 
-it('JS-008 preserves a pending Trace read when only Restart remains', async () => {
+it('JS-008 restart points resolve when leaving Trace', async () => {
   const pending=deferred<Response>();
   const requests=vi.fn().mockReturnValue(pending.promise);vi.stubGlobal('fetch',requests);
   render(<MemoryRouter initialEntries={['/project/tenant/jobs/job/story?tab=execution']}><Routes>
@@ -2075,7 +2078,7 @@ it('JS-008 preserves a pending Trace read when only Restart remains', async () =
   </Routes></MemoryRouter>);
   fireEvent.click(screen.getByRole('button',{name:'Restart',exact:true}));
   fireEvent.click(screen.getByRole('tab',{name:'Thread',exact:true}));
-  await act(async()=>pending.resolve({ok:true,json:async()=>({...story,restart_scopes:[{scope_id:'point',chapter_ordinal:1,title:'Retained point'}]})} as Response));
+  await act(async()=>pending.resolve({ok:true,json:async()=>[{scope_id:'point',chapter_ordinal:1,title:'Retained point'}]} as Response));
   expect(within(screen.getByRole('dialog')).getByRole('combobox',{name:'Restart point'})).toBeVisible();
   expect(requests.mock.calls.filter(([url])=>String(url).endsWith('/story'))).toHaveLength(1);
   expect(document.querySelector('#execution-story-tree')).toBeNull();
@@ -2098,7 +2101,7 @@ async function recoveryDialog() {
   requests.mockImplementation(async (url:string,init?:RequestInit)=> {
     if(url.includes('restart-context')) return {ok:true,text:async()=>JSON.stringify({project_id:'tenant',job_id:'job',scope_id:'recorded',chapter_ordinal:12,job:{git:{author:'old'}},visible:{},redacted_paths:[]})};
     if(init?.method==='POST') return {ok:false,status:409,statusText:'Conflict',text:async()=> 'admission unavailable: diagnostic only'};
-    return {ok:true,json:async()=>recoveryStory};
+    return {ok:true,json:async()=>recoveryStory.restart_scopes};
   });
   fireEvent.click(screen.getByRole('button',{name:'Restart',exact:true}));
   const dialog=screen.getByRole('dialog');
@@ -2110,7 +2113,7 @@ async function recoveryDialog() {
   return {requests,dialog,postCalls:()=>requests.mock.calls.filter(([,init])=>init?.method==='POST')};
 }
 async function recoveryPatch(dialog:HTMLElement) {
-  fireEvent.click(within(dialog).getByRole('switch'));
+  fireEvent.click(await within(dialog).findByRole('switch'));
   await within(dialog).findByRole('region',{name:'Context before patching'});
   fireEvent.click(within(dialog).getAllByRole('button',{name:'Add line'})[0]);
   fireEvent.change(within(dialog).getByPlaceholderText('e.g. git.author'),{target:{value:'git.author'}});
@@ -2119,17 +2122,17 @@ async function recoveryPatch(dialog:HTMLElement) {
 
 describe('C1 source recovery',()=>{
   beforeEach(()=>{vi.mocked(getJob).mockResolvedValue(metadata());vi.mocked(cancelJob).mockResolvedValue(undefined);});
-  it.each(['ACTIVE','CANCELLED','READY'])('R01 running %s with a stale outcome submits a continuation without cancellation',async status=>{
+  it.each(['ACTIVE','CANCELLED','READY'])('R01 running %s with a stale outcome starts a new goal without cancellation',async status=>{
     vi.mocked(getJob).mockResolvedValue(metadata({status,store:'ACTIVE',completion_status:'success',cancel_requested:true}));
     const {dialog,postCalls}=await recoveryDialog();
     expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
     expect(within(dialog).getByRole('button',{name:'Cancel source'})).toBeEnabled();
     fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
     await within(dialog).findByText('admission unavailable: diagnostic only',{exact:false});
-    expect(JSON.parse(postCalls()[0][1]!.body as string).goal.mode).toBe('continue');
+    expect(JSON.parse(postCalls()[0][1]!.body as string).goal.mode).toBe('new');
     expect(cancelJob).not.toHaveBeenCalled();
   });
-  it('R04 R11 accepted running continuation clears saved identity, closes and navigates once',async()=>{
+  it('R04 R11 accepted restart of a running job clears saved identity, closes and navigates once',async()=>{
     vi.mocked(getJob).mockResolvedValue(metadata({status:'ACTIVE',store:'ACTIVE'}));
     const {dialog,requests,postCalls}=await recoveryDialog();
     const pending=deferred<Response>();requests.mockReturnValueOnce(pending.promise);
@@ -2138,7 +2141,7 @@ describe('C1 source recovery',()=>{
     expect(postCalls()).toHaveLength(1);
     expect(within(dialog).getByRole('button',{name:'Cancel source'})).toBeDisabled();
     expect(within(dialog).getByRole('combobox',{name:'Restart point'})).toBeDisabled();
-    expect(within(dialog).getByRole('combobox',{name:'Restart goal'})).toBeDisabled();
+    expect(within(dialog).queryByRole('combobox',{name:'Restart goal'})).toBeNull();
     expect(sessionStorage.getItem('json-patch-v2:cortex:restart:tenant:job')).not.toBeNull();
     await act(async()=>pending.resolve(new Response(JSON.stringify({job_id:'accepted-successor'}))));
     await waitFor(()=>expect(sessionStorage.getItem('json-patch-v2:cortex:restart:tenant:job')).toBeNull());
@@ -2154,7 +2157,7 @@ describe('C1 source recovery',()=>{
     fireEvent.click(within(dialog).getByRole('button',{name:'Cancel source'}));
     const confirmation=(await screen.findByText('Cancel job?')).closest('[role=dialog]') as HTMLElement;
     fireEvent.click(within(confirmation).getByRole('button',{name:'Cancel job',exact:true}));
-    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
+    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
     expect(within(dialog).getByRole('button',{name:'Refresh source'})).toBeDisabled();
     await act(async()=>pending.resolve());
     await within(dialog).findByText('Cancellation requested for this source');
@@ -2162,7 +2165,7 @@ describe('C1 source recovery',()=>{
     fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
     await within(dialog).findByText('Restart failed');
     expect(postCalls()).toHaveLength(1);
-    expect(JSON.parse(postCalls()[0][1]!.body as string).goal.mode).toBe('continue');
+    expect(JSON.parse(postCalls()[0][1]!.body as string).goal.mode).toBe('new');
     expect(cancelJob).toHaveBeenCalledTimes(1);
   });
   it('R05 R06 retains running-source conflict draft and saved identity without changing the goal',async()=>{
@@ -2172,9 +2175,9 @@ describe('C1 source recovery',()=>{
     fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
     await within(dialog).findByText('admission unavailable: diagnostic only',{exact:false});
     expect(postCalls()).toHaveLength(1);
-    expect(JSON.parse(postCalls()[0][1]!.body as string)).toMatchObject({scope_id:'recorded',goal:{mode:'continue'},patch:[{op:'replace',path:'/context/git/author',value:'retained draft'}]});
+    expect(JSON.parse(postCalls()[0][1]!.body as string)).toMatchObject({scope_id:'recorded',goal:{mode:'new'},patch:[{op:'replace',path:'/context/git/author',value:'retained draft'}]});
     expect(within(dialog).getByPlaceholderText('e.g. "james@example.com"')).toHaveValue('retained draft');
-    expect(within(dialog).getByText('Continue this goal')).toBeVisible();
+    expect(within(dialog).getByText('Restart as a new goal')).toBeVisible();
     expect(JSON.parse(sessionStorage.getItem('json-patch-v2:cortex:restart:tenant:job')!).request).toEqual(JSON.parse(postCalls()[0][1]!.body as string));
     expect(cancelJob).not.toHaveBeenCalled();
   });
@@ -2191,23 +2194,23 @@ describe('C1 source recovery',()=>{
     expect(within(dialog).getByRole('button',{name:'Retry saved request'})).toBeEnabled();
     expect(sessionStorage.getItem('json-patch-v2:cortex:restart:tenant:job')).not.toBeNull();
   });
-  it('R10 loading and failed restart-point retrieval prevent fresh submission',async()=>{
+  it('R10 submission remains available during and after failed restart-point retrieval',async()=>{
     const requests=mount('');
     const pending=deferred<Response>();requests.mockReturnValueOnce(pending.promise);
     fireEvent.click(screen.getByRole('button',{name:'Restart',exact:true}));
     const dialog=screen.getByRole('dialog');
     const restart=within(dialog).getByRole('button',{name:'Restart',exact:true});
-    expect(restart).toBeDisabled();fireEvent.click(restart);
+    expect(restart).toBeEnabled();
     await act(async()=>pending.reject(new Error('points unavailable')));
-    await within(dialog).findByText('Failed to load job story');
-    expect(restart).toBeDisabled();fireEvent.click(restart);
-    expect(requests.mock.calls.filter(([,init])=>init?.method==='POST')).toHaveLength(0);
+    await within(dialog).findByText('Could not load restart points');
+    expect(restart).toBeEnabled();fireEvent.click(restart);
+    expect(requests.mock.calls.filter(([,init])=>init?.method==='POST')).toHaveLength(1);
   });
   it('R10 invalid generated patch blocks a fresh request',async()=>{
     const {dialog,postCalls}=await recoveryDialog();
     await recoveryPatch(dialog);
     fireEvent.change(within(dialog).getByPlaceholderText('e.g. git.author'),{target:{value:'workspace'}});
-    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
+    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
     fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
     expect(postCalls()).toHaveLength(0);
   });
@@ -2216,7 +2219,6 @@ describe('C1 source recovery',()=>{
     const {dialog,postCalls}=await recoveryDialog();
     await recoveryPatch(dialog);
     // Save a deliberate fork whose response is rejected, then cancel the source.
-    fireEvent.click(within(dialog).getByRole('button',{name:'Start a new goal',exact:true}));
     fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
     await within(dialog).findByText('Restart failed');
     const saved=sessionStorage.getItem('json-patch-v2:cortex:restart:tenant:job');
@@ -2253,7 +2255,7 @@ describe('C1 source recovery',()=>{
     fireEvent.click(within((await screen.findByText('Cancel failed jobs')).closest('[role=dialog]') as HTMLElement).getAllByRole('button',{name:'Close',exact:true}).at(-1)!);
     await waitFor(()=>expect(within(dialog).queryByRole('button',{name:'Cancel source'})).toBeNull());
     expect(within(dialog).getByPlaceholderText('e.g. "james@example.com"')).toHaveValue('retained draft');
-    expect(within(dialog).getByRole('button',{name:'Start a new goal',exact:true})).toBeEnabled();
+    expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
     expect(postCalls()).toHaveLength(0);
   });
   it.each(['loading','denied','unavailable','mismatched','missing'])('R02 R03 allows %s source detail without submission preflights',async state=>{
@@ -2271,28 +2273,27 @@ describe('C1 source recovery',()=>{
     await within(dialog).findByText('Restart failed');
     expect(getJob).toHaveBeenCalledTimes(before);
     expect(postCalls()).toHaveLength(1);
-    expect(JSON.parse(postCalls()[0][1]!.body as string)).toMatchObject({goal:{mode:'continue'}});
+    expect(JSON.parse(postCalls()[0][1]!.body as string)).toMatchObject({goal:{mode:'new'}});
     expect(listJobs).toHaveBeenCalledTimes(goalReads);
     expect(listJobChildren).toHaveBeenCalledTimes(childReads);
   });
   it('R03 R12 completed observations add no submission read and keep neutral guidance',async()=>{
     const {dialog,postCalls}=await recoveryDialog();
-    expect(within(dialog).getByText('The restart service checks whether this request is allowed.')).toBeVisible();
-    expect(within(dialog).getByText('Restarting does not cancel the source job.')).toBeVisible();
+    expect(within(dialog).getByText('Restart as a new goal')).toBeVisible();
+    expect(within(dialog).getByText(/The source job is not cancelled/)).toBeVisible();
     const before=vi.mocked(getJob).mock.calls.length;
     fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
     await within(dialog).findByText('Restart failed');
     expect(getJob).toHaveBeenCalledTimes(before);
-    expect(JSON.parse(postCalls()[0][1]!.body as string)).toMatchObject({goal:{mode:'continue'}});
+    expect(JSON.parse(postCalls()[0][1]!.body as string)).toMatchObject({goal:{mode:'new'}});
     expect(cancelJob).not.toHaveBeenCalled();
   });
   it('C1-R13 R14 M07 X03 reloads exact saved replay despite denied confirmation and differing current controls',async()=>{
-    const request={request_id:'retained-id',scope_id:'old-boundary',goal:{mode:'continue'},patch:[{op:'add',path:'/context/large',value:'literal 9007199254740993'}]};
+    const request={request_id:'retained-id',scope_id:'old-boundary',goal:{mode:'new'},patch:[{op:'add',path:'/context/large',value:'literal 9007199254740993'}]};
     sessionStorage.setItem('json-patch-v2:cortex:restart:tenant:job',JSON.stringify({payload:'old payload',request}));
     vi.mocked(getJob).mockRejectedValue(new Error('403 completion denied'));
     const {dialog,postCalls}=await recoveryDialog();
     expect(within(dialog).getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
-    fireEvent.click(within(dialog).getByRole('button',{name:'Start a new goal',exact:true}));
     const reads=vi.mocked(getJob).mock.calls.length;
     fireEvent.click(within(dialog).getByRole('button',{name:'Retry saved request'}));
     await within(dialog).findByText('Restart failed');
@@ -2346,12 +2347,12 @@ it.each(['job','tenant'].flatMap(change=>['success','failure'].map(outcome=>({ch
  expect(screen.queryByText('Cancellation requested for this source')).toBeNull();
 });
 it('C1-R14 saved replay remains available without story or completion reconstruction',async()=>{
- const raw='{"request_id":"persisted","chapter_ordinal":9,"goal":{"mode":"continue"},"patch":[{"op":"add","path":"/sequence/a/outputs/n","value":9007199254740993}]}';
+ const raw='{"request_id":"persisted","chapter_ordinal":9,"goal":{"mode":"new"},"patch":[{"op":"add","path":"/sequence/a/outputs/n","value":9007199254740993}]}';
  sessionStorage.setItem('json-patch-v2:cortex:restart:tenant:job','{"payload":"retained","request":'+raw+'}');
  vi.mocked(getJob).mockRejectedValue(new Error('detail denied'));
  const requests=mount('');requests.mockRejectedValue(new Error('story unavailable'));
  fireEvent.click(screen.getByRole('button',{name:'Restart',exact:true}));
- const dialog=screen.getByRole('dialog');await within(dialog).findByText('Failed to load job story');
+ const dialog=screen.getByRole('dialog');await within(dialog).findByText('Could not load restart points');
  requests.mockResolvedValueOnce({ok:false,status:409,text:async()=> 'controlled closed goal replay response'});
  const reads=vi.mocked(getJob).mock.calls.length;
  fireEvent.click(within(dialog).getByRole('button',{name:'Retry saved request'}));
@@ -2360,24 +2361,23 @@ it('C1-R14 saved replay remains available without story or completion reconstruc
  expect(post[1]!.body).toBe(raw);expect(getJob).toHaveBeenCalledTimes(reads);
 });
 
-it.each(['boundary','mode'])('C1-R15 deliberate %s changes use a new request identity',async change=>{
+it('C1-R15 deliberate boundary changes use a new request identity',async()=>{
  vi.mocked(getJob).mockResolvedValue(metadata());
  const data={...recoveryStory,restart_scopes:[...recoveryStory.restart_scopes,{scope_id:'alternate',chapter_ordinal:14,title:'Alternate boundary'}]};
  const requests=mount('',data);
- requests.mockImplementation(async(_url:string,init?:RequestInit)=>init?.method==='POST'?{ok:false,status:409,text:async()=> 'retained conflict'}:{ok:true,json:async()=>data});
+ requests.mockImplementation(async(_url:string,init?:RequestInit)=>init?.method==='POST'?{ok:false,status:409,text:async()=> 'retained conflict'}:{ok:true,json:async()=>data.restart_scopes});
  fireEvent.click(screen.getByRole('button',{name:'Restart',exact:true}));
  const dialog=screen.getByRole('dialog');
  fireEvent.mouseDown(await within(dialog).findByRole('combobox',{name:'Restart point'}));fireEvent.click(await screen.findByText(/Recovery boundary · Chapter/));
  fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));await within(dialog).findByText('Restart failed');
  const posts=()=>requests.mock.calls.filter(([,init])=>init?.method==='POST');
  const first=JSON.parse(posts()[0][1]!.body as string);
- if(change==='mode')fireEvent.click(within(dialog).getByRole('button',{name:'Start a new goal',exact:true}));
- else {fireEvent.mouseDown(within(dialog).getByRole('combobox',{name:'Restart point'}));fireEvent.click(await screen.findByText(/Alternate boundary · Chapter/));}
+ fireEvent.mouseDown(within(dialog).getByRole('combobox',{name:'Restart point'}));fireEvent.click(await screen.findByText(/Alternate boundary · Chapter/));
  fireEvent.click(within(dialog).getByRole('button',{name:'Restart',exact:true}));
  await waitFor(()=>expect(posts()).toHaveLength(2));
  const second=JSON.parse(posts()[1][1]!.body as string);
  expect(second.request_id).not.toBe(first.request_id);
- expect(second).toMatchObject(change==='mode'?{goal:{mode:'new'},scope_id:'recorded'}:{scope_id:'alternate',goal:{mode:'continue'}});
+ expect(second).toMatchObject({scope_id:'alternate',goal:{mode:'new'}});
 });
 
 

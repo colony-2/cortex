@@ -131,7 +131,7 @@ it.each(['cell_id', 'cell_name', 'repo'])('rejects missing %s instead of inventi
  it('ATT-021 ATT-022 RET-009 sends ordered multipart files and retains JSON without files', async () => {
   const fetch = vi.fn(async () => new Response(JSON.stringify({ tenant_id: 'tenant', job_id: 'job', goal_id: 'goal', cell_id: 'cell', cell_name: 'platform', repo: 'github.com/acme/platform' })));
   vi.stubGlobal('fetch', fetch);
-  const input = { cell: 'platform', inputs: { prompt: 'hello', type: 'build' }, job_id: 'job' };
+  const input = { cell: 'platform', title: 'Greeting', inputs: { prompt: 'hello', type: 'build' }, job_id: 'job' };
   const files = [new File(['binary'], '雪.bin'), new File([], 'empty')];
   await submitJob('tenant', input, files);
   const options = (fetch.mock.calls[0] as unknown as [string, RequestInit])[1];

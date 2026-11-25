@@ -93,12 +93,6 @@ export function inboxPendingBadge(counts: InboxPendingCounts, selection: InboxSe
   return count || undefined;
 }
 
-export function composeJobPrompt(subject: string, body: string): string {
-  if (!body.trim()) throw new Error('Write a message for this cell');
-  const title = subject.trim();
-  return title ? `${title}\n\n${body}` : body;
-}
-
 export function messagePreview(text?: string): string {
   const line = text?.trim().replace(/\s+/g, ' ') ?? '';
   return line.length > 120 ? line.slice(0, 117).trimEnd() + '…' : line;

@@ -636,7 +636,8 @@ test('New message docks independent composers, saves drafts and sends the restor
   await expect(composers).toHaveCount(0);
   await expect(page).toHaveURL('/project/v2/jobs?inbox=drafts');
   await expect.poll(() => fixture.submissions.length).toBe(1);
-  expect(fixture.submissions[0].inputs.prompt).toBe('Inbox request\n\nFirst line\n\nSecond line');
+  expect(fixture.submissions[0].title).toBe('Inbox request');
+  expect(fixture.submissions[0].inputs.prompt).toBe('First line\n\nSecond line');
   expect(fixture.submissions[0]).not.toHaveProperty('job_id');
   expect(fixture.submissions[0]).not.toHaveProperty('request_id');
 });
@@ -797,4 +798,51 @@ for (const width of [1440, 768]) test(`upstream runner access and job requiremen
   await expect(page.getByRole('region', { name: 'Execution requirements' })).toContainText('4 cores');
   await page.getByRole('link', { name: 'Back to inbox', exact: true }).click();
   await expect(requirements).toBeVisible();
+});
+
+test('Trace2 preselects the recorded task boundary and loads patch context on demand', async ({page}) => {
+  await inboxFixture(page);
+  const reads: string[] = [];
+  const points = [
+    {scope_id:'root', chapter_ordinal:1, title:'Recipe body'},
+    {scope_id:'build', chapter_ordinal:7, title:'Build scope'},
+  ];
+  let release!: () => void;
+  const contextReady = new Promise<void>(resolve => { release = resolve; });
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith('/api/projects/v2/jobs/one/')) reads.push(url.pathname.split('/').pop()!);
+  });
+  await page.route('**/jobs/one/recorded-trace', route => route.fulfill({json:{terminal:true, tasks:[
+    {id:'first', title:'Prepare', status:'succeeded', task_ordinal:3, attempt:1},
+    {id:'second', title:'Build', status:'failed', task_ordinal:9, attempt:2, restart_scope_id:'build', restart_chapter_ordinal:7, output:{result:'recorded failure'}},
+  ]}}));
+  await page.route('**/jobs/one/restart-points', route => route.fulfill({json:points}));
+  await page.route('**/jobs/one/restart-context?*', async route => {
+    expect(new URL(route.request().url()).searchParams.get('scope_id')).toBe('build');
+    await contextReady;
+    await route.fulfill({json:{project_id:'v2', job_id:'one', scope_id:'build', chapter_ordinal:7, job:{}, visible:{}, redacted_paths:[]}});
+  });
+  await page.route('**/jobs/one/restart', route => route.fulfill({json:{job_id:'restarted'}}));
+  await page.goto('/project/v2/jobs/one/story?tab=trace2');
+  const list = page.locator('#recorded-task-list');
+  await expect(list.getByRole('button')).toHaveCount(2);
+  await list.getByRole('button', {name:/Build/}).click();
+  await page.getByRole('tab', {name:'Output', exact:true}).click();
+  await expect(page.getByText(/recorded failure/).first()).toBeVisible();
+  await page.getByRole('tab', {name:'Overview'}).click();
+  await page.getByRole('button', {name:'Restart job', exact:true}).click();
+  const dialog = page.getByRole('dialog', {name:'Restart Job'});
+  await expect(dialog.getByText(/Build scope · Chapter 7/)).toBeVisible();
+  expect(reads).toContain('restart-points');
+  expect(reads).not.toContain('story');
+  expect(reads).not.toContain('restart-context');
+  await dialog.getByRole('switch').click();
+  await expect(dialog.getByText('Loading restart context…')).toBeVisible();
+  release();
+  await expect(dialog.getByRole('region', {name:'Context before patching'})).toBeVisible();
+  const submitted = page.waitForRequest(request => new URL(request.url()).pathname.endsWith('/one/restart'));
+  await dialog.getByRole('button', {name:'Restart', exact:true}).click();
+  expect((await submitted).postDataJSON()).toMatchObject({scope_id:'build', goal:{mode:'new'}});
+  expect(reads).not.toContain('story');
 });

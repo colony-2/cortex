@@ -8,6 +8,7 @@ type NodeStatus =
   | 'unknown';
 
 export type StoryKind =
+  | 'task'
   | 'recipe'
   | 'recipeSourceResolution'
   | 'sequence'
@@ -46,6 +47,7 @@ export interface StoryNode {
 
   id?: string;
   invocation_id?: string;
+  launch_id?: string;
   restart_scope_id?: string;
   restart_chapter_ordinal?: number | null;
   restart_relationship?: 'exact' | 'containing' | 'body';

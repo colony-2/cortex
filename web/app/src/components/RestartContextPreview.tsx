@@ -32,7 +32,7 @@ function Snapshot({ projectId, jobId, chapterOrdinal, scopeId, onSnapshot }: Pro
 
   if (error) return <Alert type="error" showIcon message="Could not load context before patching" description={error}
     action={<Button onClick={() => setRetry(value => value + 1)}>Retry context</Button>} />;
-  if (!snapshot) return <Spin aria-label="Loading restart context" />;
+  if (!snapshot) return <Space role="status"><Spin size="small" />Loading restart context…</Space>;
   return <section aria-label="Context before patching">
     <Space direction="vertical" style={{ width: '100%' }}>
       <Typography.Text type="secondary">Context at entry to this restart point, including unchanged values. Only your patch will be submitted.</Typography.Text>

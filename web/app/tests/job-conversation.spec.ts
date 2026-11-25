@@ -648,6 +648,7 @@ test('JS-010,036,037 header Restart submits before Trace and retries the saved r
   const payloads:unknown[]=[];
   await page.route(url => url.pathname === '/api/projects/demo/jobs/job',route=>route.fulfill({json:{...jobIdentity,tenant_id:'demo',job_id:'job',title:'Restart fixture',prompt:'Restart before loading Trace.',status:'RUNNING',store:'ACTIVE'}}));
   await page.route('**/api/projects/demo/jobs/job/story',route=>{storyReads++;return route.fulfill({json:{job_id:'job',status:'completed',restart_scopes:[{scope_id:'recorded',chapter_ordinal:3,title:'Recorded restart'}],root:null}});});
+  await page.route('**/api/projects/demo/jobs/job/restart-points',route=>route.fulfill({json:[{scope_id:'recorded',chapter_ordinal:3,title:'Recorded restart'}]}));
   await page.route('**/api/projects/demo/jobs/job/restart',route=>{
     restarts++;payloads.push(route.request().postDataJSON());
     return restarts===1?route.fulfill({status:503,body:'Temporary restart failure'}):route.fulfill({json:{job_id:'restarted'}});
@@ -655,23 +656,20 @@ test('JS-010,036,037 header Restart submits before Trace and retries the saved r
   await page.goto('/project/demo/jobs/job/story');
   expect(storyReads).toBe(0);
   const restart=await storyAction(page, 'Restart'); await restart.click(); const dialog=page.getByRole('dialog');
-  await expect(dialog.getByRole('button',{name:'Restart',exact:true})).toBeDisabled();
+  await expect(dialog.getByRole('button',{name:'Restart',exact:true})).toBeEnabled();
   await expect(page.locator('#execution-story-tree')).toHaveCount(0);
   await dialog.getByRole('combobox',{name:'Restart point'}).click(); await page.getByText(/Recorded restart · Chapter 3/).click();
-  const goalMode=dialog.locator('.ant-select').filter({has:page.getByRole('combobox',{name:'Restart goal'})});
-  await expect(goalMode).toHaveText('Start a new goal');
-  await expect(dialog.getByRole('button',{name:'Start a new goal',exact:true})).toBeEnabled();
   await expect(page.getByRole('listbox')).toBeHidden();
   await page.screenshot({path:info.outputPath('header-restart.png'),animations:'disabled'});
   await dialog.getByRole('button',{name:'Restart',exact:true}).click();
   await expect(page.getByText(/Temporary restart failure/)).toBeVisible();
-  await expect(goalMode).toHaveText('Start a new goal');
+  await expect(dialog.getByText('Restart as a new goal')).toBeVisible();
   expect(restarts).toBe(1);
   await dialog.getByRole('button',{name:'Retry saved request',exact:true}).click();
   await expect(page).toHaveURL(/\/jobs\/restarted\/story/);
   expect(payloads[0]).toEqual(payloads[1]);
   expect(payloads[0]).toMatchObject({scope_id:'recorded',goal:{mode:'new'},request_id:expect.any(String)});
-  expect(storyReads).toBe(1);
+  expect(storyReads).toBe(0);
 });
 
 for(const width of [1440,390]) test(`JS-004,005,010,036 summary deep link and shared Restart at ${width}px`,async({page},info)=>{

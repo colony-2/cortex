@@ -56,7 +56,7 @@ export function jobStatusOptions(jobs: RecipeJobSummary[], selected: RecipeJobFi
 }
 
 // Resolve every selected attempt from the loaded page; missing data fails closed.
-export function canArchiveImmediately(ids: string[], jobs: RecipeJobSummary[]): boolean {
+export function canArchiveImmediately(ids: string[], jobs: (JobStatusInput & {job_id: string})[]): boolean {
   const summaries = new Map(jobs.map(job => [job.job_id, job]));
   return ids.length > 0 && ids.every(id => {
     const job = summaries.get(id);

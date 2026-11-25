@@ -147,6 +147,7 @@ export interface ListRecipeJobsResponse {
 
 export interface SubmitRecipeJobRequest {
   cell: string;
+  title?: string;
   repo?: string;
   recipe?: string;
   inputs?: Record<string, unknown>;

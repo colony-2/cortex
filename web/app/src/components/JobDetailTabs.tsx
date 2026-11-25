@@ -5,6 +5,7 @@ export const jobDetailTabs = [
   ['runtime', 'Execution'],
   ['dag', 'Graph'],
   ['execution', 'Trace'],
+  ['trace2', 'Trace2'],
 ] as const;
 export type JobDetailTab = typeof jobDetailTabs[number][0];
 

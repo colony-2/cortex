@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Input, Modal, Space, Typography, message } from 'antd';
 import { APIError, cancelJob, archiveJob, getJob, DEFAULT_CANCELLATION_REASON, cancellationSizeError } from '@colony2/shared/api';
 
-import type { RecipeJobSummary } from '@colony2/shared/types';
-import { isFinishedJob } from '../utils/jobStatus';
+import { isFinishedJob, type JobStatusInput } from '../utils/jobStatus';
 
 export type JobAction = 'cancel' | 'archive';
 
@@ -19,7 +18,7 @@ interface Props {
   onFailure?: (failures: { id: string; error: string }[]) => void;
   immediate?: boolean;
   disabled?: boolean;
-  job?: RecipeJobSummary;
+  job?: JobStatusInput;
   onBusyChange?: (busy: boolean) => void;
 }
 

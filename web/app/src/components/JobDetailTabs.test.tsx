@@ -20,14 +20,14 @@ it('CT-007 supports arrows, wraparound, Home and End with a single tab stop', ()
   }
   render(<Host />);
   const tabs = screen.getAllByRole('tab');
-  expect(tabs.map(tab => tab.textContent)).toEqual(['Thread', 'Execution', 'Graph', 'Trace']);
+  expect(tabs.map(tab => tab.textContent)).toEqual(['Thread', 'Execution', 'Graph', 'Trace', 'Trace2']);
   const press = (key: string, expected: number) => {
     fireEvent.keyDown(screen.getByRole('tab', { selected: true }), { key });
     expect(tabs[expected]).toHaveAttribute('aria-selected', 'true');
     expect(tabs[expected]).toHaveFocus();
     expect(tabs.filter(tab => tab.tabIndex === 0)).toEqual([tabs[expected]]);
   };
-  press('ArrowLeft', 3); press('ArrowRight', 0); press('ArrowRight', 1); press('End', 3); press('Home', 0); press('ArrowRight', 1); press('ArrowRight', 2);
+  press('ArrowLeft', 4); press('ArrowRight', 0); press('ArrowRight', 1); press('End', 4); press('Home', 0); press('ArrowRight', 1); press('ArrowRight', 2);
   expect(tabs[1]).toHaveAttribute('aria-controls', 'job-panel-runtime');
 });
 it('selects a clicked tab', () => {

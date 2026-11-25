@@ -132,6 +132,8 @@ func (s *Server) buildRouter(inputService ops.ManagementService) http.Handler {
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/clear-crash-concern", s.handleClearCrashConcern).Methods(http.MethodPost, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/cancel", s.requireCancellableJob(s.handleCancelJob)).Methods(http.MethodPost, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/restart", s.requireJob(s.handleRestartJob)).Methods(http.MethodPost, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/recorded-trace", s.requireArchivedJob(s.handleRecordedTrace)).Methods(http.MethodGet, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/restart-points", s.requireArchivedJob(s.handleRestartPoints)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/restart-context", s.requireJob(s.handleRestartContext)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/chapters/download", s.requireJob(s.handleChapterDownload)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/stored-document", s.handleStoredDocument).Methods(http.MethodGet, http.MethodOptions)

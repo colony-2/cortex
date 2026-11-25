@@ -91,7 +91,7 @@ func TestCellRegistryAndSubmission(t *testing.T) {
 			}
 			resp.Body.Close()
 			// Local configuration maps alpha elsewhere. Name-only must use the registry.
-			job := postJSON[recipejob.RecipeJob](t, base+"/jobs", map[string]any{"cell": "alpha", "recipe": "smoke", "job_id": "source"})
+			job := postJSON[recipejob.RecipeJob](t, base+"/jobs", map[string]any{"cell": "alpha", "recipe": "smoke", "job_id": "source", "title": "Original subject", "inputs": map[string]string{"prompt": "Body only"}})
 			if job.CellID != created.ID || job.RepositorySource != created.Repo {
 				t.Fatalf("wrong target: %+v", job)
 			}
@@ -117,6 +117,11 @@ func TestCellRegistryAndSubmission(t *testing.T) {
 			page := getJSON[recipejob.ListRecipeJobsResponse](t, base+"/jobs?cellNames=renamed&status=all")
 			if len(page.Jobs) != 2 {
 				t.Fatal(page)
+			}
+			for _, listed := range page.Jobs {
+				if listed.JobID == "source" && (listed.Title != "Original subject" || listed.Prompt != "Body only") {
+					t.Fatalf("inbox title and prompt: %+v", listed)
+				}
 			}
 			missing, _ := http.NewRequest("POST", base+"/jobs", strings.NewReader(`{"cell":"first-use","repo":"github.com/acme/first","recipe":"smoke"}`))
 			doJSON[errorResponse](t, missing, http.StatusNotFound)

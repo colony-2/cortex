@@ -1,3 +1,4 @@
+import { useRecordedTasks } from '../hooks/useRecordedTasks';
 import { hasThreadInput, ThreadSnapshotContext, useThreadInput, type ThreadSnapshot } from '../hooks/useThreadInput';
 import { object, valueText } from './conversationPresentation';
 import { messagePreview, readInboxSort, threadTitle } from '../utils/jobInbox';
@@ -30,7 +31,6 @@ import {
   Card,
   Descriptions,
   Empty,
-  Input,
   List,
   Modal,
   Select,
@@ -46,7 +46,7 @@ import {
 import type { DataNode } from 'antd/es/tree';
 import {
   DownloadOutlined,
-  ReloadOutlined,
+  EllipsisOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import ReactJson from 'react-json-view';
@@ -54,27 +54,19 @@ import { API_BASE, inputActivityService, type FormResponse, useInputActivity } f
 import InputFormRenderer from './InputFormRenderer';
 import AttemptTabs from './AttemptTabs';
 import CancelJobButton from './CancelJobButton';
+import { JobActionIcons } from './JobActionIcons';
 import JobActionDialog from './JobActionDialog';
 import GoalPrompt from './GoalPrompt';
 import { getJob, getJobInputArtifacts, storedDocumentURL, type InputArtifact } from '@colony2/shared/api';
 import type { RecipeJob } from '@colony2/shared/types';
-import { canArchiveImmediately, isFinishedJob, confirmsRecoveryCompletion, filterStatuses, jobStatus, jobStatusValue } from '../utils/jobStatus';
+import { canArchiveImmediately, isFinishedJob, filterStatuses, jobStatus, jobStatusValue } from '../utils/jobStatus';
 import { buildStoryTree, storyAttempts, storyNodeName, type ArtifactKey as StoredArtifactKey, type StoryNode, type StoryKind, type StoryNodeRef } from '../utils/storyTree';
 import { adaptInputFormConfig } from '../utils/formAdapter';
 import type { RestartScope } from '@colony2/shared';
-import RestartContextPreview from './RestartContextPreview';
-import { buildContextPatch, type PatchLine, type ScopePatchLine } from '../utils/restartPatch';
-import { stringifyJobJSON, parseJobJSON, type RestartContext } from '@colony2/shared';
+import RestartJobDialog from './RestartJobDialog';
+import { stringifyJobJSON } from '@colony2/shared';
 
 const { Title, Text } = Typography;
-
-function newId(): string {
-  try {
-    return crypto.randomUUID();
-  } catch {
-    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  }
-}
 
 type JobStatus =
   | 'running'
@@ -162,6 +154,7 @@ function artifactUrl(projectId: string, jobId: string, artifact: ArtifactKey): s
 
 function kindLabel(kind: StoryKind): string {
   switch (kind) {
+    case 'task': return 'Task';
     case 'recipe':
       return 'Recipe';
     case 'recipeSourceResolution':
@@ -285,37 +278,13 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const [artifactOwner, setArtifactOwner] = useState('');
   const [artifactAttachments, setArtifactAttachments] = useState<ArtifactKey[]>([]);
 
-  const [restartOpen, setRestartOpen] = useState(false);
-  const [restartNode, setRestartNode] = useState<StoryNode | null>(null);
+  const [restartNode, setRestartNode] = useState<StoryNode | null>();
   const [archiveTarget, setArchiveTarget] = useState<{ job?: RecipeJob; immediate: boolean }>();
   const alive = useRef(true);
-  const restartBusy = useRef(false);
-  const restartGoalInitialized = useRef(false);
-  const restartOpener = useRef<HTMLElement | null>(null);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  const [restartSelection, setRestartSelection] = useState<string>();
-  const [restartSubmitting, setRestartSubmitting] = useState(false);
-  const [drafts, setDrafts] = useState<Record<string, { job: PatchLine[]; scope: ScopePatchLine[] }>>({});
-  const [inspection, setInspection] = useState<{ key: string; snapshot?: RestartContext }>();
-  const [applyPatch, setApplyPatch] = useState(false);
-
   const [pendingInputSubmitting, setPendingInputSubmitting] = useState(false);
 
   const jobId = routeJobId || '';
-  const storageKey = `json-patch-v2:cortex:restart:${projectId}:${jobId}`;
-  type SavedRestart = { payload: string; request: unknown };
-  const [savedRestart, setSavedRestart] = useState<SavedRestart | null>(() => {
-    try {
-      const value = sessionStorage.getItem(storageKey);
-      const saved = value ? parseJobJSON(value) as SavedRestart : null;
-      return saved && typeof saved.payload === 'string' && saved.request && typeof saved.request === 'object' ? saved : null;
-    } catch { return null; }
-  });
-  const [restartError, setRestartError] = useState<string>();
-  const [cancelSource, setCancelSource] = useState(false);
-  const [cancellationBusy, setCancellationBusy] = useState(false);
-  const [cancellationResult, setCancellationResult] = useState<string>();
-  const [cancellationError, setCancellationError] = useState<string>();
   const artifactIdentity = JSON.stringify([projectId, jobId]);
   const activeArtifact = artifactOwner === artifactIdentity ? selectedArtifact : null;
 
@@ -364,7 +333,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const dagIdentity = JSON.stringify([projectId, jobId]);
   const [dagVisited, setDagVisited] = useState<string>();
   useEffect(() => { if (activeTab === 'dag') setDagVisited(dagIdentity); }, [activeTab, dagIdentity]);
-  const storyDemand = activeTab === 'execution' || restartOpen;
+  const storyDemand = activeTab === 'execution';
   const storyWanted = useRef(storyDemand);
   storyWanted.current = storyDemand;
   const threadSelection = useRef<{ owner: string; params: URLSearchParams }>();
@@ -392,7 +361,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const loadingThread = useMemo<ThreadSnapshot>(() => ({refresh:refreshThread}), [refreshThread]);
   const thread = activeTab === 'conversation' || threadVisited ? snapshot ?? loadingThread : undefined;
   const unified = hasThreadInput(thread);
-  const selectedInput = useThreadInput(projectId, jobId, (activeTab !== 'runtime' || threadVisited) && requestId === null, thread);
+  const selectedInput = useThreadInput(projectId, jobId, activeTab !== 'trace2' && (activeTab !== 'runtime' || threadVisited) && requestId === null, thread);
   const isPendingInput = !!selectedInput.version;
   const pendingInputDetails = selectedInput.details ?? (selectedInput.discovery.status !== 'current' || wantInput ? selectedInput.readableDetails : undefined);
   const pendingForm = pendingInputDetails?.form;
@@ -420,7 +389,6 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   );
 
   const { keyToRef, keyToParent, keyFor, ancestorsByKey, projectionByKey, visibleKeyByKey, childrenByNode, renderNodes } = treeModel;
-  const [restartGoalMode, setRestartGoalMode] = useState<'continue' | 'new'>('continue');
   const goalsHome = `/project/${encodeURIComponent(projectId)}/jobs`;
   const suppliedReturn = location.state?.inboxReturnTo || location.state?.goalsReturnTo || location.state?.returnTo;
   const inboxQuery = new URLSearchParams([...searchParams].filter(([key]) => ['inbox', 'cellId', 'q'].includes(key)));
@@ -475,23 +443,31 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     }
   };
   const currentGoal = job?.goal_id;
-  const sourceFinished = metadata?.status === 'loaded' && confirmsRecoveryCompletion(job);
 
-
+  const trace2 = activeTab === 'trace2';
+  useEffect(() => { if (trace2) setActiveDetailsTab('overview'); }, [trace2]);
+  const [traceRevision, refreshTrace] = useState(0);
+  const trace = useRecordedTasks(projectId, jobId, trace2, autoRefresh && (!activityJob || !isFinishedJob(activityJob)) ? refreshIntervalMs : 0, traceRevision);
+  const recordedKey = (node: StoryNode) => JSON.stringify([node.job_attempt, node.invocation_id ?? node.id, node.attempt]);
+  const selectedTask = trace?.nodes?.find(node => recordedKey(node) === searchParams.get('recordedTask')) ?? trace?.nodes?.[0];
+  const selectTask = (node: StoryNode) => {
+    setSearchParams(previous => { const next = new URLSearchParams(previous); next.set('recordedTask', recordedKey(node)); return next; });
+    setActiveDetailsTab('overview');
+  };
 
   const selectedRef = useMemo(() => {
     if (!selectedKey) return null;
     return keyToRef.get(selectedKey) ?? null;
   }, [keyToRef, selectedKey]);
 
-  const selectedNode = selectedRef?.type === 'node' ? selectedRef.node : null;
-  const selectedAncestors = selectedKey ? ancestorsByKey.get(selectedKey) || [] : [];
-  const attempts = storyAttempts(treeModel, selectedKey);
+  const selectedNode = trace2 ? selectedTask : selectedRef?.type === 'node' ? selectedRef.node : null;
+  const selectedAncestors = !trace2 && selectedKey ? ancestorsByKey.get(selectedKey) || [] : [];
+  const attempts = trace2 ? [] : storyAttempts(treeModel, selectedKey);
   const latestAttempt = attempts[0];
   const jobRoots = story?.root ? [story.root, ...(story.root.past_attempts || [])] : [];
   const displayedRoot = jobRoots.find(root => (root.job_attempt || 1) === selectedRef?.jobAttempt) || story?.root;
   const treeData = activeTab === 'execution' && displayedRoot ? renderNodes(projectionByKey.get(keyFor.get(displayedRoot)!) || []) : [];
-  const nodeLaunch = selectedNode?.task_ordinal != null ? story?.launch_ids_by_ordinal?.[String(selectedNode.task_ordinal)] : undefined;
+  const nodeLaunch = trace2 ? selectedNode?.launch_id : selectedNode?.task_ordinal != null ? story?.launch_ids_by_ordinal?.[String(selectedNode.task_ordinal)] : undefined;
   const isPastJob = !!story?.root && selectedRef?.jobAttempt !== (story.root.job_attempt || 1);
   const operation = selectedNode?.kind === 'op' ? selectedNode : [...selectedAncestors].reverse().find(n => n.kind === 'op');
   const contextNodes = selectedNode ? [...selectedAncestors, ...(childrenByNode.get(selectedNode) || [])] : [];
@@ -544,6 +520,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   const load = async () => {
     setHistoryRevision(value => value + 1);
     if (needsMetadata) loadMetadata();
+    if (trace2) refreshTrace(n => n + 1);
     if (storyDemand) await loadStory();
   };
 
@@ -555,7 +532,6 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     } else if (!story || (activeTab === 'execution' && autoRefresh && story.status === 'running')) {
       void loadStory();
     }
-    // Losing one consumer keeps the other consumer's request alive.
   }, [storyDemand, activeTab]);
 
   useEffect(() => {
@@ -593,13 +569,6 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     }
   }, [story, activeTab, treeModel]);
 
-  useEffect(() => {
-    if (restartOpen && story && !restartGoalInitialized.current) {
-      setRestartGoalMode(story.status === 'completed' ? 'new' : 'continue');
-      restartGoalInitialized.current = true;
-    }
-  }, [restartOpen, story]);
-
   // Browser history changes the URL without reloading the job. Restore the
   // recorded execution selection while retaining the selected top-level tab.
   useEffect(() => {
@@ -615,7 +584,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
 
   const focusedTask = useRef<string>();
   useEffect(() => {
-    if (!focusTaskOrdinal || !story?.root) { focusedTask.current = undefined; return; }
+    if (activeTab !== 'execution' || !focusTaskOrdinal || !story?.root) { focusedTask.current = undefined; return; }
     const focus = JSON.stringify([projectId, jobId, activeTab, focusTaskOrdinal, wantInput]);
     if (focusedTask.current === focus) return;
     const key = keyForTaskOrdinal(focusTaskOrdinal, keyToRef);
@@ -699,102 +668,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     });
   };
 
-  const restartScopes = story?.restart_scopes || [];
-  const scopeKey = (scope: RestartScope) => JSON.stringify([scope.scope_id, scope.chapter_ordinal]);
-  const restartScope = restartScopes.find(scope => scopeKey(scope) === restartSelection);
-  const restartChapterOrdinal = restartScope?.chapter_ordinal;
-  const submissionRestart = restartChapterOrdinal === 0;
-  const restartScopeID = restartScope && restartScopes.filter(scope => scope.scope_id === restartScope.scope_id).length === 1 ? restartScope.scope_id : undefined;
-  const restartable = !!restartScope;
-  const draftKey = JSON.stringify([projectId, jobId, restartSelection]);
-  const jobPatchLines = drafts[draftKey]?.job || [];
-  const scopePatchLines = drafts[draftKey]?.scope || [];
-  const setJobPatchLines = (update: PatchLine[] | ((lines: PatchLine[]) => PatchLine[])) => setDrafts(prev => {
-    const draft = prev[draftKey] || { job: [], scope: [] };
-    return { ...prev, [draftKey]: { ...draft, job: typeof update === 'function' ? update(draft.job) : update } };
-  });
-  const setScopePatchLines = (update: ScopePatchLine[] | ((lines: ScopePatchLine[]) => ScopePatchLine[])) => setDrafts(prev => {
-    const draft = prev[draftKey] || { job: [], scope: [] };
-    return { ...prev, [draftKey]: { ...draft, scope: typeof update === 'function' ? update(draft.scope) : update } };
-  });
-  const onSnapshot = useCallback((snapshot?: RestartContext) => setInspection({ key: draftKey, snapshot }), [draftKey]);
-  let generatedPatch: ReturnType<typeof buildContextPatch> | undefined;
-  let patchError: string | undefined;
-  if (applyPatch && !submissionRestart) {
-    try { generatedPatch = buildContextPatch(inspection?.key === draftKey ? inspection.snapshot : undefined, jobPatchLines, scopePatchLines); }
-    catch (error) { patchError = error instanceof Error ? error.message : 'Cannot generate patch'; }
-  }
-
-
-  const resetRestartState = () => {
-    setRestartSelection(undefined);
-    setApplyPatch(false);
-    setDrafts({});
-    setInspection(undefined);
-  };
-
-  const openRestart = (node: StoryNode | null = null) => {
-    setRestartError(undefined);
-    restartOpener.current = document.activeElement as HTMLElement;
-    setRestartNode(node);
-    restartGoalInitialized.current = !!story;
-    resetRestartState();
-    setRestartGoalMode(story?.status === 'completed' ? 'new' : 'continue');
-    // Compact chapters can contain multiple boundaries. Prefer the recorded scope ID.
-    const matches = restartScopes.filter(scope => node?.restart_scope_id
-      ? scope.scope_id === node.restart_scope_id
-      : scope.chapter_ordinal === node?.restart_chapter_ordinal);
-    setRestartSelection(matches.length === 1 ? scopeKey(matches[0]) : undefined);
-    setRestartOpen(true);
-  };
-
-  const sendRestart = async (saved: SavedRestart) => {
-    const response = await fetch(
-      `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/restart`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: stringifyJobJSON(saved.request) }
-    );
-    if (!response.ok) {
-      const diagnostic = await response.text().catch(() => 'Unknown error');
-      throw new Error(`${response.status} ${response.statusText}${diagnostic ? ` - ${diagnostic}` : ''}`);
-    }
-    const data = (await response.json()) as { job_id: string };
-    if (!alive.current) return;
-    sessionStorage.removeItem(storageKey);
-    setSavedRestart(null);
-    message.success('Restarted job');
-    setRestartOpen(false);
-    resetRestartState();
-    navigate(`/project/${projectId}/jobs/${data.job_id}/story${filterSearch}`);
-  };
-
-  const submitRestart = async (replay = false) => {
-    if (!jobId || restartBusy.current || cancellationBusy) return;
-    if (!replay && (!restartable || loading || error || patchError)) return;
-    if (replay && !savedRestart) return;
-    restartBusy.current = true;
-    setRestartSubmitting(true);
-    setRestartError(undefined);
-    try {
-      if (replay) {
-        // Replay is independent of fresh admission evidence and editor state.
-        await sendRestart(savedRestart!);
-      } else {
-        const payload = { ...(restartScopeID ? { scope_id: restartScopeID } : { chapter_ordinal: restartChapterOrdinal }), goal: { mode: restartGoalMode }, ...(generatedPatch ? { patch: generatedPatch } : {}) };
-        const serialized = stringifyJobJSON(payload)!;
-        if (savedRestart?.payload === serialized) throw new Error('Use Retry saved request to resend this unchanged submission.');
-        if (!alive.current) return;
-        const saved = { payload: serialized, request: { ...payload, request_id: newId() } };
-        sessionStorage.setItem(storageKey, stringifyJobJSON(saved)!);
-        setSavedRestart(saved);
-        await sendRestart(saved);
-      }
-    } catch (e) {
-      if (alive.current) setRestartError(e instanceof Error ? e.message : 'Restart failed');
-    } finally {
-      restartBusy.current = false;
-      if (alive.current) setRestartSubmitting(false);
-    }
-  };
+  const openRestart = (node: StoryNode | null = null) => setRestartNode(node);
 
   const selectedTreeKey = selectedNode?.kind === 'recipe' && selectedKey ? selectedKey
     : latestAttempt ? visibleKeyByKey.get(latestAttempt.key) || latestAttempt.key : null;
@@ -809,7 +683,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
       selected.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'instant' });
       return;
     }
-    const target = details ? document.getElementById('selected-story-details') : region;
+    const target = details ? document.getElementById('selected-story-details') : trace2 ? document.querySelector<HTMLElement>('.recorded-task-list [aria-pressed=true]') : region;
     if (!target) return;
     if (details) target.tabIndex = -1;
     target.focus({ preventScroll: true });
@@ -822,7 +696,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
     <Space direction="vertical" style={{ width: '100%' }} size="small">
       <Space style={{ width: '100%', justifyContent: 'space-between' }}>
         <Text strong>Node Details</Text>
-        {selectedNode ? (
+        {selectedNode && selectedNode.path.length > 0 ? (
           <Button
             size="small"
             onClick={async () => {
@@ -840,7 +714,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
       </Space>
       {selectedNode ? (
         <Text type="secondary">
-          {projectionByKey.get(selectedKey || '')?.[0]?.label || storyNodeName(selectedNode)}
+          {trace2 ? selectedNode.title : projectionByKey.get(selectedKey || '')?.[0]?.label || storyNodeName(selectedNode)}
         </Text>
       ) : (
         <Text type="secondary">Select a node to inspect input/output, artifacts, and attempts.</Text>
@@ -934,7 +808,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
               </div>}
             </div>
           </div>
-          <details className="inbox-story-more"><summary>More actions</summary><div className="job-story-actions" role="group" aria-label="Job actions" onClickCapture={event => {
+          <details className="inbox-story-more"><summary aria-label="More actions" title="More actions"><EllipsisOutlined /><span className="sr-only">More actions</span></summary><div className="job-story-actions" role="group" aria-label="Job actions" onClickCapture={event => {
             if (!(event.target as HTMLElement).closest('button:not([role="switch"]), a')) return;
             const menu = event.currentTarget.closest('details');
             if (menu) {
@@ -945,7 +819,13 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
             (event.target.closest('button, a, .ant-select') || event.target).scrollIntoView({ block: 'nearest', inline: 'nearest' });
           }}>
 
-            <Link className="compact-touch-link" to={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId || '')}/story?tab=dag`} state={location.state}>Graph</Link>
+            <JobActionIcons graph={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/story?tab=dag`}
+              onRefresh={load} onRestart={() => openRestart()} onArchive={() => setArchiveTarget({job, immediate:canArchiveImmediately([jobId], job ? [job] : [])})}
+            >
+              {requestId === null && <CancelJobButton iconOnly projectId={projectId} jobId={jobId}
+                disabled={!jobId || !!job && !!terminalStatus && isFinishedJob(job)}
+                onCancelled={async () => { if (alive.current) await Promise.all([load(), refreshPendingInputs()]); }} />}
+            </JobActionIcons>
             {treeReturnTo && <Link className="compact-touch-link" to={treeReturnTo}>Return to Graph</Link>}
             {activeTab !== 'conversation' && (terminalStatus ? !isFinishedJob(job!) : story?.status === 'running') ? (
               <Space>
@@ -963,14 +843,6 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                 />
               </Space>
             ) : null}
-            <Button style={{alignSelf:'flex-start'}} icon={<ReloadOutlined />} onClick={() => void load()}>
-              Refresh
-            </Button>
-            <Button onClick={() => openRestart()}>Restart</Button>
-            <Button onClick={() => setArchiveTarget({ job, immediate: canArchiveImmediately([jobId], job ? [job] : []) })}>Archive</Button>
-            {requestId === null && <CancelJobButton key={`${projectId}/${jobId}`} projectId={projectId} jobId={jobId}
-              disabled={!jobId || !!job && !!terminalStatus && isFinishedJob(job)}
-              onCancelled={async () => { if (alive.current) await Promise.all([load(), refreshPendingInputs()]); }} />}
           </div></details>
         </div>
 
@@ -1017,9 +889,10 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
               relationships={job && <JobRelationships showAttempts projectId={projectId} jobId={jobId!} job={job} currentGoal={currentGoal} />} />
           </>}
         </section>
-        <section role="tabpanel" id="job-panel-execution" aria-labelledby="job-tab-execution" hidden={activeTab !== 'execution'} tabIndex={0} className="job-detail-panel">
-        {activeTab === 'execution' && <>
-        <section className="story-summary-disclosure">
+        <section hidden role="tabpanel" id={trace2 ? "job-panel-execution" : "job-panel-trace2"} aria-labelledby={trace2 ? "job-tab-execution" : "job-tab-trace2"} />
+        <section role="tabpanel" id={trace2 ? "job-panel-trace2" : "job-panel-execution"} aria-labelledby={trace2 ? "job-tab-trace2" : "job-tab-execution"} hidden={activeTab !== 'execution' && !trace2} tabIndex={0} className="job-detail-panel">
+        {(activeTab === 'execution' || trace2) && <>
+        {!trace2 && <><section className="story-summary-disclosure">
           <h2>Run Summary</h2>
           <Card size="small" variant="borderless">
             <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small">
@@ -1081,8 +954,18 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
           />
         ) : null}
 
+        </>}
         {detailsLink}
         <div className="story-panels">
+          {trace2 ? <Card title="Recorded tasks" className="story-tree-panel">
+            {trace?.error && <Alert type="error" message={trace.error} action={<Button onClick={() => refreshTrace(n => n + 1)}>Retry</Button>} />}
+            {!trace && <p role="status">Loading recorded tasks…</p>}
+            {trace?.nodes?.length === 0 && <Empty description="No recorded tasks yet" />}
+            <ol className="recorded-task-list" id="recorded-task-list">{trace?.nodes?.map(node =>
+              <li key={recordedKey(node)}><button type="button" aria-pressed={selectedTask === node} onClick={() => selectTask(node)}>
+                <strong>{node.title}</strong><span>Chapter {node.task_ordinal} · Attempt {node.attempt} · {node.status}</span>
+              </button></li>)}</ol>
+          </Card> :
           <Card title={isPastJob ? `Story · job attempt ${selectedRef?.jobAttempt}` : 'Story'} className="story-tree-panel" styles={{ body: { padding: 12 } }}
             extra={<Space>
               {!!story?.root?.past_attempts?.length && <Button size="small" onClick={() => {
@@ -1137,14 +1020,14 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
               )}
             </div>
             {detailsLink}
-          </Card>
+          </Card>}
 
           <Card title={detailsHeader} id="selected-story-details" tabIndex={-1} className="story-details-panel"
-            extra={<a className="story-navigation-link" href="#execution-story-tree"
-              onClick={(event) => { event.preventDefault(); focusStoryTarget(false); }}>Back to selected node</a>}
+            extra={<a className="story-navigation-link" href={trace2 ? "#recorded-task-list" : "#execution-story-tree"}
+              onClick={(event) => { event.preventDefault(); focusStoryTarget(false); }}>{trace2 ? "Back to selected task" : "Back to selected node"}</a>}
             styles={{ body: { padding: 12, overflowWrap: 'anywhere' } }}>
             {!selectedNode ? (
-              <Empty description="Select a node from the story tree" />
+              <Empty description={trace2 ? "Select a recorded task" : "Select a node from the story tree"} />
             ) : (
               <AttemptTabs
                 attempts={attempts.map(ref => ({ key: ref.key, number: selectedNode.kind === 'recipe' ? ref.jobAttempt : ref.attempt }))}
@@ -1184,7 +1067,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                             </Tag>
                           </Descriptions.Item>
                           <Descriptions.Item label="Job Attempt">
-                            {selectedRef?.type === 'node' ? selectedRef.jobAttempt : '-'}
+                            {selectedNode.job_attempt ?? selectedRef?.jobAttempt ?? '-'}
                           </Descriptions.Item>
                           <Descriptions.Item label="Task Attempt">
                             {nodeAttempt(selectedNode)}
@@ -1193,21 +1076,21 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                             {selectedNode.task_ordinal ?? '-'}
                           </Descriptions.Item>
                           {nodeLaunch && <Descriptions.Item label="Launch ID"><Link to={launchPath(projectId,nodeLaunch,{jobId})}>{nodeLaunch}</Link></Descriptions.Item>}
-                          <Descriptions.Item label="Invoke Seq">
+                          {(!trace2 || selectedNode.invoke_seq != null) && <Descriptions.Item label="Invoke Seq">
                             {selectedNode.invoke_seq ?? '-'}
-                          </Descriptions.Item>
-                          <Descriptions.Item label="Started">
+                          </Descriptions.Item>}
+                          {(!trace2 || selectedNode.started_at) && <Descriptions.Item label="Started">
                             {formatTimestamp(selectedNode.started_at)}
-                          </Descriptions.Item>
-                          <Descriptions.Item label="Finished">
+                          </Descriptions.Item>}
+                          {(!trace2 || selectedNode.finished_at) && <Descriptions.Item label="Finished">
                             {formatTimestamp(selectedNode.finished_at)}
-                          </Descriptions.Item>
-                          <Descriptions.Item label="Duration">
+                          </Descriptions.Item>}
+                          {(!trace2 || selectedNode.started_at && selectedNode.finished_at) && <Descriptions.Item label="Duration">
                             {formatDuration(selectedNode.started_at ?? null, selectedNode.finished_at ?? null)}
-                          </Descriptions.Item>
-                          <Descriptions.Item label="Path">
+                          </Descriptions.Item>}
+                          {(!trace2 || selectedNode.path.length > 0) && <Descriptions.Item label="Path">
                             <Text code>{selectedNode.path.join(' / ')}</Text>
-                          </Descriptions.Item>
+                          </Descriptions.Item>}
                         </Descriptions>
 
                         {contextNodes.length > 0 && <details>
@@ -1218,18 +1101,12 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                           </List.Item>} />
                         </details>}
 
-                        {restartScopes.length > 0 ? (
-                          <Card size="small" title="Restart">
-                            <Space direction="vertical" style={{ width: '100%' }}>
-                              <Text type="secondary">
-                                Create a new job from a recorded restart point.
-                              </Text>
-                              <Button type="primary" onClick={() => openRestart(selectedNode)}>
-                                Restart job
-                              </Button>
-                            </Space>
-                          </Card>
-                        ) : null}
+                        <Card size="small" title="Restart">
+                          <Space direction="vertical" style={{ width: '100%' }}>
+                            <Text type="secondary">Create a new job from a recorded restart point.</Text>
+                            <Button type="primary" onClick={() => openRestart(selectedNode)}>Restart job</Button>
+                          </Space>
+                        </Card>
 
                         {selectedNode.kind === 'contextPatch' ? (
                           <Card title="Applied Context Patch" size="small">
@@ -1289,7 +1166,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                       </Space>
                     ),
                   },
-                  ...(pendingInputDetails
+                  ...(!trace2 && pendingInputDetails
                     ? [
                         {
                           key: 'pending_input',
@@ -1350,25 +1227,25 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                         },
                       ]
                     : []),
-                  {
+                  ...(!trace2 || selectedNode.input !== undefined ? [{
                     key: 'input',
                     label: 'Input',
                     children: <NodePayloadView value={selectedNode.input} label="Input"
-                      identity={JSON.stringify([projectId, jobId, selectedKey, selectedRef?.jobAttempt, selectedNode.attempt, 'input'])} />,
-                  },
-                  {
+                      identity={JSON.stringify([projectId, jobId, trace2 ? selectedNode.id : selectedKey, selectedRef?.jobAttempt, selectedNode.attempt, 'input'])} />,
+                  }] : []),
+                  ...(!trace2 || selectedNode.output !== undefined ? [{
                     key: 'output',
                     label: 'Output',
                     children: <NodePayloadView value={selectedNode.output} label="Output"
-                      identity={JSON.stringify([projectId, jobId, selectedKey, selectedRef?.jobAttempt, selectedNode.attempt, 'output'])} />,
-                  },
-                  {
+                      identity={JSON.stringify([projectId, jobId, trace2 ? selectedNode.id : selectedKey, selectedRef?.jobAttempt, selectedNode.attempt, 'output'])} />,
+                  }] : []),
+                  ...(!trace2 || selectedNode.inbox ? [{
                     key: 'inbox',
                     label: `Inbox${inboxCount(selectedNode)}`,
-                    children: <InboxPanel key={JSON.stringify([projectId, jobId, selectedKey, selectedRef?.jobAttempt, selectedNode.attempt, selectedNode.invocation_id, selectedNode.task_ordinal])}
+                    children: <InboxPanel key={JSON.stringify([projectId, jobId, trace2 ? selectedNode.id : selectedKey, selectedRef?.jobAttempt, selectedNode.attempt, selectedNode.invocation_id, selectedNode.task_ordinal])}
                       node={selectedNode} projectId={projectId} jobId={jobId} jobAttempt={selectedRef?.jobAttempt || 1} retry={() => load()} />,
-                  },
-                  {
+                  }] : []),
+                  ...(!trace2 || !!selectedNode.artifact_keys?.length ? [{
                     key: 'artifacts',
                     label: `Outbox (${selectedNode.artifact_keys?.length ?? 0})`,
                     children: (
@@ -1418,7 +1295,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                         )}
                       </>
                     ),
-                  },
+                  }] : []),
 
                 ]}
               />
@@ -1482,313 +1359,9 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
           // Activity refresh is independent of the successful archive and return.
           void refreshPendingInputs().catch(() => {});
         }} />}
-      <Modal
-        title="Restart Job"
-        open={restartOpen}
-        onCancel={() => {
-          if (restartBusy.current || cancellationBusy) return;
-          setRestartOpen(false);
-          resetRestartState();
-        }}
-        afterClose={() => restartOpener.current?.isConnected && restartOpener.current.focus()}
-        width={900}
-        okText="Restart"
-        okButtonProps={{ 'aria-label': 'Restart', loading: restartSubmitting, disabled: restartSubmitting || cancellationBusy || !restartable || !!patchError || loading || !!error }}
-        onOk={() => void submitRestart()}
-      >
-        <Space direction="vertical" style={{ width: '100%', marginBottom: 16 }}>
-          <Alert type="info" showIcon message="The restart service checks whether this request is allowed."
-            description="Restarting does not cancel the source job." />
-          {metadata?.status === 'failed' && <Alert type="info" message="Source details unavailable" description={metadata.error} />}
-          {cancellationResult && <Alert type="info" message={cancellationResult} description={sourceFinished ? 'Source completion is now confirmed.' : 'Cancellation remains pending until fresh job detail confirms completion.'} />}
-          {cancellationError && <Alert type="error" message="Source cancellation failed" description={cancellationError} />}
-          {restartError && <Alert type="error" message="Restart failed" description={restartError} />}
-          <Space wrap>
-            <Button disabled={restartSubmitting || cancellationBusy} onClick={() => void loadMetadata()}>Refresh source</Button>
-            {!sourceFinished && <Button disabled={restartSubmitting || cancellationBusy} onClick={() => setCancelSource(true)}>Cancel source</Button>}
-            <Button disabled={restartSubmitting || cancellationBusy} onClick={() => setRestartGoalMode('new')}>Start a new goal</Button>
-            <Link to={returnTo}>Back to inbox</Link>
-          </Space>
-          {savedRestart && <Card size="small" title="Saved restart request">
-            <Typography.Paragraph>The following saved request will be retried unchanged, independently of the current editor and source completion.</Typography.Paragraph>
-            <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 180, overflow: 'auto' }}>{stringifyJobJSON(savedRestart.request)}</pre>
-            <Button disabled={restartSubmitting || cancellationBusy} onClick={() => void submitRestart(true)}>Retry saved request</Button>
-          </Card>}
-        </Space>
-        {story ? (
-          <Space direction="vertical" style={{ width: '100%' }} size="middle">
-            <Alert
-              type="info"
-              showIcon
-              message="This will create a new job"
-              description={
-                <div>
-                  {submissionRestart
-                    ? 'Restart from the original submission and inputs. Setup and recipe resolution run again, so floating recipe references may resolve to a newer version. The source job is not cancelled.'
-                    : 'Choose where to resume execution. Completed work before that point is retained. The source job is not cancelled. A new patch replaces any previous patch at this same restart point.'}
-                </div>
-              }
-            />
-
-            {error && <Alert type="error" message="Failed to load job story" description={error} action={<Button onClick={() => loadStory()}>Retry story</Button>} />}
-            {!restartScopes.length && <Alert type="info" message="No recorded restart points are available." />}
-            {!restartable && restartNode && <Alert type="info" showIcon
-              message={restartNode?.restart_unavailable_reason || 'No recorded restart point is available for this node.'}
-              description="Choose a restart point below." />}
-            {restartChapterOrdinal === restartNode?.restart_chapter_ordinal && restartNode?.restart_relationship === 'containing' &&
-              <Alert type="info" showIcon message="This restarts the containing scope, including its work before this task." />}
-            {restartChapterOrdinal === restartNode?.restart_chapter_ordinal && restartNode?.restart_relationship === 'body' &&
-              <Text type="secondary">Restart from the recipe’s executable body.</Text>}
-            <Select
-              aria-label="Restart point"
-              placeholder="Choose a restart point"
-              style={{ width: '100%' }}
-              value={restartSelection}
-              disabled={restartSubmitting || cancellationBusy} onChange={setRestartSelection}
-              options={restartScopes.map(scope => ({
-                value: scopeKey(scope),
-                label: `${scope.title || scope.path?.join(" / ") || "Restart point"} · Chapter ${scope.chapter_ordinal} · ${formatTimestamp(scope.started_at)}`,
-              }))}
-              showSearch
-              optionFilterProp="label"
-            />
-
-            <Select aria-label="Restart goal" value={restartGoalMode} disabled={restartSubmitting || cancellationBusy} onChange={setRestartGoalMode} style={{ width: '100%' }}
-              options={[{ value: 'continue', label: 'Continue this goal' }, { value: 'new', label: 'Start a new goal' }]} />
-            <Card title="Context Patching" size="small"><fieldset disabled={restartSubmitting || cancellationBusy} style={{ border: 0, padding: 0, margin: 0 }}>
-              <Space direction="vertical" style={{ width: '100%' }} size="middle">
-                <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-                  <Text type="secondary">
-                    Apply additional context over the existing context before resuming execution.
-                  </Text>
-                  <Space>
-                    <Text type="secondary">Enable</Text>
-                    <Switch checked={applyPatch && !submissionRestart} disabled={submissionRestart} onChange={setApplyPatch} />
-                  </Space>
-                </Space>
-
-                {submissionRestart ? (
-                  <Text type="secondary">Submission context is read-only. No context patch will be applied.</Text>
-                ) : !applyPatch ? (
-                  <Text type="secondary">No context patch will be applied.</Text>
-                ) : (
-                  <Space direction="vertical" style={{ width: '100%' }} size="large">
-                    <RestartContextPreview onSnapshot={onSnapshot} projectId={projectId} jobId={jobId} scopeId={restartScopeID} chapterOrdinal={restartable && !restartScopeID ? restartChapterOrdinal : undefined} />
-                    <Card
-                      size="small"
-                      title="Job Patch (global)"
-                      extra={
-                        <Button
-                          size="small"
-                          onClick={() =>
-                            setJobPatchLines((prev) => [
-                              ...prev,
-                              { id: newId(), path: '', value: '' },
-                            ])
-                          }
-                        >
-                          Add line
-                        </Button>
-                      }
-                    >
-                      <Text type="secondary">
-                        Each line edits a value under <Text code>context</Text>. Use dot
-                        paths like <Text code>git.author</Text>. Values accept JSON (e.g.{' '}
-                        <Text code>"james@example.com"</Text>, <Text code>true</Text>,{' '}
-                        <Text code>123</Text>, <Text code>null</Text>) or raw text.
-                      </Text>
-                      <div style={{ marginTop: 12 }}>
-                        {jobPatchLines.length === 0 ? (
-                          <Empty description="No job patch lines" />
-                        ) : (
-                          <List
-                            size="small"
-                            dataSource={jobPatchLines}
-                            renderItem={(line) => (
-                              <List.Item
-                                actions={[
-                                  <Button
-                                    key="remove"
-                                    size="small"
-                                    onClick={() =>
-                                      setJobPatchLines((prev) => prev.filter((p) => p.id !== line.id))
-                                    }
-                                  >
-                                    Remove
-                                  </Button>,
-                                ]}
-                              >
-                                <Space style={{ width: '100%' }}>
-                                  <Text style={{ width: 80 }} type="secondary">
-                                    Path
-                                  </Text>
-                                  <Input
-                                    style={{ flex: 1, padding: 6 }}
-                                    value={line.path}
-                                    placeholder='e.g. git.author'
-                                    onChange={(e) =>
-                                      setJobPatchLines((prev) =>
-                                        prev.map((p) => (p.id === line.id ? { ...p, path: e.target.value } : p))
-                                      )
-                                    }
-                                  />
-                                  <Text style={{ width: 60 }} type="secondary">
-                                    Value
-                                  </Text>
-                                  <Input
-                                    style={{ flex: 1, padding: 6 }}
-                                    value={line.value}
-                                    placeholder='e.g. "james@example.com"'
-                                    onChange={(e) =>
-                                      setJobPatchLines((prev) =>
-                                        prev.map((p) => (p.id === line.id ? { ...p, value: e.target.value } : p))
-                                      )
-                                    }
-                                  />
-                                </Space>
-                              </List.Item>
-                            )}
-                          />
-                        )}
-                      </div>
-                    </Card>
-
-                    <Card
-                      size="small"
-                      title="Scoped Patches (local outputs)"
-                      extra={
-                        <Button
-                          size="small"
-                          onClick={() =>
-                            setScopePatchLines((prev) => [
-                              ...prev,
-                              {
-                                id: newId(),
-                                container: 'sequence',
-                                scopeId: '',
-                                path: '',
-                                value: '',
-                              },
-                            ])
-                          }
-                        >
-                          Add line
-                        </Button>
-                      }
-                    >
-                      <Text type="secondary">
-                        Each line edits a value under a scope container’s outputs.
-                        Container is <Text code>sequence</Text> or <Text code>states</Text>; id is the
-                        step/state id; path is under outputs (dot path).
-                      </Text>
-                      <div style={{ marginTop: 12 }}>
-                        {scopePatchLines.length === 0 ? (
-                          <Empty description="No scoped patch lines" />
-                        ) : (
-                          <List
-                            size="small"
-                            dataSource={scopePatchLines}
-                            renderItem={(line) => (
-                              <List.Item
-                                actions={[
-                                  <Button
-                                    key="remove"
-                                    size="small"
-                                    onClick={() =>
-                                      setScopePatchLines((prev) => prev.filter((p) => p.id !== line.id))
-                                    }
-                                  >
-                                    Remove
-                                  </Button>,
-                                ]}
-                              >
-                                <Space style={{ width: '100%' }} wrap>
-                                  <Text style={{ width: 80 }} type="secondary">
-                                    Container
-                                  </Text>
-                                  <Select
-                                    value={line.container}
-                                    style={{ width: 140 }}
-                                    options={[
-                                      { label: 'sequence', value: 'sequence' },
-                                      { label: 'states', value: 'states' },
-                                    ]}
-                                    onChange={(v) =>
-                                      setScopePatchLines((prev) =>
-                                        prev.map((p) => (p.id === line.id ? { ...p, container: v } : p))
-                                      )
-                                    }
-                                  />
-                                  <Text style={{ width: 30 }} type="secondary">
-                                    ID
-                                  </Text>
-                                  <Input
-                                    style={{ width: 160 }}
-                                    value={line.scopeId}
-                                    placeholder='e.g. build'
-                                    onChange={(e) =>
-                                      setScopePatchLines((prev) =>
-                                        prev.map((p) => (p.id === line.id ? { ...p, scopeId: e.target.value } : p))
-                                      )
-                                    }
-                                  />
-                                  <Text style={{ width: 40 }} type="secondary">
-                                    Path
-                                  </Text>
-                                  <Input
-                                    style={{ width: 200 }}
-                                    value={line.path}
-                                    placeholder='e.g. image_tag'
-                                    onChange={(e) =>
-                                      setScopePatchLines((prev) =>
-                                        prev.map((p) => (p.id === line.id ? { ...p, path: e.target.value } : p))
-                                      )
-                                    }
-                                  />
-                                  <Text style={{ width: 50 }} type="secondary">
-                                    Value
-                                  </Text>
-                                  <Input
-                                    style={{ flex: 1, minWidth: 180 }}
-                                    value={line.value}
-                                    placeholder='e.g. "v2"'
-                                    onChange={(e) =>
-                                      setScopePatchLines((prev) =>
-                                        prev.map((p) => (p.id === line.id ? { ...p, value: e.target.value } : p))
-                                      )
-                                    }
-                                  />
-                                </Space>
-                              </List.Item>
-                            )}
-                          />
-                        )}
-                      </div>
-                    </Card>
-
-                    <Card size="small" title="Patch payload">
-                      {patchError ? <Alert type="error" message={patchError} /> : <pre aria-label="Patch payload">{stringifyJobJSON(generatedPatch, 2)}</pre>}
-                    </Card>
-                  </Space>
-                )}
-              </Space>
-            </fieldset></Card>
-          </Space>
-        ) : (
-          <div>{error ? <Alert type="error" message="Failed to load job story" description={error} action={<Button onClick={() => loadStory()}>Retry story</Button>} /> : <Spin tip="Loading restart points…"><div style={{ minHeight: 80 }} /></Spin>}</div>
-        )}
-      </Modal>
-      {cancelSource && <JobActionDialog projectId={projectId} jobIds={[jobId]} action="cancel" job={job}
-        onBusyChange={setCancellationBusy}
-        onFailure={failures => { if (alive.current) { setCancellationError(failures.map(failure => failure.error).join('; ')); void loadMetadata(); } }}
-        onClose={() => { if (alive.current) { setCancelSource(false); void loadMetadata(); } }}
-        onComplete={async () => {
-          if (!alive.current) return;
-          setCancellationError(undefined);
-          setCancellationResult('Cancellation requested for this source');
-          await loadMetadata();
-        }} />}
-
+      {restartNode !== undefined && <RestartJobDialog projectId={projectId} jobId={jobId} job={job} node={restartNode}
+        sourceError={metadata?.status === 'failed' ? metadata.error : undefined}
+        returnTo={returnTo} filterSearch={filterSearch} onRefresh={loadMetadata} onClose={() => setRestartNode(undefined)} />}
     </div></ThreadSnapshotContext.Provider>
   );
 }

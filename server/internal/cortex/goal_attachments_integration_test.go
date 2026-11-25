@@ -47,7 +47,7 @@ func testGoalAttachmentPersistence(t *testing.T, transport string) {
 	postJSON[jobdb.Cell](t, base+"/cells", map[string]string{"name": "platform", "repo": "github.com/acme/platform"})
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
-	_ = w.WriteField("submission", `{"cell":"platform","job_id":"files","inputs":{"prompt":"Build with files","type":"build"}}`)
+	_ = w.WriteField("submission", `{"cell":"platform","job_id":"files","title":"Attachment subject","inputs":{"prompt":"Build with files","type":"build"}}`)
 	for _, p := range []struct{ name, data string }{{"雪.bin", "\x00\xff\x01"}, {"empty", ""}, {"brief ?#.md", "# Hello"}, {`a"b.txt`, "quoted"}, {"a%22b.txt", "literal percent"}, {"100%.txt", "bare percent"}, {"a+%22.txt", "plus and percent"}, {"雪%22.bin", "unicode percent"}, {"%", "only percent"}} {
 		part, e := w.CreateFormFile("files", p.name)
 		if e != nil {
@@ -73,6 +73,9 @@ func testGoalAttachmentPersistence(t *testing.T, transport string) {
 	}
 	if submitted["goal_id"] == "" || submitted["job_id"] != "files" {
 		t.Fatal(submitted)
+	}
+	if submitted["title"] != "Attachment subject" || submitted["prompt"] != "Build with files" {
+		t.Fatalf("submission title and prompt: %#v", submitted)
 	}
 	inventory := getJSON[struct {
 		Artifacts []inputArtifact `json:"artifacts"`

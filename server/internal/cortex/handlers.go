@@ -17,6 +17,7 @@ import (
 	"github.com/colony-2/c2j/pkg/jobref"
 	"github.com/colony-2/c2j/pkg/jobrestart"
 	"github.com/colony-2/c2j/pkg/recipejob"
+	"github.com/colony-2/c2j/pkg/starter"
 	"github.com/colony-2/c2j/pkg/story"
 	coretask "github.com/colony-2/c2j/pkg/task"
 	"github.com/colony-2/jobdb/pkg/jobdb"
@@ -62,6 +63,7 @@ type healthResponse struct {
 }
 
 type submitJobRequest struct {
+	Title  string                 `json:"title,omitempty"`
 	Cell   string                 `json:"cell,omitempty"`
 	Repo   string                 `json:"repo,omitempty"`
 	Recipe string                 `json:"recipe,omitempty"`
@@ -193,14 +195,20 @@ func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	key, err := recipejob.SubmitRecipeJob(r.Context(), recipejob.BuildStartJobRequest{
+	start, err := recipejob.BuildStartJob(recipejob.BuildStartJobRequest{
 		TenantID:  tenantID,
 		JobID:     req.JobID,
 		Target:    target,
 		Recipe:    req.Recipe,
 		Inputs:    req.Inputs,
 		Artifacts: artifacts,
-	}, nativeSubmitter{Engine: s.engine, reportedEmail: reportedJobActor(r)})
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	start.Title = req.Title
+	key, err := starter.StartRecipeJob(r.Context(), start, nativeSubmitter{Engine: s.engine, reportedEmail: reportedJobActor(r)})
 	if err != nil {
 		writeError(w, err)
 		return
@@ -328,8 +336,15 @@ func (s *Server) handleRestartJob(w http.ResponseWriter, r *http.Request) {
 		writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("provide exactly one of chapter_ordinal or scope_id"))
 		return
 	}
-	if strings.TrimSpace(req.RequestID) == "" || (req.Goal.Mode != "" && req.Goal.Mode != "continue" && req.Goal.Mode != "new") {
-		writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("restart requires request_id and goal mode continue or new"))
+	if strings.TrimSpace(req.RequestID) == "" {
+		writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("restart requires request_id"))
+		return
+	}
+	switch req.Goal.Mode {
+	case "", "continue", "new":
+		req.Goal.Mode = "new"
+	default:
+		writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("unknown restart goal mode"))
 		return
 	}
 	resp, err := s.story.RestartRecipeJob(r.Context(), story.RestartRecipeJobRequest{

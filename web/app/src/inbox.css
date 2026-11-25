@@ -301,3 +301,8 @@
 @container (max-width: 360px) {
  .inbox-selected-count { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
 }
+.job-action-icons {display:flex;align-items:center;flex-wrap:wrap;gap:3px}
+.job-action-icons .ant-btn,.job-icon-link {display:inline-flex;align-items:center;justify-content:center;min-width:30px;min-height:30px}
+.inbox-story-more > summary {font-size:19px;line-height:1;padding:6px 9px}
+.inbox-story-more[open] .job-story-actions {width:max-content}
+.tree-detail-actions {flex-wrap:wrap;align-items:center}

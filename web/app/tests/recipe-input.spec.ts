@@ -357,7 +357,7 @@ for (const multiField of [false, true]) {
         expect(submissionContext.status(), await submissionContext.text()).toBe(200);
         expect(await submissionContext.json()).toMatchObject({ chapter_ordinal: 0, scope_id: submissionScope.scope_id });
         expect((await request.post(`/api/projects/${tenant}/jobs/${jobID}/restart`, { data: { chapter_ordinal: expectedChapter, scope_id: 'also-supplied' } })).status()).toBe(400);
-        await expect(restartDialog.getByTitle('Start a new goal', { exact: true })).toBeVisible();
+        await expect(restartDialog.getByText('Restart as a new goal', { exact: true })).toBeVisible();
         for (const width of [320, 390, 768, 1440]) {
           await page.setViewportSize({ width, height: width < 768 ? 360 : 900 });
           await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);

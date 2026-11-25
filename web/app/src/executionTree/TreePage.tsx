@@ -1,7 +1,9 @@
+import { JobActionIcons } from '../components/JobActionIcons';
+import RestartJobDialog from '../components/RestartJobDialog';
 import { Button, Modal, Tooltip } from 'antd';
-import { AimOutlined, ArrowLeftOutlined, ExportOutlined, FlagOutlined, InfoCircleOutlined, ReloadOutlined, StopOutlined } from '@ant-design/icons';
+import { AimOutlined, ArrowLeftOutlined, ExportOutlined, FlagOutlined, InfoCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import JobActionDialog from '../components/JobActionDialog';
-import { isFinishedJob } from '../utils/jobStatus';
+import { canArchiveImmediately, isFinishedJob } from '../utils/jobStatus';
 import { useJobCancellation } from './useJobCancellation';
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
@@ -32,6 +34,7 @@ function TreePrompt({ prompt }: { prompt: string }) {
 }
 export function TreeWorkspace({tenant,entry,active=true,embedded=false,onJobChanged,relationships}:{tenant:string;entry:string;active?:boolean;embedded?:boolean;onJobChanged?:(node:TreeNode)=>void;relationships?:ReactNode}){
   const inbox=useOptionalJobInbox();
+  const [action, setAction] = useState<{job:TreeNode; type:"restart" | "archive"}>();
   const pending=new Set(inbox?.tenant===tenant?inbox.pending.map(input=>input.id):[]);
   const [,update]=useReducer(n=>n+1,0),traversal=useRef<Traversal>();
   const [selected,select]=useState(entry),[reference,setReference]=useState<string>(),[collapsed,collapse]=useState(new Set<string>()),[search,setSearch]=useState(''),[zoom,setZoom]=useState(1),[preferredTarget,setPreferredTarget]=useState<string>();
@@ -147,7 +150,9 @@ export function TreeWorkspace({tenant,entry,active=true,embedded=false,onJobChan
       <aside ref={detailPane} aria-label={reference?'Selected wait target':'Selected job details'} className="tree-details" tabIndex={0}>
         {state&&!state.error&&<div className="tree-details-header"><h2 ref={detailHeading} tabIndex={-1}>{reference?'Selected wait target':'Selected job'}</h2>
           {detail&&!reference&&<div className="tree-detail-actions" role="group" aria-label="Selected job actions">
-            {cancellation.eligible(detail)&&<Tooltip title="Cancel job" trigger={['hover','focus']}><Button className="tree-detail-action tree-detail-cancel" danger aria-label="Cancel job" icon={<StopOutlined/>} onClick={()=>cancellation.open(detail)}/></Tooltip>}
+            <JobActionIcons graph={dagPath(tenant, detail.job_id, detail.job_type)} onRefresh={() => controller?.refresh()}
+              onRestart={() => setAction({job:detail, type:'restart'})} onArchive={() => setAction({job:detail, type:'archive'})}
+              onCancel={cancellation.eligible(detail) ? () => cancellation.open(detail) : undefined} />
             {detail.goal_id&&<Tooltip title="Goal overview" trigger={['hover','focus']}><Link className="tree-detail-action" aria-label="Goal overview" to={`/project/${encodeURIComponent(tenant)}/goals/${encodeURIComponent(detail.goal_id)}`}><FlagOutlined/></Link></Tooltip>}
             {detail.job_type==='recipe'&&<Tooltip title="Open execution" trigger={['hover','focus']}><Link className="tree-detail-action" aria-label="Open execution" to={`${jobPath(tenant,detail.job_id)}/story`} state={{treeReturnTo:returnTo}}><ExportOutlined/></Link></Tooltip>}
           </div>}
@@ -191,6 +196,9 @@ export function TreeWorkspace({tenant,entry,active=true,embedded=false,onJobChan
     </div>
     {relationships && <Modal title="Job relationships" open={active && showRelationships} footer={null} onCancel={() => setShowRelationships(false)} width="min(760px, 94vw)"
       styles={{ body: { maxHeight: '72dvh', overflow: 'auto' } }}>{relationships}</Modal>}
+    {action?.type === 'restart' && <RestartJobDialog key={action.job.job_id} projectId={tenant} jobId={action.job.job_id} job={action.job} onClose={() => setAction(undefined)} />}
+    {action?.type === 'archive' && <JobActionDialog projectId={tenant} jobIds={[action.job.job_id]} action="archive" job={action.job} immediate={canArchiveImmediately([action.job.job_id], [action.job])}
+      onClose={() => setAction(undefined)} onComplete={() => { setAction(undefined); inbox?.refresh(); controller?.refresh(); }} />}
     {cancellation.target&&<JobActionDialog projectId={cancellation.target.tenant_id} jobIds={[cancellation.target.job_id]} action="cancel" scopeText="Cancel this job? Child jobs already submitted will not be cancelled. Running work may take time to stop, and actions already performed will not be undone." disabled={!cancellation.eligible(cancellation.overlay(cancellation.target))&&!cancellation.state(cancellation.target.job_id)?.busy} onBusyChange={cancellation.busy} onSettled={cancellation.settled} onClose={cancellation.close} onComplete={()=>{}} focusFallback={()=>detailHeading.current?.focus({preventScroll:true})}/>}
   </section>;
 }

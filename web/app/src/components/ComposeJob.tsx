@@ -4,7 +4,6 @@ import { Alert, Button, Input, Select, Tooltip, message, type InputRef } from 'a
 import { CloseOutlined, DeleteOutlined, PaperClipOutlined } from '@ant-design/icons';
 import { getCell, submitJob } from '@colony2/shared/api';
 import { useJobInbox } from '../hooks/useJobInbox';
-import { composeJobPrompt } from '../utils/jobInbox';
 import GoalPromptEditor from './GoalPromptEditor';
 import { DraftImages, markdownImages } from '../utils/promptImages';
 import { hasPromptContent } from '../utils/goalPrompt';
@@ -71,13 +70,16 @@ export default function ComposeJob({ open, onClose, id, onRemove, active = true,
     try {
       setBodyError(false);
       if (!hasPromptContent(body)) { setBodyError(true); throw new Error('Enter a message with text or an image'); }
-      const prompt = composeJobPrompt(subject, body);
       if (!recipient) throw new Error('Choose a registered cell');
       const submissionFiles = images.submission(body, files);
       const cell = await getCell(inbox.tenant, recipient);
       if (cell.state !== 'ACTIVE') throw new Error('This cell is retired. Choose an active cell.');
       try {
-        await submitJob(inbox.tenant, { cell: cell.name, inputs: { prompt, type: 'build' } }, submissionFiles);
+        await submitJob(inbox.tenant, {
+          cell: cell.name,
+          title: subject.trim() || undefined,
+          inputs: { prompt: body, type: 'build' },
+        }, submissionFiles);
       } catch {
         setStartFailed(true);
         return;
