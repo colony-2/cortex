@@ -7,6 +7,13 @@ export function reviewInboxPath(tenant: string, search: string) {
   return `/project/${encodeURIComponent(tenant)}/jobs?${params}`;
 }
 
+export function reviewReturnPath(tenant: string, search: string, state?: { inboxReturnTo?: unknown; goalsReturnTo?: unknown; returnTo?: unknown } | null) {
+  const jobs = `/project/${encodeURIComponent(tenant)}/jobs`;
+  const from = state?.inboxReturnTo || state?.goalsReturnTo || state?.returnTo;
+  if (typeof from === 'string' && from.split(/[?#]/, 1)[0] === jobs) return from;
+  return reviewInboxPath(tenant, search);
+}
+
 export function reviewThreadPath(tenant: string, job: string, request?: string, kind: 'review_id' | 'request_id' = 'review_id') {
   const params = new URLSearchParams({ input: '1' });
   if (request !== undefined) params.set(kind, request);

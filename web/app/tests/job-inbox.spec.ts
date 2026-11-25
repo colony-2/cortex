@@ -32,7 +32,7 @@ async function inboxFixture(page: Page, withRequirements = false) {
   await page.route('**/api/projects/v2/jobs', async route => {
     if (route.request().method() !== 'POST') return route.fallback();
     const body = route.request().postDataJSON(); state.submissions.push(body);
-    return route.fulfill({ json: { tenant_id: 'v2', job_id: body.job_id, goal_id: 'opaque', cell_id: 'cell-platform', cell_name: 'platform', repo: cells[0].repo } });
+    return route.fulfill({ json: { tenant_id: 'v2', job_id: `submitted-${state.submissions.length}`, goal_id: 'opaque', cell_id: 'cell-platform', cell_name: 'platform', repo: cells[0].repo } });
   });
   await page.route('**/api/projects/v2/user-inputs/pending', route => route.fulfill({ json: state.jobs.filter(job => !job.inboxArchived && !state.withoutReviews.has(job.job_id) && job.status === 'READY' && (job.job_id !== 'one' || review.state.pending)).map(job => ({ ...job, id: job.job_id, client_payload_revision: 1, request_id: job.job_id === 'one' ? review.state.native : `request-${job.job_id}`, requested_at: withRequirements && job.job_id === 'one' ? '2026-11-22T14:00:00Z' : '2026-11-21T14:00:00Z' })) }));
   await page.route('**/api/projects/v2/jobs/one/story', route => route.fulfill({ json: { job_id: 'one', status: 'running', root: null } }));
@@ -307,7 +307,9 @@ test('embedded review preserves draft through sidebar expansion and Settings, an
   const attachment = page.getByRole('dialog', { name: 'Acceptance checks', exact: true });
   await attachment.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(link).toBeFocused();
+  await expect(page.getByText('2 earlier messages')).toBeVisible();
   const earlier = page.locator('.inbox-history-message').first();
+  await earlier.locator('summary').click();
   await expect(earlier.getByLabel('Accepted response', { exact: true })).toBeVisible();
   await earlier.locator('summary').click();
   await page.locator('.embedded-review').getByRole('heading', { name: 'Viewer changes', exact: true }).evaluate(element => element.scrollIntoView({ block: 'start' }));
@@ -342,6 +344,22 @@ test('embedded review preserves draft through sidebar expansion and Settings, an
   await page.keyboard.press('Control+Enter');
   await expect.poll(() => fixture.state.submits.length).toBe(1);
   expect(fixture.state.submits[0].response.feedback).toBe('Keep this response while I inspect the cell list.');
+  await expect(page).toHaveURL(/\/jobs\?inbox=drafts$/);
+});
+
+test('quick send skips optional feedback and returns to the same filtered inbox', async ({page}) => {
+  const fixture = await inboxFixture(page);
+  const origin = '/project/v2/jobs?inbox=reviews&q=reviews';
+  await page.goto(origin);
+  await page.getByRole('link', {name:'platform: Make reviews easier to read',exact:true}).click();
+  const quick = page.getByRole('button',{name:'Send Another recipe choice without feedback'});
+  await expect(quick).toBeVisible();
+  expect((await quick.boundingBox())!.width).toBe(20);
+  await expect(page.getByRole('region',{name:'Response composer'})).toHaveCount(0);
+  await quick.focus();
+  await quick.press('Enter');
+  await expect(page).toHaveURL(url => url.pathname + url.search === origin);
+  expect(fixture.state.submits.map(item=>item.response)).toEqual([{direction:'other',feedback:'',attachments:[],settings:{}}]);
 });
 
 test('opens a closed review inline and retains its attachment preview across thread tabs', async ({ page }) => {
@@ -450,7 +468,12 @@ test('a recorded review question aligns with other thread messages and shows its
   await page.goto('/project/v2/jobs/one/story');
   const request = page.locator('details.inbox-history-message[data-occurrence="entry"]').filter({ hasText: fixture.state.request.title });
   const response = page.locator('details.inbox-history-message[data-occurrence="entry"]').filter({ hasText: 'Please read the retained note.' });
+  await page.getByText('4 earlier messages', {exact:true}).click();
+  await request.locator('summary').click();
+  await expect(response).toHaveAttribute('open', '');
   await expect(response.locator('summary')).toContainText('Question');
+  await expect(response.locator('summary')).not.toContainText('Please read the retained note.');
+  await expect(response.getByLabel('Accepted response', {exact:true})).toContainText('Please read the retained note.');
   const card = response.getByLabel('Accepted response', {exact:true});
   await expect(card).toHaveCSS('border-left-width', '0px');
   await expect(card).toHaveCSS('margin-left', '0px');
@@ -598,6 +621,10 @@ test('New message docks independent composers, saves drafts and sends the restor
   await expect(composers).toHaveCount(1);
   await first.getByRole('button', { name: 'Maximize composer' }).click();
   await expect(first).toHaveClass(/maximized/);
+  await page.route('**/api/projects/v2/jobs', route => route.abort('connectionreset'), { times: 1 });
+  await first.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(first.getByRole('status')).toHaveText('request failed');
+  await expect(first.getByRole('alert')).toHaveCount(0);
   await first.getByRole('button', { name: 'Close composer' }).click();
   await page.getByRole('link', { name: 'Drafts', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Drafts', exact: true })).toBeVisible();
@@ -610,7 +637,8 @@ test('New message docks independent composers, saves drafts and sends the restor
   await expect(page).toHaveURL('/project/v2/jobs?inbox=drafts');
   await expect.poll(() => fixture.submissions.length).toBe(1);
   expect(fixture.submissions[0].inputs.prompt).toBe('Inbox request\n\nFirst line\n\nSecond line');
-  expect(fixture.submissions[0].job_id).toBeTruthy();
+  expect(fixture.submissions[0]).not.toHaveProperty('job_id');
+  expect(fixture.submissions[0]).not.toHaveProperty('request_id');
 });
 
 test('mobile inbox and full-screen composers retain drafts and keep one window visible', async ({ page }) => {

@@ -20,8 +20,10 @@ export async function originalRequest(page: Page) {
   return page.getByRole('region', { name: 'Job prompt', exact: true });
 }
 export async function expandHistory(page: Page) {
-  for (const disclosure of await page.locator('.inbox-history-message').all()) {
-    if (!await disclosure.evaluate(node => (node as HTMLDetailsElement).open)) await disclosure.locator(':scope > summary').click();
+  for (const selector of ['.inbox-history-middle', '.inbox-history-message']) {
+    for (const disclosure of await page.locator(selector).all()) {
+      if (!await disclosure.evaluate(node => (node as HTMLDetailsElement).open)) await disclosure.locator(':scope > summary').click();
+    }
   }
 }
 export async function inboxFolder(page: Page, name: string) {

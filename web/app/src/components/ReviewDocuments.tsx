@@ -108,7 +108,22 @@ function ReviewAttachmentReader({ changes, selection, documents, documentMetadat
     }
   };
   const reader = { ...props, documents, documentMetadata, overviewDocumentId, openLinkedDocument: openDocument, bare: true };
-  const attachments = orderedReviewDocumentIds(documents, documentMetadata).filter(id => id !== primary);
+  // Keep every alias addressable by document links, but list each stored file once.
+  const listed = new Set<string>();
+  const storedURL = (id: string) => {
+    const key = documents[id]?.stored?.key;
+    return key && storedDocumentURL(props.projectId, key);
+  };
+  const primaryURL = primary === undefined ? undefined : storedURL(primary);
+  if (primaryURL) listed.add(primaryURL);
+  const attachments = orderedReviewDocumentIds(documents, documentMetadata).filter(id => {
+    if (id === primary) return false;
+    const url = storedURL(id);
+    if (!url) return true;
+    if (listed.has(url)) return false;
+    listed.add(url);
+    return true;
+  });
   return <div ref={track} className="review-reading-track">
     {primary !== undefined && <ReviewReader {...reader} primary primaryActions={primaryActions} selection={{ documentId: primary, onSelect: select }}
       linkedIntent={intent?.documentId === primary ? intent : undefined} />}

@@ -11,6 +11,20 @@ const occurrence = (id: string) => document.querySelector(`[data-occurrence="${i
 const findOccurrence = (id: string) => waitFor(() => { const node = occurrence(id); expect(node).not.toBeNull(); return node!; });
 beforeEach(() => vi.clearAllMocks());
 describe('conversation retained evidence', () => {
+ it('validates a cached thread when it is revisited and restores its messages after an idle response', async () => {
+  const original = {...page(), job_id:'revisited', thread_cursor:'cached', current_input:null};
+  vi.mocked(getConversation).mockResolvedValueOnce(original).mockImplementationOnce(async (_t, _j, options) => options!.previousThread!);
+  const props = { tenant:'tenant', job:'revisited', onOpen:vi.fn(), onSnapshot:vi.fn() };
+  const first = render(<JobConversation {...props}/>);
+  await findOccurrence('one');
+  first.unmount();
+  render(<JobConversation {...props}/>);
+  await findOccurrence('one');
+  const cached = vi.mocked(getConversation).mock.calls[1][2]?.previousThread;
+  expect(cached?.thread_cursor).toBe('cached');
+  expect(cached?.entries[0]).toBe(original.entries[0]);
+  expect(props.onSnapshot).toHaveBeenCalledTimes(2);
+ });
  it('CT-009 CT-010 CT-016 CT-034 renders exact accepted feedback and caller provenance', () => {
   render(<HistoryPair entry={entry()} />);
   expect(screen.getAllByText(/Keep original/)[0]).toBeInTheDocument();
@@ -353,6 +367,41 @@ it.each([undefined,null,''])('CV-003 CV-032 missing subject %s uses the explicit
 });
 
 describe('inbox folded history', () => {
+ it('lists review documents and extra recorded files together, once per stored file', () => {
+  const request = reviewV2Fixture();
+  const file = (name:string, ordinal:number) => ({kind:'stored' as const, name, stored:{key:{jobId:'child', taskOrdinal:ordinal, name, sizeBytes:1}}});
+  const notes = file('notes.md', 2);
+  request.documents = {...request.documents, notes, alias:notes};
+  const member = (artifact_id:string, ref:unknown) => ({artifact_id, ref, availability:'retained', associations:[]});
+  const log = file('_c2j/git-stderr.txt', 3);
+  const saved = {...entry(), accepted_response:{present:false}, form_fields:{presentation:{type:'review/v2'},request},
+    review_attachments:{request:[member('notes', notes), member('stderr',log), member('log alias',log), member('other',file('notes.md',3))],response:[]}};
+  render(<FoldedConversationTimeline entries={[saved]} tenant="tenant" job="job" onOpen={vi.fn()} />);
+  expect(screen.getAllByRole('heading',{name:'Attachments'})).toHaveLength(1);
+  const files = within(screen.getByRole('navigation',{name:'Review attachments'}));
+  expect(files.getAllByRole('button',{name:'notes.md'})).toHaveLength(2);
+  expect(files.getAllByRole('button',{name:'_c2j/git-stderr.txt'})).toHaveLength(1);
+ });
+
+ it('shows a feedback preview only while its message is collapsed', () => {
+  const request = reviewV2Fixture();
+  request.directions = [{id:'instruct', label:'Give instructions', feedback_required:true, continues_review:false}];
+  const feedback = 'Keeping them private from inspection was not a requirement. Ordinary task history visibility is fine for this workflow.';
+  const saved = {...entry(), form_fields:{presentation:{type:'review/v2'}, request},
+    accepted_response:{present:true, raw:{response:{direction:'instruct', feedback}}}};
+  const {container} = render(<FoldedConversationTimeline entries={[saved]} onOpen={vi.fn()} />);
+  const summary = container.querySelectorAll('.inbox-history-message > summary')[1];
+  const fullAnswer = 'Give instructions · ' + feedback;
+  expect(summary).toHaveTextContent('Feedback');
+  expect(summary).not.toHaveTextContent('Give instructions');
+  expect(screen.getByText(fullAnswer)).toBeVisible();
+  fireEvent.click(summary);
+  expect(summary.querySelector('.thread-message-subject')?.textContent).toBe(fullAnswer.slice(0, 117).trimEnd() + '…');
+  fireEvent.click(summary);
+  expect(summary.querySelector('.thread-message-subject')).toBeNull();
+  expect(screen.getByText(fullAnswer)).toBeVisible();
+ });
+
  it('shows the answer and prompt in the follow-up review without repeating the reviewer message', () => {
   const request = reviewV2Fixture();
   request.documents = {};
@@ -397,6 +446,8 @@ describe('inbox folded history', () => {
   const props = {entries, onOpen:vi.fn(), tenant:'tenant', job:'job'};
   const {rerender} = render(<FoldedConversationTimeline {...props} />);
   const message = (id: string) => within(occurrence(id) as HTMLElement);
+  fireEvent.click(screen.getByText('2 earlier messages'));
+  for (const id of ['a1', 'b1', 'a2']) fireEvent.click(occurrence(id)!.querySelector('summary')!);
   const repeated = '… (repeated content)';
   for (const id of ['a1', 'b1', 'a2', 'b2']) expect(message(id).getByText(`Read ${id}`)).toBeVisible();
   expect(screen.getAllByRole('button', {name: repeated})).toHaveLength(2);
@@ -415,6 +466,7 @@ describe('inbox folded history', () => {
   expect(screen.getByText('Read live A')).toBeVisible();
   expect(message('a2').getByText('Read a2')).toBeVisible();
   expect(message('a2').getByRole('button', {name:repeated})).toBeVisible();
+  fireEvent.click(occurrence('b2')!.querySelector('summary')!);
   expect(message('b2').getByLabelText('Selected document')).toBeVisible();
   expect(message('a1').getByLabelText('Selected document')).toBeVisible();
  });
@@ -423,7 +475,7 @@ describe('inbox folded history', () => {
   const request = reviewV2Fixture();
   const saved = {...entry(), form_fields:{presentation:{type:'review/v2'}, request}};
   const {container} = render(<FoldedConversationTimeline entries={[saved]} onOpen={vi.fn()}
-    trailing={[{key:'selected', reviewId:request.review_id, sender:'Cell', subject:'Review', node:<p>Selected review body</p>}]} />);
+    trailing={[{key:'selected', forceOpen:true, reviewId:request.review_id, sender:'Cell', subject:'Review', node:<p>Selected review body</p>}]} />);
   expect(screen.queryByText('… (repeated content)')).toBeNull();
   expect(screen.getByText('Selected review body')).toBeVisible();
   const rows = container.querySelectorAll('.inbox-history-message');
@@ -443,16 +495,20 @@ describe('inbox folded history', () => {
   },
  );
 
- it('shows every ordinary message and allows each to be folded independently', async () => {
+ it('folds each retained message and hides the middle of long conversations', async () => {
   const { FoldedConversationTimeline } = await import('./JobConversation');
   const entries = ['first', 'second', 'third', 'last'].map(id => ({ ...entry(id), kind: 'ordinary', title: { present: true, raw: id } }));
   const { container } = render(<FoldedConversationTimeline page={page(entries)} entries={entries} cellName="platform" onOpen={vi.fn()} />);
-  expect(container.querySelectorAll('.inbox-history-message[open]')).toHaveLength(4);
+  expect(screen.getByText('2 earlier messages')).toBeVisible();
+  expect(container.querySelectorAll('.inbox-history-message')).toHaveLength(4);
+  expect(container.querySelectorAll('.inbox-history-message[open]')).toHaveLength(1);
+  expect(container.querySelector('.inbox-history-message[open]')).toHaveTextContent('last');
   expect(container.querySelector('.inbox-history-message[open] summary .thread-message-label')).toHaveTextContent('Question');
   expect(container.querySelector('.inbox-history-message[open] .conversation-response .thread-message-label')).toHaveTextContent('Answer');
   fireEvent.click(screen.getByText('first', { selector: '.thread-message-subject' }));
-  expect(container.querySelector('.inbox-history-message')).not.toHaveAttribute('open');
-  expect(container.querySelectorAll('.inbox-history-message[open]')).toHaveLength(3);
+  expect(container.querySelector('.inbox-history-message')).toHaveAttribute('open');
+  fireEvent.click(screen.getByText('2 earlier messages'));
+  expect(container.querySelector('.inbox-history-middle')).toHaveAttribute('open');
  });
  it('omits the open pending request from prior context and tolerates an absent title', async () => {
   const { FoldedConversationTimeline } = await import('./JobConversation');
@@ -460,6 +516,8 @@ describe('inbox folded history', () => {
   const previous = { ...entry('previous'), title: undefined } as unknown as HistoryEntry;
   render(<FoldedConversationTimeline entries={[previous, current]} currentRequestId="native" onOpen={vi.fn()} />);
   const row = occurrence('previous')!;
+  expect(row).not.toHaveAttribute('open');
+  fireEvent.click(row.querySelector('summary')!);
   expect(within(row as HTMLElement).getByText('Proceed?', {selector:'.conversation-question'})).toBeVisible();
   expect(row.querySelector('.thread-message-subject')).toBeNull();
   fireEvent.click(row.querySelector('summary')!);

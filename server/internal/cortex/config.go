@@ -38,6 +38,7 @@ type crashConcernRuntime interface {
 }
 
 type Server struct {
+	threadCursors  threadCursorCache
 	crashConcern   crashConcernRuntime
 	timing         pendingTiming
 	cfg            Config

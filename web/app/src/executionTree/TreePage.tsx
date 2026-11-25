@@ -66,9 +66,22 @@ export function TreeWorkspace({tenant,entry,active=true,embedded=false,onJobChan
     let current=true;queueMicrotask(()=>{if(current&&visibleRef.current&&controller.interrupted)void controller.run();});
     return()=>{current=false;controller.cancel();};
   },[tenant,entry]);
+  const wasActive = useRef(active);
+  useLayoutEffect(() => {
+    const returning = active && !wasActive.current;
+    wasActive.current = active;
+    const controller = traversal.current;
+    if (returning && visible && controller?.state.observed && !controller.interrupted) controller.refresh();
+  }, [active, visible]);
   useEffect(()=>{const controller=traversal.current;if(!visible)controller?.pause();else queueMicrotask(()=>{if(traversal.current===controller&&visibleRef.current&&controller?.interrupted)void controller.run();});},[visible]);
   useEffect(()=>{const s=traversal.current?.state;if(!visible||!s||s.loading||!s.nodes.has(entry)||initiallyRevealed.current)return;initiallyRevealed.current=true;if(selected===entry)selectedCard.current?.scrollIntoView?.({block:'center',inline:'center'});});
-  const controller=traversal.current,state=controller?.state,graph=state?.graph;
+  const traversalForRoute = traversal.current;
+  const controller = traversalForRoute?.tenant === tenant && traversalForRoute?.entry === entry ? traversalForRoute : undefined;
+  // The traversal retains the previous observation while verifying it. Publish
+  // the replacement diagram and its selected details in the same render.
+  const readingGraph = controller?.interrupted || (controller?.state.loading && controller.state.previous);
+  const state = readingGraph ? undefined : controller?.state;
+  const graph = state?.graph;
   const nodes=state?[...state.nodes.values()].map(cancellation.overlay):[],byID=new Map(nodes.map(n=>[n.job_id,n]));
   const matches=new Set(nodes.filter(n=>search&&[n.job_id,n.cell,n.job_type,n.goal_id,n.status,n.completion_status,n.title,n.prompt].some(v=>v?.toLowerCase().includes(search.toLowerCase()))).map(n=>n.job_id));
   const targetRows=graph?[...graph.edges.values()].filter(e=>e.kind==='wait').flatMap(e=>e.rows):[];
@@ -144,7 +157,7 @@ export function TreeWorkspace({tenant,entry,active=true,embedded=false,onJobChan
           {!embedded&&<Tooltip title="Back to jobs"><Link className="tree-detail-action" aria-label="Back to jobs" to={`/project/${encodeURIComponent(tenant)}/jobs`}><ArrowLeftOutlined/></Link></Tooltip>}
           <Tooltip title="Refresh tree"><Button aria-label="Refresh tree" icon={<ReloadOutlined/>} onClick={()=>controller?.refresh()}/></Tooltip>
           <Tooltip title="Find opened job"><Button aria-label="Find opened job" icon={<AimOutlined/>} disabled={!byID.has(entry)} onClick={findEntry}/></Tooltip>
-          {controller?.canResume&&<Button disabled={state?.loading} onClick={()=>void controller.run()}>Resume discovery</Button>}
+          {state && controller?.canResume&&<Button disabled={state.loading} onClick={()=>void controller.run()}>Resume discovery</Button>}
           <input aria-label="Search loaded jobs" placeholder="Find a job" type="search" value={search} onChange={event=>setSearch(event.target.value)}/>
           {search&&<output>{matches.size} loaded matches</output>}
         </div>

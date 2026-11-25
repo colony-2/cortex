@@ -46,6 +46,23 @@ async function surface(page:Page, which:'story'|'detail') {
   }
   await expect(timeline(page)).toBeVisible();
 }
+test('automatic status checks keep the lease timeline heading in place', async ({page}) => {
+  const fixture = await fixtures(page);
+  await page.goto('/project/tenant/jobs/job/story?tab=runtime');
+  await expect(page.getByRole('heading',{name:job.title})).toBeVisible();
+  const heading = pane(page).getByRole('heading',{name:'Lease timeline'});
+  await expect(heading).toBeVisible();
+  const top = await heading.evaluate(el => el.getBoundingClientRect().top);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  fixture.setDetail(async route => { await gate; await route.fulfill({json:job}); });
+  try {
+    await page.waitForRequest(request => new URL(request.url()).pathname === '/api/projects/tenant/jobs/job');
+    await expect(page.getByText('Checking current crash concern status…')).toHaveCount(0);
+    expect(await heading.evaluate(el => el.getBoundingClientRect().top)).toBe(top);
+  } finally { release(); }
+});
+
 for(const which of ['story','detail'] as const) {
   test(`${which}: zero ordinary reads, one keyboard opening, explicit paging, tied renewal details and fresh reopening`,async({page})=>{
     const fixture=await fixtures(page); await surface(page,which);

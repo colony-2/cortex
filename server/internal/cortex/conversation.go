@@ -2,6 +2,7 @@ package cortex
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -186,6 +187,8 @@ func (s *Server) handleConversation(w http.ResponseWriter, r *http.Request) {
 	// Older HistoryService implementations remain usable with explicit coverage.
 	type conversationPage struct {
 		*threadInput
+		ThreadCursor   string               `json:"thread_cursor,omitempty"`
+		ReusedEntries  int                  `json:"reused_entries,omitempty"`
 		InputArtifacts *[]inputDocument     `json:"input_artifacts,omitempty"`
 		Activity       *conversationSection `json:"activity,omitempty"`
 		FinalDocuments *conversationSection `json:"final_documents,omitempty"`
@@ -231,6 +234,31 @@ func (s *Server) handleConversation(w http.ResponseWriter, r *http.Request) {
 				result.PublicationCoverage = "partial"
 			}
 		}
+	}
+	if _, ok := s.chapters.(chapterLookup); ok && thread != nil && inventory.run != nil {
+		authority, _ := jobdb.CellAuthorityFromContext(ctx)
+		cursor := &threadCursor{authority: authority, key: key, token: page.SnapshotToken, nextOrdinal: inventory.nextOrdinal, rows: make([][sha256.Size]byte, len(entries))}
+		for i, entry := range entries {
+			raw, err := json.Marshal(entry)
+			if err != nil {
+				historyError(w, err)
+				return
+			}
+			cursor.rows[i] = sha256.Sum256(raw)
+		}
+		// A later chapter can answer an earlier request. Reuse only the
+		// leading entries whose entire projected contents still match.
+		if prior := thread.prior; prior != nil {
+			for i, digest := range prior.rows {
+				if i >= len(cursor.rows) || cursor.rows[i] != digest {
+					break
+				}
+				result.ReusedEntries++
+			}
+			result.Entries = entries[result.ReusedEntries:]
+		}
+		s.threadCursors.remember(cursor)
+		result.ThreadCursor = cursor.token
 	}
 	writeJSON(w, http.StatusOK, result)
 }

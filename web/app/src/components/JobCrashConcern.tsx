@@ -51,7 +51,7 @@ export default function JobCrashConcern({ projectId, jobId, job, status, refresh
     {busy && <div role="status">{open ? 'Clearing crash concern…' : 'Refreshing current job status…'}</div>}
     {status === 'failed' && <Alert type="warning" showIcon message={attempted ? 'Current job status unavailable' : 'Current crash concern status unavailable'}
       action={<Button onClick={() => void refresh()}>Refresh status</Button>} />}
-    {status === 'loading' && !busy && <div role="status">Checking current crash concern status…</div>}
+    {status === 'loading' && !job && !busy && <div role="status">Checking current crash concern status…</div>}
     {showConcern && <Alert type="warning" showIcon message={concern ? 'Crash concern' : 'Last observed: Crash concern'} description={<div className="job-crash-concern-content">
       <p>Workers repeatedly lost their lease on this job. Automatic execution is paused. Resolve the worker issue before clearing this concern.</p>
       <Button ref={trigger} disabled={busy} aria-disabled={!concern} className={!concern ? 'ant-btn-disabled' : undefined}

@@ -100,7 +100,7 @@ export class Traversal {
     for(const e of this.state.graph.edges.values())if(e.source===this.state.graph.key(id)&&e.kind==='wait')e.previous=true;
     void this.run();
   }
-  /** Retain the old graph visibly until a new tree observation succeeds. */
+  /** Keep the previous observation available for recovery if a refresh fails. */
   refresh(){
     this.pause();this.pages=0;this.entries=0;this.ascentHops=0;this.initialized=false;this.ascentStopped=false;this.ancestor=undefined;
     this.freshSummaries.clear();

@@ -14,7 +14,7 @@ import InputFormRenderer from './InputFormRenderer';
 import { adaptInputFormConfig } from '../utils/formAdapter';
 import { reviewActionField } from '../utils/reviewForm';
 import ReviewV2 from './ReviewV2';
-import { resolveReviewDocumentLocation, reviewDocumentSearch, startingReviewDocument } from '../utils/reviewDocumentLocation';
+import { reviewReturnPath, resolveReviewDocumentLocation, reviewDocumentSearch, startingReviewDocument } from '../utils/reviewDocumentLocation';
 import CancelJobButton from './CancelJobButton';
 
 const { Title, Text } = Typography;
@@ -107,7 +107,9 @@ export function InputRequestReader({ projectId, embedded = false, metadata }: In
         await inputActivityService.submitResponse(projectId, jobId, response);
       }
       message.success('Response submitted successfully');
-      if (embedded) { await selectedInput.refresh().catch(() => {}); } else navigate(reviewsPath);
+      if (reviews) navigate(reviewReturnPath(projectId, location.search, location.state), {replace:true});
+      else if (embedded) await selectedInput.refresh().catch(() => {});
+      else navigate(reviewsPath);
     } catch (err) {
       console.error('Failed to submit response:', err);
       if (reviews) setError(err instanceof Error ? err.message : 'Failed to submit review.');
@@ -156,7 +158,7 @@ export function InputRequestReader({ projectId, embedded = false, metadata }: In
       const request = parseReviewV2(details.form.request);
       if(!details.form.request_id || !details.form.request_schema || !details.form.response_schema)throw new Error('Missing native structured request contract');
       const next = new URLSearchParams(location.search); next.set('review_id', request.review_id);
-      return embedded ? <ReviewV2 key={JSON.stringify([projectId,jobId,request.review_id])} tenant={projectId} job={jobId} reviewId={request.review_id} initial={details} embedded metadata={metadata} /> : <Navigate replace to={{pathname:location.pathname,search:'?'+next,hash:location.hash}}/>;
+      return embedded ? <ReviewV2 key={JSON.stringify([projectId,jobId,request.review_id])} tenant={projectId} job={jobId} reviewId={request.review_id} initial={details} embedded metadata={metadata} /> : <Navigate replace to={{pathname:location.pathname,search:'?'+next,hash:location.hash}} state={location.state}/>;
     } catch(e) {return <Alert type="error" message="Incompatible review request" description={e instanceof Error ? e.message : String(e)}/>;}
   }
   const form = adaptInputFormConfig(details.form, jobId);

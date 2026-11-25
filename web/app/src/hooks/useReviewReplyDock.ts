@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 
-export type ReviewReplyTarget = { tenant: string; job: string; reviewId: string; title: string; cellName?: string };
+export type ReviewReplyTarget = { tenant: string; job: string; reviewId: string; title: string; cellName?: string; returnTo?: string };
 export const reviewReplyKey = ({tenant,job,reviewId}: Pick<ReviewReplyTarget, 'tenant' | 'job' | 'reviewId'>) => JSON.stringify([tenant,job,reviewId]);
 
 export const ReviewReplyDock = createContext<{

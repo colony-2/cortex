@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, useId } from 'react';
+import { flushSync } from 'react-dom';
 import { Alert, Button, Dropdown, Input, Tooltip, message, type InputRef } from 'antd';
 import { CheckCircleOutlined, DownOutlined, EditOutlined, ExportOutlined, ImportOutlined, PaperClipOutlined, QuestionCircleOutlined, SettingOutlined } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -8,6 +9,7 @@ import { useReviewV2 } from '../hooks/useReviewV2';
 import { useCompact } from '../hooks/useCompact';
 import { reviewReplyKey, type ReviewReplyTarget } from '../hooks/useReviewReplyDock';
 import { reviewInboxPath, reviewThreadPath } from '../utils/reviewDocumentLocation';
+import QuickReviewAction from './QuickReviewAction';
 import ComposerWindow from './ComposerWindow';
 import ReviewV2Settings from './ReviewV2Settings';
 import './reviewV2.css';
@@ -29,6 +31,7 @@ export function ReviewReplyWindow({ target, active, onActivate, onClose, onSendi
   const controller = useReviewV2(tenant,job,reviewId);
   const { currentProjectId } = useInputActivity();
   const navigate = useNavigate();
+  const location = useLocation();
   const sending = controller.view?.phase === 'sending';
   useEffect(() => { onSendingChange(sending); }, [sending]);
   useEffect(() => {
@@ -37,13 +40,20 @@ export function ReviewReplyWindow({ target, active, onActivate, onClose, onSendi
   }, [tenant,currentProjectId]);
   const popIn = () => {
     onClose();
-    navigate(reviewThreadPath(tenant,job,reviewId), {state:{openReviewDraft:true}});
+    navigate(reviewThreadPath(tenant,job,reviewId), {state:{openReviewDraft:true,inboxReturnTo:target.returnTo}});
   };
   return <ComposerWindow label="Popped-out review reply" title={title} busy={sending} active={active} onActivate={onActivate} onClose={onClose}
     extra={<Tooltip title="Return reply to thread"><Button type="text" icon={<ImportOutlined aria-hidden />} aria-label="Return reply to thread" disabled={sending} onClick={popIn} /></Tooltip>}>
     {collapsed => <div hidden={collapsed} className="review-reply-window-body" onPointerDown={onActivate}>
       <ReviewReply tenant={tenant} job={job} reviewId={reviewId} controller={controller} cellName={cellName} docked
-        onBack={compact ? onClose : undefined} onSubmitted={compact ? () => { message.success('Response submitted'); onClose(); } : undefined} />
+        onBack={compact ? onClose : undefined} onSubmitted={() => {
+          message.success('Response submitted');
+          onClose();
+          const threadPath = reviewThreadPath(tenant,job,reviewId).split('?')[0];
+          if (location.pathname === threadPath || location.pathname === `/project/${encodeURIComponent(tenant)}/reviews/${encodeURIComponent(job)}`) {
+            navigate(target.returnTo ?? reviewInboxPath(tenant,location.search), {replace:true});
+          }
+        }} />
     </div>}
   </ComposerWindow>;
 }
@@ -52,7 +62,7 @@ export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,do
   tenant:string; job:string; reviewId:string; controller:Controller; onPopout?:()=>void; docked?:boolean;
   cellName?:string; restoreDraft?:()=>boolean; onBack?:()=>void; onSubmitted?:()=>void;
 }) {
-  const {view,error,busy,refresh,sending,accepted,failed} = controller;
+  const {view,error,refresh,sending,accepted,failed} = controller;
   const navigate = useNavigate();
   const location = useLocation();
   const fieldSuffix = useId();
@@ -68,7 +78,8 @@ export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,do
   const [files,setFiles]=useReviewDraft<File[]>(draftIdentity,'files',[]);
   const [composerOpen,setComposerOpen]=useReviewDraft(draftIdentity,'composer',false);
   const [openWindow, setOpenWindow] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const afterSubmit = useRef(onSubmitted);
+  afterSubmit.current = onSubmitted;
   const compact = useCompact();
   const opensInWindow = compact && !!onPopout;
   const selected=view?.request.directions.find(d=>d.id===direction);
@@ -84,9 +95,6 @@ export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,do
   useLayoutEffect(() => {
     if (opensInWindow && openWindow && composerOpen && selected && view?.phase === 'actionable') onPopout?.();
   }, [opensInWindow, openWindow, composerOpen, selected, view?.phase, onPopout]);
-  useLayoutEffect(() => {
-    if (submitted) onSubmitted?.();
-  }, [submitted, onSubmitted]);
   const feedbackInput=useRef<InputRef>(null);
   const sendButton=useRef<HTMLButtonElement>(null);
   const revealSendOnOpen = useRef(false);
@@ -169,29 +177,32 @@ export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,do
   const contributionError=selected?reviewV2ContributionError(request,selected,feedback,files.length):undefined;
   const draftConflict=(policy?.mode==='forbidden'&&feedback!=='')||(!allowUploads&&files.length>0)?contributionError:undefined;
   const ready=phase==='actionable';
-  const check=(id:string)=>{
+  const check=(id:string,note:string,uploads:File[])=>{
     const selected=request.directions.find(d=>d.id===id);
-    const contributionError=selected?reviewV2ContributionError(request,selected,feedback,files.length):undefined;
+    const contributionError=selected?reviewV2ContributionError(request,selected,note,uploads.length):undefined;
     let settingsError='';try{changedReviewSettings(request,id,drafts);}catch(e){settingsError=e instanceof Error?e.message:String(e);}
     if(!selected){setSubmitError('Choose a direction.');return false;}
     if(contributionError){setSubmitError(contributionError);return false;}
     if(settingsError){setSubmitError(settingsError);return false;}
     return true;
   };
-  const submit=async(id:string)=>{
-    if(!current?.form.request_id||submitBusy.current||!check(id))return;
+  const submit=async(id:string,note=feedback,uploads=files)=>{
+    if(!current?.form.request_id||submitBusy.current||!check(id,note,uploads))return;
+    const sourcePath = window.location.pathname;
     const changed=changedReviewSettings(request,id,drafts);
     submitBusy.current=true;setSubmitError('');sending();
     let contribution:typeof pendingContribution.current;
     try{
       if(submissionAttempt.current?.requestId!==current.form.request_id)submissionAttempt.current={requestId:current.form.request_id,submissionId:createSubmissionId()};
-      contribution={...submissionAttempt.current,direction:id,feedback,files,settings:changed};
+      contribution={...submissionAttempt.current,direction:id,feedback:note,files:uploads,settings:changed};
       pendingContribution.current=contribution;
-      const output=await inputActivityService.submitReviewV2(tenant,job,current.form.request_id,{direction:id,feedback,attachments:[],settings:changed},files,submissionAttempt.current.submissionId);
+      const output=await inputActivityService.submitReviewV2(tenant,job,current.form.request_id,{direction:id,feedback:note,attachments:[],settings:changed},uploads,submissionAttempt.current.submissionId);
       // The server receipt is the acceptance evidence. An invalid response stays ambiguous.
       if(output.receipt?.request_id!==contribution.requestId||output.receipt.submission_id!==contribution.submissionId)throw new Error('Submission receipt is unavailable. Refresh to reconcile acceptance.');
-      confirmContribution(output.receipt);accepted(request,output);
-      if (onSubmitted) setSubmitted(true);
+      // Persist the acknowledged draft changes before navigation unmounts the editor.
+      flushSync(() => confirmContribution(output.receipt));
+      accepted(request,output);
+      if (docked || sourcePath === window.location.pathname) afterSubmit.current?.();
     }catch(e){failed();if(!contribution||pendingContribution.current===contribution)setSubmitError(`${e instanceof Error?e.message:String(e)} Check the refreshed request before retrying.`);await refresh();}
     finally{submitBusy.current=false;}
   };
@@ -213,7 +224,10 @@ export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,do
     {phase==='other'&&<Button onClick={()=>navigate(reviewInboxPath(tenant,location.search))}>Open pending reviews</Button>}
     <fieldset disabled={!ready} hidden={!ready && phase !== 'unavailable'} style={{border:0,padding:0,margin:0,minWidth:0}}>
       <div hidden={!!composing} className="review-v2-directions" role="group" aria-label="Review actions">
-        {request.directions.map(d=><Button key={d.id} ref={element=>{if(element)actionButtons.current.set(d.id,element);else actionButtons.current.delete(d.id);}} icon={responseIcon(d)} onClick={()=>choose(d.id)}>{d.label}</Button>)}
+        {request.directions.map(d=><QuickReviewAction key={d.id} label={d.label} disabled={!ready}
+          send={reviewV2DirectionPolicy(request,d).mode === 'optional' ? () => void submit(d.id,'',[]) : undefined}>
+          <Button ref={element=>{if(element)actionButtons.current.set(d.id,element);else actionButtons.current.delete(d.id);}} icon={responseIcon(d)} onClick={()=>choose(d.id)}>{d.label}</Button>
+        </QuickReviewAction>)}
         {!composing && settingsButton}
       </div>
       {Object.entries(drafts).filter(([id,value])=>request.settings?.find(s=>s.id===id)?.value!==value).map(([id,value])=>{
@@ -267,7 +281,6 @@ export default function ReviewReply({ tenant,job,reviewId,controller,onPopout,do
         </div>
       </section>}
     </fieldset>
-    {!ready&&<Button loading={busy} disabled={phase==='sending'} onClick={()=>void refresh()}>Refresh</Button>}
     </div>
   </section>;
   return <>{response}

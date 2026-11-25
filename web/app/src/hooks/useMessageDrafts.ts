@@ -7,7 +7,6 @@ export type MessageDraft = {
   body: string;
   files: File[];
   pasted: File[];
-  attempt?: string;
 };
 
 const drafts = new Map<string, Map<string, MessageDraft>>();
@@ -36,7 +35,7 @@ export function getMessageDraft(tenant: string, id: string): MessageDraft | unde
 
 export function saveMessageDraft(scope: string, id: string, draft: MessageDraft) {
   if (JSON.parse(scope)[0] !== getUserEmail()) return;
-  if (!draft.recipient && !draft.subject.trim() && !draft.body.trim() && !draft.files.length && !draft.pasted.length && !draft.attempt) {
+  if (!draft.recipient && !draft.subject.trim() && !draft.body.trim() && !draft.files.length && !draft.pasted.length) {
     discardMessageDraft(scope, id);
     return;
   }

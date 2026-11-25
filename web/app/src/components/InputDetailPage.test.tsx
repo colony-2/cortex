@@ -108,7 +108,9 @@ describe('InputDetailPage - Single Question Flow', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Cancel job', exact: true }));
       fireEvent.click(screen.getByRole('dialog').querySelector('.ant-modal-footer button.ant-btn-primary')!);
     } else fireEvent.click(screen.getByRole('button', { name: action === 'cancel' ? /^Cancel$/ : /Back to Reviews/ }));
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/reviews?q=foo+bar&cellId=absent&sort=cell&order=descend`));
+    const filters = 'q=foo+bar&cellId=absent&sort=cell&order=descend';
+    if (action === 'review') await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/jobs?${filters}&inbox=reviews`, {replace:true}));
+    else await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/reviews?${filters}`));
   });
 
   it('REV-011/012/013 retains drafts and attachments after failure and prevents overlapping submissions', async () => {

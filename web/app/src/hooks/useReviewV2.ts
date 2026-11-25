@@ -39,6 +39,7 @@ export function useReviewV2(tenant: string, job: string, selected: string, initi
       try {
         // Acquire a complete immutable snapshot. Snapshot expiry restarts once.
         let detail: RecordedReview | undefined;
+        let pendingRequest: string | undefined;
         let page;
         for (let attempt=0;attempt<2;attempt++) {
           try {
@@ -53,6 +54,7 @@ export function useReviewV2(tenant: string, job: string, selected: string, initi
             if(abort.signal.aborted || turn !== generation.current || !active.current)return;
             const matches = entries.filter(e => object(e.form_fields.presentation).type === 'review/v2' && object(e.form_fields.request).review_id === selected)
               .sort((a,b) => (b.locator.collection_ordinals?.[0] ?? b.locator.generation_ordinal ?? 0) - (a.locator.collection_ordinals?.[0] ?? a.locator.generation_ordinal ?? 0));
+            pendingRequest = matches[0]?.state === 'pending' ? matches[0].request_id : undefined;
             if (matches.length && first.review_id === selected) {
               const entry = matches[0];
               detail = {...entry, raw_form: entry.form_fields, raw_accepted_output: entry.accepted_response.raw};
@@ -63,8 +65,14 @@ export function useReviewV2(tenant: string, job: string, selected: string, initi
         if (abort.signal.aborted || !active.current || turn !== generation.current) return;
         const jobValue = page?.activity?.availability === 'available' ? page.activity.value : undefined;
         const limitations = [page?.activity?.availability !== 'available' ? 'Job status is unavailable.' : '', ...(page?.diagnostics ?? []).map(d=>d.message)];
+        const newPendingRequest = pendingRequest && pendingRequest !== retained.current?.detail?.request_id;
         retained.current = {detail, job: jobValue, limitations: limitations.filter(Boolean).join(' ')};
         setHistoryVersion(value => value + 1);
+        if (newPendingRequest && !currentRef.current.loading && pendingRequest !== currentRef.current.details?.form.request_id) {
+          // Older servers discover live forms separately. A new pending history entry
+          // can arrive before its discovery event, especially after reopening a review.
+          void currentRef.current.refresh().catch(() => {});
+        }
       } catch (e) {
         if (abort.signal.aborted || !active.current || turn !== generation.current) return;
         setError(e instanceof Error ? e.message : String(e));
@@ -118,12 +126,14 @@ export function useReviewV2(tenant: string, job: string, selected: string, initi
   const retry = useCallback(async () => {
     await Promise.all([refresh(), currentRef.current.refresh().catch(() => {})]);
   }, [refresh]);
+  const terminal = view?.phase === 'terminal' || !!(view?.job && isFinishedJob(view.job));
   useEffect(()=>{
-    if (unified || (view?.job && isFinishedJob(view.job))) return;
-    if (!view || !['waiting','unavailable','sending'].includes(view.phase)) return;
-    const timer=window.setTimeout(()=>{void refresh();},5000);
-    return ()=>window.clearTimeout(timer);
-  },[view,busy,refresh,unified]);
+    if (unified || terminal) return;
+    const timer = window.setInterval(() => {
+      if (!running.current) void refresh();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  },[terminal,refresh,unified]);
   const sending=()=>{inFlight.current=true;if(latest.current){const next={...latest.current,current:undefined,phase:'sending' as const};latest.current=next;setView(next);}};
   const accepted=(request:ReviewV2Request,output:ReviewV2Output)=>{
     inFlight.current=false;provisional.current={request,output};

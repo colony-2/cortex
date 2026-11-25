@@ -17,6 +17,7 @@ export interface HistoryEntry {
 }
 export interface ConversationSection<T> { availability: 'available' | 'unavailable'; value?: T; diagnostic?: string; observed_at?: string; attempt_ordinal?: number }
 export interface HistoryPage {
+  thread_cursor?: string;
   current_input_entry_id?: string;
   current_input?: UserInputDetails | null;
   review_id?: string;
@@ -39,8 +40,9 @@ export interface HistoryDetail extends HistoryEntry {
 function base(tenant: string, job: string) {
   return `${API_BASE}/projects/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(job)}/conversation`;
 }
-async function read<T>(url: string, signal?: AbortSignal): Promise<T> {
+async function read<T>(url: string, signal?: AbortSignal, unchanged?: T): Promise<T> {
   const response = await fetch(url, { signal });
+  if (response.status === 204 && unchanged !== undefined) return unchanged;
   const text = await response.text();
   if (!response.ok) {
     let error = text, code: string | undefined;
@@ -49,18 +51,28 @@ async function read<T>(url: string, signal?: AbortSignal): Promise<T> {
   }
   return parseJobJSON(text) as T;
 }
-export async function getConversation(tenant: string, job: string, options: { thread?: boolean; pageToken?: string; pageSize?: number; includeSections?: boolean; includeReviewAttachments?: boolean; reviewId?: string; signal?: AbortSignal } = {}): Promise<HistoryPage> {
+export async function getConversation(tenant: string, job: string, options: { previousThread?: HistoryPage; thread?: boolean; pageToken?: string; pageSize?: number; includeSections?: boolean; includeReviewAttachments?: boolean; reviewId?: string; signal?: AbortSignal } = {}): Promise<HistoryPage> {
   const query = new URLSearchParams({ page_size: String(options.pageSize ?? 50) });
   if (options.thread) query.set('thread','true');
   if (options.includeSections === false) query.set('include_sections', 'false');
   if (options.includeReviewAttachments) query.set('include_review_attachments', 'true');
   if (options.reviewId) query.set('review_id', options.reviewId);
   if (options.pageToken) query.set('page_token', options.pageToken);
-  const page = await read<HistoryPage>(`${base(tenant, job)}?${query}`, options.signal);
+  const prior = options.previousThread;
+  const cached = options.thread && prior?.thread_cursor && prior.tenant_id === tenant && prior.job_id === job ? prior : undefined;
+  if (cached) query.set('since_snapshot', cached.thread_cursor!);
+  const page = await read<HistoryPage & { reused_entries?: number }>(`${base(tenant, job)}?${query}`, options.signal, cached);
+  if (page === cached) return cached;
   if (page.tenant_id !== tenant || page.job_id !== job || !Array.isArray(page.entries)) throw new Error('History response does not match the selected job');
   if (page.activity?.value && (page.activity.value.tenant_id !== tenant || page.activity.value.job_id !== job)) throw new Error('Activity does not match the selected job');
   if (page.final_documents?.value && page.final_documents.value.job_id !== job) throw new Error('Returned documents do not match the selected job');
   if (page.current_input && page.current_input.jobId !== job) throw new Error('Input request does not match the selected job');
+  if (page.reused_entries !== undefined) {
+    const count = page.reused_entries;
+    if (!cached || !Number.isSafeInteger(count) || count < 0 || count > cached.entries.length) throw new Error('Invalid cached thread range');
+    const { reused_entries, ...updated } = page;
+    return { ...updated, entries: [...cached.entries.slice(0, count), ...page.entries] };
+  }
   return page;
 }
 export function getConversationEntry(tenant: string, job: string, entry: string, options: { snapshotToken?: string; signal?: AbortSignal } = {}): Promise<HistoryDetail> {

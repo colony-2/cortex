@@ -17,6 +17,7 @@ export default function NewGoalDialog({ projectId, filters, onClose, onCreated }
   const [selected, setSelected] = useState<CortexCell>();
   const [open, setOpen] = useState(true);
   const [error, setError] = useState<string>();
+  const [startFailed, setStartFailed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [attachments, setAttachments] = useState<{ id: string; file: File }[]>([]);
   const [fileError, setFileError] = useState<string>();
@@ -52,6 +53,7 @@ export default function NewGoalDialog({ projectId, filters, onClose, onCreated }
     if (pending.current || registry.loading || registry.error || noCells) return;
     pending.current = true;
     setSubmitting(true); setError(undefined);
+    setStartFailed(false);
     try {
       const values = await form.validateFields();
       const files = images.submission(values.prompt, attachments.map(item => item.file));
@@ -65,7 +67,11 @@ export default function NewGoalDialog({ projectId, filters, onClose, onCreated }
         attempt.current = { payload, files, input: { cell, inputs: { prompt: values.prompt, type: 'build' } } };
       }
       if (!active.current) return;
-      const job = await (attempt.current.files.length ? submitJob(projectId, attempt.current.input, attempt.current.files) : submitJob(projectId, attempt.current.input));
+      const job = await (attempt.current.files.length ? submitJob(projectId, attempt.current.input, attempt.current.files) : submitJob(projectId, attempt.current.input)).catch(() => undefined);
+      if (!job) {
+        if (active.current) setStartFailed(true);
+        return;
+      }
       if (active.current) { images.dispose(); onCreated(job.goal_id); }
     } catch (reason) {
       if (active.current && reason instanceof Error) setError(reason.message);
@@ -75,6 +81,7 @@ export default function NewGoalDialog({ projectId, filters, onClose, onCreated }
     okButtonProps={{ 'aria-label': submitting ? 'Creating goal…' : 'Create goal', disabled: registry.loading || !!registry.error || noCells }}>
     {registry.error && <Alert type="error" message={registry.error} action={<Button onClick={registry.reload}>Retry cells</Button>} />}
     {error && <Alert type="error" showIcon message={error} />}
+    {startFailed && <p role="status">request failed</p>}
     {noCells && <Alert type="info" message="Create a cell in Cells first, then choose it here to start a goal." />}
     <Form form={form} disabled={submitting} layout="vertical" initialValues={{ target: initialId }}>
         <Form.Item label="Cell" name="target" rules={[{ required: true, message: 'Choose a cell' }]}>

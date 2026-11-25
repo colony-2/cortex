@@ -125,7 +125,7 @@ func TestCellRegistryAndSubmission(t *testing.T) {
 			}
 			postJSON[jobdb.Cell](t, base+"/cells", map[string]string{"name": "first-use", "repo": "github.com/acme/first"})
 			first := postJSON[recipejob.RecipeJob](t, base+"/jobs", map[string]any{"cell": "first-use", "repo": "github.com/acme/first", "recipe": "smoke"})
-			if first.CellID == "" {
+			if first.CellID == "" || first.JobID == "" {
 				t.Fatal(first)
 			}
 			empty := postJSON[jobdb.Cell](t, base+"/cells", map[string]string{"name": "retired", "repo": "github.com/acme/retired"})

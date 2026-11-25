@@ -145,9 +145,12 @@ for(const width of [1680,1320,320,390])test(`L01–05 response and attachments, 
 test('P01/P05/N09 accepted question shows pending; successor retains document and uses new native request',async({page})=>{
  await page.setViewportSize({width:1440,height:900});const f=await reviewV2BrowserFixture(page);await page.goto(v2Path);await v2Selected(page,0);await v2Catalog(page,1);await v2ClosePreview(page);
  await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)').fill('Does Back preserve a file draft?');
- await page.getByRole('button',{name:'Send · Ask a question'}).click();await expect(page.getByText('Response pending',{exact:true})).toBeVisible();await geometry(page);await screenshot(page,'v2-response-pending.png');
+ const reviewURL=page.url();
+ await page.getByRole('button',{name:'Send · Ask a question'}).click();
+ await expect(page).toHaveURL(/\/jobs\?inbox=reviews$/);
+ await page.goto(reviewURL);await expect(page.getByText('Response pending',{exact:true})).toBeVisible();await geometry(page);await screenshot(page,'v2-response-pending.png');
  expect(f.state.submits[0].request_id).toBe('native-one');expect(f.state.submits[0].response.direction).toBe('ask');
- await f.successor();await page.getByRole('button',{name:'Refresh',exact:true}).click();
+ await f.successor();
  await expect(page.getByText('Response pending',{exact:true})).toHaveCount(0);await v2Selected(page,0);
  await expect(page.getByText('The documents and drafts stay available. I can proceed after your approval.')).toBeVisible();
  await page.getByRole('button',{name:'Approve direction',exact:true}).click();
@@ -259,16 +262,19 @@ test('B01 formatted question stays final through waiting, saved review and succe
  await expect(page.getByRole('heading',{name:'Ready to proceed?'})).toHaveCount(1);await expect(last.locator('time')).toHaveCount(0);
  await expect(last.getByRole('table')).toHaveCount(1);await expect(last.locator('pre code')).toContainText('const proceed = true;');
  await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)').fill('Does the formatting survive submission?');
- await page.getByRole('button',{name:'Send · Ask a question'}).click();await expect(page.getByText('Response pending',{exact:true})).toBeVisible();
+ const reviewURL=page.url();
+ await page.getByRole('button',{name:'Send · Ask a question'}).click();
+ await expect(page).toHaveURL(/\/jobs\?inbox=reviews$/);
+ await page.goto(reviewURL);await expect(page.getByText('Response pending',{exact:true})).toBeVisible();
  await expect(last.getByRole('heading',{name:'Ready to proceed?'})).toHaveCount(1);
  await expect(reviewMessage(page)).not.toContainText('Does the formatting survive submission?');
  await page.reload();await v2Selected(page,0);await expect(last.getByRole('heading',{name:'Ready to proceed?'})).toHaveCount(1);
  await f.successor();f.state.request.question='## Successor question\n\nThe next **decision**.';
- await page.getByRole('button',{name:'Refresh',exact:true}).click();await expect(last.getByRole('heading',{name:'Successor question'})).toHaveCount(1);
+ await expect(last.getByRole('heading',{name:'Successor question'})).toHaveCount(1,{timeout:20000});
  await expect(page.getByRole('heading',{name:'Ready to proceed?'})).toHaveCount(0);await expect(page.getByText('Response pending',{exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'Approve direction',exact:true}).click();
- await page.getByRole('button',{name:'Send · Approve direction',exact:true}).click();await expect(page.locator('.review-v2-response')).toContainText('Response sent');
- await page.reload();await v2Selected(page,0);await expect(last.getByRole('heading',{name:'Successor question'})).toHaveCount(1);
+ await page.getByRole('button',{name:'Send · Approve direction',exact:true}).click();await expect(page).toHaveURL(/\/jobs\?inbox=reviews$/);
+ await page.goto(reviewURL);await v2Selected(page,0);await expect(last.getByRole('heading',{name:'Successor question'})).toHaveCount(1);
 });
 
 for(const width of [320,390,980])test(`B12/13 long formatted question, code and tables remain reachable at ${width}px`,async({page})=>{

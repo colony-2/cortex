@@ -31,7 +31,7 @@ it('validates body and rechecks the active recipient before submission', async (
   await screen.findByText('This cell is retired. Choose an active cell.');
   expect(submitJob).not.toHaveBeenCalled();
 });
-it('prevents concurrent sends and reuses the same identity after an uncertain response', async () => {
+it('prevents concurrent sends and leaves job ID assignment to JobDB on every submission', async () => {
   await compose();
   let reject!: (error: Error) => void;
   vi.mocked(submitJob).mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
@@ -42,13 +42,15 @@ it('prevents concurrent sends and reuses the same identity after an uncertain re
   expect(send).toBeDisabled();
   expect(send).toHaveAttribute('aria-busy', 'true');
   reject(new Error('Response lost'));
-  await screen.findByText(/Response lost.*same job ID/);
+  await screen.findByText('request failed', { exact: true });
+  expect(screen.queryByRole('alert')).toBeNull();
   expect(send).toBeEnabled();
   expect(send).toHaveAttribute('aria-busy', 'false');
-  const first = vi.mocked(submitJob).mock.calls[0][1].job_id;
+  expect(vi.mocked(submitJob).mock.calls[0][1]).not.toHaveProperty('job_id');
   fireEvent.click(send);
   await waitFor(() => expect(submitJob).toHaveBeenCalledTimes(2));
-  expect(vi.mocked(submitJob).mock.calls[1][1].job_id).toBe(first);
+  expect(vi.mocked(submitJob).mock.calls[1][1]).not.toHaveProperty('job_id');
+  expect(vi.mocked(submitJob).mock.calls[1][1]).not.toHaveProperty('request_id');
   await waitFor(() => expect(state.close).toHaveBeenCalledTimes(1));
   expect(state.refresh).toHaveBeenCalledTimes(1);
 });

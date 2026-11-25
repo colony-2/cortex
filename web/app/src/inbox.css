@@ -119,12 +119,12 @@
 .inbox-story-more .job-story-actions > .ant-space { flex-wrap:wrap; max-width:100%; }
 .inbox-story .job-detail-tabs button { font-size:12px; padding:8px 12px; min-height:36px; }
 .inbox-story .job-detail-panel { gap:12px; }
-.thread-message { border-bottom:1px solid #e3e9f2; min-width:0; }
-.thread-message > summary {
+.thread-message, .inbox-history-middle { border-bottom:1px solid #e3e9f2; min-width:0; }
+.thread-message > summary, .inbox-history-middle > summary {
  list-style:none; cursor:pointer; box-sizing:border-box; padding:12px 14px;
 }
-.thread-message > summary::-webkit-details-marker { display:none; }
-.thread-message > summary:hover { background:#f6f8fc; }
+.thread-message > summary::-webkit-details-marker, .inbox-history-middle > summary::-webkit-details-marker { display:none; }
+.thread-message > summary:hover, .inbox-history-middle > summary:hover { background:#f6f8fc; }
 .thread-message-meta { display:flex; align-items:center; gap:8px; min-width:0; }
 .thread-message-label.ant-tag { flex:none; margin:0; font-size:11px; line-height:16px; }
 .thread-message-time { margin-inline-start:auto; flex:none; color:#526174; font-size:11px; white-space:nowrap; }
@@ -134,9 +134,9 @@
 .thread-message-sender { color:#526174; font-size:12px; font-weight:600; }
 .thread-message-subject { margin-top:3px; font-size:14px; }
 .inbox-story:has(#job-panel-conversation:not([hidden]) .inbox-original[open]) .inbox-prompt-title { display:none; }
-.thread-message.has-prompt-preview[open] > summary { min-height:0; padding-bottom:3px; }
-.thread-message.has-prompt-preview .job-prompt-markdown > :first-child { margin-block-start:0; }
-.thread-message-body { min-width:0; overflow-wrap:anywhere; padding:0 14px 14px; }
+.thread-message.has-body-preview[open] > summary { min-height:0; padding-bottom:3px; }
+.thread-message.has-body-preview .job-prompt-markdown > :first-child { margin-block-start:0; }
+.thread-message-body { min-width:0; overflow-wrap:anywhere; padding:8px 14px 14px; }
 .thread-message-body > .conversation-step,
 .thread-message-body > .conversation-pair > .conversation-step {
  background:transparent; box-shadow:none; border:0; margin:0;
@@ -144,6 +144,7 @@
 .thread-message-body > .conversation-pair { margin:0; }
 .thread-message-body > .conversation-step > .ant-card-body,
 .thread-message-body > .conversation-pair > .conversation-step > .ant-card-body { padding:0; }
+.inbox-history-middle > summary { color:#526174; font-size:12px; }
 .inbox-story section[aria-label="Thread messages"] > p { color:#7c8798; font-size:11px; margin:0 0 8px; }
 .inbox-story .review-page.embedded-review,.embedded-review { padding:8px 0 16px !important; max-width:none; width:100%; margin:0; }
 .embedded-review .review-actions { position:sticky; inset-inline:auto; width:100%; z-index:15; border:1px solid #dce3ed; border-radius:10px; margin-top:16px; box-shadow:0 -3px 12px #172a4609; padding:12px 16px; }
@@ -157,7 +158,7 @@
  .ant-drawer-body:has(.inbox-navigation) { padding:8px; overflow:hidden; }
  .inbox-navigation { height:100%; }
  .inbox-navigation-item { min-height:44px; flex-shrink:0; }
- .thread-message > summary { min-height:44px; }
+ .thread-message > summary,.inbox-history-middle > summary { min-height:44px; }
  .inbox-list-toolbar { padding:8px 14px 14px; flex-wrap:wrap; gap:8px; }
  .inbox-story { padding:12px !important; }
  .inbox-back { width:44px; height:44px; }

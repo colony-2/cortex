@@ -1,3 +1,4 @@
+import QuickReviewAction from './QuickReviewAction';
 import { useReviewDraft } from '../hooks/useReviewDraft';
 import { useEffect, useRef, useState } from 'react';
 import { 
@@ -94,7 +95,7 @@ export default function InputFormRenderer({
   }, [form.kind]);
 
   const handleFinish = (values: any) => {
-    if (loading || (actionField && (!explicitOK.current || pending === undefined))) return;
+    if (loading || (actionField && !explicitOK.current)) return;
     explicitOK.current = false;
     setValidationError(false);
     // Transform values based on field types
@@ -403,12 +404,26 @@ export default function InputFormRenderer({
             }}>OK</Button>
           </> : actionField.options!.map(option => {
             const label = conventional ? (option === 'approve' ? 'Approve' : 'Reject') : actionField.optionLabels?.[option] || option;
-            return <Button key={option} type={option === 'revise' ? 'default' : 'primary'}
+            const canSkipFeedback = feedback && !feedback.required && !(conventional && option === 'revise') &&
+              !form.fields.some(field => field.type === 'file_upload' && field.required);
+            return <QuickReviewAction key={option} label={label} disabled={loading} send={canSkipFeedback ? async () => {
+              if (loading || explicitOK.current) return;
+              antForm.setFieldValue(actionField.id, option);
+              explicitOK.current = true;
+              const fields = form.fields.filter(field => field !== feedback && field.type !== 'file_upload');
+              try {
+                const values = await antForm.validateFields(fields.map(field => field.id));
+                handleFinish(values);
+              } catch {
+                explicitOK.current = false;
+                setValidationError(true);
+              }
+            } : undefined}><Button type={option === 'revise' ? 'default' : 'primary'}
               data-response={option} disabled={loading} aria-label={label} onClick={() => {
                 opener.current = option;
                 antForm.setFieldValue(actionField.id, option);
                 setPending(option);
-              }}>{label}</Button>;
+              }}>{label}</Button></QuickReviewAction>;
           }) : <Button type="primary" htmlType="submit" loading={loading} aria-label="Submit" aria-busy={loading}>
             Submit
           </Button>}

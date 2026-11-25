@@ -110,6 +110,7 @@ func TestConversationSQLiteReopening(t *testing.T) {
 		require.Equal(t, status, w.Code, w.Body.String())
 		return w.Body.String()
 	}
+	var previousCursor *threadCursor
 	checkThread := func(expected *input.UserInputDetails, count int) {
 		beforeArtifacts := reader.artifactReads
 		engine := &threadReadCounts{Engine: server.engine, JobRunReader: rt}
@@ -118,11 +119,19 @@ func TestConversationSQLiteReopening(t *testing.T) {
 		pages := &singleEntryThreadHistory{HistoryService: history, HistorySnapshotService: history.(input.HistorySnapshotService)}
 		storyReader, err := story.New(story.ServiceConfig{Engine: snapshotStoryEngine{jobdbschema.WorkflowEngine{Engine: engine, Registry: rt}}})
 		require.NoError(t, err)
-		threadServer := &Server{engine: engine, history: pages, story: storyReader}
+		lookup := &countedChapterLookup{chapterReader: rt, chapterLookup: rt}
+		threadServer := &Server{engine: engine, history: pages, story: storyReader, chapters: lookup}
+		path := "/conversation?thread=true"
+		if previousCursor != nil {
+			threadServer.threadCursors.remember(previousCursor)
+			path += "&since_snapshot=" + url.QueryEscape(previousCursor.token)
+		}
 		w := httptest.NewRecorder()
-		threadServer.handleThreadConversation(w, withHistoryVars(httptest.NewRequest("GET", "/conversation?thread=true", nil).WithContext(ctx), "tenant", "job"))
+		threadServer.handleThreadConversation(w, withHistoryVars(httptest.NewRequest("GET", path, nil).WithContext(ctx), "tenant", "job"))
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 		var result struct {
+			ThreadCursor   string `json:"thread_cursor"`
+			ReusedEntries  int    `json:"reused_entries"`
 			Entries        []conversationEntry
 			NextPageToken  string              `json:"next_page_token"`
 			CurrentInput   json.RawMessage     `json:"current_input"`
@@ -130,7 +139,26 @@ func TestConversationSQLiteReopening(t *testing.T) {
 			InputArtifacts json.RawMessage     `json:"input_artifacts"`
 		}
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
-		require.Len(t, result.Entries, count)
+		require.NotEmpty(t, result.ThreadCursor)
+		reused := 0
+		if expected == nil {
+			reused = 1
+		}
+		require.Equal(t, reused, result.ReusedEntries)
+		require.Len(t, result.Entries, count-reused)
+		if previousCursor != nil {
+			require.Equal(t, "answered", result.Entries[0].State)
+			require.Equal(t, []int64{previousCursor.nextOrdinal}, lookup.ordinals)
+		}
+		previousCursor = threadServer.threadCursors.find(handle.JobKey, result.ThreadCursor)
+		require.NotNil(t, previousCursor)
+		lookup.ordinals = nil
+		poll := httptest.NewRecorder()
+		path = "/conversation?thread=true&since_snapshot=" + url.QueryEscape(result.ThreadCursor)
+		threadServer.handleThreadConversation(poll, withHistoryVars(httptest.NewRequest("GET", path, nil).WithContext(ctx), "tenant", "job"))
+		require.Equal(t, http.StatusNoContent, poll.Code, poll.Body.String())
+		require.Empty(t, poll.Body.Bytes())
+		require.Equal(t, []int64{previousCursor.nextOrdinal}, lookup.ordinals)
 		require.Equal(t, count, pages.reads, "continuations are served by the same retained snapshot")
 		require.Empty(t, result.NextPageToken)
 		require.NotEmpty(t, result.InputArtifacts)
@@ -284,6 +312,17 @@ func (r *countingHistoryReader) GetJobRun(ctx context.Context, req jobdb.GetJobR
 
 func withHistoryVars(r *http.Request, tenant, job string) *http.Request {
 	return mux.SetURLVars(r, map[string]string{"projectId": tenant, "jobId": job})
+}
+
+type countedChapterLookup struct {
+	chapterReader
+	chapterLookup
+	ordinals []int64
+}
+
+func (r *countedChapterLookup) GetChapter(ctx context.Context, ref jobdb.ChapterRef) (jobdb.Chapter, error) {
+	r.ordinals = append(r.ordinals, ref.Ordinal)
+	return r.chapterLookup.GetChapter(ctx, ref)
 }
 
 type threadReadCounts struct {

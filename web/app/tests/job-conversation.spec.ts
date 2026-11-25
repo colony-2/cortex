@@ -242,6 +242,7 @@ for (const width of [1280,390]) test(`CC-001 CC-009 CC-010 CC-013 CC-014 compact
  await page.goto('/project/demo/jobs/job/story?filter=mine');
  const messages = page.locator('.inbox-history-message:not([aria-label="Job completion"])');
  await expect(messages).toHaveCount(3);
+ await page.locator('.inbox-history-middle > summary').click();
  for (const summary of await messages.locator(':scope > summary').all()) {
   const height = await summary.evaluate(el => el.getBoundingClientRect().height);
   expect(height).toBeGreaterThanOrEqual(width < 768 ? 44 : 32);

@@ -187,7 +187,7 @@ it('P01/P03/P05 accepted continuing response shows pending, then actual answer r
  const human={role:'human' as const,direction:'ask',text:'Question',attachments:[],receipt:output.receipt};
  view={...view,phase:'waiting',output,conversation:[human],job:{status:'ACTIVE',cell_name:'cortex'} as any};
  const {rerender}=render(component());expect(screen.getByText('Response pending')).toBeVisible();
- const refresh=screen.getByRole('button',{name:'Refresh'});refresh.focus();
+ expect(screen.queryByRole('button',{name:'Refresh'})).toBeNull();
  successor(output);rerender(component());expect(screen.queryByText('Response pending')).not.toBeInTheDocument();expect(screen.getByText('Your question was accepted.')).toBeVisible();
  expect(screen.getByRole('button',{name:'Approve direction',exact:true})).toBeVisible();expect(screen.getByRole('button',{name:'Approve direction',exact:true})).not.toHaveFocus();
 });
@@ -198,4 +198,31 @@ it('A13 frozen legacy optional approval opens a composer and sends nothing until
  expect(screen.getByLabelText('Question or requested change (optional)')).toBeVisible();expect(inputActivityService.submitReviewV2).not.toHaveBeenCalled();
  fireEvent.click(screen.getByRole('button',{name:'Send · Approve direction'}));await screen.findByText(/Connection lost/);
  expect(vi.mocked(inputActivityService.submitReviewV2).mock.calls[0][3].direction).toBe('go');
+});
+
+it.each(['quick', 'composer'])('returns to the filtered originating list after a confirmed %s reply',async mode=>{
+ let finish!:()=>void;
+ vi.mocked(inputActivityService.submitReviewV2).mockImplementation((_tenant,_job,request_id,response,_files,submission_id)=>new Promise(resolve=>{
+   finish=()=>resolve({response,receipt:{request_id,submission_id}} as ReviewV2Output);
+ }));
+ const from='/project/tenant/jobs?inbox=all&q=API&cellId=cell';
+ function Destination(){const loc=useLocation();return <p>{loc.pathname+loc.search}</p>;}
+ render(<MemoryRouter initialEntries={[{pathname:'/review',state:{inboxReturnTo:from}}]}><Routes>
+   <Route path="/review" element={<ReviewV2 tenant="tenant" job="job" reviewId="review-one"/>}/>
+   <Route path="/project/tenant/jobs" element={<Destination/>}/>
+ </Routes></MemoryRouter>);
+ expect(screen.queryByRole('button',{name:'Send Ask a question without feedback'})).toBeNull();
+ if(mode==='quick'){
+   const quick=screen.getByRole('button',{name:'Send Another recipe choice without feedback'});
+   fireEvent.click(quick);fireEvent.click(quick);
+   expect(screen.queryByRole('region',{name:'Response composer'})).toBeNull();
+ }else{
+   fireEvent.click(screen.getByRole('button',{name:'Another recipe choice',exact:true}));
+   fireEvent.click(screen.getByRole('button',{name:'Send · Another recipe choice'}));
+ }
+ expect(inputActivityService.submitReviewV2).toHaveBeenCalledTimes(1);
+ expect(vi.mocked(inputActivityService.submitReviewV2).mock.calls[0][3]).toMatchObject({direction:'other',feedback:''});
+ expect(screen.queryByText(from)).toBeNull();
+ await act(async()=>finish());
+ expect(screen.getByText(from)).toBeVisible();
 });

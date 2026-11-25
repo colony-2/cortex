@@ -3,11 +3,15 @@ package cortex
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"net/http"
+	"reflect"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/colony-2/c2j/pkg/input"
@@ -19,6 +23,43 @@ import (
 
 type threadObservationKey struct{}
 
+// A cursor is issued only for a complete, job-scoped thread. Keep just the
+// next ordinal and row fingerprints. The browser owns the actual messages.
+type threadCursor struct {
+	authority   jobdb.CellAuthority
+	key         jobdb.JobKey
+	token       string
+	nextOrdinal int64
+	rows        [][sha256.Size]byte
+}
+
+type threadCursorCache struct {
+	mu     sync.Mutex
+	recent [128]*threadCursor
+	next   int
+}
+
+func (c *threadCursorCache) find(key jobdb.JobKey, token string) *threadCursor {
+	if token == "" {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, prior := range c.recent {
+		if prior != nil && prior.key == key && prior.token == token {
+			return prior
+		}
+	}
+	return nil
+}
+
+func (c *threadCursorCache) remember(cursor *threadCursor) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.recent[c.next] = cursor
+	c.next = (c.next + 1) % len(c.recent)
+}
+
 // The recipe visibility check and the run projection use the same exact job
 // summary and detail throughout a single HTTP request.
 type threadObservation struct {
@@ -26,6 +67,7 @@ type threadObservation struct {
 		recipejob.Lister
 		GetJob(context.Context, jobdb.JobKey) (jobdb.JobInfo, error)
 	}
+	prior   *threadCursor
 	key     jobdb.JobKey
 	summary *jobdb.ListJobsResponse
 	info    *jobdb.JobInfo
@@ -63,6 +105,22 @@ func (t *threadObservation) GetJob(ctx context.Context, key jobdb.JobKey) (jobdb
 func (s *Server) handleThreadConversation(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	key := jobdb.JobKey{TenantId: s.tenantID(r), JobId: mux.Vars(r)["jobId"]}
+	prior := s.threadCursors.find(key, r.URL.Query().Get("since_snapshot"))
+	authority, _ := jobdb.CellAuthorityFromContext(r.Context())
+	if prior != nil && !reflect.DeepEqual(prior.authority, authority) {
+		prior = nil
+	}
+	if reader, ok := s.chapters.(chapterLookup); ok && prior != nil {
+		_, err := reader.GetChapter(r.Context(), jobdb.ChapterRef{JobKey: key, Ordinal: prior.nextOrdinal})
+		if errors.Is(err, jobdb.ErrChapterNotFound) {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+	}
 	// Ignore paging and selection parameters on the complete thread view.
 	u := *r.URL
 	u.RawQuery = ""
@@ -70,7 +128,7 @@ func (s *Server) handleThreadConversation(w http.ResponseWriter, r *http.Request
 	r.URL = &u
 	// The engine implements detail and list reads; the chapter reader is attached
 	// when the history service projects the run.
-	t := &threadObservation{key: key, reader: s.engine}
+	t := &threadObservation{key: key, reader: s.engine, prior: prior}
 	job, err := recipejob.GetRecipeJob(r.Context(), t, recipejob.GetRecipeJobRequest{TenantID: key.TenantId, JobID: key.JobId})
 	if err != nil {
 		writeError(w, err)

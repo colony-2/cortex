@@ -42,15 +42,20 @@ export default function ReviewMessageBody({ request, tenant, hasDocument, childr
 }) {
   const lastTurn = request.conversation[request.conversation.length - 1];
   const answer = lastTurn?.role === 'agent' ? lastTurn : undefined;
+  const files = new Map<string,string>();
+  for (const { name, stored } of answer?.attachments ?? []) {
+    const url = storedDocumentURL(tenant, stored.key);
+    if (!files.has(url)) files.set(url, (name || stored.key.name).split('/').pop()!);
+  }
   const hasPrompt = !!request.question.trim();
-  if (!answer?.text.trim() && !answer?.attachments.length && !hasPrompt && !children) return null;
+  if (!answer?.text.trim() && !files.size && !hasPrompt && !children) return null;
 
   return <>
     <section aria-label="Review message" className="review-message-body">
       {answer?.text.trim() && <p className="review-message-answer">{answer.text}</p>}
-      {answer?.attachments.map(({ name, stored }, index) =>
-        <p key={index}><a href={storedDocumentURL(tenant, stored.key)} download>
-          Download {(name || stored.key.name).split('/').pop()}
+      {Array.from(files, ([url, name]) =>
+        <p key={url}><a href={url} download>
+          Download {name}
         </a></p>
       )}
       {hasPrompt && <div className="review-v2-question-markdown">

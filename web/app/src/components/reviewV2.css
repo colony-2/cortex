@@ -64,3 +64,7 @@
 .review-v2-setting p {margin:8px 0}
 
 @media(max-width:800px){.review-v2{padding:12px}.review-v2-heading{flex-wrap:wrap}}
+.review-split-action {display:inline-flex;max-width:100%;align-items:stretch}
+.review-split-action > .ant-btn:first-child {border-start-end-radius:0;border-end-end-radius:0;min-width:0}
+.review-split-action > .ant-btn.review-quick-send {width:20px;min-width:20px;height:auto;padding:0;border-inline-start:0;border-start-start-radius:0;border-end-start-radius:0;background:#f0f4f8;color:#445970}
+.review-split-action > .ant-btn.review-quick-send:hover {background:#deebf8;color:#174a7a}

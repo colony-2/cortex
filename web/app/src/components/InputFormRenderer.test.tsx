@@ -202,6 +202,24 @@ describe('InputFormRenderer', () => {
     await waitFor(()=>expect(mockOnSubmit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({fields:{decision:'approve'}})));
   });
 
+  it('quick approval validates other required fields and leaves unsubmitted feedback out',async()=>{
+    render(<InputFormRenderer form={{id:'approval',title:'Review',kind:'review',fields:[
+      {id:'decision',label:'Decision',type:'multiple_choice',required:true,options:['approve','revise']},
+      {id:'feedback',label:'Reason',type:'paragraph_text',required:false},
+      {id:'owner',label:'Owner',type:'short_answer',required:true},
+    ]}} onSubmit={mockOnSubmit}/>);
+    const quick=()=>screen.getByRole('button',{name:'Send Approve without feedback'});
+    expect(screen.queryByRole('button',{name:'Send Reject without feedback'})).toBeNull();
+    await userEvent.click(quick());
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+    await userEvent.type(screen.getByLabelText('Owner'),'Sam');
+    await userEvent.click(screen.getByRole('button',{name:'Reject',exact:true}));
+    await userEvent.type(screen.getByLabelText('Reason'),'Unsent note');
+    await userEvent.click(screen.getByRole('button',{name:'Back'}));
+    await userEvent.click(quick());
+    await waitFor(()=>expect(mockOnSubmit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({fields:{owner:'Sam',decision:'approve'}})));
+  });
+
   it.each(['optional', 'multiple'])('keeps %s review choice questions as ordinary form fields', async kind => {
     const field = { id: 'choice', type: 'multiple_choice' as const, required: kind !== 'optional',
       label: 'Which version?', options: ['A', 'B'] };

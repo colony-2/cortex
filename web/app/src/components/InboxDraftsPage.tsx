@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Button, Checkbox, Empty, Modal } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { discardMessageDraft, messageDraftScope, type useSavedMessageDrafts } from '../hooks/useMessageDrafts';
@@ -16,6 +16,7 @@ export default function InboxDraftsPage({ tenant, messages, reviews, sending, op
   openComposer: (id: string) => void;
   closeComposer: (id: string) => void;
 }) {
+  const location = useLocation();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [discard, setDiscard] = useState<{ keys: string[]; messages: string[]; reviews: string[] }>();
   const rows = [
@@ -27,7 +28,7 @@ export default function InboxDraftsPage({ tenant, messages, reviews, sending, op
     ...reviews.map(draft => {
       const title = `Review response · ${messagePreview(draft.title)}`;
       return { key: `review:${draft.identity}`, title, messageId: undefined, reviewId: draft.identity,
-        link: <Link state={{ openReviewDraft: true, inboxReturnTo: `/project/${encodeURIComponent(tenant)}/jobs?inbox=drafts` }} to={reviewThreadPath(tenant,draft.job,draft.request,draft.kind === 'review_id' ? 'review_id' : 'request_id')}
+        link: <Link state={{ openReviewDraft: true, inboxReturnTo: location.pathname + location.search }} to={reviewThreadPath(tenant,draft.job,draft.request,draft.kind === 'review_id' ? 'review_id' : 'request_id')}
           onClick={()=>{if (!sending.has(draft.identity)) closeComposer(draft.identity);}}>{title}</Link> };
     }),
   ];

@@ -172,8 +172,7 @@ Story and details stack vertically, with a **View selected details** jump link.
 picker, and the selected ID is resolved to its current name before submission.
 Existing-cell submission uses the registry repository. **New cell** mode requires
 an explicit name and repository. It registers the cell first, then submits the goal.
-If submission fails, the cell remains registered; retrying reuses the completed
-registration and the same job ID for an unchanged request.
+If submission fails, the cell remains registered. JobDB assigns the job ID.
 
 ## Cells and creation
 

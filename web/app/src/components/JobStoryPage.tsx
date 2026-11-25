@@ -655,13 +655,13 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
   // Conversation completion must keep refreshing even if execution inspection
   // is unavailable or hidden. Metadata polling is independent of story polling.
   useEffect(() => {
-    if (!needsMetadata || !autoRefresh || !activityJob || !activityStatus || isFinishedJob(activityJob)) return;
+    if (!needsMetadata || (!autoRefresh && activeTab !== 'conversation') || !activityJob || !activityStatus || isFinishedJob(activityJob)) return;
     const timer = window.setInterval(() => {
       loadMetadata();
     }, refreshIntervalMs);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needsMetadata, autoRefresh, refreshIntervalMs, projectId, jobId, activityStatus, story?.status]);
+  }, [needsMetadata, autoRefresh, refreshIntervalMs, projectId, jobId, activityStatus, story?.status, activeTab]);
 
   const openArtifact = (artifact: ArtifactKey, attachments = selectedNode?.artifact_keys || []) => {
     artifactOpener.current = document.activeElement as HTMLElement;
@@ -900,7 +900,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
 
   const initialMessage = job ? {
     sender, subject: messagePreview(prompt) || 'Original message', onExpand: openOriginal, showAttachments: threadParams.get('tab') === 'input-artifacts',
-    subjectIsPrompt: !!prompt,
+    subjectIsBodyPreview: !!prompt,
     time: { value: job.submitted_at || job.created_at },
     node: <>
       <section aria-label="Job prompt">
@@ -947,7 +947,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
 
             <Link className="compact-touch-link" to={`/project/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId || '')}/story?tab=dag`} state={location.state}>Graph</Link>
             {treeReturnTo && <Link className="compact-touch-link" to={treeReturnTo}>Return to Graph</Link>}
-            {(terminalStatus ? !isFinishedJob(job!) : story?.status === 'running') ? (
+            {activeTab !== 'conversation' && (terminalStatus ? !isFinishedJob(job!) : story?.status === 'running') ? (
               <Space>
                 <Text type="secondary">Auto-refresh</Text>
                 <Switch aria-label="Auto-refresh" checked={autoRefresh} onChange={setAutoRefresh} />
@@ -963,7 +963,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                 />
               </Space>
             ) : null}
-            <Button icon={<ReloadOutlined />} onClick={() => void load()}>
+            <Button style={{alignSelf:'flex-start'}} icon={<ReloadOutlined />} onClick={() => void load()}>
               Refresh
             </Button>
             <Button onClick={() => openRestart()}>Restart</Button>
@@ -994,7 +994,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
           currentReviewId={threadReviewId}
           currentRequestTime={pendingInputDetails?.startTime}
           currentRequestLabel={pendingLabel} currentSubjectIsPrompt={!pendingTitle && !!pendingLabel} openCurrent={threadWantsInput || threadParams.has('review_id')} currentRequestId={threadRequestId === null && (!threadReviewId || threadReviewId === currentReviewId) ? pendingInputDetails?.form.request_id : undefined} cellName={job?.cell_name} onInventory={receiveInventory} onBack={() => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('occurrenceId'); next.delete('requestId'); return next; })} tenant={projectId} job={jobId} occurrence={threadParams.get('occurrenceId') ?? undefined}
-          autoRefresh={autoRefresh && activeTab === 'conversation'} refreshIntervalMs={refreshIntervalMs} requestId={threadParams.get('requestId') ?? undefined}
+          autoRefresh={activeTab === 'conversation'} requestId={threadParams.get('requestId') ?? undefined}
           refreshKey={historyRevision} onOpen={entry => setSearchParams(previous => {
             const next = new URLSearchParams(previous); next.set('occurrenceId', entry); next.set('tab', 'conversation');
             next.delete('requestId'); next.delete('input'); return next;

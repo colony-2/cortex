@@ -52,7 +52,7 @@ it('preserves fields and reuses the original submission after an uncertain failu
   open();
   await waitFor(() => expect(screen.getByRole('button', { name: 'Create goal' })).toBeEnabled());
   fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
-  await screen.findByText('Connection lost');
+  await screen.findByText('request failed', { exact: true });
   const first = vi.mocked(submitJob).mock.calls[0][1];
   fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
   await waitFor(() => expect(submitJob).toHaveBeenCalledTimes(2));
@@ -98,7 +98,7 @@ it('ATT-013 ATT-014 ATT-016 ATT-019 retains exact files on retry and distinguish
  const file = new File(['one'], 'x', { lastModified: 1 }); attach([file]);
  await screen.findByRole('button', { name: 'Remove x' });
  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
- await screen.findByText('Connection lost');
+ await screen.findByText('request failed', { exact: true });
  const first = vi.mocked(submitJob).mock.calls[0];
  expect(first[2]).toEqual([file]);
  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
@@ -151,7 +151,7 @@ it('RC-39 rejects an invalid filename without replacing valid attachments', asyn
  expect(screen.getAllByRole('button', { name: /^Remove / }).map(button => button.getAttribute('aria-label'))).toEqual(['Remove brief.md']);
  vi.mocked(submitJob).mockRejectedValue(new Error('Inspect retained selection'));
  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
- await screen.findByText('Inspect retained selection');
+ await screen.findByText('request failed', { exact: true });
  expect(vi.mocked(submitJob).mock.calls[0][2]).toEqual([valid]);
  expect(vi.mocked(submitJob).mock.calls[0][2]![0]).toBe(valid);
 });
@@ -215,7 +215,7 @@ it('CID-001 CID-003 CID-006 refreshes edited prompts and targets while returning
  const created = open();
  await waitFor(() => expect(screen.getByRole('button', { name: 'Create goal' })).toBeEnabled());
  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
- await screen.findByText('Try again');
+ await screen.findByText('request failed', { exact: true });
  const first = vi.mocked(submitJob).mock.calls[0][1];
  fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Edited prompt' } });
  fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));

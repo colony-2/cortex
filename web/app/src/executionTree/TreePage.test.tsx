@@ -21,7 +21,8 @@ it('DAG-05,06,07 retains presentation while paused, and isolates keyed tenant/jo
  rerender(view('t','one',false)); rerender(view('t','one'));
  expect(screen.getByRole('searchbox')).toHaveValue('saved');
  expect(screen.getByLabelText('Zoom',{exact:true})).toHaveTextContent('120%');
- expect(getTreeNode).toHaveBeenCalledTimes(count);
+ expect(getTreeNode).toHaveBeenCalledTimes(count+1);
+ expect(document.querySelector('[data-job-id="one"]')).toBeNull();
  rerender(view('other','two'));
  await waitFor(()=>expect(screen.getByRole('complementary')).toHaveTextContent('two'));
  expect(signals.slice(0,count).every(signal=>signal.aborted)).toBe(true);
@@ -82,7 +83,8 @@ it('DAGUI-016 visible clock advances ages, suspends inactive, recomputes on retu
  clock+=1000;act(()=>tick());
  expect(screen.getByText('Age 18m 33s')).toBeInTheDocument();
  rerender(view(false));expect(clear).toHaveBeenCalledWith(99);clock+=60000;rerender(view(true));
- expect(screen.getByText('Age 19m 33s')).toBeInTheDocument();expect(screen.getByText('Time to finish 5m 32s')).toBeInTheDocument();
+ expect(screen.queryByText('Age 18m 33s')).toBeNull();
+ expect(await screen.findByText('Age 19m 33s')).toBeInTheDocument();expect(screen.getByText('Time to finish 5m 32s')).toBeInTheDocument();
  const visibility=vi.spyOn(document,'visibilityState','get').mockReturnValue('hidden');
  const reads=vi.mocked(getTreeNode).mock.calls.length;
  fireEvent(document,new Event('visibilitychange'));clock+=60000;

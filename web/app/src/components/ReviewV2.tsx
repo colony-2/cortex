@@ -12,23 +12,23 @@ import './reviewV2.css';
 import ReviewV2Context from './ReviewV2Context';
 import ReviewReply from './ReviewReply';
 import { reviewReplyKey, useReviewReplyDock } from '../hooks/useReviewReplyDock';
-import { resolveReviewDocumentLocation, reviewDocumentSearch, reviewInboxPath } from '../utils/reviewDocumentLocation';
+import { resolveReviewDocumentLocation, reviewDocumentSearch, reviewReturnPath } from '../utils/reviewDocumentLocation';
 
 export default function ReviewV2({tenant,job,reviewId,initial,embedded=false,metadata}: {tenant:string;job:string;reviewId:string;initial?:UserInputDetails;embedded?:boolean;metadata?:RecipeJob}) {
   const [contextJob, setContextJob] = useState<RecipeJob>();
   const controller=useReviewV2(tenant,job,reviewId,initial,metadata ?? contextJob);
   const {view,error,busy,refresh}=controller;
   const dock=useReviewReplyDock();
-  const target={tenant,job,reviewId,title:view?.request.title || "Review reply",cellName:metadata?.cell_name ?? view?.job?.cell_name};
-  const replyKey=reviewReplyKey(target);
   const navigate=useNavigate(); const location=useLocation();
+  const reviewsPath=reviewReturnPath(tenant,location.search,location.state);
+  const target={tenant,job,reviewId,returnTo:reviewsPath,title:view?.request.title || "Review reply",cellName:metadata?.cell_name ?? view?.job?.cell_name};
+  const replyKey=reviewReplyKey(target);
   const restoredDraft = useRef<unknown>();
   const restoreDraft = useCallback(() => {
     if (!location.state?.openReviewDraft || restoredDraft.current === location.state) return false;
     restoredDraft.current = location.state;
     return true;
   }, [location.state]);
-  const reviewsPath=reviewInboxPath(tenant,location.search);
   const [unavailableDocument,setUnavailableDocument]=useState(false);
   const requestDocuments=view?.request.documents;
   const selection=view&&requestDocuments?resolveReviewDocumentLocation(location.search,reviewId,requestDocuments,view.request.document_metadata,view.request.overview_document_id,'review_id'):undefined;
@@ -68,6 +68,6 @@ export default function ReviewV2({tenant,job,reviewId,initial,embedded=false,met
     </div>
     {!error && reviewV2AnswerPending(view) && <p role="status" className="review-v2-pending">Response pending</p>}
     {dock?.has(replyKey) ? <Button type="text" onClick={()=>dock.activate(replyKey)}>Show popped-out reply</Button>
-      : <ReviewReply tenant={tenant} job={job} reviewId={reviewId} controller={controller} restoreDraft={restoreDraft} onPopout={dock ? ()=>dock.open(target) : undefined} />}</>}
+      : <ReviewReply tenant={tenant} job={job} reviewId={reviewId} controller={controller} restoreDraft={restoreDraft} onSubmitted={()=>navigate(reviewsPath,{replace:true})} onPopout={dock ? ()=>dock.open(target) : undefined} />}</>}
   </div>;
 }

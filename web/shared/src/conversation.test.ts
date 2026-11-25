@@ -15,6 +15,22 @@ describe('CT-032 conversation transport', () => {
     expect(url.searchParams.get('entry_id')).toBe('entry/?');
     expect(url.searchParams.get('snapshot_token')).toBe('+/=');
   });
+  it('keeps the browser snapshot on an idle poll and reuses the unchanged messages when a chapter arrives', async () => {
+    const base = {tenant_id:'t', job_id:'j', thread_cursor:'one', entries:[{entry_id:'old'}, {entry_id:'pending'}]};
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(Response.json(base))
+      .mockResolvedValueOnce(new Response(null, {status:204}))
+      .mockResolvedValueOnce(Response.json({...base, thread_cursor:'two', reused_entries:1, entries:[{entry_id:'pending',state:'answered'}, {entry_id:'new'}]}));
+    vi.stubGlobal('fetch', fetch);
+    const first = await getConversation('t','j',{thread:true});
+    const poll = () => getConversation('t','j',{thread:true,previousThread:first});
+    expect(await poll()).toBe(first);
+    expect(new URL(fetch.mock.calls[1][0],'http://test').searchParams.get('since_snapshot')).toBe('one');
+    const changed = await poll();
+    expect(changed.entries[0]).toBe(first.entries[0]);
+    expect(changed.entries.slice(1)).toEqual([{entry_id:'pending',state:'answered'}, {entry_id:'new'}]);
+    expect(changed.thread_cursor).toBe('two');
+  });
   it('CT-033 retains typed expiry errors', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"error":"refresh snapshot","code":"history_snapshot_expired"}', {status:410})));
     await expect(getConversation('t','j')).rejects.toMatchObject({status:410,code:'history_snapshot_expired'});

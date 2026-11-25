@@ -750,7 +750,7 @@ describe('job story context', () => {
     const reads = fetchMock.mock.calls.length;
     vi.mocked(getJob).mockResolvedValue(metadata({ title: 'Recovered', prompt: 'Recovered prompt', completion_status: 'failed_app', completion_detail: 'Recovered diagnostic' }));
     fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
-    expect(await screen.findByText('Recovered prompt', { selector: '.inbox-original .thread-message-subject, .inbox-original .job-prompt-markdown p' })).toBeVisible();
+    await waitFor(() => expect(screen.getByText('Recovered prompt', { selector: '.inbox-original .thread-message-subject, .inbox-original .job-prompt-markdown p' })).toBeVisible());
     expect(screen.getByLabelText('Job cell')).toHaveTextContent(`${jobIdentity.cell_name}`); // JC-006
     expect(screen.getByText('Recovered diagnostic')).toBeVisible();
     expect(getJob).toHaveBeenLastCalledWith('tenant', 'job');
@@ -770,7 +770,7 @@ describe('job story context', () => {
     expect(screen.getByRole('heading', { name: /^(Untitled thread|Thread)$/ })).toBeVisible();
     vi.mocked(getJob).mockResolvedValue(metadata({ prompt: 'Fresh prompt' }));
     fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
-    expect(await screen.findByText('Fresh prompt', {selector:'.inbox-original .thread-message-subject, .inbox-original .job-prompt-markdown p'})).toBeVisible();
+    await waitFor(() => expect(screen.getByText('Fresh prompt', {selector:'.inbox-original .thread-message-subject, .inbox-original .job-prompt-markdown p'})).toBeVisible());
     expect(screen.queryByText('Job details unavailable')).toBeNull();
   });
   it('keeps simultaneous metadata and story errors independently retryable', async () => {
@@ -784,7 +784,7 @@ describe('job story context', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Thread', exact: true }));
     vi.mocked(getJob).mockResolvedValue(metadata({ prompt: 'Loaded prompt' }));
     fireEvent.click(screen.getByText('Job details unavailable').closest('[role="alert"]')!.querySelector('button')!);
-    expect(await screen.findByText('Loaded prompt', {selector:'.inbox-original .thread-message-subject, .inbox-original .job-prompt-markdown p'})).toBeVisible();
+    await waitFor(() => expect(screen.getByText('Loaded prompt', {selector:'.inbox-original .thread-message-subject, .inbox-original .job-prompt-markdown p'})).toBeVisible());
     expect(screen.getByLabelText('Job cell')).toHaveTextContent(`${jobIdentity.cell_name}`); // JC-006
     fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
     expect(await screen.findByText('Failed to load job story')).toBeVisible();
@@ -1517,7 +1517,7 @@ describe('Conversation tab layout', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Execution unavailable')));
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     renderContext(false);
-    expect(await screen.findByText('Still available', {selector:'.inbox-original .thread-message-subject, .inbox-original .job-prompt-markdown p'})).toBeVisible();
+    await waitFor(() => expect(screen.getByText('Still available', {selector:'.inbox-original .thread-message-subject, .inbox-original .job-prompt-markdown p'})).toBeVisible());
     expect(screen.getByRole('tabpanel')).toHaveAccessibleName('Thread');
     expect(screen.queryByText('History unavailable')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
@@ -1534,7 +1534,7 @@ describe('Steps on demand', () => {
     vi.mocked(getJob).mockResolvedValue({ ...jobIdentity, job_id: 'job', status: 'RUNNING', recipe: 'fixture.yaml' } as RecipeJob);
     const construction = vi.spyOn(storyTree, 'buildStoryTree');
     const requests = mount('');
-    await screen.findByRole('switch', { name: 'Auto-refresh' });
+    await waitFor(()=>expect(getJob).toHaveBeenCalled());
     const storyReads = () => requests.mock.calls.filter(([url]) => String(url).endsWith('/story')).length;
     fireEvent.click(screen.getByRole('button', { name: /Refresh$/ }));
     await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
@@ -1724,34 +1724,20 @@ describe('page controls refresh the real conversation', () => {
   }
   it.each(['ACTIVE','COMPLETED'])('CR-001 CR-002 manual refresh works for %s despite execution failure',async status=>{
     const fetchMock=await start(status);
-    if(status === 'ACTIVE') fireEvent.click(screen.getByRole('switch',{name:'Auto-refresh'}));
     const initial=vi.mocked(getConversation).mock.calls.length;
-    await tick(20000);
-    expect(getConversation).toHaveBeenCalledTimes(initial);
+    await tick(5000);
+    const afterPoll = initial + (status === 'ACTIVE' ? 1 : 0);
+    expect(getConversation).toHaveBeenCalledTimes(afterPoll);
     fetchMock.mockRejectedValue(new Error('Execution unavailable'));
     await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Refresh$/}));});
-    expect(getConversation).toHaveBeenCalledTimes(initial+1);
+    expect(getConversation).toHaveBeenCalledTimes(afterPoll+1);
   });
-  it('CR-003 CR-004 follows only the selected schedule and restarts after enabling',async()=>{
+  it('polls active threads every five seconds without a refresh switch',async()=>{
     await start();
+    expect(screen.queryByRole('switch',{name:'Auto-refresh'})).toBeNull();
     const initial=vi.mocked(getConversation).mock.calls.length;
     await tick(4999);expect(getConversation).toHaveBeenCalledTimes(initial);
     await tick(1);expect(getConversation).toHaveBeenCalledTimes(initial+1);
-    async function select(label:string) {
-      fireEvent.mouseDown(screen.getByRole('combobox'));
-      fireEvent.click(screen.getAllByText(label).find(el=>el.classList.contains('ant-select-item-option-content'))!);
-      await act(async()=>{});
-    }
-    await select('3s');
-    await tick(2999);expect(getConversation).toHaveBeenCalledTimes(initial+1);
-    await tick(1);expect(getConversation).toHaveBeenCalledTimes(initial+2);
-    await select('10s');
-    await tick(9999);expect(getConversation).toHaveBeenCalledTimes(initial+2);
-    await tick(1);expect(getConversation).toHaveBeenCalledTimes(initial+3);
-    fireEvent.click(screen.getByRole('switch',{name:'Auto-refresh'}));
-    await tick(20000);expect(getConversation).toHaveBeenCalledTimes(initial+3);
-    fireEvent.click(screen.getByRole('switch',{name:'Auto-refresh'}));
-    await tick(10000);expect(getConversation).toHaveBeenCalledTimes(initial+4);
   });
   it.each(['hidden','pending','failing'])('CR-005 polls independently of %s execution and failed metadata',async mode=>{
     const fetchMock=await start('ACTIVE',mode === 'hidden' ? '' : '?tab=execution');
@@ -1764,14 +1750,13 @@ describe('page controls refresh the real conversation', () => {
   });
   it('keeps the same thread loaded when switching tabs after activity on another job',async()=>{
     await start();
-    fireEvent.click(screen.getByRole('switch',{name:'Auto-refresh'}));
     const initial=vi.mocked(getConversation).mock.calls.length;
     inputState.pendingInputs = [{id:'another-job',request_id:'new-input'}];
     await act(async()=>{fireEvent.click(screen.getByRole('tab',{name:'Trace',exact:true}));});
     expect(getConversation).toHaveBeenCalledTimes(initial);
     await act(async()=>{fireEvent.click(screen.getByRole('tab',{name:'Thread',exact:true}));});
     expect(getConversation).toHaveBeenCalledTimes(initial);
-    await tick(10000);expect(getConversation).toHaveBeenCalledTimes(initial);
+    await tick(5000);expect(getConversation).toHaveBeenCalledTimes(initial+1);
   });
   it('CR-006 completion supersedes an older read and stops periodic history',async()=>{
     await start();
@@ -2444,6 +2429,7 @@ describe('embedded current request', () => {
       }},
     }));
     expect(await screen.findByRole('button',{name:'Request changes'})).toBeVisible();
+    fireEvent.click(screen.getByText('Earlier message', {selector:'.thread-message-subject'}));
     expect(screen.getByText('Earlier question')).toBeVisible();
     expect(screen.getByRole('region',{name:'Job prompt'})).toHaveTextContent('Original prompt');
     expect(getConversation).toHaveBeenCalledTimes(1);

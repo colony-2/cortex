@@ -3,7 +3,7 @@ import type { ReaderDocument } from './ReviewDocuments';
 import { object } from './conversationPresentation';
 // Stored identity excludes display name and byte-count metadata, matching the
 // retained manifest's producer/ordinal/path identity. Never guess by position.
-function referenceIdentity(value: unknown): string | undefined {
+export function referenceIdentity(value: unknown): string | undefined {
   const ref = object(value), key = object(object(ref.stored).key);
   if (ref.kind === 'stored' && typeof key.jobId === 'string' && key.taskOrdinal !== undefined && typeof key.name === 'string') {
     return stringifyJobJSON(['stored', key.jobId, key.taskOrdinal, key.name]);

@@ -1164,7 +1164,7 @@ test.describe('nested review gallery', () => {
 
 test.describe('review/v2 continuous discussion',()=>{
   test.use({recipeFixture:'browser-review-v2'});
-  test('holds the retained reader while accepted history is delayed or unavailable',async({page,recipeRun},testInfo)=>{
+  test('returns to the list after acceptance even when the next history read is delayed',async({page,recipeRun},testInfo)=>{
     const {tenant,jobID,stopWorker}=recipeRun;
     await stopWorker();
     await page.goto(`/project/${tenant}/jobs/${jobID}/story`);
@@ -1192,7 +1192,6 @@ test.describe('review/v2 continuous discussion',()=>{
     await expect(preview).toBeHidden();
     const original=inline.getByRole('article',{name:'Rendered document'});
     await expect(original).toBeVisible();
-    const reader=await original.elementHandle();
     await page.getByRole('button',{name:'Ask a question',exact:true}).click();
     await page.getByLabel('Question or requested change (required)',{exact:true}).fill('Keep this document open while answering.');
     let release!:()=>void;
@@ -1202,19 +1201,7 @@ test.describe('review/v2 continuous discussion',()=>{
     });
     try {
       await page.getByRole('button',{name:'Send · Ask a question',exact:true}).click();
-      await expect(page.getByText('Response pending',{exact:true})).toBeVisible();
-      await expect(original).toBeVisible();
-      expect(await reader!.evaluate(el=>el.isConnected)).toBe(true);
-      await page.evaluate(()=>window.scrollTo(0,0));
-      const session=await page.context().newCDPSession(page);
-      const {cssContentSize}=await session.send('Page.getLayoutMetrics');
-      const {data}=await session.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true,clip:{x:0,y:0,width:cssContentSize.width,height:cssContentSize.height,scale:1}});
-      writeFileSync(testInfo.outputPath('review-v2-delayed-history.png'),Buffer.from(data,'base64'));await session.detach();
-      release();
-      await expect(page.getByText('Review state unavailable',{exact:true})).toBeVisible();
-      await expect(original).toBeVisible();
-      expect(await reader!.evaluate(el=>el.isConnected)).toBe(true);
-      await expect(inline.getByRole('region',{name:'Review message'})).toContainText('Approve this direction so detailed planning can begin?');
+      await expect(page).toHaveURL(`/project/${tenant}/jobs?inbox=reviews`);
     } finally {release();await page.unrouteAll({behavior:'wait'});}
   });
   test('preserves incompatible drafts until explicit removal before clean approval',async({page,recipeRun},testInfo)=>{
@@ -1267,7 +1254,7 @@ test.describe('review/v2 continuous discussion',()=>{
     const body=(await posted).postData()!;
     expect(body).toContain('"feedback":""');expect(body).toContain('"settings":{"response_style":"brief"}');
     expect(body).not.toContain('comments.md');expect(body).not.toContain('explain the recovery');expect(body).not.toContain('"examples"');
-    await expect(page.getByText('Response sent',{exact:true})).toBeVisible();
+    await expect(page).toHaveURL(`/project/${tenant}/jobs?inbox=reviews`);
   });
   test('keeps the reader through two questions, uploads, gap reload and typed settings',async({page,request,recipeRun},testInfo)=>{
     const {tenant,jobID,stopWorker,startWorker}=recipeRun;
@@ -1304,12 +1291,15 @@ test.describe('review/v2 continuous discussion',()=>{
     await page.screenshot({path:testInfo.outputPath('review-v2-settings.png')});
     await modal.getByRole('button',{name:'Done',exact:true}).click();
     await expect(page.getByRole('button',{name:'Review settings',exact:true})).toBeFocused();
+    const reviewURL=page.url();
     const exactQuestion='  What survives a restart?\n';
     await page.getByLabel('Question or requested change (required)',{exact:true}).fill(exactQuestion);
     await expect(page.locator('.review-v2-response').getByText('Response style:',{exact:false})).toBeVisible();
     await page.evaluate(()=>window.scrollTo(0,0));
     await capture('review-v2-desktop.png');
     await page.getByRole('button',{name:'Send · Ask a question',exact:true}).click();
+    await expect(page).toHaveURL(`/project/${tenant}/jobs?inbox=reviews`);
+    await page.goto(reviewURL);
     await expect(page.getByText('Response pending',{exact:true})).toBeVisible();
     await expect(page.getByRole('article',{name:'Rendered document'})).toBeVisible();
     const gapReads=inputReads.length;
@@ -1331,6 +1321,8 @@ test.describe('review/v2 continuous discussion',()=>{
       {name:'notes.md',mimeType:'text/markdown',buffer:Buffer.from('second note')}
     ]);
     await page.getByRole('button',{name:'Send · Ask a question',exact:true}).click();
+    await expect(page).toHaveURL(`/project/${tenant}/jobs?inbox=reviews`);
+    await page.goto(reviewURL);
     await expect(page.getByText('Response pending',{exact:true})).toBeVisible();
     startWorker();
     await expect(page.getByText('Earlier notes keep their original producer references.',{exact:true})).toBeVisible({timeout:30000});
@@ -1341,7 +1333,7 @@ test.describe('review/v2 continuous discussion',()=>{
     await capture('review-v2-phone.png');
     await page.getByRole('button',{name:'Approve direction',exact:true}).click();
     await page.getByRole('button',{name:'Send · Approve direction',exact:true}).click();
-    await expect(page.getByText('Response sent',{exact:true})).toBeVisible();
+    await expect(page).toHaveURL(`/project/${tenant}/jobs?inbox=reviews`);
     startWorker();
     let output:any;
     await expect.poll(async()=>{
@@ -1410,7 +1402,7 @@ test.describe('review/v2 acceptance races',()=>{
   await page.screenshot({path:testInfo.outputPath('review-v2-recovered-approval.png'),fullPage:true});
   await page.getByRole('button',{name:'Approve direction',exact:true}).click();
   await page.getByRole('button',{name:'Send · Approve direction',exact:true}).click();
-  await expect(page.getByText('Response sent',{exact:true})).toBeVisible();
+  await expect(page).toHaveURL(`/project/${tenant}/jobs?inbox=reviews`);
   expect(bodies).toHaveLength(2);
   expect(bodies[1]).toContain('"direction":"approve","feedback":"","attachments":[],"settings":{}');
   expect(bodies[1]).not.toContain('accepted-notes.md');expect(bodies[1]).not.toContain('Was this response accepted?');
@@ -1419,7 +1411,10 @@ test.describe('review/v2 acceptance races',()=>{
  test('shows actual cancellation with the review prompt readable',async({page,request,recipeRun})=>{
   const {tenant,jobID,stopWorker}=recipeRun;await stopWorker();await page.goto(`/project/${tenant}/reviews/${jobID}`);
   await page.getByRole('button',{name:'Ask a question',exact:true}).click();await page.getByLabel('Question or requested change (required)',{exact:true}).fill('Retain this question.');
+  const reviewURL=page.url();
   await page.getByRole('button',{name:'Send · Ask a question',exact:true}).click();
+  await expect(page).toHaveURL(`/project/${tenant}/jobs?inbox=reviews`);
+  await page.goto(reviewURL);
   await expect(page.getByText('Response pending',{exact:true})).toBeVisible();
   const cancelled=await request.post(`/api/projects/${tenant}/jobs/${jobID}/cancel`);expect(cancelled.status()).toBe(204);
   await expect(page.getByText('Job cancelled.',{exact:true})).toBeVisible();

@@ -40,6 +40,13 @@ test('CC-022 CT-014,015,028–031 real SQLite reviews survive restart, archive a
   await expect(current.getByRole('heading', { name: 'first-review' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Job completion' })).toHaveCount(0);
   expect(reads).toEqual([job + '/conversation?thread=true']);
+  const idle = await page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === job + '/conversation' && url.searchParams.has('since_snapshot');
+  });
+  expect(idle.status()).toBe(204);
+  await expect(current.locator(':scope > .thread-message-body')).toHaveCSS('padding-top', '8px');
+  await expect(current).toHaveAttribute('open', '');
   await accept('first-review', 'Approved first original');
   const second = await list();
   expect(second.entries).toHaveLength(2);
@@ -81,6 +88,8 @@ test('CC-022 CT-014,015,028–031 real SQLite reviews survive restart, archive a
   const publication = reopened.locator('summary').filter({
     has: reopened.locator('.thread-message-sender').getByText('Publication', { exact: true }),
   });
+  const earlier = reopened.locator('.inbox-history-middle:not([open])').filter({ has: publication });
+  if (await earlier.count()) await earlier.locator(':scope > summary').click();
   if (!(await publication.evaluate(node => (node.parentElement as HTMLDetailsElement).open))) await publication.click();
   await expect(reopened.getByLabel('Verified publication')).toContainText('Commit message not recorded');
   await reopened.screenshot({path:info.outputPath('native-subjectless-publication.png'),animations:'disabled',fullPage:true});
