@@ -1109,10 +1109,10 @@ it('REL-001,010,030,031 keeps URL relationships through past-attempt selection a
   vi.mocked(listJobChildren).mockReset().mockRejectedValueOnce(new Error('offline'));
   mount();
   fireEvent.click(screen.getByRole('tab', { name: 'Graph', exact: true }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Related jobs and goals' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Related jobs' }));
   await screen.findByText('Child jobs unavailable');
   expect(screen.getByRole('link',{name:'Job · parent'})).toHaveAttribute('href','/project/tenant/jobs/parent/story');
-  expect(screen.getByRole('link',{name:'Goal · parent-goal'})).toHaveAttribute('href','/project/tenant/goals/parent-goal');
+  expect(screen.queryByRole('link',{name:'Goal · parent-goal'})).toBeNull();
   fireEvent.click(screen.getByRole('tab', { name: 'Trace', exact: true }));
   fireEvent.click(await screen.findByRole('button',{name:'Job attempts'}));
   fireEvent.click(screen.getByRole('tab',{name:'Job attempt 1'}));
@@ -1122,7 +1122,7 @@ it('REL-001,010,030,031 keeps URL relationships through past-attempt selection a
   expect(listJobChildren).toHaveBeenCalledWith('tenant','job',{pageSize:20,pageToken:undefined});
   expect(getJob).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('tab', { name: 'Graph', exact: true }));
-  fireEvent.click(screen.getByRole('button', { name: 'Related jobs and goals' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Related jobs' }));
   expect(screen.getByRole('link',{name:'Job · parent'})).toBeVisible();
 });
 

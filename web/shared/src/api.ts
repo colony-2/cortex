@@ -125,9 +125,19 @@ export async function getJob(projectId: string, jobId: string, includeLaunch = f
   return job;
 }
 
+export interface RecipeGitSource { path?: string; commit?: string }
+
+export async function getRecipeSource(projectId: string, jobId: string, signal: AbortSignal): Promise<RecipeGitSource> {
+  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/recipe-source`, {signal});
+  await handleResponse(response, 'Load recipe source');
+  return response.json();
+}
+
 type RecordedArtifactKey = { jobId: string; taskOrdinal: number; name: string; sizeBytes?: number };
 
 interface RecordedTask {
+  metrics?: import('./types').RecordedTaskMetrics;
+  op_type?: string;
   path?: string[]; invoke_seq?: number; launch_id?: string;
   input_artifacts?: {key?: RecordedArtifactKey; name: string}[];
   id: string; title: string; invocation_id?: string; task_ordinal: number; attempt: number; job_attempt?: number;

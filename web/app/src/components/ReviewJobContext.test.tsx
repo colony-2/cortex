@@ -24,7 +24,7 @@ it('renders only designated fields, literal full prompt, formatted status, and e
   expect(prompt.querySelector('strong')).toBeNull();
   for (const text of ['platform', 'Ready', 'build', 'recipe', job.repo!, 'main', job.goal_id!]) expect(screen.getByText(text, { exact: true })).toBeVisible();
   expect(screen.getByRole('link', { name: 'Open execution' })).toHaveAttribute('href', '/project/tenant%20%2F%20one/jobs/job%20%2F%20one/story');
-  expect(screen.getByRole('link', { name: 'Goal overview' })).toHaveAttribute('href', '/project/tenant%20%2F%20one/goals/goal%20%2F%20one');
+  expect(screen.queryByRole('link', { name: 'Goal overview' })).toBeNull();
   expect(container.textContent).not.toContain('never render this');
   expect(screen.getByText(/2026-10-25/)).toBeVisible();
 });

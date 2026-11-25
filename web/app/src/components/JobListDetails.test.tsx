@@ -37,11 +37,19 @@ it.each([
   expect(JSON.stringify({ summary, inspection })).toBe(before);
   expect(new URL(screen.getByRole('link', { name: 'View parent execution' }).getAttribute('href')!, 'http://localhost').pathname).toBe('/project/tenant/jobs/recorded-parent/story');
   if (inspection) {
-    expect(JSON.parse(raw).blocking_wait).toEqual(wait);
-    expect(screen.getByRole('link', { name: 'View goal' })).toHaveAttribute('href', '/project/tenant/goals/historical-G');
-    expect(new URL(screen.getByRole('link', { name: 'View execution' }).getAttribute('href')!, 'http://localhost').pathname).toBe('/project/tenant/jobs/producer-B/story');
-    expect(screen.getByText(/retained explanation/, { selector: 'div' })).toBeVisible();
+    expect(raw).not.toContain('historical-G');
+    expect(screen.queryByRole('link', { name: 'View goal' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'View execution' })).toBeNull();
   }
+});
+
+it('keeps job dependencies visible in a mixed wait', () => {
+  const jobDependency = { target: { jobId: 'producer' }, condition: 'success', state: 'PENDING' };
+  const inspection = { ...job, blocking_wait: { ...wait, state: 'PENDING', dependencies: [...wait.dependencies, jobDependency] } };
+  render(<MemoryRouter><JobListDetails job={job} inspection={inspection} projectId="tenant" /></MemoryRouter>);
+  expect(screen.getByRole('link', { name: 'Execution', exact: true })).toHaveAttribute('href', '/project/tenant/jobs/producer/story');
+  const raw = screen.getByText('All job data').closest('details')!.querySelector('pre')!.textContent!;
+  expect(JSON.parse(raw).blocking_wait.dependencies).toEqual([jobDependency]);
 });
 
 it('ENV-18 keeps each attempt’s requirements and encoded Execution link separate', () => {

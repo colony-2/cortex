@@ -5,7 +5,7 @@ import { useReviewJobMetadata } from '../hooks/useReviewJobMetadata';
 import { cellLabel } from '../utils/cellPresentation';
 import { jobStatus } from '../utils/jobStatus';
 import { jobTime } from './JobListDetails';
-import { goalPath, jobPath } from './JobWaitLinks';
+import { jobPath } from './JobWaitLinks';
 
 export default function ReviewJobContext({ projectId, jobId, relationships = false, compact = false }: { projectId: string; jobId: string; relationships?: boolean; compact?: boolean }) {
   const { metadata, refresh } = useReviewJobMetadata(projectId, [jobId]);
@@ -26,7 +26,6 @@ export default function ReviewJobContext({ projectId, jobId, relationships = fal
       <Descriptions size="small" column={{ xs: 1, sm: 2, lg: 3 }} items={items} />
       <Space wrap>
         <Link className="compact-touch-link" to={jobPath(projectId, jobId)}>Open execution</Link>
-        {job.goal_id && <Link className="compact-touch-link" to={goalPath(projectId, job.goal_id)}>Goal overview</Link>}
       </Space>
       <section aria-label="Goal prompt" style={{ width: '100%' }}>
         <Typography.Title level={5}>Goal prompt</Typography.Title>

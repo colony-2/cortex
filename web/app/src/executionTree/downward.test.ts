@@ -77,17 +77,17 @@ it('DW05–07 follows empty continuations fairly, retains failed cursors, and re
  const repeated=fixture([node('entry')]);vi.mocked(repeated.waits).mockImplementation(async(_,id)=>waits(id,[],'same'));
  const r=create(repeated);await r.run();expect(r.state.waits.get('entry')).toMatchObject({state:'malformed',reason:'Repeated cursor; incomplete branch'});expect(repeated.waits).toHaveBeenCalledTimes(2);
 });
-it('DW08–10 keeps goals literal, traverses legacy jobs and rejects foreign consumers and summaries',async()=>{
+it('DW08–10 omits goal targets, traverses legacy jobs and rejects foreign consumers and summaries',async()=>{
  const source=fixture([node('entry'),node('legacy'),node('goal-attempt')]);
  vi.mocked(source.waits).mockImplementation(async(_,id)=>{const p=waits(id,id==='entry'?[dep('literal','goal')]:[]);if(id==='entry')p.consumer_snapshot!.legacy_wait_for=['legacy'];return p;});
  const t=create(source);await t.run();expect(t.state.nodes.has('legacy')).toBe(true);expect(t.state.nodes.has('goal-attempt')).toBe(false);
- expect(t.state.graph.nodes.has(t.state.graph.key('literal','goal'))).toBe(true);
+ expect([...t.state.graph.nodes.values()].map(node=>node.id)).not.toContain('literal');
  vi.mocked(source.waits).mockImplementation(async()=>waits('foreign',[dep('secret')]));t.refreshWaits('entry');await vi.waitFor(()=>expect(t.state.loading).toBe(false));
  expect(t.state.nodes.has('secret')).toBe(false);expect(t.state.waits.get('entry')?.observation.stale).toBe(true);
  const wrong=fixture([node('entry')],{entry:['wanted']});vi.mocked(wrong.node).mockImplementation(async(_,id)=>({node:node(id==='entry'?id:'neighbor'),observed_at:at}));const w=create(wrong);await w.run();expect(w.state.nodes.has('neighbor')).toBe(false);expect(w.state.summaries.get('wanted')?.state).toBe('failed');
 });
-it.each([2,3,4])('DW11 shared node budget %i includes missing jobs and literal goals',async nodes=>{
- const source=fixture([node('entry')]);vi.mocked(source.waits).mockImplementation(async(_,id)=>waits(id,[dep('missing'),dep('goal','goal'),dep('extra')]));
+it.each([2,3,4])('DW11 shared node budget %i includes missing jobs and skips goals',async nodes=>{
+ const source=fixture([node('entry')]);vi.mocked(source.waits).mockImplementation(async(_,id)=>waits(id,[dep('missing'),dep('goal','goal'),dep('extra'),dep('last')]));
  const t=create(source,{nodes});await t.run();expect(t.state.graph.nodes.size).toBe(nodes);expect(t.state.waits.get('entry')?.state).toBe(nodes===4?'exhausted':'limited');
  if(nodes<4)expect(t.state.waits.get('entry')?.token).toBe('');
 });

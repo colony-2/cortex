@@ -51,17 +51,17 @@ export class Traversal {
     this.emit();
   }
   cancel(){this.disposed=true;this.pause();}
-  private ensure(id:string,kind:'job'|'goal'='job'){
-    const g=this.state.graph,key=g.key(id,kind);
+  private ensure(id:string){
+    const g=this.state.graph,key=g.key(id);
     if(!g.nodes.has(key) && g.nodes.size>=this.budgets.nodes)return false;
-    g.add(id,kind);
-    if(kind==='job'&&!this.state.nodes.has(id)&&!this.state.summaries.has(id))this.state.summaries.set(id,branch());
+    g.add(id);
+    if(!this.state.nodes.has(id)&&!this.state.summaries.has(id))this.state.summaries.set(id,branch());
     return true;
   }
-  private connect(source:string,id:string,kind:'child'|'wait',targetKind:'job'|'goal'='job',rows:WaitRow[]=[]){
-    const g=this.state.graph,from=g.key(source),to=g.key(id,targetKind);
+  private connect(source:string,id:string,kind:'child'|'wait',rows:WaitRow[]=[]){
+    const g=this.state.graph,from=g.key(source),to=g.key(id);
     if(!g.edges.has(edgeKey(from,to,kind))&&g.edges.size>=this.budgets.edges)return 'Edge limit';
-    if(!this.ensure(id,targetKind))return 'Node limit';
+    if(!this.ensure(id))return 'Node limit';
     // During replacement, keep prior metadata until the entire stream is verified.
     if(!(kind==='wait'&&g.edges.get(edgeKey(from,to,kind))?.previous))g.connect(from,to,kind,rows);return undefined;
   }
@@ -259,6 +259,7 @@ export class Traversal {
                   if(count<legacy.length)normalized.issues.push('Legacy reference limit reached');
                   w.legacyAdded=true;
                 }
+                s.hasGoalWait ||= normalized.hasGoalWait;
                 s.inspected+=used;s.observed=page.observed_at;s.loaded=true;
                 s.issues=[...new Set([...s.issues,...normalized.issues])];
                 const existing=new Set(w.staged.map(r=>r.key));let omitted:string|undefined;
@@ -270,7 +271,7 @@ export class Traversal {
                   const identity=rowIdentity(row);
                   if(!retained.has(identity)&&(retained.size>=this.budgets.waitEntries||stored>=this.budgets.entries)){omitted='Retained dependency row limit';break;}
                   if(!retained.has(identity)){retained.add(identity);stored++;}
-                  const reason=this.connect(id,row.id,'wait',row.kind,[row]);if(reason){omitted=reason;break;}
+                  const reason=this.connect(id,row.id,'wait',[row]);if(reason){omitted=reason;break;}
                   existing.add(row.key);w.staged.push(row);
                 }
                 // Previous rows remain readable throughout an incomplete replacement.
@@ -281,7 +282,7 @@ export class Traversal {
                 if(b.state==='exhausted'&&s.snapshot?.state==='available'){
                   s.rows=[...w.staged];s.stale=false;
                   for(const [key,edge]of this.state.graph.edges)if(edge.source===this.state.graph.key(id)&&edge.kind==='wait')this.state.graph.edges.delete(key);
-                  for(const target of waitTargets(w.staged))this.connect(id,target.id,'wait',target.kind,target.rows);
+                  for(const target of waitTargets(w.staged))this.connect(id,target.id,'wait',target.rows);
                   this.prune();
                 }else if(s.snapshot?.state!=='available')s.issues=[...new Set([...s.issues,'Supplementary job information unavailable'])];
               }

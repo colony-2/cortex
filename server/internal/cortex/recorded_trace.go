@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/colony-2/c2j/pkg/jobrestart"
+	"github.com/colony-2/c2j/pkg/metrics"
 	"github.com/colony-2/c2j/pkg/story/live"
 	"github.com/colony-2/c2j/pkg/task"
 	"github.com/colony-2/jobdb/pkg/jobdb"
@@ -19,6 +20,7 @@ type recordedTask struct {
 	LaunchID   string                    `json:"launch_id,omitempty"`
 	Invocation string                    `json:"invocation_id,omitempty"`
 	Title      string                    `json:"title"`
+	OpType     string                    `json:"op_type,omitempty"`
 	Status     string                    `json:"status"`
 	Ordinal    int64                     `json:"task_ordinal"`
 	JobAttempt int                       `json:"job_attempt,omitempty"`
@@ -30,6 +32,7 @@ type recordedTask struct {
 	Inbox      []jobdb.ExecutionArtifact `json:"input_artifacts,omitempty"`
 	Input      json.RawMessage           `json:"input,omitempty"`
 	Output     json.RawMessage           `json:"output,omitempty"`
+	Metrics    *metrics.Channels         `json:"metrics,omitempty"`
 	Artifacts  []jobdb.ArtifactKey       `json:"artifact_keys,omitempty"`
 	Error      *traceError               `json:"error,omitempty"`
 	Scope      string                    `json:"restart_scope_id,omitempty"`
@@ -53,7 +56,7 @@ func (s *Server) writeRecordedRun(w http.ResponseWriter, r *http.Request, tasks 
 		JobKey:        jobdb.JobKey{TenantId: s.tenantID(r), JobId: mux.Vars(r)["jobId"]},
 		IncludeInputs: tasks, IncludeOutputs: tasks, IncludeArtifacts: tasks, IncludeAttemptInputs: true,
 	}
-	inventory := conversationInventory{key: req.JobKey, launches: map[int64]string{}}
+	inventory := conversationInventory{key: req.JobKey, launches: map[int64]string{}, taskTimes: map[int64]taskTimes{}}
 	var run jobdb.GetJobRunResponse
 	var err error
 	if reader, ok := s.chapters.(jobdb.JobRunReader); tasks && ok {
@@ -72,7 +75,7 @@ func (s *Server) writeRecordedRun(w http.ResponseWriter, r *http.Request, tasks 
 		writeJSON(w, http.StatusOK, points)
 		return
 	}
-	rows := recordedTasks(run, points)
+	rows := recordedTasks(run, points, inventory.taskTimes)
 	for _, row := range rows {
 		if launch := inventory.launches[row.Ordinal]; launch != "" {
 			row.LaunchID = launch
@@ -82,6 +85,25 @@ func (s *Server) writeRecordedRun(w http.ResponseWriter, r *http.Request, tasks 
 		Tasks    []*recordedTask `json:"tasks"`
 		Terminal bool            `json:"terminal"`
 	}{rows, run.Job.ArchivedAt != nil || run.Job.Status == jobdb.JobStatusCancelled || run.Job.Status == jobdb.JobStatusCompleted})
+}
+
+type taskTimes struct {
+	started, finished *time.Time
+}
+
+func recordedTime(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
+}
+
+func chapterTime(value string) *time.Time {
+	t, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return nil
+	}
+	return recordedTime(t)
 }
 
 func tracePayload(data json.RawMessage) json.RawMessage {
@@ -105,33 +127,40 @@ func (row *recordedTask) readInput(raw json.RawMessage) {
 	if json.Unmarshal(raw, &envelope) == nil && envelope.Context != nil && envelope.Input != nil {
 		row.Input = envelope.Input
 		row.InvokeSeq = envelope.Context.InvokeSeq
-		row.Path = strings.FieldsFunc(envelope.Context.NodePath, func(c rune) bool { return c == '/' })
+		if envelope.Context.NodePath != "" {
+			row.Path = strings.FieldsFunc(envelope.Context.NodePath, func(c rune) bool { return c == '/' })
+		}
 	} else {
 		row.Input = tracePayload(raw)
 	}
 }
 
-func recordedOutput(raw json.RawMessage) json.RawMessage {
+func (row *recordedTask) readOutput(raw json.RawMessage) {
 	var envelope task.OutputEnvelope
+	row.Output = tracePayload(raw)
 	if json.Unmarshal(raw, &envelope) == nil && (envelope.Version == 1 || envelope.Version == task.OutputEnvelopeVersion) {
 		switch envelope.Kind {
 		case task.OutputKindInternalResult:
-			return envelope.Payload
+			row.Output = envelope.Payload
 		case task.OutputKindActivityInvocationOutput:
 			var activity struct {
 				Output json.RawMessage `json:"output"`
 			}
 			if json.Unmarshal(envelope.Payload, &activity) == nil {
-				return activity.Output
+				row.Output = activity.Output
 			}
+		default:
+			return
+		}
+		if envelope.Version == task.OutputEnvelopeVersion {
+			row.Metrics = envelope.Metrics
 		}
 	}
-	return tracePayload(raw)
 }
 
 // A compact JobDB chapter can contain several logical events. Preserve their
 // recorded order and match results to their invocation and attempt, not chapter alone.
-func recordedTasks(run jobdb.GetJobRunResponse, points []jobrestart.RestartScope) []*recordedTask {
+func recordedTasks(run jobdb.GetJobRunResponse, points []jobrestart.RestartScope, times map[int64]taskTimes) []*recordedTask {
 	rows := make([]*recordedTask, 0)
 	type scopeVisit struct {
 		id      string
@@ -171,8 +200,9 @@ func recordedTasks(run jobdb.GetJobRunResponse, points []jobrestart.RestartScope
 		case "task":
 			var descriptor struct {
 				Call struct {
-					Type string `json:"task_type"`
-					Site string `json:"site"`
+					Type    string          `json:"task_type"`
+					Site    string          `json:"site"`
+					Command json.RawMessage `json:"command"`
 				} `json:"call"`
 			}
 			_ = json.Unmarshal(r.Descriptor, &descriptor)
@@ -183,7 +213,24 @@ func recordedTasks(run jobdb.GetJobRunResponse, points []jobrestart.RestartScope
 			if title == "" {
 				title = r.ID
 			}
-			row := &recordedTask{ID: r.ID, Invocation: r.ID, Title: title, Ordinal: event.Ordinal, JobAttempt: jobAttempt, Attempt: 1, Status: "pending", Started: &r.At}
+			row := &recordedTask{ID: r.ID, Invocation: r.ID, Title: title, Ordinal: event.Ordinal, JobAttempt: jobAttempt, Attempt: 1, Status: "pending"}
+			var command struct {
+				Node   string `json:"node"`
+				Op     string `json:"op"`
+				Inputs struct {
+					Selector json.RawMessage `json:"selector"`
+				} `json:"inputs"`
+			}
+			if json.Unmarshal(descriptor.Call.Command, &command) == nil && command.Op != "" {
+				row.OpType = command.Op
+				if command.Op == "extension_execution" {
+					var selector string
+					if json.Unmarshal(command.Inputs.Selector, &selector) == nil && selector != "" {
+						row.OpType = selector
+					}
+				}
+				row.Path = strings.FieldsFunc(command.Node, func(c rune) bool { return c == '/' })
+			}
 			for parent := r.ID; parent != ""; {
 				if p, ok := seenScopes[parent]; ok {
 					row.Scope = p.ScopeID
@@ -209,14 +256,14 @@ func recordedTasks(run jobdb.GetJobRunResponse, points []jobrestart.RestartScope
 			}
 			row := parent
 			if r.Attempt > 1 {
-				row = &recordedTask{Invocation: parent.Invocation, Title: parent.Title, Scope: parent.Scope, Boundary: parent.Boundary, JobAttempt: jobAttempt}
+				row = &recordedTask{Invocation: parent.Invocation, Title: parent.Title, OpType: parent.OpType, Path: parent.Path, Scope: parent.Scope, Boundary: parent.Boundary, JobAttempt: jobAttempt}
 				rows = append(rows, row)
 			}
 			row.ID = r.ID
 			row.Status = "running"
 			row.Ordinal = event.Ordinal
 			row.Attempt = r.Attempt
-			row.Started = &r.At
+			row.Started = recordedTime(r.At)
 			attempts[r.ID] = row
 		case "wait", "result":
 			row := attempts[r.ID]
@@ -231,7 +278,7 @@ func recordedTasks(run jobdb.GetJobRunResponse, points []jobrestart.RestartScope
 			if r.Kind == "wait" {
 				continue
 			}
-			row.Finished = &r.At
+			row.Finished = recordedTime(r.At)
 			row.Status = "succeeded"
 			if r.ErrorKind != "" {
 				row.Status = "failed"
@@ -246,7 +293,7 @@ func recordedTasks(run jobdb.GetJobRunResponse, points []jobrestart.RestartScope
 				row.Error = &detail
 			}
 			if r.Output != nil {
-				row.Output = recordedOutput(r.Output.Data)
+				row.readOutput(r.Output.Data)
 				for _, art := range r.Output.Artifacts {
 					if art.Key != nil {
 						row.Artifacts = append(row.Artifacts, *art.Key)
@@ -269,8 +316,10 @@ func recordedTasks(run jobdb.GetJobRunResponse, points []jobrestart.RestartScope
 				case jobdb.TaskAttemptStateLeased, jobdb.TaskAttemptStateWaiting:
 					row.Status = "running"
 				}
-				if a.Outcome.Status != "" {
-					row.Finished = &a.CreatedAt
+				row.Started = times[a.Ordinal].started
+				row.Finished = times[a.Ordinal].finished
+				if row.Finished == nil && a.Outcome.Status != "" {
+					row.Finished = recordedTime(a.CreatedAt)
 				}
 				if a.Input != nil {
 					row.readInput(a.Input.Data)
@@ -279,7 +328,7 @@ func recordedTasks(run jobdb.GetJobRunResponse, points []jobrestart.RestartScope
 					}
 				}
 				if a.Output != nil {
-					row.Output = recordedOutput(a.Output.Data)
+					row.readOutput(a.Output.Data)
 					for _, art := range a.Output.Artifacts {
 						if art.Key != nil {
 							row.Artifacts = append(row.Artifacts, *art.Key)

@@ -172,11 +172,10 @@ test('C1-M01 M05 M06 M08 X02 X03 V03 inbox return, recorded identity and explici
  await page.reload();
  await expect(page.getByRole('link',{name:'Back to inbox',exact:true})).toHaveAttribute('href','/project/recovery/jobs?view=all');
  await page.getByRole('tab',{name:'Graph',exact:true}).click();
- const siblings=page.getByRole('region',{name:'Other attempts at this goal'});
- await expect(siblings.getByRole('link',{name:'Goal · chosen-primary',exact:true})).toHaveAttribute('href','/project/recovery/goals/chosen-primary');
- await expect(siblings.getByRole('link',{name:'Recover release validation',exact:true})).toHaveCount(2);
+ await page.getByRole('button',{name:'Related jobs'}).click();
+ await expect(page.getByRole('region',{name:'Other attempts at this goal'})).toHaveCount(0);
  await expect(page.getByRole('link',{name:'Job · recorded-parent'})).toHaveAttribute('href','/project/recorded-tenant/jobs/recorded-parent/story');
- await expect(page.getByRole('link',{name:'Goal · former-A'})).toHaveAttribute('href','/project/recorded-tenant/goals/former-A');
+ await expect(page.getByRole('link',{name:'Goal · former-A'})).toHaveCount(0);
  await capture(page,'11-returned-primary-navigation');
  await page.goto('/project/recovery/goals/former-A');
  await expect(page.getByText('Goal links have been retired',{exact:true})).toBeVisible();

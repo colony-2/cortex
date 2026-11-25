@@ -471,8 +471,6 @@ html:has(.review-actions) { scroll-padding-bottom: calc(var(--review-action-heig
 .tree-wait-connections text { fill: #543084; font-size: 12px; paint-order: stroke; stroke: #f7f9fc; stroke-width: 5px; stroke-linejoin: round; }
 .execution-tree .tree-wait-reference { position: absolute; border: 0; background: transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; text-align: center; color: #422269; isolation: isolate; }
 .tree-wait-reference::before { content: ''; position: absolute; inset: 0; z-index: -1; background: #f0e7fc; border: 2px solid #6941a5; clip-path: polygon(18px 0,calc(100% - 18px) 0,100% 18px,100% calc(100% - 18px),calc(100% - 18px) 100%,18px 100%,0 calc(100% - 18px),0 18px); }
-.tree-wait-reference.tree-wait-goal::before { clip-path: polygon(50% 0,100% 50%,50% 100%,0 50%); }
-.tree-wait-reference.tree-wait-goal { padding: 45px 62px; }
 .tree-wait-reference strong { overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 100%; }
 .tree-wait-reference[aria-pressed="true"] { outline: 3px solid #6941a5; outline-offset: 3px; }
 .tree-waits-previous { opacity: .65; }

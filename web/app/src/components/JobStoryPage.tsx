@@ -1,3 +1,6 @@
+import RecordedTaskRow, { ResourceWaitRow } from './RecordedTaskRow';
+import RecordedTaskMetrics from './RecordedTaskMetrics';
+import { compactDuration, recordedTimeline } from '../utils/recordedTaskTiming';
 import { useRecordedTasks } from '../hooks/useRecordedTasks';
 import { hasThreadInput, ThreadSnapshotContext, useThreadInput, type ThreadSnapshot } from '../hooks/useThreadInput';
 import { object, valueText } from './conversationPresentation';
@@ -16,6 +19,7 @@ import JobCrashConcern from './JobCrashConcern';
 import JobConversation from './JobConversation';
 import ReviewDocuments, { type ReaderDocument } from './ReviewDocuments';
 import JobEnvironment from './JobEnvironment';
+import RecipeSource from './RecipeSource';
 import JobDetailTabs, { jobDetailTab, type JobDetailTab } from './JobDetailTabs';
 import NodePayloadView from './NodePayloadView';
 import JobRelationships from './JobRelationships';
@@ -101,6 +105,14 @@ function nodeAttempt(node: StoryNode): number {
 function formatTimestamp(ts?: string | null): string {
   if (!ts) return '-';
   return dayjs(ts).format('YYYY-MM-DD HH:mm:ss');
+}
+
+function taskTimestamp(node: StoryNode, field: 'started_at' | 'finished_at') {
+  const timestamp = node[field];
+  if (timestamp) return <time dateTime={timestamp} title={timestamp}>{dayjs(timestamp).format('YYYY-MM-DD HH:mm:ss.SSS')}</time>;
+  if (node.status === 'pending') return 'Pending';
+  if (field === 'finished_at' && node.status === 'running') return 'In progress';
+  return 'Not recorded';
 }
 
 function durationSeconds(started?: string | null, finished?: string | null): number | null {
@@ -442,14 +454,26 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         error: error instanceof Error ? error.message : 'Could not load job details' }));
     }
   };
-  const currentGoal = job?.goal_id;
 
   const trace2 = activeTab === 'trace2';
   useEffect(() => { if (trace2) setActiveDetailsTab('overview'); }, [trace2]);
   const [traceRevision, refreshTrace] = useState(0);
   const trace = useRecordedTasks(projectId, jobId, trace2, autoRefresh && (!activityJob || !isFinishedJob(activityJob)) ? refreshIntervalMs : 0, traceRevision);
+  const [showShortTasks, setShowShortTasks] = useState(false);
+  const timeline = useMemo(() => recordedTimeline(trace?.nodes ?? [], showShortTasks), [trace?.nodes, showShortTasks]);
+  const showTaskDate = useMemo(() => {
+    const days = new Set<string>();
+    for (const row of timeline) {
+      if (Number.isFinite(row.start)) days.add(dayjs(row.start).format('YYYY-MM-DD'));
+      if (days.size > 1) return true;
+    }
+    return false;
+  }, [timeline]);
   const recordedKey = (node: StoryNode) => JSON.stringify([node.job_attempt, node.invocation_id ?? node.id, node.attempt]);
-  const selectedTask = trace?.nodes?.find(node => recordedKey(node) === searchParams.get('recordedTask')) ?? trace?.nodes?.[0];
+  const requestedTask = searchParams.get('recordedTask');
+  const selectedRow = timeline.find(row => row.kind === 'task' && recordedKey(row.node) === requestedTask) ?? timeline.find(row => row.kind === 'task');
+  const selectedInterval = selectedRow?.kind === 'task' ? selectedRow : undefined;
+  const selectedTask = selectedInterval?.node;
   const selectTask = (node: StoryNode) => {
     setSearchParams(previous => { const next = new URLSearchParams(previous); next.set('recordedTask', recordedKey(node)); return next; });
     setActiveDetailsTab('overview');
@@ -877,7 +901,10 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         </JobConversation>}
         </section>
         <section role="tabpanel" id="job-panel-runtime" aria-labelledby="job-tab-runtime" hidden={activeTab !== 'runtime'} tabIndex={0} className="job-detail-panel">
-          {activeTab === 'runtime' && job && <JobEnvironment job={job} />}
+          {activeTab === 'runtime' && job && <>
+            {job.job_type === 'recipe' && <RecipeSource key={dagIdentity} projectId={projectId} jobId={jobId} terminal={isFinishedJob(job)} />}
+            <JobEnvironment job={job} />
+          </>}
           <JobCrashConcern key={dagIdentity} projectId={projectId} jobId={jobId} job={job} status={metadata?.status}
             pause={() => { crashMutationBusy.current = true; ++metadataGeneration.current; }}
             resume={() => { crashMutationBusy.current = false; }} refresh={() => loadMetadata(true)} />
@@ -886,7 +913,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         <section role="tabpanel" id="job-panel-dag" aria-labelledby="job-tab-dag" hidden={activeTab !== 'dag'} tabIndex={0} className="job-detail-panel">
           {(activeTab === 'dag' || dagVisited === dagIdentity) && <>
             <TreeWorkspace key={dagIdentity} tenant={projectId} entry={jobId!} active={activeTab === 'dag'} embedded onJobChanged={node => { if (node.tenant_id === projectId && node.job_id === jobId) { void loadMetadata(); void refreshPendingInputs(); } }}
-              relationships={job && <JobRelationships showAttempts projectId={projectId} jobId={jobId!} job={job} currentGoal={currentGoal} />} />
+              relationships={job && <JobRelationships projectId={projectId} jobId={jobId!} job={job} />} />
           </>}
         </section>
         <section hidden role="tabpanel" id={trace2 ? "job-panel-execution" : "job-panel-trace2"} aria-labelledby={trace2 ? "job-tab-execution" : "job-tab-trace2"} />
@@ -906,7 +933,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
               <Descriptions.Item label="Recipe">
                 {story ? extractRecipeLabel(story.recipe) : job?.recipe || '-'}
               </Descriptions.Item>
-              <Descriptions.Item label="Started">
+              <Descriptions.Item label={trace2 ? "Attempt started" : "Started"}>
                 {formatTimestamp(story?.started_at)}
               </Descriptions.Item>
               <Descriptions.Item label="Finished">
@@ -957,14 +984,23 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
         </>}
         {detailsLink}
         <div className="story-panels">
-          {trace2 ? <Card title="Recorded tasks" className="story-tree-panel">
+          {trace2 ? <Card title="Recorded tasks" className="story-tree-panel" extra={
+            <label className="recorded-task-filter">
+              Show &lt; 10s <Switch size="small" checked={showShortTasks} onChange={setShowShortTasks} />
+            </label>
+          }>
             {trace?.error && <Alert type="error" message={trace.error} action={<Button onClick={() => refreshTrace(n => n + 1)}>Retry</Button>} />}
             {!trace && <p role="status">Loading recorded tasks…</p>}
-            {trace?.nodes?.length === 0 && <Empty description="No recorded tasks yet" />}
-            <ol className="recorded-task-list" id="recorded-task-list">{trace?.nodes?.map(node =>
-              <li key={recordedKey(node)}><button type="button" aria-pressed={selectedTask === node} onClick={() => selectTask(node)}>
-                <strong>{node.title}</strong><span>Chapter {node.task_ordinal} · Attempt {node.attempt} · {node.status}</span>
-              </button></li>)}</ol>
+            {trace?.nodes && timeline.length === 0 && <Empty description={trace.nodes.length ? "All recorded tasks took under 10s" : "No recorded tasks yet"} />}
+            {timeline.length > 0 && <div className="recorded-task-list" id="recorded-task-list">
+              <table aria-label="Recorded tasks">
+                <thead><tr><th scope="col">Time</th><th scope="col">Name</th><th scope="col">Duration</th></tr></thead>
+                <tbody>{timeline.map((row, index) => row.kind === 'wait'
+                  ? <ResourceWaitRow key={`wait-${index}`} gap={row} showDate={showTaskDate} />
+                  : <RecordedTaskRow key={recordedKey(row.node)} task={row} showDate={showTaskDate}
+                    selected={selectedTask === row.node} onSelect={() => selectTask(row.node)} />)}</tbody>
+              </table>
+            </div>}
           </Card> :
           <Card title={isPastJob ? `Story · job attempt ${selectedRef?.jobAttempt}` : 'Story'} className="story-tree-panel" styles={{ body: { padding: 12 } }}
             extra={<Space>
@@ -1079,14 +1115,18 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                           {(!trace2 || selectedNode.invoke_seq != null) && <Descriptions.Item label="Invoke Seq">
                             {selectedNode.invoke_seq ?? '-'}
                           </Descriptions.Item>}
-                          {(!trace2 || selectedNode.started_at) && <Descriptions.Item label="Started">
-                            {formatTimestamp(selectedNode.started_at)}
+                          <Descriptions.Item label={trace2 ? "Attempt started" : "Started"}>
+                            {trace2 ? taskTimestamp(selectedNode, 'started_at') : formatTimestamp(selectedNode.started_at)}
+                          </Descriptions.Item>
+                          {trace2 && selectedInterval?.estimated && <Descriptions.Item label="Estimated worker start">
+                            {dayjs(selectedInterval.start).format('YYYY-MM-DD HH:mm:ss.SSS')}
                           </Descriptions.Item>}
-                          {(!trace2 || selectedNode.finished_at) && <Descriptions.Item label="Finished">
-                            {formatTimestamp(selectedNode.finished_at)}
-                          </Descriptions.Item>}
-                          {(!trace2 || selectedNode.started_at && selectedNode.finished_at) && <Descriptions.Item label="Duration">
-                            {formatDuration(selectedNode.started_at ?? null, selectedNode.finished_at ?? null)}
+                          <Descriptions.Item label="Finished">
+                            {trace2 ? taskTimestamp(selectedNode, 'finished_at') : formatTimestamp(selectedNode.finished_at)}
+                          </Descriptions.Item>
+                          {(!trace2 || selectedInterval?.measured !== undefined || selectedNode.started_at && selectedNode.finished_at) && <Descriptions.Item
+                            label={trace2 && selectedInterval?.measured !== undefined ? "Worker duration" : "Duration"}>
+                            {trace2 && selectedInterval?.measured !== undefined ? compactDuration(selectedInterval.measured) : formatDuration(selectedNode.started_at ?? null, selectedNode.finished_at ?? null)}
                           </Descriptions.Item>}
                           {(!trace2 || selectedNode.path.length > 0) && <Descriptions.Item label="Path">
                             <Text code>{selectedNode.path.join(' / ')}</Text>
@@ -1178,7 +1218,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                                   <Descriptions.Item label="Status">
                                     <Tag color="magenta">{pendingInputDetails.status}</Tag>
                                   </Descriptions.Item>
-                                  <Descriptions.Item label="Started">
+                                  <Descriptions.Item label={trace2 ? "Attempt started" : "Started"}>
                                     {pendingInputDetails.startTime
                                       ? dayjs(pendingInputDetails.startTime).format('YYYY-MM-DD HH:mm:ss')
                                       : '-'}
@@ -1227,6 +1267,7 @@ function JobStoryContent({ projectId }: JobStoryPageProps) {
                         },
                       ]
                     : []),
+                  ...(trace2 ? [{key: 'metrics', label: 'Metrics', children: <RecordedTaskMetrics reports={selectedNode.metrics} />} ] : []),
                   ...(!trace2 || selectedNode.input !== undefined ? [{
                     key: 'input',
                     label: 'Input',

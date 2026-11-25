@@ -43,6 +43,7 @@ export interface InboxEntry {
 export interface RecordedInbox { status: string; reason?: string; entries: InboxEntry[] | null }
 
 export interface StoryNode {
+  metrics?: import('@colony2/shared').RecordedTaskMetrics;
   inbox?: RecordedInbox;
 
   id?: string;
@@ -70,6 +71,7 @@ export interface StoryNode {
   error?: { message: string; code?: string } | null;
   task_ordinal?: number | null;
 
+  op_type?: string;
   op_id?: string;
   step_id?: string;
   state_machine_id?: string;

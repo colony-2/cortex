@@ -8,7 +8,7 @@ import type { RecipeJob, RecipeJobSummary } from '@colony2/shared/types';
 import { stringifyJobJSON } from '@colony2/shared/jobJSON';
 import dayjs from 'dayjs';
 import { jobFilterSearch } from '../utils/jobFilters';
-import JobWaitLinks, { goalPath } from './JobWaitLinks';
+import JobWaitLinks from './JobWaitLinks';
 import JobExecutionRequirements from './JobExecutionRequirements';
 import JobEnvironment from './JobEnvironment';
 
@@ -55,20 +55,24 @@ export default function JobListDetails({ job, inspection, projectId, showPrompt 
   add('Parent job', job.parent?.job_id ? jobLink(job.parent.job_id, job.parent.tenant_id || projectId, 'View parent execution') : undefined);
   add('Parent step', job.parent?.op_step);
   add('Cancellation', job.cancel_requested ? 'Requested' : undefined);
-  add('Wait state', inspection?.blocking_wait?.state);
-  add('Wait deadline', jobTime(job.blocking_wait_summary?.deadline || inspection?.blocking_wait?.deadline));
+  const wait = inspection?.blocking_wait;
+  const dependencies = wait?.dependencies.filter(dependency => !dependency.target.goalId);
+  const goalOnly = !!wait?.dependencies.length && !dependencies?.length;
+  const visibleWait = wait && dependencies && !goalOnly ? { ...wait, dependencies } : undefined;
+  const summary = goalOnly ? undefined : job.blocking_wait_summary;
+  add('Wait state', visibleWait?.state);
+  add('Wait deadline', jobTime(summary?.deadline || visibleWait?.deadline));
 
-  // Old servers or cached summaries may still carry deprecated membership IDs.
-  // Remove them from the projection without changing either source object.
-  const rawData = { ...job, blocking_wait: inspection?.blocking_wait };
+  // Keep the displayed data consistent with the dependency list.
+  const rawData = { ...job, blocking_wait: visibleWait, blocking_wait_summary: summary };
   delete (rawData as Partial<RecipeJob>).other_goal_ids;
 
   return <Space direction="vertical" size="middle" style={{ width: '100%', overflowWrap: 'anywhere' }}>
     {showPrompt && job.prompt && <GoalPrompt projectId={projectId} jobId={job.job_id} text={job.prompt} />}
     <JobLeaseTimeline projectId={projectId} jobId={job.job_id} createdAt={job.created_at} />
     <JobWaitLinks job={job} projectId={projectId} details={inspection} />
-    {inspection?.blocking_wait?.dependencies.map((dependency, index) => <div key={index}>
-      {dependency.target.goalId ? <Link className="compact-touch-link" to={goalPath(projectId, dependency.target.goalId)}>View goal</Link> : dependency.target.jobId ? jobLink(dependency.target.jobId) : null}
+    {visibleWait?.dependencies.map((dependency, index) => dependency.target.jobId && <div key={index}>
+      {jobLink(dependency.target.jobId)}
       {` · ${dependency.condition} · ${dependency.state}`}
       {dependency.blockedReason && ` · ${dependency.blockedReason}`}
       {dependency.satisfiedByJobId && <> · Result from {jobLink(dependency.satisfiedByJobId)}</>}
@@ -90,7 +94,7 @@ export default function JobListDetails({ job, inspection, projectId, showPrompt 
       <Descriptions size="small" column={1} items={[
         { key: 'id', label: 'Job ID', children: <Text code>{job.job_id}</Text> },
         { key: 'route', label: 'Task route', children: job.next_route?.taskType || job.next_route?.jobType || '—' },
-        ...(job.blocking_wait_summary ? [{ key: 'wait', label: 'Wait ID', children: job.blocking_wait_summary.waitId }] : []),
+        ...(summary ? [{ key: 'wait', label: 'Wait ID', children: summary.waitId }] : []),
         ...(job.task_wait ? [
           { key: 'input', label: 'Task input ordinal', children: String(job.task_wait.inputOrdinal) },
           { key: 'output', label: 'Task output ordinal', children: String(job.task_wait.outputOrdinal) },

@@ -237,3 +237,24 @@ export interface TreeWaitsResponse {
   issues: string[];
   consumer_snapshot?: TreeWaitSnapshot;
 }
+export interface TaskMetric {
+  name: string;
+  kind: string;
+  unit?: string;
+  op: string;
+  labels?: Record<string, string>;
+  value?: unknown;
+  delta?: {count: StoredInteger; sum: unknown};
+}
+
+export interface TaskMetricChannel {
+  status: string;
+  diagnostic?: string;
+  phases?: Record<string, string>;
+  report?: {version: number; mutations: TaskMetric[] | null};
+}
+
+export interface RecordedTaskMetrics {
+  runtime: TaskMetricChannel;
+  producer: TaskMetricChannel;
+}

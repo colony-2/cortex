@@ -31,7 +31,7 @@ export default function ThreadDependencies({ tenant, job, details, fromHistory =
   const wait = details?.blocking_wait;
   const hasWaitDetails = wait?.state === 'PENDING' || recorded.length > 0;
   const targets = wait?.state === 'PENDING' ? wait.dependencies.flatMap(dependency =>
-    dependency.state === 'PENDING' && dependency.target?.jobId ? [dependency.target.jobId] : []) : recorded;
+    dependency.state === 'PENDING' && dependency.target?.jobId && !dependency.target.goalId ? [dependency.target.jobId] : []) : recorded;
   const ids = [...new Set(hasWaitDetails ? targets : discovered)].filter(id => id && id !== job);
   useEffect(() => {
     if (hasWaitDetails || fromHistory) { setDiscovered([]); return; }
@@ -47,7 +47,7 @@ export default function ThreadDependencies({ tenant, job, details, fromHistory =
         const page = await getTreeWaits(tenant, job, token, abort.signal);
         const normalized = normalizeWaits(page, tenant, job, WAIT_LIMITS.rows - inspected);
         inspected += normalized.inspected;
-        for (const row of normalized.rows) if (row.kind === 'job') targets.add(row.id);
+        for (const row of normalized.rows) targets.add(row.id);
         if (!pageNumber && !page.waits.length) for (const id of page.consumer_snapshot?.legacy_wait_for ?? []) targets.add(id);
         if (!abort.signal.aborted) setDiscovered([...targets]);
         token = page.next_page_token ?? '';

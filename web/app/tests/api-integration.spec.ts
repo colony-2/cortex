@@ -245,12 +245,12 @@ test('keeps deep-linked tenant, navigation, and live input activity in sync', as
   await page.getByPlaceholder('Exact name or alias').press('Enter');
   await expect(rows).toHaveCount(1);
   await page.goto(`/project/${tenant}/reviews`);
-  await expect(page).toHaveURL(new RegExp(`/project/${tenant}/reviews$`));
-  await expect(page.getByText('No pending reviews')).toBeVisible();
+  await expect(page).toHaveURL(`/project/${tenant}/jobs?inbox=reviews`);
+  await expect(page.getByText('No jobs in this inbox')).toBeVisible();
 
   await (await openTenantSwitcher(page)).fill('browser-other');
   await page.getByRole('button', { name: 'Use', exact: true }).click();
-  await expect(page).toHaveURL(/\/project\/browser-other\/jobs$/);
+  await expect(page).toHaveURL('/project/browser-other/jobs?inbox=reviews');
   await expect(page).toHaveTitle('cortex: tenant browser-other');
   const jobs = await request.get('/api/projects/browser-other/jobs');
   expect(jobs.ok()).toBeTruthy();
@@ -267,12 +267,12 @@ test('opens the tenant from the server connection config without a URL override'
   await page.goto('/');
   expect((await jobs).status()).toBe(200);
   expect((await stream).status()).toBe(200);
-  await expect(page).toHaveURL(new RegExp(`/project/${tenant}/jobs$`));
+  await expect(page).toHaveURL(`/project/${tenant}/jobs?inbox=reviews`);
   await expect(await openTenantSwitcher(page)).toHaveValue(tenant);
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('heading', { name: 'All', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Reviews', exact: true })).toBeVisible();
   await page.goto(`/project/${tenant}/reviews`);
-  await expect(page.getByText('No pending reviews')).toBeVisible();
+  await expect(page.getByText('No jobs in this inbox')).toBeVisible();
 });
 
 // The export API remains available after removal of its Story page action.

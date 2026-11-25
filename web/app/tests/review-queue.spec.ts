@@ -87,7 +87,7 @@ for (const width of [1440, 390]) test(`Reviews inbox search, sorting, and live u
   const tenant = await openTenantSwitcher(page);
   await tenant.fill('other');
   await tenant.press('Enter');
-  await expect(page).toHaveURL('/project/other/jobs');
+  await expect(page).toHaveURL('/project/other/jobs?inbox=reviews');
   await expect(search).toHaveValue('');
   await expect(items).toHaveCount(0);
 });

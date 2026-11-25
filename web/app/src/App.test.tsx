@@ -12,6 +12,15 @@ vi.mock('./components/JobsListPage', () => ({ default: () => <input aria-label="
 vi.mock('./components/JobStoryPage', () => ({ default: () => <input aria-label="Review draft" /> }));
 function shell(path='/project/navigation/jobs') { return <MemoryRouter initialEntries={[path]}><AppShell defaultTenantId="navigation" /></MemoryRouter>; }
 beforeEach(() => { vi.mocked(listCells).mockResolvedValue({cells:[registryCell('platform','navigation')]}); activity.pendingInputs=[]; activity.currentProjectId='navigation'; activity.discoveryStatus='current'; });
+it('lands in Reviews and keeps All directly reachable', async () => {
+  render(shell('/'));
+  const reviews = screen.getByRole('link', {name:'Reviews', exact:true});
+  await screen.findByLabelText('Page draft');
+  expect(reviews).toHaveAttribute('aria-current', 'page');
+  const all = screen.getByRole('link', {name:'All', exact:true});
+  fireEvent.click(all);
+  expect(all).toHaveAttribute('aria-current', 'page');
+});
 it('omits zero badges while keeping All, cells and Archive reachable', async () => {
   render(shell());
   const all=screen.getByRole('link',{name:'All',exact:true});

@@ -22,15 +22,15 @@ it.each([
 ])('REL-002,009 parent links use encoded parent identity without inspection %#', async (parent, tenant) => {
   mount({ ...job, parent });
   expect(screen.getByRole('link', { name: 'Job · p /?' })).toHaveAttribute('href', `/project/${encodeURIComponent(tenant)}/jobs/p%20%2F%3F/story`);
-  expect(screen.getByRole('link', { name: 'Goal · g /?' })).toHaveAttribute('href', `/project/${encodeURIComponent(tenant)}/goals/g%20%2F%3F`);
+  expect(screen.queryByRole('link', { name: 'Goal · g /?' })).toBeNull();
   await screen.findByText('No child jobs recorded in this tenant');
   expect(api).toHaveBeenCalledTimes(1);
 });
 it.each([undefined, {}, { job_id: 'p' }, { goal_id: 'g' }])('REL-003,004 partial or absent parent %#', async parent => {
   mount({ ...job, parent });
   expect(screen.queryByRole('link', { name: 'Job · p' }) !== null).toBe(!!parent?.job_id);
-  expect(screen.queryByRole('link', { name: 'Goal · g' }) !== null).toBe(!!parent?.goal_id);
-  expect(screen.queryByText('No parent recorded') !== null).toBe(!parent?.job_id && !parent?.goal_id);
+  expect(screen.queryByRole('link', { name: 'Goal · g' })).toBeNull();
+  expect(screen.queryByText('No parent recorded') !== null).toBe(!parent?.job_id);
   expect(screen.queryByRole('link', { name: /current-goal/ })).toBeNull();
   await screen.findByText('No child jobs recorded in this tenant');
 });
@@ -40,9 +40,9 @@ it('REL-005,006,007,008,017 renders distinct child identities, statuses, shared 
   await screen.findByRole('link', { name: 'Job · First' });
   expect(screen.getByText('one · platform')).toBeVisible();
   expect(screen.getByRole('link', { name: 'Job · two' })).toHaveAttribute('href','/project/tenant/jobs/two/story');
-  expect(screen.getAllByRole('link', { name: 'Goal · shared' })).toHaveLength(2);
-  expect(screen.getByRole('link', { name: 'Goal · current-goal' })).toBeVisible();
-  expect(screen.getByText('No goal recorded')).toBeVisible();
+  expect(screen.queryByRole('link', {name:/Goal ·/})).toBeNull();
+  expect(screen.queryByText('Other attempts at this goal')).toBeNull();
+  expect(listJobs).not.toHaveBeenCalled();
   expect(screen.getByText('Succeeded')).toBeVisible();
   expect(screen.getAllByText('Ready')).toHaveLength(3);
   expect(screen.getByText('Child jobs in this tenant')).toBeVisible();
@@ -108,7 +108,7 @@ it('REL-029 clears identity and ignores obsolete responses', async () => {
 it('REL-040,042 DAG-16 shows content directly and preserves rows and cursor through rerenders', async () => {
   api.mockResolvedValueOnce({jobs:[child('one')],next_page_token:'cursor+/='}).mockResolvedValueOnce({jobs:[child('two')],next_page_token:'last'});
   const view=render(<MemoryRouter><JobRelationships projectId="tenant" jobId="current" job={job} /></MemoryRouter>);
-  expect(screen.getByRole('heading', {name:'Related jobs and goals'})).toBeVisible();
+  expect(screen.getByRole('heading', {name:'Related jobs'})).toBeVisible();
   expect(document.querySelector('details')).toBeNull();
   await waitFor(()=>expect(screen.getByText('one · platform')).toBeInTheDocument());
   expect(screen.getByRole('link',{name:'Job · one'})).toBeVisible();
@@ -122,43 +122,4 @@ it('REL-040,042 DAG-16 shows content directly and preserves rows and cursor thro
   fireEvent.click(screen.getByRole('button',{name:'Load more child jobs'}));
   await waitFor(()=>expect(api).toHaveBeenCalledTimes(3));
   expect(api.mock.calls.at(-1)?.[2]?.pageToken).toBe('last');
-});
-
-it('JS-024,025,034 requests all attempts, keeps current-only continuation and retries the same page independently', async () => {
-  const siblings = vi.mocked(listJobs);
-  siblings.mockResolvedValueOnce({ jobs: [child('current', {goal_id:'originating'})], next_page_token: 'first' })
-    .mockResolvedValueOnce({ jobs: [child('archived', { store: 'ARCHIVED', goal_id: 'originating', status: 'COMPLETED' })], next_page_token: 'last' })
-    .mockRejectedValueOnce(new Error('offline'))
-    .mockResolvedValueOnce({ jobs: [child('archived',{goal_id:'originating'}), child('ready',{goal_id:'originating'})] });
-  render(<MemoryRouter><JobRelationships projectId="tenant" jobId="current" job={{...job,parent:{job_id:'parent'}}} showAttempts currentGoal="originating" /></MemoryRouter>);
-  const group = within(screen.getByRole('region', { name: 'Other attempts at this goal' }));
-  expect(group.getByRole('status')).toHaveTextContent('Loading other attempts');
-  fireEvent.click(await group.findByRole('button', { name: 'Load more attempts' }));
-  await group.findByRole('link', { name: 'archived' });
-  expect(group.queryByRole('link', { name: 'current', exact: true })).toBeNull();
-  expect(group.getByRole('link', { name: 'Goal · originating' })).toHaveAttribute('href', '/project/tenant/goals/originating');
-  fireEvent.click(group.getByRole('button', { name: 'Load more attempts' }));
-  fireEvent.click(await group.findByRole('button', { name: 'Retry other attempts' }));
-  await group.findByRole('link', { name: 'ready' });
-  expect(group.getAllByRole('listitem')).toHaveLength(2);
-  expect(screen.getByRole('link', { name: 'Job · parent' })).toBeVisible();
-  expect(siblings.mock.calls.map(call => call[1])).toEqual([undefined, 'first', 'last', 'last'].map(pageToken => ({ goal: 'originating', status: [], includeHidden: true, pageSize: 20, pageToken })));
-  fireEvent.click(screen.getByRole('button', { name: 'Refresh relationships' }));
-  await group.findByText('No other attempts at this goal');
-  expect(siblings.mock.calls.at(-1)?.[1]?.pageToken).toBeUndefined();
-});
-it('JS-034 no goal makes no sibling request', async () => {
-  render(<MemoryRouter><JobRelationships showAttempts projectId="tenant" jobId="current" job={job} /></MemoryRouter>);
-  await screen.findByText('No child jobs recorded in this tenant');
-  expect(listJobs).not.toHaveBeenCalled();
-});
-it.each(['tenant','job','goal'].flatMap(change => ['success','failure'].map(outcome => ({change,outcome}))))('JS-035 ignores stale sibling $outcome after $change changes', async ({change,outcome}) => {
-  let resolve!: (value: ListRecipeJobsResponse) => void, reject!: (error: Error) => void;
-  vi.mocked(listJobs).mockReturnValueOnce(new Promise((yes,no) => {resolve=yes; reject=no;})).mockResolvedValue({jobs:[child('fresh', {tenant_id:change==='tenant'?'other':'tenant', goal_id:change==='goal'?'other':'goal'})]});
-  const view = render(<MemoryRouter><JobRelationships projectId="tenant" jobId="current" job={job} showAttempts currentGoal="goal" /></MemoryRouter>);
-  view.rerender(<MemoryRouter><JobRelationships projectId={change==='tenant'?'other':'tenant'} jobId={change==='job'?'other':'current'} job={job} showAttempts currentGoal={change==='goal'?'other':'goal'} /></MemoryRouter>);
-  await screen.findByRole('link', {name:'fresh'});
-  await act(async () => outcome==='success' ? resolve({jobs:[child('stale')]}) : reject(new Error('obsolete')));
-  expect(screen.queryByRole('link', {name:'stale'})).toBeNull();
-  expect(screen.queryByText('Other attempts unavailable')).toBeNull();
 });

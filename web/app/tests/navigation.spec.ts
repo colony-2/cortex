@@ -131,7 +131,9 @@ for (const collapsed of [false, true]) test(`NAV all destinations retain mouse, 
 });
 
 test('NAV Space toggles once and tenant and retired-link routes keep current destinations', async ({ page }) => {
-  await page.goto('/project/navigation/jobs');
+  await page.goto('/');
+  await expect(page).toHaveURL('/project/navigation/jobs?inbox=reviews');
+  await expect(page.getByRole('heading', { name: 'Reviews', exact: true })).toBeVisible();
   const toggle = page.locator('.app-header .inbox-navigation-toggle');
   await expect(toggle).toHaveText('');
   await expect(toggle.locator('[aria-label="menu-fold"]')).toHaveCount(1);
@@ -140,7 +142,7 @@ test('NAV Space toggles once and tenant and retired-link routes keep current des
   await expect(toggle.locator('[aria-label="menu-unfold"]')).toHaveCount(1);
   await (await openTenantSwitcher(page)).fill('second');
   await page.getByRole('button', { name: 'Use', exact: true }).click();
-  await expect(page).toHaveURL('/project/second/jobs');
+  await expect(page).toHaveURL('/project/second/jobs?inbox=reviews');
   await expect(desktop(page)).toHaveCSS('width', '256px');
   await expect(inboxes(page).getByRole('link', { name: 'All', exact: true })).toHaveAttribute('href', '/project/second/jobs');
   await page.reload();
@@ -292,7 +294,7 @@ for (const collapsed of [false, true]) test(`NAV login and tenant switching rema
   await expect(desktop(page)).toHaveCSS('width', '256px');
   await (await openTenantSwitcher(page)).fill('tenant-two');
   await page.getByRole('button', { name: 'Use', exact: true }).click();
-  await expect(page).toHaveURL('/project/tenant-two/jobs');
+  await expect(page).toHaveURL('/project/tenant-two/jobs?inbox=reviews');
   await expect(inboxes(page).getByRole('link', { name: 'All', exact: true })).toHaveAttribute('href', '/project/tenant-two/jobs');
   await expect(page.getByRole('link', { name: 'Settings', exact: true })).toHaveAttribute('href', '/project/tenant-two/admin');
   await expect(desktop(page)).toHaveCSS('width', '256px');

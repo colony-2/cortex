@@ -4,7 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
 
 export function CancelJobIcon({onClick, disabled}: {onClick: () => void; disabled?: boolean}) {
-  return <Tooltip title="Cancel job"><Button type="text" size="small" danger aria-label="Cancel job"
+  return <Tooltip title="Cancel job" trigger={['hover', 'focus']}><Button type="text" size="small" danger aria-label="Cancel job"
     icon={<StopOutlined />} disabled={disabled} onClick={onClick} /></Tooltip>;
 }
 

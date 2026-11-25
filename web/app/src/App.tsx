@@ -153,7 +153,7 @@ function InboxShell({ defaultTenantId }: { defaultTenantId: string }) {
   }
 
   const applyTenant = (tenant: string) => {
-    navigate(`/project/${encodeURIComponent(tenant.trim() || defaultTenantId)}/jobs`);
+    navigate(reviewInboxPath(tenant.trim() || defaultTenantId, ''));
   };
 
   const searchThreads = (query: string) => {
@@ -215,7 +215,7 @@ function InboxShell({ defaultTenantId }: { defaultTenantId: string }) {
           : <Sider className="desktop-navigation" width={sidebarWidth} collapsedWidth={railWidth} collapsed={rail} theme="light" trigger={null}>{navigation}</Sider>}
         <Content className="app-content">
           <Routes key={initialTenantId(location.search, location.pathname, defaultTenantId)}>
-            <Route path="/" element={<Navigate to={`/project/${tenantId}/jobs`} replace />} />
+            <Route path="/" element={<Navigate to={reviewInboxPath(tenantId, '')} replace />} />
             <Route path="/jobs" element={showDrafts ? draftsPage : <JobsListPage key={tenantId} projectId={tenantId} />} />
             <Route path="/project/:projectId/jobs" element={showDrafts ? draftsPage : <JobsRoute fallbackProjectId={tenantId} />} />
             <Route path="/project/:projectId/goals" element={<Navigate to={`/project/${encodeURIComponent(tenantId)}/jobs`} replace />} />
@@ -230,7 +230,7 @@ function InboxShell({ defaultTenantId }: { defaultTenantId: string }) {
             <Route path="/project/:projectId/cells" element={<CellsRoute fallbackProjectId={tenantId} />} />
             <Route path="/project/:projectId/runners/*" element={<RunnersPage />} />
             <Route path="/project/:projectId/admin" element={<AdminRoute fallbackProjectId={tenantId} />} />
-            <Route path="*" element={<Navigate to={`/project/${tenantId}/jobs`} replace />} />
+            <Route path="*" element={<Navigate to={reviewInboxPath(tenantId, '')} replace />} />
           </Routes>
         </Content>
       </Layout>

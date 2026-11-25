@@ -109,7 +109,7 @@ const test = base.extend<{
       await page.goto(`/?tenantId=${tenant}`);
       await page.getByPlaceholder('Email address').fill('browser@example.com');
       await page.getByRole('button', { name: 'Continue', exact: true }).click();
-      await expect(page.getByRole('heading', { name: 'All', exact: true })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Reviews', exact: true })).toBeVisible();
 
       // This second tab must update through SSE, without refresh or navigation.
       const observer = await context.newPage();

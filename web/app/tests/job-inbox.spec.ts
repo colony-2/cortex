@@ -425,7 +425,7 @@ test('popped-out review replies share the dock and keep their draft through navi
   const tenantField = await openTenantSwitcher(page);
   await tenantField.fill('other');
   await tenantField.press('Enter');
-  await expect(page).toHaveURL('/project/other/jobs');
+  await expect(page).toHaveURL('/project/other/jobs?inbox=reviews');
   await expect(docked.getByLabel(field, { exact: true })).toHaveValue(feedback);
   await docked.getByRole('button', { name: 'Maximize composer', exact: true }).click();
   await expect(docked).toHaveClass(/maximized/);
@@ -814,8 +814,11 @@ test('Trace2 preselects the recorded task boundary and loads patch context on de
     if (url.pathname.startsWith('/api/projects/v2/jobs/one/')) reads.push(url.pathname.split('/').pop()!);
   });
   await page.route('**/jobs/one/recorded-trace', route => route.fulfill({json:{terminal:true, tasks:[
-    {id:'first', title:'Prepare', status:'succeeded', task_ordinal:3, attempt:1},
-    {id:'second', title:'Build', status:'failed', task_ordinal:9, attempt:2, restart_scope_id:'build', restart_chapter_ordinal:7, output:{result:'recorded failure'}},
+    {id:'first', path:['workflow','prepare'], op_type:'command_execution', title:'command_execution:run', status:'succeeded', task_ordinal:3, attempt:1, started_at:'2026-11-21T12:00:00.010Z', finished_at:'2026-11-21T12:00:01.250Z'},
+    {id:'second', path:['workflow','review'], op_type:'nix:github:acme/tools/main#analyze', title:'extension_execution:execute', started_at:'2026-11-21T12:01:00Z', finished_at:'2026-11-21T13:03:45Z', status:'failed', task_ordinal:9, attempt:2, restart_scope_id:'build', restart_chapter_ordinal:7, output:{result:'recorded failure'}},
+    {id:'third', path:['workflow','verify'], title:'extension_execution:execute', input:{selector:'nix:github:acme/tools#check'}, status:'running', started_at:'2026-11-21T13:08:01Z', task_ordinal:10, attempt:1},
+    {id:'legacy', path:['workflow','legacy'], title:'input:generate_form', status:'succeeded', task_ordinal:7, attempt:1},
+    {id:'fourth', path:['workflow','ask'], op_type:'input', title:'input:generate_form', status:'succeeded', started_at:'2026-11-21T13:04:00Z', finished_at:'2026-11-21T13:07:02Z', task_ordinal:11, attempt:1},
   ]}}));
   await page.route('**/jobs/one/restart-points', route => route.fulfill({json:points}));
   await page.route('**/jobs/one/restart-context?*', async route => {
@@ -825,9 +828,26 @@ test('Trace2 preselects the recorded task boundary and loads patch context on de
   });
   await page.route('**/jobs/one/restart', route => route.fulfill({json:{job_id:'restarted'}}));
   await page.goto('/project/v2/jobs/one/story?tab=trace2');
-  const list = page.locator('#recorded-task-list');
-  await expect(list.getByRole('button')).toHaveCount(2);
-  await list.getByRole('button', {name:/Build/}).click();
+  const table = page.getByRole('table', {name:'Recorded tasks'});
+  await expect(table.getByRole('columnheader')).toHaveText(['Time', 'Name', 'Duration']);
+  const shortTasks = page.getByRole('switch', {name:'Show < 10s'});
+  await expect(shortTasks).not.toBeChecked();
+  await expect(table.getByRole('button')).toHaveCount(4);
+  await expect(table.getByRole('button', {name:/prepare:/})).toHaveCount(0);
+  await shortTasks.click();
+  await expect(table.getByRole('button')).toHaveCount(5);
+  const prepare = table.getByRole('row').filter({hasText:'prepare:command_execution:run'});
+  await expect(prepare.getByRole('cell')).toHaveText([/^\d{2}:\d{2}$/, 'prepare:command_execution:run', '1s']);
+  await expect(prepare.locator('time')).toHaveAttribute('datetime','2026-11-21T12:00:00.010Z');
+  await expect(table.getByRole('row').filter({hasText:'ask:input:generate_form'}).getByRole('cell').last()).toHaveText('3m2s');
+  await expect(table.getByRole('button', {name:'legacy:input:generate_form', exact:true})).toBeVisible();
+  await expect(table.getByRole('button', {name:/verify:check/}).getByRole('img', {name:'Running'})).toBeVisible();
+  const failed = table.getByRole('row').filter({hasText:'review:analyze'});
+  await expect(failed.getByRole('cell')).toHaveText([/^\d{2}:\d{2}$/, 'review:analyze (2)', '1h2m']);
+  await expect(failed.getByRole('img', {name:'Failed'})).toBeVisible();
+  await expect(table).not.toContainText('nix:github');
+  await failed.getByRole('cell').last().click();
+  await expect(failed.getByRole('button')).toHaveAttribute('aria-pressed','true');
   await page.getByRole('tab', {name:'Output', exact:true}).click();
   await expect(page.getByText(/recorded failure/).first()).toBeVisible();
   await page.getByRole('tab', {name:'Overview'}).click();
@@ -845,4 +865,79 @@ test('Trace2 preselects the recorded task boundary and loads patch context on de
   await dialog.getByRole('button', {name:'Restart', exact:true}).click();
   expect((await submitted).postDataJSON()).toMatchObject({scope_id:'build', goal:{mode:'new'}});
   expect(reads).not.toContain('story');
+});
+
+test('Trace2 filters sub-ten-second tasks and dates the visible user waits across midnight', async ({page}) => {
+  await inboxFixture(page);
+  await page.route('**/jobs/one/recorded-trace', route => route.fulfill({json:{terminal:true, tasks:[
+    {id:'prepare', title:'run', status:'succeeded', started_at:'2026-03-01T23:59:58', finished_at:'2026-03-02T00:00:07.999'},
+    {id:'wait', path:['prompt'], op_type:'input', title:'input:collect_user_input', status:'succeeded', started_at:'2026-03-02T00:01:03', finished_at:'2026-03-02T00:01:13'},
+  ]}}));
+  await page.goto('/project/v2/jobs/one/story?tab=trace2');
+  const table = page.getByRole('table', {name:'Recorded tasks'});
+  const times = table.locator('time');
+  const wait = table.getByRole('button', {name:'wait for user', exact:true});
+  await expect(times).toHaveText(['00:00', '00:01']);
+  await expect(wait).toHaveAttribute('aria-pressed', 'true');
+  await expect(wait).toHaveCSS('color', 'rgb(105, 65, 165)');
+  const toggle = page.getByRole('switch', {name:'Show < 10s'});
+  await toggle.click();
+  await expect(times).toHaveText(['03/01 23:59', '03/02 00:00', '03/02 00:01']);
+  await table.getByRole('button', {name:'run', exact:true}).click();
+  await toggle.click();
+  await expect(times).toHaveText(['00:00', '00:01']);
+  await expect(wait).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('Trace2 uses worker measurements and shows estimated idle time even when short tasks are hidden', async ({page}) => {
+  await inboxFixture(page);
+  const metrics = {runtime:{status:'valid', report:{version:1, mutations:[
+    {name:'c2j_task_duration_seconds', kind:'histogram', op:'observe', unit:'s', labels:{phase:'preparation'}, value:2},
+    {name:'c2j_task_duration_seconds', kind:'histogram', op:'merge', unit:'s', labels:{phase:'execution'}, delta:{count:1, sum:3}},
+    {name:'c2j_task_preparation_component_seconds', kind:'histogram', op:'observe', unit:'s', labels:{component:'input'}, value:1},
+  ]}}, producer:{status:'valid', report:{version:1, mutations:[
+    {name:'tokens_used', kind:'counter', op:'add', value:42},
+  ]}}};
+  const longName = 'long_task_name_'.repeat(15);
+  const tasks = [
+    {id:'prior', title:'prepare', started_at:'2026-11-01T11:59:50', finished_at:'2026-11-01T12:00:00'},
+    {id:'work', title:longName, started_at:'2026-11-01T12:00:00', finished_at:'2026-11-01T12:01:05', metrics},
+    {id:'ask', title:'input:collect_user_input', started_at:'2026-11-01T12:01:05', finished_at:'2026-11-01T12:04:05', metrics},
+    {id:'after', title:'verify', started_at:'2026-11-01T12:04:05', finished_at:'2026-11-01T12:04:15'},
+  ].map(task => ({...task, status:'succeeded', attempt:1}));
+  await page.route('**/jobs/one/recorded-trace', route => route.fulfill({json:{terminal:true, tasks}}));
+  await page.goto('/project/v2/jobs/one/story?tab=trace2');
+  const table = page.getByRole('table', {name:'Recorded tasks'});
+  const gap = table.getByRole('row').filter({hasText:'waiting for resources'});
+  await expect(gap.getByRole('cell')).toHaveText(['12:00','waiting for resources','1m0s']);
+  const work = table.getByRole('row').filter({hasText:longName});
+  await expect(work).toHaveCount(0);
+  await page.getByRole('switch', {name:'Show < 10s'}).click();
+  await expect(work.getByRole('cell')).toHaveText(['12:01', longName, '5s']);
+  await expect(gap).toHaveCount(1);
+  await work.getByRole('button').click();
+  await expect(page.getByText('Estimated worker start', {exact:true})).toBeVisible();
+  await page.getByRole('tab', {name:'Metrics', exact:true}).click();
+  const panel = page.getByRole('tabpanel', {name:'Metrics', exact:true});
+  await expect(panel.getByText('Preparation time', {exact:true})).toBeVisible();
+  await expect(panel.getByText('Execution time', {exact:true})).toBeVisible();
+  await expect(panel.getByText('tokens_used', {exact:true})).toBeVisible();
+  await panel.getByText('Full metric reports').click();
+  await expect(panel.locator('pre')).toContainText('c2j_task_preparation_component_seconds');
+  for (const width of [1200, 375]) {
+    await page.setViewportSize({width, height:800});
+    await expect.poll(() => table.evaluate(el => el.parentElement!.scrollWidth - el.parentElement!.clientWidth)).toBeLessThanOrEqual(1);
+  }
+});
+
+test('Execution shows the recorded Git recipe path and full commit', async ({page}) => {
+  const fixture = await inboxFixture(page);
+  await page.route(/\/jobs\/one(?:\?.*)?$/, route => route.fulfill({json:{...fixture.jobs[0], job_type:'recipe'}}));
+  const path = 'https://example.org/recipes.git//.c2/recipes/build.yaml';
+  const commit = '7fe41a14a5f604f51b206e5de123a6f68d6eb602';
+  await page.route('**/jobs/one/recipe-source', route => route.fulfill({json:{path, commit}}));
+  await page.goto('/project/v2/jobs/one/story?tab=runtime');
+  const source = page.getByRole('region', {name:'Recipe source'});
+  await expect(source.getByText(path, {exact:true})).toBeVisible();
+  await expect(source.getByText(commit, {exact:true})).toBeVisible();
 });

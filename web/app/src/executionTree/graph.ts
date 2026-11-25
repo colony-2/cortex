@@ -1,6 +1,6 @@
 import { waitKey, type WaitRow } from './waits';
 
-export interface GraphNode { key: string; id: string; kind: 'job' | 'goal' }
+export interface GraphNode { key: string; id: string }
 export interface Edge { key: string; source: string; target: string; kind: 'child' | 'wait'; rows: WaitRow[]; previous?: boolean }
 export const edgeKey = (source: string, target: string, kind: Edge['kind']) => JSON.stringify([source,target,kind]);
 /** A tenant-scoped graph. Runtime parentage and waits never substitute for one another. */
@@ -8,10 +8,10 @@ export class JobGraph {
   nodes = new Map<string, GraphNode>();
   edges = new Map<string, Edge>();
   constructor(readonly tenant: string) {}
-  key(id: string, kind: GraphNode['kind'] = 'job') { return waitKey(this.tenant,kind,id); }
-  add(id: string, kind: GraphNode['kind'] = 'job') {
-    const key = this.key(id,kind);
-    if (!this.nodes.has(key)) this.nodes.set(key,{key,id,kind});
+  key(id: string) { return waitKey(this.tenant,id); }
+  add(id: string) {
+    const key = this.key(id);
+    if (!this.nodes.has(key)) this.nodes.set(key,{key,id});
     return key;
   }
   connect(source: string, target: string, kind: Edge['kind'], rows: WaitRow[] = []) {

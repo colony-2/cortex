@@ -51,6 +51,7 @@ type conversationInventory struct {
 	run         *jobdb.GetJobRunResponse
 	rows        *[]inputDocument
 	launches    map[int64]string
+	taskTimes   map[int64]taskTimes
 	nextOrdinal int64
 	thread      *threadObservation
 }
@@ -73,6 +74,13 @@ func (r *conversationInventory) ListChapters(ctx context.Context, req jobdb.List
 	if err == nil && req.JobKey == r.key {
 		for _, ch := range chapters {
 			r.nextOrdinal = max(r.nextOrdinal, ch.Ordinal+1)
+			if r.taskTimes != nil {
+				fields := ch.Metadata.Fields
+				times := taskTimes{chapterTime(fields["started_at"].String), chapterTime(fields["finished_at"].String)}
+				if times.started != nil || times.finished != nil {
+					r.taskTimes[ch.Ordinal] = times
+				}
+			}
 			if worker := ch.Metadata.Fields["worker_id"]; r.launches != nil && worker.Kind == jobdb.ChapterMetadataString && worker.String != "" {
 				r.launches[ch.Ordinal] = worker.String
 			}

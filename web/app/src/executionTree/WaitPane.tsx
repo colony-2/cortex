@@ -3,8 +3,8 @@ import { useState } from 'react';
 import type { WaitController } from './waits';
 import { conditionText, WAIT_LIMITS, waitPath, type WaitTarget } from './waits';
 
-export function TargetLink({tenant,target,returnTo}:{tenant:string;target:WaitTarget;returnTo:string}) {
-  return <Link className="compact-touch-link" to={waitPath(tenant,target.kind,target.id)} state={{treeWaitFrom:returnTo}}>{target.kind==='goal'?'Open goal':'Open job DAG'}</Link>;
+export function TargetLink({tenant,id,returnTo}:{tenant:string;id:string;returnTo:string}) {
+  return <Link className="compact-touch-link" to={waitPath(tenant,id)} state={{treeWaitFrom:returnTo}}>Open job DAG</Link>;
 }
 export function WaitPane({controller,targets,drawn,selectTarget,showTarget,returnTo}:{controller:WaitController;targets:WaitTarget[];drawn:Set<string>;selectTarget:(t:WaitTarget)=>void;showTarget:(t:WaitTarget)=>void;returnTo:string}) {
   const [count,setCount] = useState(WAIT_LIMITS.paneRows);
@@ -23,7 +23,7 @@ export function WaitPane({controller,targets,drawn,selectTarget,showTarget,retur
       {s.snapshot?.state==='unavailable' && <p>Supplementary job information unavailable; absence of waits is unverified.</p>}
       {s.issues.map(issue=><p key={issue}>{issue}</p>)}
       {s.stopped && <p>{s.stopped}</p>}
-      {complete && !rows.length && <p>{s.snapshot?.status==='PENDING_JOBS'?'Returned dependency details do not explain the waiting status. Refresh to check again.':`No unresolved waits returned at ${s.observed}.`}</p>}
+      {complete && !rows.length && <p>{s.snapshot?.status==='PENDING_JOBS' && !s.hasGoalWait?'Returned dependency details do not explain the waiting status. Refresh to check again.':`No unresolved job waits returned at ${s.observed}.`}</p>}
     </div>
     {!!s.error && (s.stale || !s.loaded) && <button onClick={()=>s.stale || !s.loaded?controller.refresh():void controller.load()} disabled={s.loading}>Retry waits</button>}
     {s.token && s.error && !s.stale && !s.stopped && <button onClick={()=>void controller.load()} disabled={!controller.canLoad}>{s.error?'Retry page':'Load more waits'}</button>}
@@ -31,7 +31,7 @@ export function WaitPane({controller,targets,drawn,selectTarget,showTarget,retur
     <ul className="tree-wait-list">{rows.slice(0,count).map(row=>{
       const target = targets.find(t=>t.key===row.targetKey)!;
       return <li key={JSON.stringify([row.key,row.targetKey,row.condition,row.deadline,row.blockedReason])} data-wait-ref={row.targetKey}>
-        <strong>{row.legacy?'Legacy job wait':row.kind==='goal'?'Goal wait':'Job wait'}</strong>
+        <strong>{row.legacy?'Legacy job wait':'Job wait'}</strong>
         <code>{row.id}</code>
         <p>Waits for · {row.condition}</p>
         <p>{row.legacy?'Condition unavailable for legacy reference':conditionText(row.condition)}</p>
@@ -39,7 +39,7 @@ export function WaitPane({controller,targets,drawn,selectTarget,showTarget,retur
         {row.blockedReason && <p>{row.blockedReason}</p>}
         <div className="tree-wait-actions">
           <button onClick={()=>selectTarget(target)}>Select target</button>
-          <TargetLink tenant={controller.tenant} target={target} returnTo={returnTo} />
+          <TargetLink tenant={controller.tenant} id={target.id} returnTo={returnTo} />
           <button onClick={()=>showTarget(target)}>{drawn.has(row.targetKey)?'Reveal in graph':'Show in graph'}</button>
         </div>
       </li>;
